@@ -13,7 +13,7 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 from .devices import DeviceManager, Session
@@ -139,6 +139,21 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
         except AuthError as exc:
             raise HTTPException(status_code=401, detail=str(exc)) from None
         return {"email": store.account_email(account_id), "session": _set_session(response, account_id)}
+
+    @app.get("/auth/link")
+    def login_link(code: str = "") -> Response:
+        """One-time sign-in link printed by `openmob account link EMAIL` on the server."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        from .accounts import AuthError
+
+        try:
+            account_id = store.redeem_login_link(code)
+        except AuthError as exc:
+            return HTMLResponse(f"<p>{exc}</p>", status_code=400)
+        response = RedirectResponse("/", status_code=303)  # drops the code from the address bar
+        _set_session(response, account_id)
+        return response
 
     @app.post("/api/auth/logout")
     def logout(request: Request, response: Response) -> dict:

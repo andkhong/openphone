@@ -137,3 +137,24 @@ def test_pages_and_app_download_are_public(hosted):
         assert httpx.get(f"{base}{page}").status_code == 200
     # /pair checks the download with HEAD; it must not be rejected as a wrong method.
     assert httpx.head(f"{base}/download/openmob.apk").status_code in (200, 404)
+
+
+def test_one_time_sign_in_link(hosted):
+    base, _, store = hosted
+    account = store.create_account("owner@example.com", "password123")
+    code = store.create_login_link(account)
+    client = httpx.Client(base_url=base)
+    r = client.get(f"/auth/link?code={code}")
+    assert r.status_code == 303 and r.headers["location"] == "/"
+    assert client.get("/api/auth/me").json()["email"] == "owner@example.com"
+    assert httpx.get(f"{base}/auth/link?code={code}").status_code == 400  # single use
+    assert httpx.get(f"{base}/auth/link?code=guess").status_code == 400
+
+
+def test_server_sees_accounts_added_by_another_process(hosted, tmp_path):
+    base, _, store = hosted
+    from openmob.accounts import AccountStore
+
+    AccountStore(store.path).create_account("late@example.com", "password123")  # e.g. the CLI
+    r = httpx.post(f"{base}/api/auth/login", json={"email": "late@example.com", "password": "password123"})
+    assert r.status_code == 200

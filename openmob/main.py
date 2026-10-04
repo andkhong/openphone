@@ -253,11 +253,9 @@ def cmd_bridge(cfg: Config, args) -> None:
     """Connect a local adb phone to a hosted OpenMob server."""
     import os
 
-    from .bridge import device_info_from_adb, run_bridge
+    from .bridge import BridgeAuthError, device_info_from_adb, load_key, pair_with_account, run_bridge, save_key
 
-    token = args.token or os.environ.get("OPENMOB_TOKEN")
-    if not token:
-        sys.exit("A token is required: --token TOKEN or OPENMOB_TOKEN.")
+    token = args.token or os.environ.get("OPENMOB_TOKEN") or ""
     serial = args.serial or cfg.adb_serial
     try:
         if not serial:
@@ -269,7 +267,93 @@ def cmd_bridge(cfg: Config, args) -> None:
         info = device_info_from_adb(driver)
     except AdbError as exc:
         sys.exit(f"✗ {exc}")
-    run_bridge(driver, args.server_url, token, info)
+
+    # Account mode: pair once with --email, then reconnect with the saved per-phone key.
+    key = None
+    if args.email:
+        password = _read_password(args.password_file, prompt=f"OpenMob password for {args.email}: ")
+        model = " ".join(filter(None, [info.get("manufacturer", "").title(), info.get("model")]))
+        try:
+            key = pair_with_account(args.server_url, args.email, password, info["id"], model)
+        except BridgeAuthError as exc:
+            sys.exit(f"✗ Pairing failed: {exc}")
+        save_key(args.server_url, info["id"], key)
+        print(f"🔐 Paired this phone to {args.email}.")
+    else:
+        key = load_key(args.server_url, info["id"])
+    if not key and not token:
+        sys.exit("Pair with your account: --email YOU@EXAMPLE.COM (or, for token-mode servers, --token TOKEN).")
+    run_bridge(driver, args.server_url, token, info, key=key,
+               on_rejected=lambda: save_key(args.server_url, info["id"], None))
+
+
+def _read_password(password_file: str | None, prompt: str) -> str:
+    import getpass
+    import os
+
+    if os.environ.get("OPENMOB_PASSWORD"):
+        return os.environ["OPENMOB_PASSWORD"]
+    if password_file:
+        try:
+            return open(os.path.expanduser(password_file)).read().strip()
+        except OSError as exc:
+            sys.exit(f"✗ Can't read {password_file}: {exc}")
+    return getpass.getpass(prompt)
+
+
+def cmd_account(cfg: Config, args) -> None:
+    """Manage accounts on this server (there's no web sign-up page yet)."""
+    import os
+    import secrets as _secrets
+
+    from .accounts import AccountStore, AuthError
+
+    store = AccountStore()
+    if args.action == "list":
+        print("\n".join(store.list_accounts()) or "No accounts yet.")
+        return
+    if not args.email:
+        sys.exit(f"openmob account {args.action} needs an EMAIL.")
+
+    if args.action == "add":
+        if store.account_id_for(args.email):
+            print(f"✓ {args.email} already exists.")
+            return
+        path = os.path.expanduser(args.password_file) if args.password_file else None
+        if path and not os.path.exists(path):
+            # Generate a strong password and keep it in an owner-only file, not on screen.
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "w") as f:
+                f.write(_secrets.token_urlsafe(18))
+            print(f"🔑 Generated a password in {path} (owner-only).")
+        password = _read_password(path, prompt=f"New password for {args.email}: ")
+        try:
+            store.create_account(args.email, password)
+        except AuthError as exc:
+            sys.exit(f"✗ {exc}")
+        print(f"✓ Created {args.email}.")
+        return
+
+    if args.action == "link":
+        account_id = store.account_id_for(args.email)
+        if not account_id:
+            sys.exit(f"✗ No account {args.email}. Create it: openmob account add {args.email}")
+        code = store.create_login_link(account_id)
+        base = args.server or _public_url(cfg.server_port) or f"http://localhost:{cfg.server_port}"
+        print(f"One-time sign-in link for {args.email} (works once, for 10 minutes):")
+        print(f"{base.rstrip('/')}/auth/link?code={code}")
+
+
+def _public_url(port: int) -> str | None:
+    """The running tunnel's URL, if `openmob run --public` started one."""
+    import json as _json
+
+    from .tunnel import _state_file
+
+    try:
+        return _json.loads(_state_file(port).read_text())["url"]
+    except (OSError, ValueError, KeyError):
+        return None
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -304,11 +388,19 @@ def main(argv: list[str] | None = None) -> None:
     p_bridge.add_argument("server_url", help="server address, e.g. https://openmob.example.com")
     p_bridge.add_argument("--token", help="phone token (default: $OPENMOB_TOKEN)")
     p_bridge.add_argument("--serial", help="adb serial of the phone (default: adb_serial or the only connected phone)")
+    p_bridge.add_argument("--email", help="account mode: pair this phone to your account (prompts for the password)")
+    p_bridge.add_argument("--password-file", help="read the account password from this file instead of prompting")
+
+    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, sign-in link)")
+    p_account.add_argument("action", choices=["add", "list", "link"])
+    p_account.add_argument("email", nargs="?")
+    p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
+    p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")
 
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
-    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "bridge": cmd_bridge}[args.command](cfg, args)
+    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

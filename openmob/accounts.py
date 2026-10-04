@@ -23,6 +23,7 @@ from pathlib import Path
 PBKDF2_ROUNDS = 200_000
 SESSION_TTL = 30 * 24 * 3600  # dashboard login lasts 30 days
 PAIRING_TTL = 10 * 60  # a pairing code is valid for 10 minutes, once
+LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works once, for 10 minutes
 DEFAULT_STORE = Path.home() / ".config" / "openmob" / "accounts.json"
 
 
@@ -56,19 +57,34 @@ class AccountStore:
     def __init__(self, path: Path | str = DEFAULT_STORE):
         self.path = Path(path)
         self._lock = threading.RLock()
+        self._mtime = 0.0
         self._data = self._load()
 
     def _load(self) -> dict:
         try:
-            return json.loads(self.path.read_text())
+            self._mtime = self.path.stat().st_mtime
+            data = json.loads(self.path.read_text())
         except (OSError, ValueError):
-            return {"accounts": {}, "devices": {}, "sessions": {}, "pairings": {}}
+            data = {}
+        for section in ("accounts", "devices", "sessions", "pairings", "logins"):
+            data.setdefault(section, {})
+        return data
+
+    def _refresh(self) -> None:
+        """Pick up changes made by another process (e.g. `openmob account add` while the server runs)."""
+        try:
+            if self.path.stat().st_mtime != self._mtime:
+                self._data = self._load()
+        except OSError:
+            pass
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
         tmp.write_text(json.dumps(self._data, indent=2))
+        tmp.chmod(0o600)  # password hashes and key hashes: owner-only
         tmp.replace(self.path)
+        self._mtime = self.path.stat().st_mtime
 
     # --- accounts --------------------------------------------------------
 
@@ -77,6 +93,7 @@ class AccountStore:
         if "@" not in email or len(password) < 8:
             raise AuthError("Enter a valid email and a password of at least 8 characters.")
         with self._lock:
+            self._refresh()
             if any(a["email"] == email for a in self._data["accounts"].values()):
                 raise AuthError("An account with that email already exists.")
             account_id = secrets.token_hex(8)
@@ -93,6 +110,7 @@ class AccountStore:
     def verify_login(self, email: str, password: str) -> str:
         email = normalize_email(email)
         with self._lock:
+            self._refresh()
             for account_id, account in self._data["accounts"].items():
                 if account["email"] == email:
                     expected = account["pw_hash"]
@@ -101,8 +119,40 @@ class AccountStore:
                     break
         raise AuthError("Wrong email or password.")
 
+    def account_id_for(self, email: str) -> str | None:
+        email = normalize_email(email)
+        with self._lock:
+            self._refresh()
+            return next((i for i, a in self._data["accounts"].items() if a["email"] == email), None)
+
+    def list_accounts(self) -> list[str]:
+        with self._lock:
+            self._refresh()
+            return sorted(a["email"] for a in self._data["accounts"].values())
+
+    # --- one-time sign-in links (for the server operator; there's no web sign-up page yet) -------
+
+    def create_login_link(self, account_id: str) -> str:
+        code = secrets.token_urlsafe(18)
+        with self._lock:
+            self._refresh()
+            self._data["logins"][_hash_token(code)] = {"account_id": account_id, "expires": time.time() + LOGIN_LINK_TTL}
+            self._save()
+        return code
+
+    def redeem_login_link(self, code: str) -> str:
+        """Single use: returns the account and forgets the code."""
+        with self._lock:
+            self._refresh()
+            login = self._data["logins"].pop(_hash_token(code or ""), None)
+            self._save()
+        if not login or login["expires"] < time.time():
+            raise AuthError("This sign-in link is invalid or expired. Ask for a new one.")
+        return login["account_id"]
+
     def account_email(self, account_id: str) -> str | None:
         with self._lock:
+            self._refresh()
             account = self._data["accounts"].get(account_id)
             return account["email"] if account else None
 
@@ -111,6 +161,7 @@ class AccountStore:
     def create_session(self, account_id: str) -> str:
         token = secrets.token_urlsafe(24)
         with self._lock:
+            self._refresh()
             self._data["sessions"][_hash_token(token)] = {
                 "account_id": account_id,
                 "expires": time.time() + SESSION_TTL,
@@ -122,6 +173,7 @@ class AccountStore:
         if not token:
             return None
         with self._lock:
+            self._refresh()
             session = self._data["sessions"].get(_hash_token(token))
             if not session or session["expires"] < time.time():
                 return None
@@ -131,6 +183,7 @@ class AccountStore:
         if not token:
             return
         with self._lock:
+            self._refresh()
             if self._data["sessions"].pop(_hash_token(token), None):
                 self._save()
 
@@ -141,6 +194,7 @@ class AccountStore:
         code = secrets.token_urlsafe(9)
         expires = time.time() + PAIRING_TTL
         with self._lock:
+            self._refresh()
             # One active code per account at a time: making a new one voids the old.
             self._data["pairings"] = {
                 c: p for c, p in self._data["pairings"].items() if p["account_id"] != account_id
@@ -156,6 +210,7 @@ class AccountStore:
         code. A different account (or none) is refused even with a valid code.
         """
         with self._lock:
+            self._refresh()
             pairing = self._data["pairings"].get(code)
             if not pairing or pairing["expires"] < time.time() or pairing["used"]:
                 raise AuthError("This pairing code is invalid or has expired. Generate a new one.")
@@ -186,6 +241,7 @@ class AccountStore:
     def verify_device(self, device_id: str, key: str) -> str:
         """Return the owning account for a phone's key, or raise. Updates last-seen."""
         with self._lock:
+            self._refresh()
             device = self._data["devices"].get(device_id)
             if not device or device["revoked"]:
                 raise AuthError("This phone is not paired. Pair it again from your dashboard.")
@@ -197,6 +253,7 @@ class AccountStore:
 
     def list_devices(self, account_id: str) -> list[Device]:
         with self._lock:
+            self._refresh()
             return [
                 Device(id=device_id, **{k: d[k] for k in ("account_id", "model", "created", "last_seen", "revoked")})
                 for device_id, d in self._data["devices"].items()
@@ -206,6 +263,7 @@ class AccountStore:
     def revoke_device(self, account_id: str, device_id: str) -> bool:
         """Mark a phone as unpaired. Only the owning account may do this."""
         with self._lock:
+            self._refresh()
             device = self._data["devices"].get(device_id)
             if not device or device["account_id"] != account_id:
                 return False

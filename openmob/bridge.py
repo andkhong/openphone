@@ -14,6 +14,7 @@ import logging
 import ssl
 import sys
 import threading
+from pathlib import Path
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 from urllib.parse import quote, urlsplit, urlunsplit
@@ -88,12 +89,14 @@ class PhoneBridge:
         token: str,
         device_info: dict,
         on_event: Callable[[str, str], None] = print_event,
+        key: str | None = None,
         initial_backoff: float = 1.0,
         max_backoff: float = 30.0,
     ):
         self.driver = driver
         self.url = ws_url(server_url, token)
         self.device_info = device_info
+        self.key = key  # this phone's own key in account mode (see pair_with_account)
         self.on_event = on_event
         self.initial_backoff = initial_backoff
         self.max_backoff = max_backoff
@@ -132,13 +135,17 @@ class PhoneBridge:
                 self.url, max_size=MAX_MESSAGE, open_timeout=15, ssl=_tls_context(self.url)
             ) as ws:
                 self._ws = ws
-                await self._send({"type": "hello", "protocol": PROTOCOL_VERSION, "device": self.device_info})
+                hello = {"type": "hello", "protocol": PROTOCOL_VERSION, "device": self.device_info}
+                if self.key:
+                    hello["key"] = self.key
+                await self._send(hello)
                 welcomed = await self._serve(ws)
             if not self._stopping:
                 log.warning("Server closed the connection")
         except websockets.exceptions.ConnectionClosed as exc:
             if _close_code(exc) == AUTH_CLOSE_CODE:
-                raise BridgeAuthError("server rejected the token (close code 4401)") from exc
+                what = "this phone's key (it may have been revoked)" if self.key else "the token"
+                raise BridgeAuthError(f"server rejected {what} (close code 4401)") from exc
             log.warning("Disconnected: %s", exc)
         except websockets.exceptions.InvalidHandshake as exc:
             if _rejected_status(exc) in (401, 403):
@@ -272,11 +279,19 @@ async def _main(bridge: PhoneBridge, read_stdin: bool) -> None:
     await bridge.run()
 
 
-def run_bridge(driver: Device, server_url: str, token: str, device_info: dict, read_stdin: bool = True) -> None:
-    """Blocking CLI entrypoint: serve until Ctrl+C; exit with a message on a bad token."""
+def run_bridge(
+    driver: Device,
+    server_url: str,
+    token: str,
+    device_info: dict,
+    read_stdin: bool = True,
+    key: str | None = None,
+    on_rejected: Callable[[], None] | None = None,
+) -> None:
+    """Blocking CLI entrypoint: serve until Ctrl+C; exit with a message on a bad token or key."""
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s", datefmt="%H:%M:%S")
     logging.getLogger("websockets").setLevel(logging.WARNING)
-    bridge = PhoneBridge(driver, server_url, token, device_info)
+    bridge = PhoneBridge(driver, server_url, token, device_info, key=key)
     name = " ".join(filter(None, [device_info.get("manufacturer"), device_info.get("model")])) or device_info.get("id")
     print(f"📱 Bridging {name} to {bridge.url.split('?', 1)[0]}")
     if read_stdin:
@@ -284,6 +299,79 @@ def run_bridge(driver: Device, server_url: str, token: str, device_info: dict, r
     try:
         asyncio.run(_main(bridge, read_stdin))
     except BridgeAuthError as exc:
+        if key:
+            if on_rejected:
+                on_rejected()
+            sys.exit(f"✗ {exc}. Pair again: openmob bridge {server_url} --email YOUR_EMAIL")
         sys.exit(f"✗ {exc}. Check --token / OPENMOB_TOKEN.")
     except KeyboardInterrupt:
         print("\nStopped.")
+
+
+# --- account mode ------------------------------------------------------------------------------
+
+KEY_FILE = Path.home() / ".config" / "openmob" / "bridge-keys.json"
+
+
+def _http_base(server_url: str) -> str:
+    """ws(s):// or a bare host → http(s)://host[/prefix], for the REST calls."""
+    url = ws_url(server_url, "")
+    base = url.split("/phone/ws", 1)[0]
+    return "https://" + base.removeprefix("wss://") if base.startswith("wss://") else "http://" + base.removeprefix("ws://")
+
+
+def pair_with_account(server_url: str, email: str, password: str, device_id: str, model: str) -> str:
+    """Sign in as the account owner, make a pairing code, and redeem it for this phone.
+
+    The bridge's operator controls the phone over adb and knows the account password, so it
+    can do both halves of pairing itself. Returns the phone's own key.
+    """
+    import httpx
+
+    verify = _tls_context(server_url.replace("https://", "wss://")) or True
+    with httpx.Client(base_url=_http_base(server_url), timeout=20, verify=verify) as client:
+        def check(response: httpx.Response) -> dict:
+            if response.status_code >= 400:
+                try:
+                    detail = response.json().get("detail")
+                except ValueError:
+                    detail = response.text[:200]
+                raise BridgeAuthError(str(detail or f"HTTP {response.status_code}"))
+            return response.json()
+
+        session = check(client.post("/api/auth/login", json={"email": email, "password": password}))["session"]
+        headers = {"X-OpenMob-Session": session}
+        pairing = check(client.get("/api/pairing", headers=headers))
+        if not pairing.get("accounts"):
+            raise BridgeAuthError("this server doesn't use accounts; use --token instead")
+        redeemed = check(client.post(
+            "/api/pair/redeem", headers=headers,
+            json={"code": pairing["code"], "device_id": device_id, "model": model},
+        ))
+        return redeemed["key"]
+
+
+def _key_id(server_url: str, device_id: str) -> str:
+    return f"{_http_base(server_url)}|{device_id}"
+
+
+def load_key(server_url: str, device_id: str) -> str | None:
+    try:
+        return json.loads(KEY_FILE.read_text()).get(_key_id(server_url, device_id))
+    except (OSError, ValueError):
+        return None
+
+
+def save_key(server_url: str, device_id: str, key: str | None) -> None:
+    """Store (or with key=None, forget) a phone's key. The file is owner-readable only."""
+    try:
+        keys = json.loads(KEY_FILE.read_text())
+    except (OSError, ValueError):
+        keys = {}
+    if key:
+        keys[_key_id(server_url, device_id)] = key
+    else:
+        keys.pop(_key_id(server_url, device_id), None)
+    KEY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    KEY_FILE.write_text(json.dumps(keys, indent=2))
+    KEY_FILE.chmod(0o600)
