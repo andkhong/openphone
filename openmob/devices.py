@@ -102,10 +102,14 @@ class DeviceManager:
         )
         with self._lock:
             session = self.sessions.get(info.id)
+            if session and session.account_id != account_id:
+                # Same device id, different owner: never hand over the old session or its history.
+                session.coordinator.stop()
+                del self.sessions[info.id]
+                session = None
             if session:
                 session.driver.attach(link)
                 session.info = info
-                session.account_id = account_id
             else:
                 session = self._create(info, RemoteDriver(link), account_id)
                 self.sessions[info.id] = session

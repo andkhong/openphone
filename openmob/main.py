@@ -106,15 +106,23 @@ def cmd_run(cfg: Config, args) -> None:
 
     from .server import create_app, lan_ip, serve_in_background
 
+    store = None
+    if args.accounts:
+        from .accounts import AccountStore
+
+        store = AccountStore()
+        print(f"🔐 Accounts on: users sign in, and each phone pairs only to its owner's account ({store.path}).")
     token = cfg.server_token or secrets.token_urlsafe(8)
-    serve_in_background(create_app(manager, transcriber, token), cfg.server_host, cfg.server_port)
-    print(f"🖥  Dashboard: http://localhost:{cfg.server_port}/?t={token}")
-    print(f"   On your network: http://{lan_ip()}:{cfg.server_port}/?t={token}")
+    serve_in_background(create_app(manager, transcriber, token, store=store), cfg.server_host, cfg.server_port)
+    # With accounts the dashboard uses a sign-in session, so links carry no secret.
+    suffix = "/login" if store else f"/?t={token}"
+    print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")
+    print(f"   On your network: http://{lan_ip()}:{cfg.server_port}{suffix}")
     if args.public:
         from .tunnel import open_tunnel
 
         url = open_tunnel(cfg.server_port)
-        print(f"🌍 Public (HTTPS): {url}/?t={token}" if url else "⚠️  Could not open a public tunnel (is cloudflared installed?)")
+        print(f"🌍 Public (HTTPS): {url}{suffix}" if url else "⚠️  Could not open a public tunnel (is cloudflared installed?)")
 
     print("⌨️  You can also type commands here. Ctrl+C to quit.\n")
     try:
@@ -273,6 +281,8 @@ def main(argv: list[str] | None = None) -> None:
     p_run.add_argument("--no-mic", action="store_true")
     p_run.add_argument("--public", action="store_true", help="also publish the dashboard over HTTPS (cloudflared)")
     p_run.add_argument("--no-adb", action="store_true", help="hosted mode: don't use phones attached to this computer")
+    p_run.add_argument("--accounts", action="store_true",
+                       help="require sign-in; phones pair with one-time codes bound to their owner's account")
     p_run.add_argument("--quiet", action="store_true", help="don't speak replies")
 
     p_do = sub.add_parser("do", help="run one command and exit")

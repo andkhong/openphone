@@ -161,10 +161,15 @@ class AccountStore:
                 raise AuthError("This pairing code is invalid or has expired. Generate a new one.")
             if pairing["account_id"] != account_id:
                 raise AuthError("This pairing code belongs to a different account.")
+            existing = self._data["devices"].get(device_id)
+            # A phone registered to someone else stays theirs until they revoke it.
+            if existing and not existing["revoked"] and existing["account_id"] != account_id:
+                raise AuthError("This phone is registered to another account. Its owner must remove it first.")
+            if existing and existing["account_id"] != account_id:
+                existing = None  # previously revoked by another account: start a fresh record
             pairing["used"] = True
 
             key = secrets.token_urlsafe(24)
-            existing = self._data["devices"].get(device_id)
             self._data["devices"][device_id] = {
                 "account_id": account_id,
                 "model": model or (existing or {}).get("model", "Android phone"),

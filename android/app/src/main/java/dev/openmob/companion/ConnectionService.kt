@@ -58,7 +58,10 @@ class ConnectionService : Service() {
             JSONObject().put("type", "command").put("text", text)
         ) ?: false
 
-        /** http(s)://host[/prefix] or ws(s)://… → ws(s)://host[/prefix]/phone/ws?t=<token> */
+        /**
+         * http(s)://host[/prefix] or ws(s)://… → ws(s)://host[/prefix]/phone/ws?t=<token>
+         * (no query when [token] is empty, as in accounts mode where the key goes in the hello).
+         */
         fun socketUrl(server: String, token: String): String {
             var base = server.trim().trimEnd('/')
             base = when {
@@ -67,6 +70,7 @@ class ConnectionService : Service() {
                 base.startsWith("wss://") || base.startsWith("ws://") -> base
                 else -> "wss://$base"
             }
+            if (token.isEmpty()) return "$base/phone/ws"
             return "$base/phone/ws?t=" + URLEncoder.encode(token, "UTF-8")
         }
     }
@@ -123,7 +127,8 @@ class ConnectionService : Service() {
 
     private fun connect() {
         if (stopped) return
-        val url = socketUrl(settings.server, settings.token)
+        // Accounts mode authenticates with the device key in the hello; never leak the old token.
+        val url = socketUrl(settings.server, if (settings.deviceKey.isNotEmpty()) "" else settings.token)
         AppState.setConnection("Connecting to ${Uri.parse(settings.server).host ?: settings.server}…", false)
         socket = client.newWebSocket(Request.Builder().url(url).build(), Listener())
     }
@@ -149,11 +154,24 @@ class ConnectionService : Service() {
         stopSelf()
     }
 
+    /** The server refused our credentials (close 4401 or HTTP 401/403). */
+    private fun rejected(webSocket: WebSocket) {
+        // Ignore a late close from a socket we already replaced, so it can't wipe a fresh key.
+        if (webSocket !== socket) return
+        if (settings.deviceKey.isNotEmpty()) {
+            settings.deviceKey = ""
+            shutDown("This phone was unpaired or its key was rejected. Scan a new code from your dashboard.")
+        } else {
+            shutDown("Server rejected the pairing token. Scan the QR code again.")
+        }
+    }
+
     private fun send(message: JSONObject): Boolean = socket?.send(message.toString()) ?: false
 
     private fun hello() = JSONObject()
         .put("type", "hello")
         .put("protocol", PROTOCOL_VERSION)
+        .apply { settings.deviceKey.takeIf { it.isNotEmpty() }?.let { put("key", it) } }
         .put(
             "device", JSONObject()
                 .put("id", settings.deviceId)
@@ -210,7 +228,7 @@ class ConnectionService : Service() {
         override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
             webSocket.close(code, null)
             when (code) {
-                CLOSE_BAD_TOKEN -> main.post { shutDown("Server rejected the pairing token. Scan the QR code again.") }
+                CLOSE_BAD_TOKEN -> main.post { rejected(webSocket) }
                 CLOSE_BAD_HELLO -> main.post { shutDown("Server and app versions don't match ($reason).") }
                 else -> if (webSocket === socket) main.post { scheduleReconnect("Connection closed") }
             }
@@ -219,7 +237,7 @@ class ConnectionService : Service() {
         override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
             if (webSocket !== socket) return
             if (response?.code == 401 || response?.code == 403) {
-                main.post { shutDown("Server rejected the pairing token. Scan the QR code again.") }
+                main.post { rejected(webSocket) }
             } else {
                 main.post { scheduleReconnect(t.message ?: "Connection failed") }
             }

@@ -7,6 +7,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Pairing must be approved with the phone's screen lock (BiometricPrompt). -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- The agent opens any app the user names, so it must see every installed app. -->
     <uses-permission
         android:name="android.permission.QUERY_ALL_PACKAGES"
@@ -41,7 +43,8 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Pairing link: openmob://connect?server=https://…&t=<token> (e.g. from a QR code) -->
+            <!-- Pairing link (e.g. from a QR code): openmob://connect?server=https://…&code=<one-time code>,
+                 or legacy token mode: openmob://connect?server=https://…&t=<token> -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

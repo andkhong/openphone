@@ -119,3 +119,21 @@ def test_store_persists_across_reopen(tmp_path):
     reopened = AccountStore(tmp_path / "accounts.json")
     assert reopened.verify_login("me@example.com", "password123") == account
     assert reopened.verify_device("dev-1", key) == account
+
+
+def test_cannot_register_a_phone_that_belongs_to_another_account(tmp_path):
+    s = store(tmp_path)
+    alice = s.create_account("alice@example.com", "password123")
+    bob = s.create_account("bob@example.com", "password123")
+    alice_key = s.redeem_pairing_code(s.create_pairing_code(alice)[0], alice, "phone-1", "Galaxy")
+    bob_code, _ = s.create_pairing_code(bob)
+    with pytest.raises(AuthError, match="another account"):
+        s.redeem_pairing_code(bob_code, bob, "phone-1", "Galaxy")
+    assert s.verify_device("phone-1", alice_key) == alice  # Alice keeps it, key still valid
+    # Bob's refused attempt did not burn his code.
+    s.redeem_pairing_code(bob_code, bob, "phone-2", "Pixel")
+    # Once Alice revokes it, the phone can be registered to Bob, as a fresh record.
+    s.revoke_device(alice, "phone-1")
+    bob_key = s.redeem_pairing_code(s.create_pairing_code(bob)[0], bob, "phone-1", "Galaxy")
+    assert s.verify_device("phone-1", bob_key) == bob
+    assert [d.id for d in s.list_devices(alice)] == []

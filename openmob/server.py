@@ -103,7 +103,7 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
         path = STATIC / "login.html"
         return path.read_text() if path.exists() else "<h1>Accounts are disabled on this server.</h1>"
 
-    @app.get("/download/openmob.apk")
+    @app.api_route("/download/openmob.apk", methods=["GET", "HEAD"])  # HEAD: /pair checks it exists
     def download_apk() -> FileResponse:
         if not APK.exists():
             raise HTTPException(status_code=404, detail="The app hasn't been built yet: cd android && ./gradlew assembleDebug")
@@ -174,11 +174,13 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
     def revoke(device_id: str, request: Request) -> dict:
         if store is None:
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
-        if not store.revoke_device(account(request), device_id):
+        # The dashboard knows phones by session id ("app-<device id>"); the store by device id.
+        raw_id = device_id.removeprefix("app-")
+        if not store.revoke_device(account(request), raw_id):
             raise HTTPException(status_code=404, detail="Not your phone.")
-        s = manager.get(device_id)
+        s = manager.get(f"app-{raw_id}")
         if s and s.link:
-            s.link.close()  # drop the live connection immediately
+            s.link.disconnect(4401, "This phone was unpaired from its account.")  # cut it off now
         return {"ok": True}
 
     # --- pairing / device lists ------------------------------------------

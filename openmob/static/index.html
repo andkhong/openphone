@@ -51,10 +51,10 @@
   .stop { padding: 14px 18px; border-radius: 10px; border: 0; background: var(--bad); color: #fff; font-weight: 600; cursor: pointer; }
   .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
   .examples button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 99px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
-  .question { border-color: var(--warn); display: none; }
-  .question p { margin: 0 0 10px; font-weight: 600; }
-  .question .yes { background: var(--ok); }
-  .question .no { background: var(--bad); }
+  .ask-card { border-color: var(--warn); display: none; }
+  .ask-card p { margin: 0 0 10px; font-weight: 600; }
+  .ask-card .yes { background: var(--ok); }
+  .ask-card .no { background: var(--bad); }
   .feed { list-style: none; margin: 0; padding: 0; max-height: 52vh; overflow: auto; }
   .feed li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
   .feed li:last-child { border-bottom: 0; }
@@ -81,6 +81,8 @@
   <div class="logo">Open<span>Mob</span></div>
   <div class="tag">voice agent for Android</div>
   <div class="spacer"></div>
+  <span class="tag" id="who" hidden></span>
+  <button class="icon-btn" id="signout" hidden>Sign out</button>
   <a class="icon-btn" id="connectPhone" href="/connect" style="text-decoration:none">＋ Connect a phone</a>
   <select id="device" aria-label="Phone"></select>
   <button class="icon-btn" id="rescan" title="Find phones">↻</button>
@@ -108,7 +110,7 @@
       <div class="examples" id="examples"></div>
     </div>
 
-    <div class="card question" id="question">
+    <div class="card ask-card" id="question">
       <p id="qtext"></p>
       <div class="row">
         <button class="primary yes" data-answer="yes">Yes</button>
@@ -137,12 +139,38 @@ const EXAMPLES = [
 ];
 let deviceId = null;
 $("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
+let accounts = false;
+
+// Account mode: the session cookie authenticates every request, so links carry no secret.
+async function checkAccount() {
+  try {
+    const me = await (await fetch("/api/auth/me")).json();
+    accounts = !!me.accounts;
+    if (accounts && !me.email) {
+      location.href = "/login?next=" + encodeURIComponent(location.pathname);
+      return false;
+    }
+    if (accounts) {
+      $("who").textContent = me.email;
+      $("who").hidden = $("signout").hidden = false;
+      $("connectPhone").href = "/connect";
+    }
+  } catch {}
+  return true;
+}
+$("signout").onclick = async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  location.href = "/login";
+};
 let lastSpoken = Date.now() / 1000;
 let screenError = "";
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { ...opts, headers: { "X-OpenMob-Token": token, ...(opts.headers || {}) } });
-  if (res.status === 401) throw new Error("Bad token: open the link printed by `openmob run`.");
+  if (res.status === 401) {
+    if (accounts) location.href = "/login?next=" + encodeURIComponent(location.pathname);
+    throw new Error(accounts ? "Signed out." : "Bad token: open the link printed by `openmob run`.");
+  }
   if (!res.ok) throw new Error((await res.text()) || res.statusText);
   return res.headers.get("content-type")?.includes("json") ? res.json() : res;
 }
@@ -277,7 +305,7 @@ $("examples").replaceChildren(...EXAMPLES.map((t) => {
 try { $("speak").checked = localStorage.getItem("openmob.speak") === "1"; } catch {}
 $("speak").onchange = (e) => { try { localStorage.setItem("openmob.speak", e.target.checked ? "1" : "0"); } catch {} };
 
-loadDevices().then(() => { screenLoop(); statusLoop(); });
+checkAccount().then((ok) => ok && loadDevices().then(() => { screenLoop(); statusLoop(); }));
 setInterval(() => loadDevices(false), 10000);
 </script>
 </body>

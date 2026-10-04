@@ -71,4 +71,35 @@
     <!-- Footer -->
     <string name="ui_footer">Disconnect any time from the notification. OpenMob never types passwords or PINs.</string>
     <string name="ui_device_id">Device ID: %1$s</string>
+
+    <!-- Account pairing (QR code with a one-time code) -->
+    <string name="ui_step_pair_scan">Scan the QR code on your dashboard\'s Connect page with your camera.</string>
+    <string name="ui_paired_as">Paired as %1$s on %2$s</string>
+    <string name="ui_signed_in_as">Signed in as %1$s</string>
+    <string name="ui_unpair">Sign out &amp; unpair</string>
+    <string name="ui_unpair_title">Sign out and unpair this phone?</string>
+    <string name="ui_unpair_body">Your agent will no longer be able to control this phone. To use it again, scan a new code from your dashboard.</string>
+    <string name="ui_unpaired">Signed out. This phone is no longer paired.</string>
+    <string name="ui_signin_title">Sign in to OpenMob</string>
+    <string name="ui_signin_server">Server: %1$s</string>
+    <string name="ui_signin_explain">Sign in with the same OpenMob account you used on the dashboard.</string>
+    <string name="ui_email_hint">Email</string>
+    <string name="ui_password_hint">Password</string>
+    <string name="ui_signin">Sign in</string>
+    <string name="ui_create_account">Create account</string>
+    <string name="ui_signin_missing">Enter your email and password.</string>
+    <string name="ui_working">Working…</string>
+    <string name="ui_checking_account">Checking your account on %1$s…</string>
+    <string name="ui_approve_title">Allow your OpenMob agent to control this phone?</string>
+    <string name="ui_approve_subtitle">%1$s on %2$s</string>
+    <string name="ui_approve_description">The agent will be able to see your screen and tap, type, swipe and open apps for you while connected. Confirm it\'s you to pair.</string>
+    <string name="ui_need_screen_lock_title">Set a screen lock first</string>
+    <string name="ui_need_screen_lock">For your security, OpenMob only pairs on phones with a screen lock (PIN, pattern, password or fingerprint), so only you can approve an agent. Set one up in Settings, then scan the code again.</string>
+    <string name="ui_open_security_settings">Open Settings</string>
+    <string name="ui_ok">OK</string>
+    <string name="ui_pair_cancelled">Pairing cancelled. Scan the code again when you\'re ready.</string>
+    <string name="ui_pair_failed_title">Couldn\'t pair this phone</string>
+    <string name="ui_pair_new_code">Generate a new code on your dashboard and scan again.</string>
+    <string name="ui_paired_as_toast">Paired with %1$s as %2$s</string>
+    <string name="ui_no_accounts">This server doesn\'t use accounts. Scan the QR code from its Connect page again.</string>
 </resources>

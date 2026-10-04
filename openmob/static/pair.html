@@ -46,18 +46,28 @@
   <p class="err" id="err" hidden></p>
 </main>
 <script>
-const token = new URLSearchParams(location.search).get("t") || "";
-fetch("/api/pairing", { headers: { "X-OpenMob-Token": token } })
-  .then((r) => { if (!r.ok) throw new Error(r.status === 401 ? "This pairing link is invalid or expired. Scan the QR code again." : r.statusText); return r.json(); })
-  .then((p) => {
-    document.getElementById("open").href = p.app_link;
-    if (p.apk_url) document.getElementById("apk").href = p.apk_url;
-    else {
-      document.getElementById("apk").hidden = true;
-      document.getElementById("apkText").textContent = "The app isn't available from this server yet. Ask whoever runs it to build it.";
-    }
-  })
-  .catch((e) => { const el = document.getElementById("err"); el.textContent = e.message; el.hidden = false; });
+// Everything the phone needs is in this page's own address (?code=… or legacy ?t=…), so it never
+// calls a signed-in API and can't mint codes itself.
+const params = new URLSearchParams(location.search);
+const code = params.get("code") || "";
+const token = params.get("t") || "";
+const err = (message) => { const el = document.getElementById("err"); el.textContent = message; el.hidden = false; };
+const server = encodeURIComponent(location.origin);
+if (code) {
+  document.getElementById("open").href = `openmob://connect?server=${server}&code=${encodeURIComponent(code)}`;
+  document.querySelector("#open").closest(".step").querySelector("p").textContent =
+    "Opens the app with this server and your one-time code. You'll sign in and confirm with your screen lock.";
+} else if (token) {
+  document.getElementById("open").href = `openmob://connect?server=${server}&t=${encodeURIComponent(token)}`;
+} else {
+  document.getElementById("open").hidden = true;
+  err("This pairing link is incomplete. Scan the QR code on your dashboard's Connect page again.");
+}
+fetch("/download/openmob.apk", { method: "HEAD" }).then((r) => {
+  if (r.ok) { document.getElementById("apk").href = "/download/openmob.apk"; return; }
+  document.getElementById("apk").hidden = true;
+  document.getElementById("apkText").textContent = "The app isn't available from this server yet. Ask whoever runs it to build it.";
+}).catch(() => {});
 </script>
 </body>
 </html>

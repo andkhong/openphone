@@ -13,9 +13,12 @@ import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.hardware.biometrics.BiometricManager
+import android.hardware.biometrics.BiometricPrompt
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings as AndroidSettings
@@ -36,6 +39,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
+import java.util.concurrent.Executors
 
 /**
  * The companion app's only screen: setup checklist, connection, "ask your agent", and activity.
@@ -47,6 +51,9 @@ class MainActivity : Activity() {
         const val REQ_SPEECH = 1
         const val REQ_NOTIFICATIONS = 2
         const val MAX_EVENTS = 30
+        /** Pairing must be approved with a strong biometric or the screen lock PIN/pattern/password. */
+        const val APPROVERS = BiometricManager.Authenticators.BIOMETRIC_STRONG or
+            BiometricManager.Authenticators.DEVICE_CREDENTIAL
     }
 
     /** One row of the setup checklist. */
@@ -63,6 +70,8 @@ class MainActivity : Activity() {
     private val main = Handler(Looper.getMainLooper())
     private var unsubscribe: (() -> Unit)? = null
     private var notificationsDenied = false
+    private val background = Executors.newSingleThreadExecutor() // account/pairing HTTP calls
+    private var approval: CancellationSignal? = null
 
     // Setup
     private lateinit var setupProgress: TextView
@@ -76,6 +85,7 @@ class MainActivity : Activity() {
     private lateinit var pairForm: LinearLayout
     private lateinit var serverInput: EditText
     private lateinit var tokenInput: EditText
+    private lateinit var unpairButton: Button
 
     // Connection
     private lateinit var statusDot: View
@@ -131,6 +141,9 @@ class MainActivity : Activity() {
     }
 
     override fun onDestroy() {
+        approval?.cancel()
+        approval = null
+        background.shutdown() // lets an in-flight call finish; its UI callback is skipped
         main.removeCallbacksAndMessages(null)
         super.onDestroy()
     }
@@ -160,8 +173,12 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------------- state
 
+    /** Paired by account (device key) or, in legacy token mode, by token. */
     private val isPaired: Boolean
-        get() = settings.server.isNotBlank() && settings.token.isNotBlank()
+        get() = settings.server.isNotBlank() && (settings.deviceKey.isNotBlank() || settings.token.isNotBlank())
+
+    private val hasCredentials: Boolean
+        get() = settings.deviceKey.isNotEmpty() || settings.token.isNotEmpty() || settings.session.isNotEmpty()
 
     private val isAccessibilityOn: Boolean
         get() = OpenMobAccessibilityService.instance != null
@@ -190,14 +207,20 @@ class MainActivity : Activity() {
         // Setup checklist
         setupProgress.text = getString(R.string.ui_setup_progress, listOf(paired, a11y, notifs).count { it })
         renderStep(pairStep, paired)
-        pairStep.body.text = if (paired) {
-            getString(R.string.ui_step_pair_done, hostOf(settings.server))
-        } else {
-            getString(R.string.ui_step_pair_body)
+        val email = settings.email.takeIf { settings.session.isNotEmpty() }.orEmpty()
+        pairStep.body.text = when {
+            paired && settings.deviceKey.isNotEmpty() && email.isNotEmpty() ->
+                getString(R.string.ui_paired_as, email, hostOf(settings.server))
+            paired -> getString(R.string.ui_step_pair_done, hostOf(settings.server))
+            email.isNotEmpty() ->
+                getString(R.string.ui_step_pair_scan) + "\n" + getString(R.string.ui_signed_in_as, email)
+            else -> getString(R.string.ui_step_pair_scan)
         }
         pairStep.button.visibility = View.VISIBLE // "Change" stays available after pairing
         pairStep.button.text = getString(if (paired) R.string.ui_step_pair_change else R.string.ui_step_pair_button)
-        styleButton(pairStep.button, if (paired) Style.SECONDARY else Style.PRIMARY)
+        // Scanning the dashboard QR code is the main path; manual token entry is the fallback.
+        styleButton(pairStep.button, Style.SECONDARY)
+        unpairButton.visibility = if (hasCredentials) View.VISIBLE else View.GONE
 
         renderStep(a11yStep, a11y)
         a11yStep.body.text = getString(if (a11y) R.string.ui_step_a11y_done else R.string.ui_step_a11y_body)
@@ -312,8 +335,14 @@ class MainActivity : Activity() {
         if (data.scheme != "openmob" || data.host != "connect") return
         val server = data.getQueryParameter("server")?.trim().orEmpty()
         val token = (data.getQueryParameter("t") ?: data.getQueryParameter("token"))?.trim().orEmpty()
+        val code = data.getQueryParameter("code")?.trim().orEmpty()
         // Don't re-handle the same link if the activity is recreated from this intent later.
         setIntent(Intent(this, MainActivity::class.java))
+        if (code.isNotEmpty()) {
+            // Accounts mode: a one-time code that only the owner's account can redeem.
+            if (isValidServer(server)) startAccountPairing(server, code) else toast(getString(R.string.ui_bad_link))
+            return
+        }
         if (!isValidServer(server) || token.isEmpty()) {
             toast(getString(R.string.ui_bad_link))
             return
@@ -323,10 +352,268 @@ class MainActivity : Activity() {
     }
 
     private fun pair(server: String, token: String) {
-        settings.server = server.trimEnd('/')
+        useServer(server)
+        settings.deviceKey = "" // legacy token mode
         settings.token = token
         toast(getString(R.string.ui_paired_with, hostOf(server)))
         render()
+    }
+
+    /** Switch to [server]; credentials for a different server are dropped. */
+    private fun useServer(server: String) {
+        val normalized = server.trim().trimEnd('/')
+        if (normalized == settings.server) return
+        settings.session = ""
+        settings.email = ""
+        settings.deviceKey = ""
+        settings.token = ""
+        settings.server = normalized
+    }
+
+    // ---------------------------------------------------------------- account pairing
+
+    /**
+     * QR code with a one-time code: sign in (if needed) → approve with the screen lock → redeem
+     * the code for this phone's own device key → connect.
+     */
+    private fun startAccountPairing(server: String, code: String) {
+        if (settings.server != server.trim().trimEnd('/') && ConnectionService.isRunning) {
+            ConnectionService.stop(this)
+        }
+        useServer(server)
+        render()
+        // Checked first so nobody signs in only to be refused afterwards.
+        if (!screenLockReady()) {
+            showScreenLockRequired()
+            return
+        }
+        val target = settings.server
+        val session = settings.session
+        if (session.isEmpty()) {
+            showSignIn(code)
+            return
+        }
+        toast(getString(R.string.ui_checking_account, hostOf(target)))
+        inBackground({ AccountApi(target).me(session) }) { result ->
+            result.onSuccess { me ->
+                when {
+                    !me.accounts -> showPairError(getString(R.string.ui_no_accounts))
+                    me.email == null -> {
+                        settings.session = "" // expired or signed out elsewhere
+                        settings.email = ""
+                        showSignIn(code)
+                    }
+                    else -> {
+                        settings.email = me.email
+                        approve(code)
+                    }
+                }
+            }.onFailure { showPairError(it) }
+        }
+    }
+
+    private fun showSignIn(code: String) {
+        val target = settings.server
+        val form = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(24), dp(8), dp(24), 0)
+        }
+        form.addView(text(getString(R.string.ui_signin_explain), 14f, color(R.color.om_text_secondary)))
+        form.addView(
+            text(getString(R.string.ui_signin_server, hostOf(target)), 14f, color(R.color.om_text), bold = true),
+            margins(top = 8),
+        )
+        val emailInput = input(getString(R.string.ui_email_hint)).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            imeOptions = EditorInfo.IME_ACTION_NEXT
+            setText(settings.email)
+        }
+        val passwordInput = input(getString(R.string.ui_password_hint)).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            imeOptions = EditorInfo.IME_ACTION_DONE
+        }
+        val status = text("", 13f, color(R.color.om_error)).apply { visibility = View.GONE }
+        form.addView(emailInput, margins(top = 14, width = match))
+        form.addView(passwordInput, margins(top = 8, width = match))
+        form.addView(status, margins(top = 8))
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle(R.string.ui_signin_title)
+            .setView(form)
+            // Listeners are set after show() so a failed attempt keeps the dialog open.
+            .setPositiveButton(R.string.ui_signin, null)
+            .setNeutralButton(R.string.ui_create_account, null)
+            .setNegativeButton(R.string.ui_cancel) { _, _ -> toast(getString(R.string.ui_pair_cancelled)) }
+            .setOnCancelListener { toast(getString(R.string.ui_pair_cancelled)) }
+            .create()
+
+        fun submit(create: Boolean) {
+            val email = emailInput.text.toString().trim()
+            val password = passwordInput.text.toString()
+            fun showStatus(message: String, colorRes: Int) {
+                status.text = message
+                status.setTextColor(color(colorRes))
+                status.visibility = View.VISIBLE
+            }
+            if (email.isEmpty() || password.isEmpty()) {
+                showStatus(getString(R.string.ui_signin_missing), R.color.om_error)
+                return
+            }
+            val buttons = listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEUTRAL).map { dialog.getButton(it) }
+            buttons.forEach { it.isEnabled = false }
+            showStatus(getString(R.string.ui_working), R.color.om_text_secondary)
+            inBackground({
+                val api = AccountApi(target)
+                if (create) api.signup(email, password) else api.login(email, password)
+            }) { result ->
+                buttons.forEach { it.isEnabled = true }
+                result.onSuccess { signedIn ->
+                    if (settings.server != target) return@onSuccess // another link was scanned meanwhile
+                    settings.session = signedIn.session
+                    settings.email = signedIn.email
+                    dialog.dismiss()
+                    hideKeyboard()
+                    render()
+                    approve(code)
+                }.onFailure { showStatus(it.message ?: it.javaClass.simpleName, R.color.om_error) }
+            }
+        }
+
+        dialog.setOnShowListener {
+            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener { submit(create = false) }
+            dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener { submit(create = true) }
+            passwordInput.setOnEditorActionListener { _, actionId, _ ->
+                if (actionId == EditorInfo.IME_ACTION_DONE) { submit(create = false); true } else false
+            }
+        }
+        dialog.show()
+        if (settings.email.isEmpty()) emailInput.requestFocus() else passwordInput.requestFocus()
+    }
+
+    private fun screenLockReady(): Boolean =
+        getSystemService(BiometricManager::class.java)?.canAuthenticate(APPROVERS) == BiometricManager.BIOMETRIC_SUCCESS
+
+    private fun showScreenLockRequired() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_need_screen_lock_title)
+            .setMessage(R.string.ui_need_screen_lock)
+            .setPositiveButton(R.string.ui_open_security_settings) { _, _ ->
+                try {
+                    startActivity(Intent(AndroidSettings.ACTION_SECURITY_SETTINGS))
+                } catch (e: ActivityNotFoundException) {
+                    startActivity(Intent(AndroidSettings.ACTION_SETTINGS))
+                }
+            }
+            .setNegativeButton(R.string.ui_ok, null)
+            .show()
+    }
+
+    /** The phone's owner approves with fingerprint/face (strong) or the screen lock. */
+    private fun approve(code: String) {
+        if (!screenLockReady()) {
+            showScreenLockRequired()
+            return
+        }
+        val target = settings.server
+        val email = settings.email
+        approval?.cancel()
+        val cancel = CancellationSignal().also { approval = it }
+        val prompt = BiometricPrompt.Builder(this)
+            .setTitle(getString(R.string.ui_approve_title))
+            .setSubtitle(getString(R.string.ui_approve_subtitle, email, hostOf(target)))
+            .setDescription(getString(R.string.ui_approve_description))
+            .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
+            .build()
+        prompt.authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                if (approval === cancel) approval = null
+                redeem(target, email, code)
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                if (approval === cancel) approval = null
+                if (isDestroyed) return
+                val cancelled = errorCode == BiometricPrompt.BIOMETRIC_ERROR_USER_CANCELED ||
+                    errorCode == BiometricPrompt.BIOMETRIC_ERROR_CANCELED
+                toast(if (cancelled || errString.isNullOrBlank()) getString(R.string.ui_pair_cancelled) else errString.toString())
+            }
+            // onAuthenticationFailed (one wrong finger) needs nothing: the prompt stays up.
+        })
+    }
+
+    private fun redeem(target: String, email: String, code: String) {
+        val session = settings.session
+        inBackground({
+            val key = AccountApi(target).redeem(session, code, settings.deviceId, Build.MODEL)
+            // Saved here, so a pairing finishes even if the screen is recreated meanwhile.
+            if (settings.server == target) {
+                settings.deviceKey = key
+                settings.token = ""
+            }
+        }) { result ->
+            result.onSuccess {
+                toast(getString(R.string.ui_paired_as_toast, hostOf(target), email))
+                render()
+                if (isAccessibilityOn || ConnectionService.isRunning) reconnect()
+            }.onFailure { error ->
+                if (error is AccountApi.ApiError && error.status == 401) {
+                    // Session no longer valid; the code wasn't used, so sign in and try again.
+                    settings.session = ""
+                    toast(error.message ?: "")
+                    showSignIn(code)
+                } else {
+                    showPairError(error)
+                }
+            }
+        }
+    }
+
+    private fun showPairError(error: Throwable) {
+        val detail = error.message ?: error.javaClass.simpleName
+        // 400 = the code itself: expired, already used, or made by a different account.
+        val codeProblem = error is AccountApi.ApiError && error.status == 400
+        showPairError(if (codeProblem) "$detail\n\n${getString(R.string.ui_pair_new_code)}" else detail)
+    }
+
+    private fun showPairError(message: String) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_pair_failed_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.ui_ok, null)
+            .show()
+    }
+
+    private fun onUnpairClicked() {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_unpair_title)
+            .setMessage(R.string.ui_unpair_body)
+            .setPositiveButton(R.string.ui_unpair) { _, _ -> unpair() }
+            .setNegativeButton(R.string.ui_cancel, null)
+            .show()
+    }
+
+    private fun unpair() {
+        val target = settings.server
+        val session = settings.session
+        val deviceId = settings.deviceId
+        if (ConnectionService.isRunning) ConnectionService.stop(this)
+        settings.session = ""
+        settings.email = ""
+        settings.deviceKey = ""
+        settings.token = ""
+        // Also revoke the key and end the session on the server, best effort.
+        if (session.isNotEmpty() && target.isNotBlank()) background.execute { AccountApi(target).unpair(session, deviceId) }
+        toast(getString(R.string.ui_unpaired))
+        render()
+    }
+
+    /** Runs [work] off the main thread, then [done] on it (skipped if this screen is gone). */
+    private fun <T> inBackground(work: () -> T, done: (Result<T>) -> Unit) {
+        if (background.isShutdown) return
+        background.execute {
+            val result = runCatching(work)
+            main.post { if (!isDestroyed) done(result) }
+        }
     }
 
     /** Connect with the current settings, restarting the service if it was using older ones. */
@@ -536,6 +823,8 @@ class MainActivity : Activity() {
         card.addView(header)
 
         pairStep = step(getString(R.string.ui_step_pair_title)) { togglePairForm() }
+        unpairButton = button(getString(R.string.ui_unpair), Style.DANGER) { onUnpairClicked() }
+        (pairStep.button.parent as LinearLayout).addView(unpairButton, margins(top = 8))
         card.addView(pairStep.row)
         pairForm = buildPairForm()
         card.addView(pairForm)

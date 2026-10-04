@@ -73,6 +73,17 @@ class PhoneLink:
             raise DeviceError(reply.get("error") or f"{method} failed on the phone")
         return reply.get("result")
 
+    def disconnect(self, code: int = 4401, reason: str = "") -> None:
+        """Close the socket from any thread, e.g. when the owner revokes this phone."""
+        self.close()
+        asyncio.run_coroutine_threadsafe(self._close_socket(code, reason), self.loop)
+
+    async def _close_socket(self, code: int, reason: str) -> None:
+        try:
+            await self.websocket.close(code=code, reason=reason)
+        except Exception:
+            pass  # already closed
+
     def resolve(self, message: dict) -> None:
         future = self._pending.get(message.get("id", ""))
         if future and not future.done():

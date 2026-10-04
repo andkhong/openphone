@@ -44,7 +44,11 @@ object AppState {
     }
 }
 
-/** Server address, token, and this phone's stable id. */
+/**
+ * Server address, credentials, and this phone's stable id. Accounts mode uses [session] (the
+ * signed-in OpenMob account) and [deviceKey] (this phone's own key from /api/pair/redeem);
+ * legacy token mode uses [token]. Empty string means "none".
+ */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("openmob", Context.MODE_PRIVATE)
 
@@ -55,6 +59,21 @@ class Settings(context: Context) {
     var token: String
         get() = prefs.getString("token", "") ?: ""
         set(value) = prefs.edit().putString("token", value.trim()).apply()
+
+    /** Account session for [server] (sent as X-OpenMob-Session). */
+    var session: String
+        get() = prefs.getString("session", "") ?: ""
+        set(value) = prefs.edit().putString("session", value.trim()).apply()
+
+    /** Email of the signed-in account, for display. */
+    var email: String
+        get() = prefs.getString("email", "") ?: ""
+        set(value) = prefs.edit().putString("email", value.trim()).apply()
+
+    /** This phone's device key, sent in the hello message. */
+    var deviceKey: String
+        get() = prefs.getString("device_key", "") ?: ""
+        set(value) = prefs.edit().putString("device_key", value.trim()).apply()
 
     /** Stable across reconnects and app restarts, so the server keeps this phone's session. */
     val deviceId: String

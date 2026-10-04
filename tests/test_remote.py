@@ -31,8 +31,9 @@ def free_port() -> int:
 class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
-    def __init__(self, url, driver, device_id="xyz", token=TOKEN):
+    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None):
         self.url = f"{url}/phone/ws?t={token}"
+        self.key = key
         self.driver = driver
         self.device_id = device_id
         self.events = []
@@ -56,8 +57,11 @@ class FakePhone:
         try:
             async with websockets.connect(self.url) as ws:
                 self.ws = ws
-                await ws.send(json.dumps({"type": "hello", "protocol": 1, "device": {
-                    "id": self.device_id, "model": "Pixel 9", "manufacturer": "google"}}))
+                hello = {"type": "hello", "protocol": 1, "device": {
+                    "id": self.device_id, "model": "Pixel 9", "manufacturer": "google"}}
+                if self.key:
+                    hello["key"] = self.key
+                await ws.send(json.dumps(hello))
                 async for raw in ws:
                     msg = json.loads(raw)
                     if msg["type"] == "welcome":
