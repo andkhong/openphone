@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect a Phone</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --ok:#1f9d55; --warn:#c97a00; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; } }
+  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
+  header a { margin-left:auto; color:var(--muted); text-decoration:none; font-size:14px; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px; display:grid; grid-template-columns: 340px 1fr; gap:20px; }
+  @media (max-width: 800px) { main { grid-template-columns:1fr; } }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); }
+  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em; }
+  .sub { color:var(--muted); margin:0 0 16px; }
+  .qr { background:#fff; padding:14px; border-radius:12px; display:flex; justify-content:center; }
+  .qr img, .qr canvas { width:100% !important; max-width:280px; height:auto !important; }
+  .scan { text-align:center; color:var(--muted); font-size:13px; margin-top:10px; }
+  ol { margin:0; padding-left:20px; } ol li { margin:0 0 12px; }
+  ol li b { display:block; }
+  ol li span { color:var(--muted); font-size:14px; }
+  .warn { margin-top:14px; padding:10px 12px; border-radius:10px; background:rgba(201,122,0,.1); color:var(--warn); font-size:13px; }
+  .note { margin-top:14px; font-size:13px; color:var(--muted); }
+  code { font-size:12px; background:var(--bg); padding:2px 6px; border-radius:6px; overflow-wrap:anywhere; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:20px 0 8px; }
+  .devices { list-style:none; margin:0; padding:0; }
+  .devices li { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
+  .devices li:last-child { border-bottom:0; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
+  .dot.on { background:var(--ok); }
+  .devices small { color:var(--muted); margin-left:auto; }
+  .empty { color:var(--muted); font-size:14px; }
+  .btn { display:inline-block; margin-top:6px; padding:9px 14px; border-radius:10px; background:var(--accent); color:#fff; text-decoration:none; font-weight:600; font-size:14px; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Open<span>Mob</span></div>
+  <a id="back" href="/">← Dashboard</a>
+</header>
+<main>
+  <div class="card">
+    <div class="qr" id="qr"></div>
+    <div class="scan">Scan with the phone's camera</div>
+    <div class="warn" id="localWarn" hidden>You're on a localhost address, which phones can't reach. Start the server with <code>openmob run --public</code> and open this page from the public link.</div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h1>Connect a phone</h1>
+      <p class="sub">Any Android phone (Android 11+) can join this agent. No cable, no developer mode.</p>
+      <ol>
+        <li><b>Scan the QR code</b><span>It opens a page on the phone with everything below.</span></li>
+        <li><b>Install the OpenMob app</b><span id="apkLine">Download it from that page and allow the install.</span></li>
+        <li><b>Open the app from that page</b><span>It arrives already paired with this server.</span></li>
+        <li><b>Turn on OpenMob in Accessibility, then tap Connect</b><span>This lets the agent see the screen and tap. Disconnect any time from the notification.</span></li>
+      </ol>
+      <div class="note">Can't scan? On the phone, open <code id="pairUrl">…</code></div>
+      <div class="warn">This code works like a password: anyone who scans it can connect a phone to this agent. Only show it to people you trust.</div>
+    </div>
+
+    <div class="card" style="margin-top:20px">
+      <h2 style="margin-top:0">Phones</h2>
+      <ul class="devices" id="devices"><li class="empty">Waiting for a phone to connect…</li></ul>
+      <a class="btn" id="open" href="/" hidden>Open dashboard</a>
+    </div>
+  </div>
+</main>
+<script>
+const token = new URLSearchParams(location.search).get("t") || "";
+const $ = (id) => document.getElementById(id);
+$("back").href = $("open").href = `/?t=${encodeURIComponent(token)}`;
+
+async function api(path) {
+  const res = await fetch(path, { headers: { "X-OpenMob-Token": token } });
+  if (!res.ok) throw new Error(res.status === 401 ? "Bad token: open this page from the link printed by `openmob run`." : res.statusText);
+  return res.json();
+}
+
+async function init() {
+  try {
+    const p = await api("/api/pairing");
+    $("pairUrl").textContent = p.pair_url;
+    $("localWarn").hidden = !p.local;
+    $("apkLine").textContent = p.apk_url ? "Download it from that page and allow the install." : "The app isn't built on this server yet (cd android && ./gradlew assembleDebug).";
+    if (window.QRCode) new QRCode($("qr"), { text: p.pair_url, width: 560, height: 560, correctLevel: QRCode.CorrectLevel.M });
+    else $("qr").textContent = p.pair_url;
+  } catch (e) { $("qr").textContent = e.message; }
+}
+
+async function poll() {
+  try {
+    const devices = (await api("/api/devices")).filter((d) => d.connection === "app");
+    $("devices").replaceChildren(...(devices.length ? devices.map((d) => {
+      const li = document.createElement("li");
+      const dot = Object.assign(document.createElement("span"), { className: `dot ${d.online ? "on" : ""}` });
+      const name = Object.assign(document.createElement("span"), { textContent: d.model });
+      const state = Object.assign(document.createElement("small"), { textContent: d.online ? "connected" : "offline" });
+      li.append(dot, name, state);
+      return li;
+    }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "Waiting for a phone to connect…" })]));
+    $("open").hidden = !devices.some((d) => d.online);
+  } catch (e) { /* keep last list */ }
+  setTimeout(poll, 2000);
+}
+
+init();
+poll();
+</script>
+</body>
+</html>

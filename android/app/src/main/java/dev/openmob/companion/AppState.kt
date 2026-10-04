@@ -1,0 +1,64 @@
+package dev.openmob.companion
+
+import android.content.Context
+import android.os.Handler
+import android.os.Looper
+import java.util.UUID
+import java.util.concurrent.CopyOnWriteArrayList
+
+/** In-process state shared by the connection service and the UI. Listeners run on the main thread. */
+object AppState {
+    data class Event(val kind: String, val message: String)
+
+    @Volatile var connection: String = "Disconnected"
+        private set
+    @Volatile var connected: Boolean = false
+        private set
+
+    private val events = ArrayDeque<Event>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private val main = Handler(Looper.getMainLooper())
+
+    fun events(): List<Event> = synchronized(events) { events.toList() }
+
+    fun setConnection(status: String, isConnected: Boolean) {
+        connection = status
+        connected = isConnected
+        notifyListeners()
+    }
+
+    fun addEvent(kind: String, message: String) {
+        synchronized(events) {
+            events.addFirst(Event(kind, message))
+            while (events.size > 100) events.removeLast()
+        }
+        notifyListeners()
+    }
+
+    fun notifyListeners() = main.post { listeners.forEach { it() } }
+
+    /** Returns an unsubscribe function. */
+    fun listen(listener: () -> Unit): () -> Unit {
+        listeners.add(listener)
+        return { listeners.remove(listener) }
+    }
+}
+
+/** Server address, token, and this phone's stable id. */
+class Settings(context: Context) {
+    private val prefs = context.getSharedPreferences("openmob", Context.MODE_PRIVATE)
+
+    var server: String
+        get() = prefs.getString("server", "") ?: ""
+        set(value) = prefs.edit().putString("server", value.trim()).apply()
+
+    var token: String
+        get() = prefs.getString("token", "") ?: ""
+        set(value) = prefs.edit().putString("token", value.trim()).apply()
+
+    /** Stable across reconnects and app restarts, so the server keeps this phone's session. */
+    val deviceId: String
+        get() = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also {
+            prefs.edit().putString("device_id", it).apply()
+        }
+}

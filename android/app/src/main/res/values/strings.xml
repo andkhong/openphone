@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenMob</string>
+    <string name="accessibility_description">Lets your OpenMob agent see the screen and tap, swipe and type for you, only while you are connected to your agent server. Disconnect at any time from the notification.</string>
+</resources>

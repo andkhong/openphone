@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMob</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f4f1; --panel: #ffffff; --fg: #17181a; --muted: #6c6f75; --line: #e4e4df;
+    --accent: #3b5bfd; --accent-ink: #fff; --ok: #1f9d55; --warn: #c97a00; --bad: #d6383b;
+    --chip: #eef0ff; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1012; --panel: #17191c; --fg: #ecedef; --muted: #9a9ea6; --line: #26292e;
+      --accent: #6f86ff; --chip: #1f2440; --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 Inter, system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  .logo { font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
+  .logo span { color: var(--accent); }
+  .tag { font-size: 12px; color: var(--muted); }
+  header .spacer { flex: 1; }
+  select, button, input { font: inherit; }
+  select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); max-width: 60vw; }
+  .icon-btn { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
+  main { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  .phone { background: #000; border-radius: 28px; padding: 10px; box-shadow: var(--shadow); position: relative; }
+  .phone img { width: 100%; display: block; border-radius: 20px; min-height: 200px; background: #111; }
+  .phone .badge { position: absolute; top: 18px; left: 18px; font-size: 12px; padding: 3px 8px; border-radius: 99px; background: rgba(0,0,0,.6); color: #fff; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); }
+  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .status { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.running { background: var(--accent); animation: pulse 1.2s infinite; }
+  .dot.asking { background: var(--warn); }
+  .dot.idle { background: var(--ok); }
+  @keyframes pulse { 50% { opacity: .35; } }
+  .status small { font-weight: 400; color: var(--muted); display: block; overflow-wrap: anywhere; }
+  form { display: flex; gap: 8px; margin-top: 12px; }
+  form input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+  .primary { padding: 12px 16px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
+  .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+  .mic { flex: 1; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
+  .mic.rec { background: var(--bad); color: #fff; border-color: transparent; }
+  .stop { padding: 14px 18px; border-radius: 10px; border: 0; background: var(--bad); color: #fff; font-weight: 600; cursor: pointer; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .examples button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 99px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+  .question { border-color: var(--warn); display: none; }
+  .question p { margin: 0 0 10px; font-weight: 600; }
+  .question .yes { background: var(--ok); }
+  .question .no { background: var(--bad); }
+  .feed { list-style: none; margin: 0; padding: 0; max-height: 52vh; overflow: auto; }
+  .feed li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .feed li:last-child { border-bottom: 0; }
+  .kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 6px; height: fit-content; text-align: center; background: var(--chip); color: var(--accent); }
+  .kind.jev { background: #efe6ff; color: #6b3fd4; }
+  .kind.error { background: #fde8e8; color: var(--bad); }
+  .kind.result { background: #e3f6ea; color: var(--ok); }
+  .kind.question { background: #fff3dc; color: var(--warn); }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) .kind.jev { background: #2a2140; color: #b9a2ff; }
+    :root:not([data-theme="light"]) .kind.error { background: #3a1d1e; }
+    :root:not([data-theme="light"]) .kind.result { background: #173322; }
+    :root:not([data-theme="light"]) .kind.question { background: #3a2c12; }
+  }
+  .msg { overflow-wrap: anywhere; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
+  .toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+  .empty { color: var(--muted); font-size: 14px; }
+  .feed li.empty { display: block; }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Open<span>Mob</span></div>
+  <div class="tag">voice agent for Android</div>
+  <div class="spacer"></div>
+  <a class="icon-btn" id="connectPhone" href="/connect" style="text-decoration:none">＋ Connect a phone</a>
+  <select id="device" aria-label="Phone"></select>
+  <button class="icon-btn" id="rescan" title="Find phones">↻</button>
+</header>
+
+<main>
+  <div>
+    <div class="phone">
+      <span class="badge" id="badge">connecting…</span>
+      <img id="screen" alt="">
+    </div>
+  </div>
+
+  <div class="stack">
+    <div class="card">
+      <div class="status"><span class="dot" id="dot"></span><div><span id="state">Connecting…</span><small id="current"></small></div></div>
+      <form id="form">
+        <input id="text" placeholder="Tell your phone what to do…" autocomplete="off">
+        <button class="primary">Send</button>
+      </form>
+      <div class="row">
+        <button class="mic" id="mic">🎙 Hold to talk</button>
+        <button class="stop" id="stop">Stop</button>
+      </div>
+      <div class="examples" id="examples"></div>
+    </div>
+
+    <div class="card question" id="question">
+      <p id="qtext"></p>
+      <div class="row">
+        <button class="primary yes" data-answer="yes">Yes</button>
+        <button class="primary no" data-answer="no">No</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <h2>Activity</h2>
+        <label class="toggle"><input type="checkbox" id="speak"> Speak replies</label>
+      </div>
+      <ul class="feed" id="feed"><li class="empty">No activity yet.</li></ul>
+    </div>
+  </div>
+</main>
+
+<script>
+const token = new URLSearchParams(location.search).get("t") || "";
+const $ = (id) => document.getElementById(id);
+const EXAMPLES = [
+  "Open Where Winds Meet and open the menu",
+  "Open YouTube and search for lofi music",
+  "Open Settings and turn on dark mode",
+  "Open Chrome and go to wikipedia.org",
+];
+let deviceId = null;
+$("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
+let lastSpoken = Date.now() / 1000;
+let screenError = "";
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { "X-OpenMob-Token": token, ...(opts.headers || {}) } });
+  if (res.status === 401) throw new Error("Bad token: open the link printed by `openmob run`.");
+  if (!res.ok) throw new Error((await res.text()) || res.statusText);
+  return res.headers.get("content-type")?.includes("json") ? res.json() : res;
+}
+
+async function loadDevices(rescan = false) {
+  try {
+    const devices = await api(`/api/devices${rescan ? "?rescan=true" : ""}`);
+    const select = $("device");
+    select.replaceChildren(...devices.map((d) => {
+      const o = document.createElement("option");
+      o.value = d.id;
+      o.textContent = `${d.model} · ${d.connection}${d.online ? "" : " · offline"}`;
+      return o;
+    }));
+    if (!devices.length) { $("state").textContent = "No phone connected"; $("badge").textContent = "no phone"; return; }
+    if (!devices.some((d) => d.id === deviceId)) deviceId = (devices.find((d) => d.online) || devices[0]).id;
+    select.value = deviceId;
+  } catch (e) { $("state").textContent = e.message; }
+}
+
+async function send(text) {
+  text = text.trim();
+  if (!text || !deviceId) return;
+  try { await api(`/api/devices/${deviceId}/command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); }
+  catch (e) { $("state").textContent = e.message; }
+}
+
+// Live screen: fetch frames back to back, roughly 1–2 per second over Wi-Fi.
+async function screenLoop() {
+  while (true) {
+    if (deviceId) {
+      try {
+        const res = await api(`/api/devices/${deviceId}/screen.jpg?ts=${Date.now()}`);
+        const url = URL.createObjectURL(await res.blob());
+        const img = $("screen");
+        const old = img.src;
+        img.src = url;
+        if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+        screenError = "";
+      } catch (e) { screenError = "screen unavailable"; await new Promise((r) => setTimeout(r, 2000)); }
+    }
+    await new Promise((r) => setTimeout(r, document.hidden ? 2000 : 400));  // slower when the tab isn't visible
+  }
+}
+
+const LABELS = { thought: "think", action: "act", jev: "jev", heard: "heard", status: "info", error: "error", question: "ask", result: "done" };
+
+function render(s) {
+  const label = { idle: "Ready", running: "Working", asking: "Needs your answer" }[s.state] || s.state;
+  $("state").textContent = label + (s.queued ? ` · ${s.queued} queued` : "");
+  $("current").textContent = s.current || "";
+  $("dot").className = `dot ${s.state}`;
+  $("badge").textContent = `${s.device.model} · ${s.device.connection}${screenError ? " · " + screenError : ""}`;
+  $("question").style.display = s.question ? "block" : "none";
+  $("qtext").textContent = s.question || "";
+  const items = s.log.slice().reverse();
+  $("feed").replaceChildren(...(items.length ? items.map((e) => {
+    const li = document.createElement("li");
+    const k = document.createElement("span");
+    k.className = `kind ${e.kind}`;
+    k.textContent = LABELS[e.kind] || e.kind;
+    const m = document.createElement("span");
+    m.className = "msg";
+    m.textContent = e.message;
+    li.append(k, m);
+    return li;
+  }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "No activity yet." })]));
+  if ($("speak").checked && "speechSynthesis" in window) {
+    for (const e of s.log) {
+      if (e.time > lastSpoken && (e.kind === "result" || e.kind === "question" || e.kind === "error")) {
+        speechSynthesis.speak(new SpeechSynthesisUtterance(e.message.replace(/\(\d+ steps\)$/, "")));
+      }
+    }
+  }
+  if (s.log.length) lastSpoken = Math.max(lastSpoken, s.log[s.log.length - 1].time);
+}
+
+async function statusLoop() {
+  while (true) {
+    if (deviceId) {
+      try { render(await api(`/api/devices/${deviceId}/status`)); } catch (e) { $("state").textContent = e.message; }
+    }
+    await new Promise((r) => setTimeout(r, 700));
+  }
+}
+
+// Hold-to-talk: record in the browser, transcribe on the server.
+let recorder = null, chunks = [];
+async function startRec() {
+  if (recorder) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);
+    chunks = [];
+    recorder.ondataavailable = (e) => chunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const blob = new Blob(chunks, { type: recorder.mimeType });
+      recorder = null;
+      $("mic").classList.remove("rec");
+      $("mic").textContent = "⏳ Transcribing…";
+      const form = new FormData();
+      form.append("file", blob, "voice.webm");
+      try {
+        const r = await api(`/api/devices/${deviceId}/audio`, { method: "POST", body: form });
+        $("current").textContent = r.text ? `Heard: “${r.text}”` : "Didn't catch that.";
+      } catch (e) { $("state").textContent = e.message; }
+      $("mic").textContent = "🎙 Hold to talk";
+    };
+    recorder.start();
+    $("mic").classList.add("rec");
+    $("mic").textContent = "● Listening… release to send";
+  } catch (e) {
+    $("state").textContent = window.isSecureContext ? `Microphone blocked: ${e.message}` : "Voice needs HTTPS or localhost. Use the public link.";
+  }
+}
+function stopRec() { if (recorder && recorder.state === "recording") recorder.stop(); }
+
+$("mic").addEventListener("pointerdown", (e) => { e.preventDefault(); startRec(); });
+["pointerup", "pointerleave", "pointercancel"].forEach((ev) => $("mic").addEventListener(ev, stopRec));
+$("form").addEventListener("submit", (e) => { e.preventDefault(); send($("text").value); $("text").value = ""; });
+$("stop").onclick = () => deviceId && api(`/api/devices/${deviceId}/stop`, { method: "POST" });
+$("rescan").onclick = () => loadDevices(true);
+$("device").onchange = (e) => { deviceId = e.target.value; };
+document.querySelectorAll("[data-answer]").forEach((b) => (b.onclick = () => send(b.dataset.answer)));
+$("examples").replaceChildren(...EXAMPLES.map((t) => {
+  const b = document.createElement("button");
+  b.textContent = t;
+  b.onclick = () => send(t);
+  return b;
+}));
+try { $("speak").checked = localStorage.getItem("openmob.speak") === "1"; } catch {}
+$("speak").onchange = (e) => { try { localStorage.setItem("openmob.speak", e.target.checked ? "1" : "0"); } catch {} };
+
+loadDevices().then(() => { screenLoop(); statusLoop(); });
+setInterval(() => loadDevices(false), 10000);
+</script>
+</body>
+</html>

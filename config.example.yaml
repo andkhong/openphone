@@ -1,0 +1,42 @@
+# Copy to config.yaml (or ~/.config/openmob/config.yaml) and edit.
+# Secrets come from the environment: ANTHROPIC_API_KEY, and optionally TYPESAFE_API_KEY for Jev.
+
+# Claude model that looks at the screen and decides each action.
+model: claude-sonnet-5-5          # claude-opus-5-5 is smarter but slower
+resolver_model: claude-haiku-4-5-20251001
+max_steps: 40
+
+# Spoken app names -> package. Run `openmob apps` to find package names.
+aliases: {}
+  # Example; replace with the real package from `openmob apps`:
+  # where winds meet: com.example.wherewindsmeet
+  # youtube: com.google.android.youtube
+
+# Phone
+# adb_serial: R58M12ABCDE          # only needed with several phones connected
+screenshot_max_side: 1280
+settle_delay: 0.8                  # seconds to let the screen update after each action
+launch_settle_delay: 3.0
+ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
+ocr: true                          # Apple Vision OCR for screens without an accessibility tree
+
+# TypeSafe Jev: text-only classifier for screen state, tap risk, and app picking.
+# Turns on automatically when TYPESAFE_API_KEY is set.
+jev_model: jev-latest
+jev_min_confidence: 0.6
+jev_risk_threshold: 0.5            # ask before taps Jev rates at least this risky
+jev_auto_wait_seconds: 30          # longest time to wait on screens Jev calls "loading"
+
+# Ask before tapping anything that matches these words.
+confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,
+                   send, post, publish, delete, remove, uninstall, transfer, place order, confirm order]
+
+# Voice
+hotkey: alt_r                      # hold to talk (right Option). Any pynput Key name or a single character.
+whisper_model: base.en             # tiny.en | base.en | small.en | medium.en
+speak: true
+# voice: Samantha
+
+# Phone web page (http://<mac-ip>:8765/?t=<token>)
+server_port: 8765
+# server_token: pick-a-fixed-token   # otherwise a new one is generated each run

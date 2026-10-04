@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="om_bg">#F5F6FA</color>
+    <color name="om_card">#FFFFFF</color>
+    <color name="om_card_stroke">#E6E8EF</color>
+    <color name="om_text">#14161F</color>
+    <color name="om_text_secondary">#5F6475</color>
+    <color name="om_text_tertiary">#8A8FA0</color>
+    <color name="om_accent">#3B5BFD</color>
+    <color name="om_on_accent">#FFFFFF</color>
+    <color name="om_input_bg">#F0F2F7</color>
+    <color name="om_green">#1F9D55</color>
+    <color name="om_amber">#D98E04</color>
+    <color name="om_grey">#9AA0AE</color>
+    <color name="om_question">#C26A00</color>
+    <color name="om_result">#1F9D55</color>
+    <color name="om_error">#D93636</color>
+    <color name="om_warning_bg">#FFF4E0</color>
+</resources>

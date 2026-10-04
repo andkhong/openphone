@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ui_subtitle">Let your AI agent use this phone</string>
+
+    <!-- Setup checklist -->
+    <string name="ui_setup_title">Set up</string>
+    <string name="ui_setup_progress">%1$d of 3 done</string>
+    <string name="ui_step_pair_title">Pair with your agent server</string>
+    <string name="ui_step_pair_body">Scan the QR code on your dashboard\'s \"Connect a phone\" page with your camera. It fills this in automatically.</string>
+    <string name="ui_step_pair_done">Paired with %1$s</string>
+    <string name="ui_step_pair_button">Enter manually</string>
+    <string name="ui_step_pair_change">Change</string>
+    <string name="ui_server_hint">https://your-server.example.com</string>
+    <string name="ui_token_hint">Pairing token</string>
+    <string name="ui_save">Save</string>
+    <string name="ui_cancel">Cancel</string>
+    <string name="ui_invalid_server">Server address must start with https:// or http://</string>
+    <string name="ui_missing_token">Enter the pairing token from your dashboard</string>
+    <string name="ui_paired_with">Paired with %1$s</string>
+    <string name="ui_bad_link">That pairing link is not valid. Scan the QR code again.</string>
+
+    <string name="ui_step_a11y_title">Turn on OpenMob in Accessibility</string>
+    <string name="ui_step_a11y_body">Lets the agent see the screen and tap, type and swipe for you.</string>
+    <string name="ui_step_a11y_done">OpenMob accessibility is on.</string>
+    <string name="ui_step_a11y_button">Open Accessibility settings</string>
+    <string name="ui_restricted_toggle">Switch greyed out or says \"Restricted setting\"?</string>
+    <string name="ui_restricted_why">Android blocks this switch for apps installed outside the Play Store until you allow it once:</string>
+    <string name="ui_restricted_step1">Tap \"Open App info\" below.</string>
+    <string name="ui_restricted_step2">Tap the ⋮ menu in the top-right corner.</string>
+    <string name="ui_restricted_step3">Tap \"Allow restricted settings\" and confirm with your PIN or fingerprint.</string>
+    <string name="ui_restricted_step4">Come back here, tap \"Open Accessibility settings\", then Installed apps › OpenMob › On.</string>
+    <string name="ui_restricted_button">Open App info</string>
+
+    <string name="ui_step_notif_title">Allow notifications</string>
+    <string name="ui_step_notif_body">Needed for the always-visible \"agent active\" notification, which also has a Disconnect button.</string>
+    <string name="ui_step_notif_done">Notifications are allowed.</string>
+    <string name="ui_step_notif_button">Allow notifications</string>
+
+    <!-- Prominent disclosure -->
+    <string name="ui_disclosure_title">Allow OpenMob to control this phone?</string>
+    <string name="ui_disclosure_body">OpenMob uses Android\'s Accessibility service so the AI agent on the server you paired with can:\n\n• See what is on your screen (screenshots and on-screen text)\n• Tap, type, swipe and open apps on your behalf\n\nThis only happens while you are connected, and a notification is shown the whole time. Screen contents go only to your own server. OpenMob never types passwords or PINs.\n\nYou can disconnect any time from the notification, and turn this off again in Settings › Accessibility.\n\nOn the next screen, tap OpenMob (it may be under \"Downloaded apps\" or \"Installed apps\") and turn it on.</string>
+    <string name="ui_disclosure_agree">Agree &amp; open Settings</string>
+    <string name="ui_disclosure_decline">Not now</string>
+
+    <!-- Connection -->
+    <string name="ui_connection_title">Connection</string>
+    <string name="ui_connect">Connect</string>
+    <string name="ui_disconnect">Disconnect</string>
+    <string name="ui_pair_first">Pair with your agent server first.</string>
+    <string name="ui_a11y_warning">Accessibility is off, so the agent can\'t see or control the screen yet.</string>
+
+    <!-- Ask -->
+    <string name="ui_ask_title">Ask your agent</string>
+    <string name="ui_ask_hint">Tell your phone what to do…</string>
+    <string name="ui_ask_hint_offline">Connect first to send requests.</string>
+    <string name="ui_send">Send</string>
+    <string name="ui_mic">🎙</string>
+    <string name="ui_mic_description">Speak a request</string>
+    <string name="ui_ask_note">The agent will leave this app and start from your home screen.</string>
+    <string name="ui_speech_prompt">What should your agent do?</string>
+    <string name="ui_no_speech">No speech recognizer is installed on this phone.</string>
+    <string name="ui_not_connected">Not connected to your agent.</string>
+
+    <!-- Activity -->
+    <string name="ui_activity_title">Activity</string>
+    <string name="ui_activity_empty">Nothing yet. What your agent hears, does and says shows up here.</string>
+    <string name="ui_question_label">Your agent is asking</string>
+    <string name="ui_yes">Yes</string>
+    <string name="ui_no">No</string>
+
+    <!-- Footer -->
+    <string name="ui_footer">Disconnect any time from the notification. OpenMob never types passwords or PINs.</string>
+    <string name="ui_device_id">Device ID: %1$s</string>
+</resources>
