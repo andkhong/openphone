@@ -134,7 +134,12 @@ class FakePhone:
         asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps(message)), self.loop).result(5)
 
     def disconnect(self):
+        """Close normally (1000), like the user tapping Stop."""
         asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop).result(5)
+
+    def drop(self):
+        """Lose the connection (a network blip), not a deliberate close."""
+        asyncio.run_coroutine_threadsafe(self.ws.close(code=1001), self.loop).result(5)
 
 
 @pytest.fixture
@@ -415,3 +420,86 @@ def test_unanswered_approval_times_out_as_no(risky):
     assert wait_for(lambda: _last_status(manager) in ("succeeded", "failed"))
     assert phone.approval_requests and not any(a[0] == "tap" for a in driver.actions)
     phone.disconnect()
+
+
+# --- reconnect grace -------------------------------------------------------------------------
+
+def test_a_dropped_connection_pauses_the_task_until_the_phone_is_back(risky):
+    url, manager = risky
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    session = manager.get("app-xyz")
+    phone.drop()
+    assert wait_for(lambda: session.reconnecting and not session.online)
+    time.sleep(0.2)
+    assert _last_status(manager) == "needs_confirmation"  # still alive, not cancelled
+    # The phone comes back, gets the same approval again, and approves it.
+    driver = FakeDriver()
+    again = FakePhone(url, driver, approve=True)
+    assert again.welcome.wait(5)
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    assert again.approval_requests[0]["id"] == phone.approval_requests[0]["id"]
+    assert not session.reconnecting and any(a[0] == "tap" for a in driver.actions)
+    again.disconnect()
+
+
+def test_the_task_fails_when_the_phone_stays_away(risky):
+    url, manager = risky
+    manager.reconnect_grace, manager.approval_timeout = 0.3, 1.0
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.drop()
+    assert wait_for(lambda: _last_status(manager) == "failed", timeout=5)
+    assert not manager.get("app-xyz").reconnecting
+
+
+def test_a_normal_close_stops_the_task_right_away(risky):
+    url, manager = risky
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.disconnect()  # the user tapped Stop: close code 1000
+    assert wait_for(lambda: _last_status(manager) == "cancelled")
+    assert not manager.get("app-xyz").reconnecting
+
+
+class _Link:
+    """A PhoneLink stand-in: records calls; `drop` makes the next call die with the connection."""
+
+    def __init__(self, drop=False):
+        self.closed, self.drop, self.calls = False, drop, []
+
+    def call(self, method, params):
+        self.calls.append(method)
+        if self.drop:
+            self.closed = True
+            raise DeviceError("Phone disconnected")
+        return "com.example"
+
+
+def test_reads_wait_for_the_reconnect_but_taps_are_never_repeated():
+    from openmob.phone.remote import RemoteDriver
+
+    first = _Link(drop=True)
+    driver = RemoteDriver(first)
+    driver.hold(5)
+    with pytest.raises(DeviceError, match="wasn't repeated"):
+        driver.tap(1, 2)
+    assert first.calls == ["tap"]  # sent once, never again
+
+    second = _Link()
+    threading.Timer(0.2, driver.attach, (second,)).start()
+    started = time.time()
+    assert driver.current_app() == "com.example"  # waited for the new connection
+    assert time.time() - started >= 0.15 and second.calls == ["current_app"]
+
+    third = _Link(drop=True)
+    driver.attach(third)
+    driver.hold(None)  # no grace (nothing running, or time's up): fail right away
+    with pytest.raises(DeviceError, match="disconnected"):
+        driver.current_app()

@@ -36,6 +36,8 @@ class Session:
         self.approvals: dict[str, str] = {}  # approval id sent to the phone → the task waiting on it
         # (task id, who) of the last API task to run here; who is "" once it finished
         self.controller: tuple[str, str] | None = None
+        self.reconnecting = False  # the socket dropped mid-task; the task waits for the phone to come back
+        self._grace: object | None = None  # identifies the current wait, so a stale timer does nothing
 
     def describe(self) -> dict:
         snap = self.coordinator.snapshot()
@@ -45,6 +47,7 @@ class Session:
             "connection": self.info.connection,
             "platform": self.info.platform,
             "online": self.online,
+            "reconnecting": self.reconnecting,
             "state": snap["state"],
             "current": snap["current"],
         }
@@ -54,6 +57,8 @@ class DeviceManager:
     # The phone dismisses an unanswered approval after about 2 minutes and sends nothing, so the
     # server treats silence as "no".
     approval_timeout = 120.0
+    # A socket blip mid-task (Wi-Fi to cellular, a tunnel hiccup) pauses the task instead of killing it.
+    reconnect_grace = 45.0
 
     def __init__(self, cfg: Config, build_agent, speaker: Speaker, adb_discovery: bool = True, history=None,
                  memory=None):
@@ -69,6 +74,7 @@ class DeviceManager:
         self.task_requesters: list = []
         self.approval_listeners: list = []  # callables(task id, approved) after a phone approval
         self._lock = threading.Lock()
+        self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
 
     def refresh(self) -> list[Session]:
@@ -118,15 +124,19 @@ class DeviceManager:
             connection="app",
             platform="ios" if device.get("platform") == "ios" else "android",
         )
+        stale = resumed = None
         with self._lock:
             session = self.sessions.get(info.id)
             if session and session.account_id != account_id:
                 # Same device id, different owner: never hand over the old session or its history.
-                session.coordinator.stop()
+                stale = session
                 del self.sessions[info.id]
                 session = None
             if session:
-                session.driver.attach(link)
+                if session.reconnecting:
+                    session.reconnecting, session._grace = False, None
+                    resumed = session
+                session.driver.attach(link)  # a task waiting for the phone carries on
                 session.info = info
             else:
                 session = self._create(info, RemoteDriver(link), account_id)
@@ -139,14 +149,57 @@ class DeviceManager:
             session.link = link
             session.online = True
             session.driver.video_available = bool(device.get("video"))
-            return session
+        if stale:
+            self._stop(stale)
+        if resumed:
+            resumed.coordinator.event("status", "The phone is back. Carrying on.")
+        return session
 
-    def detach_remote(self, session: Session, link: PhoneLink) -> None:
+    def detach_remote(self, session: Session, link: PhoneLink, close_code: int | None = None) -> None:
+        """The phone's socket closed. Mid-task, wait `reconnect_grace` seconds for it to come back
+        before failing the task; nothing is replayed. A normal close (1000: the user tapped Stop or
+        disconnected on purpose) stops the work right away, as does a drop with nothing running."""
         with self._lock:
-            if session.link is link:  # ignore a stale socket closing after a reconnect
-                session.online = False
-                session.link = None
-                session.coordinator.stop()
+            if session.link is not link:  # ignore a stale socket closing after a reconnect
+                return
+            session.online = False
+            session.link = None
+            c = session.coordinator
+            busy = c.current is not None or not c.tasks.empty()
+            wait = busy and close_code != 1000 and isinstance(session.driver, RemoteDriver)
+            if wait:
+                session.reconnecting = True
+                session._grace = grace = object()
+                session.driver.hold(self.reconnect_grace)
+        if not wait:
+            session.coordinator.stop()
+            return
+        session.coordinator.event("status", f"Lost the connection to the phone. Waiting up to "
+                                            f"{self.reconnect_grace:g} s for it to come back.")
+        timer = threading.Timer(self.reconnect_grace, self._grace_over, (session, grace))
+        timer.daemon = True
+        timer.start()
+
+    def _grace_over(self, session: Session, grace: object) -> None:
+        """The phone didn't come back in time: its waiting call fails (and so the task); queued tasks are cancelled."""
+        with self._lock:
+            if session._grace is not grace or not session.reconnecting:
+                return  # it reconnected (or was removed) meanwhile
+            session.reconnecting, session._grace = False, None
+            session.driver.hold(None)
+        c = session.coordinator
+        if c.current_task:
+            c.event("status", f"The phone didn't reconnect within {self.reconnect_grace:g} s.")
+        for task_id, info in list(c.task_info.items()):
+            if info["status"] == "queued":
+                c.cancel_task(task_id)
+
+    @staticmethod
+    def _stop(session: Session) -> None:
+        session.reconnecting, session._grace = False, None
+        if isinstance(session.driver, RemoteDriver):
+            session.driver.hold(None)  # release a task waiting for this phone
+        session.coordinator.stop()
 
     # --- approvals on the phone and the "who is using it" line --------------------------
 
@@ -180,7 +233,7 @@ class DeviceManager:
             self._post(session, {"type": "event", "kind": "controller", "message": who["name"]})
         if entry["kind"] == "question" and data.get("confirm") and (who is None or who["human"]):
             approval_id = uuid.uuid4().hex
-            with self._lock:
+            with self._approvals_lock:
                 session.approvals[approval_id] = task_id
             self._post(session, self._approval_request(approval_id, task_id, entry["message"], who))
             timer = threading.Timer(self.approval_timeout, self._expire_approval, (session, approval_id))
@@ -193,7 +246,7 @@ class DeviceManager:
                 "requester": who["name"] if who else "You"}
 
     def _forget_approvals(self, session: Session, task_id: str) -> None:
-        with self._lock:
+        with self._approvals_lock:
             for approval_id in [a for a, t in session.approvals.items() if t == task_id]:
                 del session.approvals[approval_id]
 
@@ -205,7 +258,7 @@ class DeviceManager:
     def resolve_approval(self, session: Session, approval_id: str, approved: bool) -> bool:
         """The owner answered an approval_request on the phone (after the screen-lock check).
         Ignored (False) unless that request's task is still waiting for this confirmation."""
-        with self._lock:
+        with self._approvals_lock:
             task_id = session.approvals.pop(str(approval_id or ""), None)
         if task_id is None:
             return False
@@ -223,7 +276,7 @@ class DeviceManager:
 
     def _expire_approval(self, session: Session, approval_id: str) -> None:
         """Nobody answered on the phone in time: decline, so the agent never acts on silence."""
-        with self._lock:
+        with self._approvals_lock:
             task_id = session.approvals.pop(approval_id, None)
         info = session.coordinator.task(task_id) if task_id else None
         if info and info["status"] == "needs_confirmation":
@@ -234,7 +287,7 @@ class DeviceManager:
         """After a (re)connected phone got its welcome: show who's using it and re-ask pending approvals."""
         if session.controller and session.controller[1]:
             self._post(session, {"type": "event", "kind": "controller", "message": session.controller[1]})
-        with self._lock:
+        with self._approvals_lock:
             pending = list(session.approvals.items())
         for approval_id, task_id in pending:
             info = session.coordinator.task(task_id)
@@ -271,7 +324,7 @@ class DeviceManager:
             session = self.sessions.pop(session_id, None)
         if session:
             session.online = False
-            session.coordinator.stop()
+            self._stop(session)
 
     def get(self, device_id: str) -> Session | None:
         return self.sessions.get(device_id)

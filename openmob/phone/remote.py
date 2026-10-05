@@ -9,11 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import threading
+import time
 import uuid
 
 from .adb import Screenshot, UIElement
 from .base import CachedScreenshots, DeviceError
 from .protocol import METHODS, decode_element, decode_screenshot
+
+# Calls that only read, so one cut off by a dropped connection can be asked again after the
+# phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
+REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock"}
 
 
 class PhoneLink:
@@ -118,34 +124,66 @@ class RemoteDriver(CachedScreenshots):
         self.link = link
         self.video_available = False  # the owner allowed screen streaming (hello "video", video_state)
         self._init_screenshot_cache()
+        self._reconnect = threading.Condition()
+        self._wait_until: float | None = None  # monotonic deadline while the phone may come back
 
     def attach(self, link: PhoneLink) -> None:
-        """Swap in a new connection after the phone reconnects."""
-        self.link = link
-        self._last_shot = None
-        self._last_preview = None
+        """Swap in a new connection after the phone reconnects; calls waiting for it go ahead."""
+        with self._reconnect:
+            self.link = link
+            self._wait_until = None
+            self._last_shot = None
+            self._last_preview = None
+            self._reconnect.notify_all()
 
-    def _call(self, method: str, **params):
-        return self.link.call(method, params)
+    def hold(self, seconds: float | None) -> None:
+        """The connection dropped mid-task: let calls wait up to `seconds` for a reconnect.
+        None gives up: waiting calls fail with DeviceError now."""
+        with self._reconnect:
+            self._wait_until = None if seconds is None else time.monotonic() + seconds
+            self._reconnect.notify_all()
+
+    def _usable_link(self, wait: bool) -> PhoneLink:
+        with self._reconnect:
+            while self.link.closed:
+                remaining = (self._wait_until or 0) - time.monotonic()
+                if not wait or remaining <= 0:
+                    raise DeviceError("Phone is disconnected")
+                self._reconnect.wait(remaining)
+            return self.link
+
+    def _call(self, method: str, _wait: bool = True, **params):
+        """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""
+        while True:
+            link = self._usable_link(_wait)
+            try:
+                return link.call(method, params)
+            except DeviceError:
+                if not (_wait and link.closed):
+                    raise
+                if method not in REPEATABLE:
+                    raise DeviceError(f"The phone disconnected during {method}, so it wasn't repeated. "
+                                      "Look at the screen before trying again.") from None
+                # A read cut off by the drop: ask again on the next connection (or fail when time's up).
 
     def _capture(self) -> Screenshot:
         return decode_screenshot(self._call("screenshot"))
 
     def capture_preview(self, max_side: int, quality: int) -> Screenshot:
         # Older apps ignore these params and send a full JSON frame; that decodes the same way.
-        return decode_screenshot(self._call("screenshot", max_side=max_side, quality=quality, binary=True))
+        return decode_screenshot(self._call("screenshot", _wait=False, max_side=max_side, quality=quality, binary=True))
 
     # Live-view video (the dashboard's screen panel only; see screencast.ScreenFeed).
 
     def stream_start(self, max_side: int, bitrate: int, fps: int) -> dict:
-        size = self._call("stream_start", max_side=int(max_side), bitrate=int(bitrate), fps=int(fps)) or {}
+        size = self._call("stream_start", _wait=False, max_side=int(max_side), bitrate=int(bitrate), fps=int(fps)) or {}
         return {"width": int(size.get("width", 0)), "height": int(size.get("height", 0))}
 
     def stream_stop(self) -> None:
-        self._call("stream_stop")
+        self._call("stream_stop", _wait=False)
 
     def stream_keyframe(self) -> None:
-        self._call("stream_keyframe")
+        self._call("stream_keyframe", _wait=False)
 
     def ui_elements(self) -> list[UIElement]:
         return [decode_element(i, data) for i, data in enumerate(self._call("ui_elements") or [])]

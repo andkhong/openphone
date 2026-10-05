@@ -434,3 +434,17 @@ When a task started by an API or MCP client begins running, the server sends
 `{"type": "event", "kind": "controller", "message": "<who>"}` (the key's name), and
 `{"type": "event", "kind": "controller", "message": ""}` when it ends. After a reconnect, the server
 re-sends the current controller event if such a task is still running.
+
+### 8.3 Reconnect grace
+
+| The socket closes… | Server behaviour |
+|---|---|
+| with close code **1000** (the user tapped Stop or disconnected on purpose) | Stops the running task and clears the queue right away, as before. |
+| any other way (network change, dead connection) while a task runs or is queued | The phone shows as offline but the task is kept. Its next phone call waits up to **45 s** for the same `device.id` to reconnect, then continues on the new socket. |
+| …and no reconnect within 45 s | The waiting call fails, so the task fails; queued tasks are cancelled. |
+| any way, with nothing running | Nothing to keep. |
+
+Calls are never replayed. A read (`screenshot`, `ui_elements`, `current_app`, …) that was cut off is
+asked again on the new connection; an action (`tap`, `type_text`, `launch_app`, …) that was cut off is
+reported to the agent as "may or may not have happened" and never repeated. Live-view calls don't
+wait for a reconnect.

@@ -607,10 +607,12 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         await link.send({"type": "welcome", "session": session.info.id})
         session.coordinator.event("status", f"{session.info.model} connected over the OpenMob app protocol.")
         await run_in_threadpool(manager.resume, session)  # pending approvals, "who is using it"
+        close_code = None
         try:
             while True:
                 raw = await ws.receive()
                 if raw["type"] == "websocket.disconnect":
+                    close_code = raw.get("code")  # 1000: the user disconnected on purpose
                     break
                 message = decode_message(raw.get("text"), raw.get("bytes"))  # binary: a screenshot result
                 kind = message.get("type")
@@ -628,8 +630,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         except (WebSocketDisconnect, ValueError):
             pass
         finally:
+            # Decide about the reconnect wait first, then fail the calls still in flight.
+            manager.detach_remote(session, link, close_code)
             link.close()
-            manager.detach_remote(session, link)
             session.coordinator.event("status", f"{session.info.model} disconnected.")
 
     return app
