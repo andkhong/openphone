@@ -12,7 +12,7 @@ as MCP tools at `https://<server>/mcp`, with the same key and the same rules: se
 
 ## Authentication
 
-Create a key at **`/developer`** (Dashboard → ⋯ → Developer API) or on the server with
+Create a key at **`/developer`** (Dashboard → account menu (bottom left) → Developer API & AI agents) or on the server with
 `openmob key create EMAIL`. Keys look like `om_live_<id>_<secret>`. A key is shown once and only
 its hash is stored, so copy it when you create it. Send it on every request:
 
