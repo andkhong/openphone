@@ -287,7 +287,8 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Queue as new task
           </button>
           <select class="model" id="model" aria-label="Model for this phone" title="Model for this phone's next task"></select>
-          <button class="mic" id="mic" type="button" aria-label="Dictate" title="Dictate (Whisper)">
+          <!-- Dictation mic hidden for now: delete style="display:none" to bring it back. -->
+          <button class="mic" id="mic" type="button" aria-label="Dictate" title="Dictate (Whisper)" style="display:none">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
           </button>
           <button class="send" id="send" type="submit" aria-label="Send"></button>
