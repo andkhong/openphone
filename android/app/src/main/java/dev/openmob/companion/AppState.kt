@@ -14,6 +14,9 @@ object AppState {
         private set
     @Volatile var connected: Boolean = false
         private set
+    /** Who the server says is driving the phone right now (e.g. "Claude"); "" for nobody. */
+    @Volatile var controller: String = ""
+        private set
 
     private val events = ArrayDeque<Event>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -24,6 +27,11 @@ object AppState {
     fun setConnection(status: String, isConnected: Boolean) {
         connection = status
         connected = isConnected
+        notifyListeners()
+    }
+
+    fun setController(who: String) {
+        controller = who
         notifyListeners()
     }
 

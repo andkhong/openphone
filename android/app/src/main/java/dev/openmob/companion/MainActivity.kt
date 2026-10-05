@@ -1,10 +1,14 @@
 package dev.openmob.companion
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.AppOpsManager
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
@@ -23,6 +27,7 @@ import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
 import android.speech.RecognizerIntent
 import android.text.InputType
@@ -45,7 +50,8 @@ import android.widget.Toast
 import java.util.concurrent.Executors
 
 /**
- * The companion app's only screen: setup checklist, connection, "ask your agent", and activity.
+ * The companion app's main screen: pending approvals, setup checklist, connection, "ask your
+ * agent", and activity.
  * Built in code with plain android.widget views (no AndroidX). Everything visible is derived
  * from AppState / Settings in [render], which runs on every AppState change while resumed.
  */
@@ -77,15 +83,22 @@ class MainActivity : Activity() {
     private val background = Executors.newSingleThreadExecutor() // account/pairing HTTP calls
     private var approval: CancellationSignal? = null
 
+    // Approvals (also the fallback when notifications are off)
+    private lateinit var approvalsBox: LinearLayout
+
     // Setup
     private lateinit var setupProgress: TextView
+    private lateinit var setupSteps: LinearLayout
+    private var setupExpanded = false // once everything is done the steps fold away
     private lateinit var pairStep: Step
     private lateinit var a11yStep: Step
     private lateinit var restrictedHelp: LinearLayout
     private lateinit var restrictedToggle: TextView
     private var restrictedHelpOpen = false
+    private var restrictedHelpAutoOpened = false
     private var sentToA11ySettings = false
     private lateinit var notifStep: Step
+    private lateinit var batteryStep: Step
     private lateinit var pairForm: LinearLayout
     private lateinit var serverInput: EditText
     private lateinit var tokenInput: EditText
@@ -94,6 +107,7 @@ class MainActivity : Activity() {
     // Connection
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
+    private lateinit var controllerText: TextView
     private lateinit var connectButton: Button
     private lateinit var liveViewSwitch: Switch
     private lateinit var connectionWarning: TextView
@@ -198,9 +212,34 @@ class MainActivity : Activity() {
     private val isAccessibilityOn: Boolean
         get() = OpenMobAccessibilityService.instance != null
 
-    private val notificationsAllowed: Boolean
+    private val notificationPermission: Boolean
         get() = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+
+    /** The permission, and not switched off afterwards in the app's notification settings. */
+    private val notificationsAllowed: Boolean
+        get() = notificationPermission && getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+
+    private val batteryUnrestricted: Boolean
+        get() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    /**
+     * Best guess whether Android 13+ "restricted settings" blocks the Accessibility switch: the app
+     * op Android sets for apps installed from a file, which "Allow restricted settings" clears.
+     * If the op can't be read, guess from how the app was installed.
+     */
+    private val restrictedSettingsBlocked: Boolean
+        get() {
+            if (!restrictedHelpSupported) return false
+            val mode = runCatching {
+                getSystemService(AppOpsManager::class.java)
+                    .unsafeCheckOpNoThrow("android:access_restricted_settings", applicationInfo.uid, packageName)
+            }.getOrNull()
+            if (mode != null) return mode != AppOpsManager.MODE_ALLOWED && mode != AppOpsManager.MODE_DEFAULT
+            val source = runCatching { packageManager.getInstallSourceInfo(packageName).packageSource }.getOrNull()
+            return source == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE ||
+                source == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
+        }
 
     private fun isValidServer(url: String): Boolean {
         val trimmed = url.trim()
@@ -216,11 +255,27 @@ class MainActivity : Activity() {
         val paired = isPaired
         val a11y = isAccessibilityOn
         val notifs = notificationsAllowed
+        val battery = batteryUnrestricted
         val running = ConnectionService.isRunning
         val connected = AppState.connected
 
-        // Setup checklist
-        setupProgress.text = getString(R.string.ui_setup_progress, listOf(paired, a11y, notifs).count { it })
+        renderApprovals(notifs)
+
+        // Setup checklist: folds to one line once everything is done.
+        val steps = listOf(paired, a11y, notifs, battery)
+        val allDone = steps.all { it }
+        val progress = if (allDone) {
+            getString(R.string.ui_setup_all_done)
+        } else {
+            getString(R.string.ui_setup_progress, steps.count { it }, steps.size)
+        }
+        setupProgress.text = when {
+            !allDone -> progress
+            setupExpanded -> "$progress · ${getString(R.string.ui_setup_hide)}"
+            else -> "$progress · ${getString(R.string.ui_setup_show)}"
+        }
+        setupProgress.setTextColor(color(if (allDone) R.color.om_accent else R.color.om_text_tertiary))
+        setupSteps.visibility = if (allDone && !setupExpanded) View.GONE else View.VISIBLE
         renderStep(pairStep, paired)
         val email = settings.email.takeIf { settings.session.isNotEmpty() }.orEmpty()
         pairStep.body.text = when {
@@ -238,12 +293,27 @@ class MainActivity : Activity() {
         unpairButton.visibility = if (hasCredentials) View.VISIBLE else View.GONE
 
         renderStep(a11yStep, a11y)
-        a11yStep.body.text = getString(if (a11y) R.string.ui_step_a11y_done else R.string.ui_step_a11y_body)
+        // Blocked by "restricted settings": say so up front and open the steps to lift it.
+        val restricted = !a11y && restrictedSettingsBlocked
+        a11yStep.body.text = getString(
+            when {
+                a11y -> R.string.ui_step_a11y_done
+                restricted -> R.string.ui_step_a11y_restricted
+                else -> R.string.ui_step_a11y_body
+            }
+        )
         restrictedToggle.visibility = if (!a11y && restrictedHelpSupported) View.VISIBLE else View.GONE
+        if (restricted && !restrictedHelpAutoOpened) {
+            restrictedHelpOpen = true // once; the toggle can still close it
+            restrictedHelpAutoOpened = true
+        }
         restrictedHelp.visibility = if (!a11y && restrictedHelpOpen) View.VISIBLE else View.GONE
 
         renderStep(notifStep, notifs)
         notifStep.body.text = getString(if (notifs) R.string.ui_step_notif_done else R.string.ui_step_notif_body)
+
+        renderStep(batteryStep, battery)
+        batteryStep.body.text = getString(if (battery) R.string.ui_step_battery_done else R.string.ui_step_battery_body)
 
         // Connection
         val dotColor = when {
@@ -253,6 +323,9 @@ class MainActivity : Activity() {
         }
         (statusDot.background as GradientDrawable).setColor(dotColor)
         statusText.text = AppState.connection
+        val controller = AppState.controller.takeIf { connected }.orEmpty()
+        controllerText.text = getString(R.string.controller_using, controller)
+        controllerText.visibility = if (controller.isEmpty()) View.GONE else View.VISIBLE
         connectButton.text = getString(if (running) R.string.ui_disconnect else R.string.ui_connect)
         if (liveViewSwitch.isChecked != settings.smoothLiveView) liveViewSwitch.isChecked = settings.smoothLiveView
         styleButton(connectButton, if (running) Style.DANGER else Style.PRIMARY)
@@ -292,6 +365,50 @@ class MainActivity : Activity() {
             null
         }
         step.button.visibility = if (done) View.GONE else View.VISIBLE
+    }
+
+    /** Pending approval requests, at the top. The only place they show if notifications are off. */
+    private fun renderApprovals(notifications: Boolean) {
+        approvalsBox.removeAllViews()
+        val requests = Approvals.pending()
+        approvalsBox.visibility = if (requests.isEmpty()) View.GONE else View.VISIBLE
+        requests.forEachIndexed { index, request ->
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(color(R.color.om_warning_bg), 16, stroke = color(R.color.om_question))
+                setPadding(dp(16), dp(14), dp(16), dp(16))
+            }
+            box.addView(text(getString(R.string.approval_label), 12f, color(R.color.om_question), bold = true))
+            box.addView(text(request.question, 17f, color(R.color.om_text), bold = true), margins(top = 4))
+            box.addView(
+                text(getString(R.string.approval_requester, request.requester), 14f, color(R.color.om_text_secondary)),
+                margins(top = 4),
+            )
+            if (!notifications) {
+                box.addView(
+                    text(getString(R.string.ui_notifications_off_hint), 12f, color(R.color.om_text_tertiary)),
+                    margins(top = 6),
+                )
+            }
+            val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            buttons.addView(
+                button(getString(R.string.approval_deny), Style.DANGER) {
+                    if (!Approvals.answer(this, request.id, false) && Approvals.get(request.id) != null) {
+                        toast(getString(R.string.approval_offline))
+                    }
+                },
+                LinearLayout.LayoutParams(0, wrap, 1f),
+            )
+            // Approving always goes through the review screen and its screen-lock check.
+            buttons.addView(
+                button(getString(R.string.ui_approval_review), Style.PRIMARY) {
+                    startActivity(Intent(this, ApprovalActivity::class.java).putExtra(Approvals.EXTRA_ID, request.id))
+                },
+                LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(10) },
+            )
+            box.addView(buttons, margins(top = 12, width = match))
+            approvalsBox.addView(box, margins(top = if (index == 0) 0 else 10, width = match))
+        }
     }
 
     private fun showWarning(text: String, colorRes: Int) {
@@ -337,7 +454,8 @@ class MainActivity : Activity() {
     }
 
     private fun kindColor(kind: String): Int = when (kind) {
-        "question" -> color(R.color.om_question)
+        "question", "approval" -> color(R.color.om_question)
+        "controller" -> color(R.color.om_accent)
         "result" -> color(R.color.om_result)
         "error" -> color(R.color.om_error)
         "heard", "action" -> color(R.color.om_accent)
@@ -743,6 +861,7 @@ class MainActivity : Activity() {
                 margins(top = if (i == 0) 10 else 6),
             )
         }
+        restrictedHelp.addView(text(getString(R.string.ui_restricted_missing), 13f, color(R.color.om_text_tertiary)), margins(top = 8))
         restrictedHelp.addView(button(getString(R.string.ui_restricted_button), Style.SECONDARY) { openAppInfo() }, margins(top = 12))
         column.addView(restrictedHelp, margins(top = 6, width = match))
     }
@@ -763,14 +882,36 @@ class MainActivity : Activity() {
     }
 
     private fun onNotificationsClicked() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (notificationsDenied) {
+        // Permission granted (or not needed) but notifications switched off, or denied for good:
+        // only the system settings can turn them back on.
+        if (notificationPermission || notificationsDenied) {
             startActivity(
                 Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, packageName)
             )
         } else {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+        }
+    }
+
+    private fun onBatteryClicked() {
+        // Explain first, then Android's own "Let app always run in background?" prompt.
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_battery_title)
+            .setMessage(R.string.ui_battery_body)
+            .setPositiveButton(R.string.ui_battery_continue) { _, _ -> requestBatteryExemption() }
+            .setNegativeButton(R.string.ui_disclosure_decline, null)
+            .show()
+    }
+
+    @SuppressLint("BatteryLife") // a constant connection is the app's core function, not a convenience
+    private fun requestBatteryExemption() {
+        try {
+            startActivity(
+                Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: ActivityNotFoundException) {
+            startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 
@@ -840,6 +981,11 @@ class MainActivity : Activity() {
             margins(top = 4, bottom = 8),
         )
 
+        approvalsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        content.addView(approvalsBox, margins(top = 16, width = match))
         content.addView(buildSetupCard())
         content.addView(buildConnectionCard())
         content.addView(buildAskCard())
@@ -883,25 +1029,38 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         header.addView(cardTitle(getString(R.string.ui_setup_title)), LinearLayout.LayoutParams(0, wrap, 1f))
-        setupProgress = text("", 13f, color(R.color.om_text_tertiary))
+        setupProgress = text("", 13f, color(R.color.om_text_tertiary)).apply {
+            setPadding(dp(8), dp(6), 0, dp(6)) // a bigger target for Show / Hide
+            setOnClickListener {
+                setupExpanded = !setupExpanded
+                render()
+            }
+        }
         header.addView(setupProgress)
         card.addView(header)
+
+        setupSteps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        card.addView(setupSteps, margins(width = match))
 
         pairStep = step(getString(R.string.ui_step_pair_title)) { togglePairForm() }
         unpairButton = button(getString(R.string.ui_unpair), Style.DANGER) { onUnpairClicked() }
         (pairStep.button.parent as LinearLayout).addView(unpairButton, margins(top = 8))
-        card.addView(pairStep.row)
+        setupSteps.addView(pairStep.row)
         pairForm = buildPairForm()
-        card.addView(pairForm)
+        setupSteps.addView(pairForm)
 
         a11yStep = step(getString(R.string.ui_step_a11y_title)) { onAccessibilityClicked() }
         a11yStep.button.text = getString(R.string.ui_step_a11y_button)
         buildRestrictedHelp(a11yStep.button.parent as LinearLayout)
-        card.addView(a11yStep.row)
+        setupSteps.addView(a11yStep.row)
 
         notifStep = step(getString(R.string.ui_step_notif_title)) { onNotificationsClicked() }
         notifStep.button.text = getString(R.string.ui_step_notif_button)
-        card.addView(notifStep.row)
+        setupSteps.addView(notifStep.row)
+
+        batteryStep = step(getString(R.string.ui_step_battery_title)) { onBatteryClicked() }
+        batteryStep.button.text = getString(R.string.ui_step_battery_button)
+        setupSteps.addView(batteryStep.row)
         return card
     }
 
@@ -952,6 +1111,10 @@ class MainActivity : Activity() {
         statusRow.addView(statusDot, LinearLayout.LayoutParams(dp(10), dp(10)))
         statusRow.addView(statusText, LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(10) })
         card.addView(statusRow, margins(top = 12))
+
+        // "Claude is using your phone", while a controller event says someone is driving it.
+        controllerText = text("", 14f, color(R.color.om_accent), bold = true).apply { visibility = View.GONE }
+        card.addView(controllerText, margins(top = 6, start = 20))
 
         connectionWarning = text("", 13f, color(R.color.om_question)).apply { visibility = View.GONE }
         card.addView(connectionWarning, margins(top = 8))

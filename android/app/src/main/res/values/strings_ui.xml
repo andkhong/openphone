@@ -4,7 +4,7 @@
 
     <!-- Setup checklist -->
     <string name="ui_setup_title">Set up</string>
-    <string name="ui_setup_progress">%1$d of 3 done</string>
+    <string name="ui_setup_progress">%1$d of %2$d done</string>
     <string name="ui_step_pair_title">Pair with your agent server</string>
     <string name="ui_step_pair_body">Scan the QR code on your dashboard\'s \"Connect a phone\" page with your camera. It fills this in automatically.</string>
     <string name="ui_step_pair_done">Paired with %1$s</string>
@@ -118,4 +118,54 @@
     <string name="tile_turn_on_accessibility">Turn on Accessibility</string>
     <string name="tile_tap_to_connect">Tap to connect</string>
     <string name="tile_connected">Connected</string>
+    <string name="tile_in_use">%1$s is using it</string>
+
+    <!-- Connection notification and "who's using my phone" -->
+    <string name="notif_title">OpenMob agent can control this phone</string>
+    <string name="notif_disconnect">Disconnect</string>
+    <string name="notif_stop">Stop</string>
+    <string name="controller_using">%1$s is using your phone</string>
+    <string name="controller_stopped">%1$s stopped using your phone</string>
+
+    <!-- Approvals for risky actions -->
+    <string name="approval_channel">Approvals</string>
+    <string name="approval_channel_description">Asks you before your agent buys, sends or deletes something.</string>
+    <string name="approval_notification_title">Approve? %1$s</string>
+    <string name="approval_notification_text">%1$s is asking. Tap Review to approve with your screen lock.</string>
+    <string name="approval_notification_public">OpenMob needs your approval</string>
+    <string name="approval_deny">Deny</string>
+    <string name="approval_review">Review</string>
+    <string name="approval_approve">Approve</string>
+    <string name="approval_label">APPROVAL NEEDED</string>
+    <string name="approval_requester">Asked by %1$s</string>
+    <string name="approval_explain">Approving needs your screen lock, so the AI using your phone can\'t approve this itself. If you didn\'t expect this, deny it.</string>
+    <string name="approval_prompt_title">Approve this action?</string>
+    <string name="approval_not_confirmed">Not approved. Tap Approve to try again, or Deny.</string>
+    <string name="approval_need_lock">Approving needs a screen lock (PIN, pattern, password or fingerprint). Set one up in Settings, or deny this request.</string>
+    <string name="approval_gone">This request was already answered or has expired.</string>
+    <string name="approval_offline">Not connected to your agent, so the answer wasn\'t sent. Reconnect and try again.</string>
+    <string name="approval_sent_approved">Approved</string>
+    <string name="approval_sent_denied">Denied</string>
+    <string name="approval_no_question">Allow a risky action?</string>
+    <string name="approval_unknown_requester">Your agent</string>
+    <string name="approval_event_asked">%1$s asks: %2$s</string>
+    <string name="approval_event_approved">Approved: %1$s</string>
+    <string name="approval_event_denied">Denied: %1$s</string>
+    <string name="approval_event_expired">Expired without an answer: %1$s</string>
+    <string name="ui_approval_review">Review &amp; approve</string>
+
+    <!-- Setup: background running and restricted settings -->
+    <string name="ui_step_battery_title">Let OpenMob run in the background</string>
+    <string name="ui_step_battery_body">Without this, Android may cut the connection when the screen is off, and your agent loses the phone mid-task.</string>
+    <string name="ui_step_battery_done">OpenMob can run in the background.</string>
+    <string name="ui_step_battery_button">Allow</string>
+    <string name="ui_battery_title">Keep the connection alive?</string>
+    <string name="ui_battery_body">Android saves battery by pausing apps in the background. OpenMob only keeps a small connection open while you\'re connected, and does nothing when you disconnect.\n\nOn the next screen, tap Allow.</string>
+    <string name="ui_battery_continue">Continue</string>
+    <string name="ui_step_a11y_restricted">Android blocks this for apps installed outside the Play Store. Allow restricted settings first (steps below).</string>
+    <string name="ui_restricted_missing">No \"Allow restricted settings\" in the menu? Try turning OpenMob on in Accessibility once first; Android adds the option after that.</string>
+    <string name="ui_setup_all_done">All set</string>
+    <string name="ui_setup_show">Show</string>
+    <string name="ui_setup_hide">Hide</string>
+    <string name="ui_notifications_off_hint">Notifications are off, so approval requests show here only.</string>
 </resources>
