@@ -540,13 +540,16 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     # --- developer API (accounts mode only: keys belong to accounts) -------------
 
     if store is not None:
-        from .api_v1 import DeveloperApi
         from .ledger import Ledger
+        from .platform.errors import ServiceError
+        from .platform.rest import DeveloperApi, service_error_response
+        from .platform.service import V1Service
 
-        developer_api = DeveloperApi(
-            manager, store, ledger or Ledger(store.path.with_name("ledger.sqlite")), account, require_admin,
-            webhook_allow_private=webhook_allow_private,
-        )
+        service = V1Service(manager, store, ledger or Ledger(store.path.with_name("ledger.sqlite")),
+                            webhook_allow_private=webhook_allow_private)
+        developer_api = DeveloperApi(service, account, require_admin)
+        app.add_exception_handler(ServiceError, service_error_response)
+        app.state.v1_service = service
         app.state.developer_api = developer_api
         app.include_router(developer_api.router)
         app.include_router(developer_api.console)
