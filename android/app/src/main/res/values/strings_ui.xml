@@ -4,7 +4,7 @@
 
     <!-- Setup checklist -->
     <string name="ui_setup_title">Set up</string>
-    <string name="ui_setup_progress">%1$d of 3 done</string>
+    <string name="ui_setup_progress">%1$d of %2$d done</string>
     <string name="ui_step_pair_title">Pair with your agent server</string>
     <string name="ui_step_pair_body">Scan the QR code on your dashboard\'s \"Connect a phone\" page with your camera. It fills this in automatically.</string>
     <string name="ui_step_pair_done">Paired with %1$s</string>
