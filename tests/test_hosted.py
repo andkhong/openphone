@@ -164,9 +164,11 @@ def test_server_sees_accounts_added_by_another_process(hosted, tmp_path):
 
 def test_signed_out_visitors_get_the_landing_page(hosted):
     base, _, store = hosted
-    for page in ("/", "/login", "/login?next=/connect"):
+    body = httpx.get(f"{base}/").text
+    assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
+    for page in ("/login", "/login?next=/connect"):  # the sign-in form, email and password
         body = httpx.get(f"{base}{page}").text
-        assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
+        assert 'id="email"' in body and 'id="password"' in body
     client, _ = signup(base, "owner@example.com")
     assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard
 

@@ -118,3 +118,25 @@ def test_every_public_doc_is_in_the_console_and_links_only_to_public_docs():
     if "docs" in ignore or "docs/*" in ignore:
         for filename in PUBLIC_DOCS.values():
             assert f"!docs/{filename}" in ignore, f".dockerignore keeps docs/{filename} out of the image"
+
+
+def test_login_page_signs_in_with_email_and_password(api):
+    page = httpx.get(f"{api.base}/login")
+    assert page.status_code == 200 and 'id="password"' in page.text and "/api/auth/login" in page.text
+    assert 'href="/login"' in httpx.get(f"{api.base}/").text  # the landing page links to it
+    client = httpx.Client(base_url=api.base)
+    r = client.post("/api/auth/login", json={"email": "alice@example.com", "password": "password123"})
+    assert r.status_code == 200 and client.get("/api/auth/me").json()["email"] == "alice@example.com"
+
+
+def test_repeated_failed_sign_ins_are_slowed_down(api):
+    from openmob.server import LOGIN_MAX_FAILURES
+
+    bad = {"email": "alice@example.com", "password": "wrong-password"}
+    for _ in range(LOGIN_MAX_FAILURES):
+        assert httpx.post(f"{api.base}/api/auth/login", json=bad).status_code == 401
+    r = httpx.post(f"{api.base}/api/auth/login", json=bad)
+    assert r.status_code == 429 and r.headers["retry-after"]
+    # Even the right password waits it out: otherwise the limit would only slow down failures.
+    good = httpx.post(f"{api.base}/api/auth/login", json={**bad, "password": "password123"})
+    assert good.status_code == 429

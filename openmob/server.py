@@ -10,6 +10,7 @@ import io
 import os
 import socket
 import threading
+import time
 import weakref
 from pathlib import Path
 from typing import Literal
@@ -37,6 +38,8 @@ PUBLIC_DOCS = {"quickstart": "quickstart.md", "concepts": "concepts.md", "phone-
 DOCS_DIRS = [Path(os.environ["OPENMOB_DOCS_DIR"])] if os.environ.get("OPENMOB_DOCS_DIR") else []
 DOCS_DIRS += [Path(__file__).parent.parent / "docs", Path.cwd() / "docs"]
 PAGE = STATIC / "index.html"
+LOGIN_MAX_FAILURES = 10  # failed sign-ins per address or email…
+LOGIN_WINDOW = 600  # …in this many seconds, then 429
 # Debug build of the companion app (built from android/ in this repo).
 APK = Path(
     os.environ.get("OPENMOB_APK")
@@ -195,15 +198,37 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             raise HTTPException(status_code=400, detail=str(exc)) from None
         return {"email": store.account_email(account_id), "session": _set_session(response, account_id)}
 
+    # Failed sign-ins per client address and per email, in the last LOGIN_WINDOW seconds: the
+    # password form mustn't be a free password-guessing oracle.
+    login_failures: dict[str, list[float]] = {}
+    login_lock = threading.Lock()
+
+    def _recent_failures(key: str, now: float) -> list[float]:
+        recent = [t for t in login_failures.get(key, []) if now - t < LOGIN_WINDOW]
+        if recent:
+            login_failures[key] = recent
+        else:
+            login_failures.pop(key, None)
+        return recent
+
     @app.post("/api/auth/login")
-    def login(body: Credentials, response: Response) -> dict:
+    def login(body: Credentials, request: Request, response: Response) -> dict:
         if store is None:
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
         from .accounts import AuthError
 
+        now = time.time()
+        keys = (f"ip:{request.client.host if request.client else '?'}", f"email:{body.email.strip().lower()}")
+        with login_lock:
+            if any(len(_recent_failures(k, now)) >= LOGIN_MAX_FAILURES for k in keys):
+                raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in a few minutes.",
+                                    headers={"Retry-After": str(LOGIN_WINDOW)})
         try:
             account_id = store.verify_login(body.email, body.password)
         except AuthError as exc:
+            with login_lock:
+                for k in keys:
+                    login_failures.setdefault(k, []).append(now)
             raise HTTPException(status_code=401, detail=str(exc)) from None
         return {"email": store.account_email(account_id), "session": _set_session(response, account_id)}
 
