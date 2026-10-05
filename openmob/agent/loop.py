@@ -1,4 +1,4 @@
-"""The observe → decide → act loop that drives the phone with Claude."""
+"""The observe → decide → act loop that drives the phone with any model (see models.py)."""
 
 from __future__ import annotations
 
@@ -18,7 +18,8 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from .tools import TOOLS, system_prompt
+from .models import ModelRequest, ModelUnavailable, router_for
+from .tools import TOOL_SPECS, system_prompt
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -78,20 +79,10 @@ def is_yes(answer: str) -> bool:
     return bool(words) and words[0] in YES_WORDS
 
 
-def _block_to_dict(block) -> dict:
-    if isinstance(block, dict):
-        return block
-    if block.type == "text":
-        return {"type": "text", "text": block.text}
-    if block.type == "tool_use":
-        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
-    return block.model_dump(exclude_none=True)
-
-
 class Agent:
     def __init__(
         self,
-        client,
+        client,  # a models.ModelRouter, or one Anthropic-shaped client (serves every Claude model)
         driver,
         resolver: AppResolver,
         config: Config,
@@ -117,6 +108,10 @@ class Agent:
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
 
     # --- public ----------------------------------------------------------
+
+    def model_available(self, model: str) -> bool:
+        """Whether this agent can run `model`: its provider has a key here and it can operate a phone."""
+        return router_for(self.client, self.config).available(model)
 
     def run(
         self,
@@ -153,6 +148,10 @@ class Agent:
             self.driver.key("HOME")
             time.sleep(self.config.settle_delay)
 
+        try:
+            route = router_for(self.client, self.config).route(self.task_model)
+        except ModelUnavailable as exc:
+            return AgentResult(False, str(exc), 0)
         obs = self._observe_settled(state)
         messages: list[dict] = [{
             "role": "user",
@@ -168,25 +167,24 @@ class Agent:
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._trim_history(messages)
-            response = self.client.messages.create(
+            response = route.adapter.complete(ModelRequest(
                 model=self.task_model,
-                max_tokens=1024,
                 system=system,
-                tools=TOOLS,
+                tools=TOOL_SPECS,
                 messages=messages,
-            )
+                max_tokens=route.spec.max_tokens,
+            ))
             # Count under the model the API says served this call, which verifies the model choice.
-            self.usage.add_claude(getattr(response, "usage", None), getattr(response, "model", None) or self.task_model)
-            content = [_block_to_dict(b) for b in response.content]
-            messages.append({"role": "assistant", "content": content})
+            self.usage.add_model(response.usage, response.model or self.task_model)
+            messages.append({"role": "assistant", "content": response.content})
 
-            for block in content:
-                if block["type"] == "text" and block["text"].strip():
-                    self.io.event("thought", block["text"].strip())
+            for text in response.text:
+                if text.strip():
+                    self.io.event("thought", text.strip())
 
-            tool_uses = [b for b in content if b["type"] == "tool_use"]
+            tool_uses = response.tool_calls
             if not tool_uses:
-                text = " ".join(b["text"] for b in content if b["type"] == "text").strip()
+                text = " ".join(response.text).strip()
                 if nudged or response.stop_reason == "refusal":
                     return AgentResult(False, text or "I stopped without finishing.", step)
                 nudged = True
@@ -203,15 +201,15 @@ class Agent:
                 if finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
-                    outcome = self._execute(tool_use["name"], tool_use["input"], obs, state)
-                    self.io.event("error" if outcome.is_error else "action", f"{tool_use['name']}: {outcome.text}")
+                    outcome = self._execute(tool_use.name, tool_use.input, obs, state)
+                    self.io.event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}")
                     if outcome.settle is not None:
                         settle = outcome.settle
                     if outcome.done:
                         finished = outcome
                 results.append({
                     "type": "tool_result",
-                    "tool_use_id": tool_use["id"],
+                    "call_id": tool_use.id,
                     "content": [{"type": "text", "text": outcome.text}],
                     **({"is_error": True} if outcome.is_error else {}),
                 })
@@ -223,8 +221,8 @@ class Agent:
 
             self._sleep(settle, state.cancel)
             obs = self._observe_settled(state)
-            # The new screen goes after the tool results, not inside them: the API rejects
-            # images inside a tool_result marked is_error.
+            # The new screen goes after the tool results, not inside them: Anthropic rejects images
+            # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
             messages.append({"role": "user", "content": results + self._obs_blocks(obs, self._app_notes(state, obs))})
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
@@ -357,14 +355,7 @@ class Agent:
             body += "\n" + obs.assessment.summary()
         return [
             {"type": "text", "text": f"{header}\n{body}"},
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": base64.b64encode(obs.shot.jpeg).decode(),
-                },
-            },
+            {"type": "image", "media_type": "image/jpeg", "data": base64.b64encode(obs.shot.jpeg).decode()},
         ]
 
     def _trim_history(self, messages: list[dict]) -> None:

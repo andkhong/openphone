@@ -1,6 +1,6 @@
 import threading
 
-from conftest import FakeDriver, RecordingIO, ScriptedClient, text_block, tool_use
+from conftest import FakeDriver, RecordingIO, ScriptedClient, system_text, text_block, tool_use
 
 from openmob.agent.loop import OMITTED, Agent, is_yes
 from openmob.config import Config
@@ -260,9 +260,9 @@ def test_agent_counts_claude_tokens_per_task(tmp_path):
 
     client.create = with_usage
     result = agent.run("wait then finish")
-    assert (result.usage.claude_calls, result.usage.claude_input, result.usage.claude_output) == (2, 2000, 100)
+    assert (result.usage.model_calls, result.usage.model_input, result.usage.model_output) == (2, 2000, 100)
     second = agent.run("again")  # each task starts counting from zero
-    assert (second.usage.claude_calls, second.usage.claude_input) == (1, 1000)
+    assert (second.usage.model_calls, second.usage.model_input) == (1, 1000)
 
 
 def test_model_switch_applies_from_the_next_task(tmp_path):
@@ -323,8 +323,8 @@ def test_iphone_gets_ios_instructions(tmp_path):
     agent, client, _ = make_agent([[tool_use("done", "a", summary="ok", success=True)],
                                    [tool_use("done", "b", summary="ok", success=True)]], tmp_path=tmp_path)
     agent.run("open settings")
-    assert "Android" in client.requests[0]["system"] and "no BACK key" not in client.requests[0]["system"]
+    assert "Android" in system_text(client.requests[0]) and "no BACK key" not in system_text(client.requests[0])
     agent.platform = "ios"
     agent.run("open settings")
-    ios_prompt = client.requests[1]["system"]
+    ios_prompt = system_text(client.requests[1])
     assert "no BACK key" in ios_prompt and "Spotlight" in ios_prompt and "Android phone" not in ios_prompt

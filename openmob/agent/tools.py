@@ -162,6 +162,9 @@ TOOLS = [
     },
 ]
 
+# The same tools in the provider-neutral shape the model adapters take: {name, description, parameters}.
+TOOL_SPECS = [{"name": t["name"], "description": t["description"], "parameters": t["input_schema"]} for t in TOOLS]
+
 SYSTEM_PROMPT = """\
 You are OpenMob, an agent that operates the user's Android phone to carry out their spoken request. \
 It can be any Android phone and any app the user has installed.

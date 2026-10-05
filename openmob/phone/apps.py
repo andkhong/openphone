@@ -174,24 +174,22 @@ class AppResolver:
         return Resolution(scored[0][1], "fuzzy", scored[0][0])
 
 def make_llm_picker(client, model: str) -> LlmPicker:
-    """Ask Claude which installed package matches a spoken app name."""
+    """Ask a model which installed package matches a spoken app name. `client` is a ModelRouter
+    (any provider) or an Anthropic-shaped client."""
 
     def pick(name: str, packages: list[str], labels: dict[str, str]) -> str | None:
         listing = "\n".join(f"{p} ({labels[p]})" if labels.get(p) else p for p in packages)
-        response = client.messages.create(
-            model=model,
-            max_tokens=100,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"These Android packages are installed:\n{listing}\n\n"
-                    f'Which one is the app the user calls "{name}"? The name came from speech '
-                    "recognition, so allow for mis-hearings. Reply with only the exact package "
-                    "name, or NONE if none of them matches."
-                ),
-            }],
+        prompt = (
+            f"These Android packages are installed:\n{listing}\n\n"
+            f'Which one is the app the user calls "{name}"? The name came from speech '
+            "recognition, so allow for mis-hearings. Reply with only the exact package "
+            "name, or NONE if none of them matches."
         )
-        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        if hasattr(client, "complete_text"):
+            text = client.complete_text(model, prompt, max_tokens=100)
+        else:
+            response = client.messages.create(model=model, max_tokens=100, messages=[{"role": "user", "content": prompt}])
+            text = "".join(b.text for b in response.content if b.type == "text").strip()
         return text if text in packages else None
 
     return pick

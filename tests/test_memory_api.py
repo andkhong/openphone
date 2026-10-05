@@ -3,7 +3,7 @@ seeing only its own notes; API tasks use the owner's notes unless they ask for m
 
 import httpx
 import pytest
-from conftest import FakeDriver, ScriptedClient, tool_use
+from conftest import FakeDriver, ScriptedClient, system_text, tool_use
 from test_hosted import _up, pair, signup
 from test_remote import FakePhone, free_port, wait_for
 
@@ -103,6 +103,6 @@ def test_api_tasks_use_the_owners_notes_unless_memory_is_off(server):
     for mode, expected in (("on", True), ("off", False)):
         task = v1.post("/v1/devices/app-alice-phone/tasks", json={"instruction": "open the game", "memory": mode}).json()
         assert wait_for(lambda: v1.get(f"/v1/tasks/{task['id']}").json()["status"] == "succeeded")
-        assert ("Always use my second game account" in client.requests[-1]["system"]) is expected
+        assert ("Always use my second game account" in system_text(client.requests[-1])) is expected
     assert v1.post("/v1/devices/app-alice-phone/tasks", json={"instruction": "x", "memory": "sometimes"}).status_code == 422
     phone.disconnect()
