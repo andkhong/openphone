@@ -3,90 +3,247 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>What I've Learned</title>
+<title>What I've Learned · OpenMob</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <style>
-  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --bad:#d6383b; --warn:#c97a00; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; } }
-  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
-  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
-  .logo small { font-weight:500; color:var(--muted); margin-left:6px; font-size:14px; }
-  header a { margin-left:auto; color:var(--muted); text-decoration:none; font-size:14px; }
-  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; display:grid; gap:20px; }
-  .intro { color:var(--muted); font-size:14px; margin:0; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); min-width:0; }
-  .card.pending { border-color:var(--warn); }
-  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; display:flex; gap:8px; align-items:center; }
-  h2 .count { background:var(--bg); border-radius:999px; padding:0 8px; font-size:12px; letter-spacing:0; }
-  h3 { font-size:14px; margin:16px 0 6px; overflow-wrap:anywhere; }
-  h3:first-of-type { margin-top:0; }
-  form.add { display:grid; gap:10px; }
-  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
-  input[type=text] { flex:1; min-width:0; width:100%; font:inherit; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); }
-  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
-  button { font:inherit; font-size:14px; border-radius:10px; padding:8px 14px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--fg); }
-  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
-  button.small { padding:4px 10px; font-size:13px; border-radius:8px; color:var(--muted); }
-  button.small.danger:hover, button.danger { color:var(--bad); border-color:var(--bad); }
-  label.toggle { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--muted); }
-  ul { list-style:none; margin:0; padding:0; }
-  li { display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
-  li:last-child { border-bottom:0; }
-  li .text { flex:1; min-width:0; overflow-wrap:anywhere; }
-  li .meta { display:block; color:var(--muted); font-size:12px; }
-  li .actions { display:flex; gap:6px; flex:none; }
-  .empty { color:var(--muted); font-size:14px; }
-  .error { color:var(--bad); font-size:13px; min-height:1em; }
+  /* @ds:start — OpenMob design system v1. This block is identical on every page in openmob/static;
+     change it in one page, then copy it to the others (pages have no build step and no shared files). */
+  :root {
+    color-scheme: light;
+    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --sunken: #eceef2;
+    --fg: #15171b; --muted: #5a606a; --faint: #697079; --line: #e2e5ea; --line-strong: #cdd2da;
+    --accent: #3550e8; --accent-hover: #2a43d4; --accent-ink: #ffffff; --accent-soft: #eaeeff; --accent-line: #c6cffd;
+    --ok: #157a46; --ok-soft: #e4f4ea; --warn: #9a5a00; --warn-soft: #fdf1dc; --bad: #c42b2f; --bad-soft: #fde8e8;
+    --code: #f0f2f5; --overlay: rgba(15, 17, 21, .45);
+    --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
+    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .06);
+    --shadow-lg: 0 4px 10px rgba(16, 24, 40, .06), 0 18px 48px rgba(16, 24, 40, .12);
+    --r-sm: 8px; --r: 12px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
+    --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --gutter: 16px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --bg: #0e1013; --surface: #15181c; --surface-2: #1c2025; --sunken: #111317;
+      --fg: #e9ebef; --muted: #a2a8b2; --faint: #858c97; --line: #252a31; --line-strong: #343a43;
+      --accent: #8193ff; --accent-hover: #97a6ff; --accent-ink: #0b0d12; --accent-soft: #1b2142; --accent-line: #33407a;
+      --ok: #4cd48a; --ok-soft: #12291c; --warn: #f0b04a; --warn-soft: #2d2210; --bad: #ff7a72; --bad-soft: #321718;
+      --code: #1c2025; --overlay: rgba(0, 0, 0, .6);
+      --shadow-sm: none; --shadow: 0 0 0 1px rgba(255,255,255,.02); --shadow-lg: 0 18px 48px rgba(0, 0, 0, .5);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0e1013; --surface: #15181c; --surface-2: #1c2025; --sunken: #111317;
+    --fg: #e9ebef; --muted: #a2a8b2; --faint: #858c97; --line: #252a31; --line-strong: #343a43;
+    --accent: #8193ff; --accent-hover: #97a6ff; --accent-ink: #0b0d12; --accent-soft: #1b2142; --accent-line: #33407a;
+    --ok: #4cd48a; --ok-soft: #12291c; --warn: #f0b04a; --warn-soft: #2d2210; --bad: #ff7a72; --bad-soft: #321718;
+    --code: #1c2025; --overlay: rgba(0, 0, 0, .6);
+    --shadow-sm: none; --shadow: 0 0 0 1px rgba(255,255,255,.02); --shadow-lg: 0 18px 48px rgba(0, 0, 0, .5);
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  a { color: var(--accent); }
+  code, pre, kbd { font-family: var(--mono); font-size: 13px; }
+  [hidden] { display: none !important; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
+
+  /* Top bar shared by every signed-in page */
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 10px var(--gutter); min-height: 56px; background: var(--surface); border-bottom: 1px solid var(--line); }
+  .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); text-decoration: none; font-weight: 700; font-size: 17px; letter-spacing: -.015em; white-space: nowrap; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+  .brand-mark svg { width: 17px; height: 17px; }
+  .brand .page-name { font-weight: 500; color: var(--muted); font-size: 15px; letter-spacing: 0; }
+  .brand .page-name::before { content: "/"; color: var(--line-strong); margin: 0 8px 0 2px; }
+  .topnav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+
+  /* Buttons */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; line-height: 1.2; text-decoration: none; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
+  .btn:hover { background: var(--surface-2); }
+  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
+  .btn svg { width: 16px; height: 16px; flex: none; }
+  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
+  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
+  .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--fg); }
+  .btn-danger { color: var(--bad); }
+  .btn-danger:hover { background: var(--bad-soft); border-color: var(--bad); }
+  .btn-sm { min-height: 30px; padding: 4px 10px; font-size: 13px; border-radius: 8px; }
+  .btn-lg { min-height: 46px; padding: 12px 20px; font-size: 15px; border-radius: 12px; }
+  .btn-block { display: flex; width: 100%; }
+  .icon-btn { width: 38px; height: 38px; padding: 0; }
+
+  /* Inputs */
+  .input, .select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 15px; }
+  .input::placeholder { color: var(--faint); }
+  .input:focus, .select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .field { display: grid; gap: 6px; }
+  .field > label, .label { font-size: 13px; font-weight: 600; color: var(--muted); }
+  .check { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
+  .check input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
+
+  /* Layout and cards */
+  .page { max-width: 1040px; margin: 0 auto; padding: 28px var(--gutter) 56px; display: grid; gap: 20px; }
+  .page.narrow { max-width: 760px; }
+  .page-head h1 { font-size: 26px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 6px; }
+  .page-head p { color: var(--muted); margin: 0; max-width: 62ch; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; box-shadow: var(--shadow-sm); min-width: 0; }
+  .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
+  .card-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -.005em; margin: 0; display: flex; align-items: center; gap: 8px; }
+  .card-head .grow { flex: 1; }
+  .card-sub { color: var(--muted); font-size: 14px; margin: -8px 0 14px; }
+  .count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  .error { color: var(--bad); font-size: 13px; min-height: 1em; }
+  .error:empty { min-height: 0; }
+
+  /* Pills: statuses */
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; min-height: 22px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
+  .pill.dotted::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
+  .pill.ok { background: var(--ok-soft); color: var(--ok); }
+  .pill.warn { background: var(--warn-soft); color: var(--warn); }
+  .pill.bad { background: var(--bad-soft); color: var(--bad); }
+  .pill.info { background: var(--accent-soft); color: var(--accent); }
+  .pill.live::before { animation: om-pulse 1.4s ease-in-out infinite; }
+  @keyframes om-pulse { 50% { opacity: .35; } }
+
+  /* Callouts */
+  .callout { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface-2); font-size: 14px; }
+  .callout > svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
+  .callout.info { background: var(--accent-soft); border-color: var(--accent-line); }
+  .callout.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
+  .callout.warn > svg { color: var(--warn); }
+  .callout.info > svg { color: var(--accent); }
+  .callout b { display: block; }
+
+  /* Code blocks with a copy button */
+  .codebox { position: relative; background: var(--code); border: 1px solid var(--line); border-radius: var(--r); }
+  .codebox pre { margin: 0; padding: 12px 14px; padding-right: 84px; overflow-x: auto; white-space: pre; line-height: 1.6; }
+  .codebox .copy { position: absolute; top: 7px; right: 7px; }
+  .codebox.inline pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+
+  /* Tables: stack into labelled cards on phones */
+  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  .table td { padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+  .table tr:last-child td { border-bottom: 0; }
+  .table td.empty { text-align: center; color: var(--muted); padding: 28px 10px; }
+  .table-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
+  @media (max-width: 700px) {
+    .table thead { display: none; }
+    .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
+    .table tr { border: 1px solid var(--line); border-radius: var(--r); padding: 4px 12px; margin-bottom: 10px; }
+    .table td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line); text-align: right; }
+    .table td:last-child { border-bottom: 0; }
+    .table td::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; flex: none; }
+    .table td.empty { justify-content: center; } .table td.empty::before { content: none; }
+    .table tr.empty-row { border: 0; }
+  }
+
+  /* Empty states */
+  .empty-state { text-align: center; padding: 28px 16px; color: var(--muted); font-size: 14px; }
+  .empty-state .art { width: 44px; height: 44px; margin: 0 auto 10px; border-radius: 12px; background: var(--surface-2); color: var(--faint); display: flex; align-items: center; justify-content: center; }
+  .empty-state .art svg { width: 22px; height: 22px; }
+  .empty-state b { display: block; color: var(--fg); font-size: 15px; margin-bottom: 2px; }
+
   @media (max-width: 560px) {
-    header { padding:12px 16px; }
-    .card { padding:16px; }
-    li { flex-direction:column; align-items:stretch; gap:6px; }
-    li .actions { justify-content:flex-end; }
+    .page { padding-top: 20px; gap: 16px; }
+    .card { padding: 16px; border-radius: var(--r); }
+    .page-head h1 { font-size: 22px; }
+    .brand .page-name { display: none; }
+  }
+  /* @ds:end */
+
+  /* ---------- memory ---------- */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toolbar .search { flex: 1; min-width: 200px; position: relative; }
+  .toolbar .search svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+  .toolbar .search .input { padding-left: 36px; }
+  form.add { display: grid; gap: 10px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row .push { margin-left: auto; }
+  .card.pending { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: linear-gradient(var(--warn-soft), var(--warn-soft)) top / 100% 4px no-repeat, var(--surface); }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 4px; overflow-wrap: anywhere; font-family: var(--mono); }
+  h3:first-child { margin-top: 0; }
+  ul.notes { list-style: none; margin: 0; padding: 0; }
+  ul.notes li { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  ul.notes li:last-child { border-bottom: 0; }
+  ul.notes li .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  ul.notes li .meta { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  ul.notes li .actions { display: flex; gap: 6px; flex: none; }
+  ul.notes li .input { font-size: 14px; }
+  .danger-zone { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+  .danger-zone p { margin: 0; color: var(--muted); font-size: 14px; }
+  @media (max-width: 560px) {
+    ul.notes li { flex-direction: column; align-items: stretch; gap: 8px; }
+    ul.notes li .actions { justify-content: flex-end; }
   }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">Open<span>Mob</span> <small>What I've learned</small></div>
-  <a href="/" id="back">← Dashboard</a>
+<header class="topbar">
+  <a class="brand" href="/" id="brandLink"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob<span class="page-name">What I've learned</span></a>
+  <nav class="topnav"><a class="btn btn-ghost" href="/" id="back">← Dashboard</a></nav>
 </header>
-<main>
-  <p class="intro">Notes your agent reads before every task: things about you, and things about your apps. Tell it "remember …" in a chat, or add a note here. Notes are yours: they work with any model you choose, and you can change or delete them any time.</p>
+<main class="page narrow">
+  <div class="page-head">
+    <h1>What I've learned</h1>
+    <p class="intro">Notes your agent reads before every task: things about you, and things about your apps. Tell it "remember …" in a chat, or add a note here. Notes are yours: they work with any model you choose, and you can change or delete them any time.</p>
+  </div>
 
-  <section class="card">
-    <h2>Add a note</h2>
+  <div class="toolbar">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input class="input" type="search" id="noteSearch" placeholder="Search notes and apps" aria-label="Search notes">
+    </div>
+    <button class="btn" type="button" id="exportNotes" title="Download every note as a JSON file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Export
+    </button>
+  </div>
+
+  <section class="card" aria-labelledby="addTitle">
+    <div class="card-head"><h2 id="addTitle">Add a note</h2></div>
     <form class="add" id="addForm">
-      <input type="text" id="addText" maxlength="300" placeholder="e.g. Use my second account in games" aria-label="Note">
+      <input class="input" type="text" id="addText" maxlength="300" placeholder="e.g. Use my second account in games" aria-label="Note">
       <div class="row">
-        <label class="toggle"><input type="checkbox" id="addIsApp"> About one app</label>
-        <input type="text" id="addApp" placeholder="App package, e.g. com.google.android.youtube" aria-label="App package" hidden>
-        <button class="primary" type="submit" style="margin-left:auto">Save</button>
+        <label class="check"><input type="checkbox" id="addIsApp"> About one app</label>
+        <input class="input" type="text" id="addApp" placeholder="App package, e.g. com.google.android.youtube" aria-label="App package" hidden style="flex:1; min-width:200px">
+        <button class="btn btn-primary push" type="submit">Save note</button>
       </div>
     </form>
-    <div class="error" id="error"></div>
+    <div class="error" id="error" role="alert"></div>
   </section>
 
-  <section class="card pending" id="pendingCard" hidden>
-    <h2>Waiting for your OK <span class="count" id="pendingCount">0</span></h2>
-    <p class="intro" style="margin-bottom:8px">Your agent suggested these. They're not used until you keep them.</p>
-    <ul id="pending"></ul>
+  <section class="card pending" id="pendingCard" hidden aria-labelledby="pendingTitle">
+    <div class="card-head"><h2 id="pendingTitle">Waiting for your OK <span class="count" id="pendingCount">0</span></h2></div>
+    <p class="card-sub">Your agent suggested these. They're not used until you keep them.</p>
+    <ul class="notes" id="pending"></ul>
   </section>
 
-  <section class="card">
-    <h2>About you <span class="count" id="userCount">0</span></h2>
-    <ul id="userNotes"></ul>
+  <section class="card" aria-labelledby="userTitle">
+    <div class="card-head"><h2 id="userTitle">About you <span class="count" id="userCount">0</span></h2></div>
+    <ul class="notes" id="userNotes"></ul>
   </section>
 
-  <section class="card">
-    <h2>About your apps <span class="count" id="appCount">0</span></h2>
+  <section class="card" aria-labelledby="appTitle">
+    <div class="card-head"><h2 id="appTitle">About your apps <span class="count" id="appCount">0</span></h2></div>
     <div id="appNotes"></div>
   </section>
 
-  <div class="row"><button class="danger" id="forgetAll" type="button" style="margin-left:auto">Forget everything</button></div>
+  <section class="card danger-zone">
+    <p>Start over: delete every note, including suggestions.</p>
+    <button class="btn btn-danger" id="forgetAll" type="button">Forget everything</button>
+  </section>
 </main>
 <script>
 // Notes are the user's own words but still user-controlled text: textContent only, never innerHTML.
@@ -134,18 +291,20 @@ function noteRow(n) {
   const actions = el("div", { className: "actions" });
   const li = el("li", {}, text, actions);
   if (n.status === "proposed") {
-    const keep = el("button", { className: "small", type: "button", textContent: "Keep" });
+    const keep = el("button", { className: "btn btn-sm btn-primary", type: "button", textContent: "Keep" });
     keep.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ status: "active" }) }));
-    const dismiss = el("button", { className: "small danger", type: "button", textContent: "Dismiss" });
+    const dismiss = el("button", { className: "btn btn-sm", type: "button", textContent: "Dismiss" });
     dismiss.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
     actions.append(keep, dismiss);
     return li;
   }
-  const edit = el("button", { className: "small", type: "button", textContent: "Edit" });
+  const edit = el("button", { className: "btn btn-sm", type: "button", textContent: "Edit" });
+  edit.setAttribute("aria-label", `Edit note: ${n.text}`);
   edit.onclick = () => {
-    const input = el("input", { type: "text", value: n.text, maxLength: 300 });
-    const save = el("button", { className: "small", type: "button", textContent: "Save" });
-    const cancel = el("button", { className: "small", type: "button", textContent: "Cancel" });
+    const input = el("input", { className: "input", type: "text", value: n.text, maxLength: 300 });
+    input.setAttribute("aria-label", "Note text");
+    const save = el("button", { className: "btn btn-sm btn-primary", type: "button", textContent: "Save" });
+    const cancel = el("button", { className: "btn btn-sm", type: "button", textContent: "Cancel" });
     save.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ text: input.value }) }));
     cancel.onclick = render;
     input.onkeydown = (e) => { if (e.key === "Enter") save.click(); if (e.key === "Escape") render(); };
@@ -153,28 +312,32 @@ function noteRow(n) {
     actions.replaceChildren(save, cancel);
     input.focus();
   };
-  const del = el("button", { className: "small danger", type: "button", textContent: "Delete" });
+  const del = el("button", { className: "btn btn-sm btn-danger", type: "button", textContent: "Delete" });
+  del.setAttribute("aria-label", `Delete note: ${n.text}`);
   del.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
   actions.append(edit, del);
   return li;
 }
 
 function render() {
-  const pending = notes.filter((n) => n.status === "proposed");
-  const user = notes.filter((n) => n.status === "active" && !n.package);
-  const apps = notes.filter((n) => n.status === "active" && n.package);
+  const q = $("noteSearch").value.trim().toLowerCase();
+  const match = (n) => !q || n.text.toLowerCase().includes(q) || (n.package || "").toLowerCase().includes(q);
+  const shown = notes.filter(match);
+  const pending = shown.filter((n) => n.status === "proposed");
+  const user = shown.filter((n) => n.status === "active" && !n.package);
+  const apps = shown.filter((n) => n.status === "active" && n.package);
   $("pendingCard").hidden = !pending.length;
   $("pendingCount").textContent = pending.length;
   $("pending").replaceChildren(...pending.map(noteRow));
   $("userCount").textContent = user.length;
   $("userNotes").replaceChildren(...(user.length ? user.map(noteRow)
-    : [el("li", { className: "empty", textContent: 'Nothing yet. Try saying "remember that I prefer dark mode" in a chat.' })]));
+    : [el("li", { className: "empty-state" }, q ? "No notes about you match." : 'Nothing yet. Try saying "remember that I prefer dark mode" in a chat.')]));
   $("appCount").textContent = apps.length;
   const byApp = {};
   for (const n of apps) (byApp[n.package] ||= []).push(n);
   $("appNotes").replaceChildren(...(apps.length ? Object.entries(byApp).flatMap(([pkg, list]) =>
-    [el("h3", { textContent: pkg }), el("ul", {}, ...list.map(noteRow))])
-    : [el("p", { className: "empty", textContent: "Nothing yet. Notes about how your apps work show up here." })]));
+    [el("h3", { textContent: pkg }), el("ul", { className: "notes" }, ...list.map(noteRow))])
+    : [el("p", { className: "empty-state", textContent: q ? "No app notes match." : "Nothing yet. Notes about how your apps work show up here." })]));
 }
 
 async function load(auto = false) {
@@ -189,6 +352,18 @@ async function change(call) {
   load();
 }
 
+// Export: every note, as the server describes it, in a JSON file the user keeps (nothing is uploaded).
+$("exportNotes").onclick = async () => {
+  try { notes = (await api("/api/memory")).notes; render(); } catch (e) { fail(e); return; }
+  const day = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), notes }, null, 2)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: `openmob-memory-${day}.json` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$("noteSearch").addEventListener("input", render);
 $("addIsApp").onchange = () => { $("addApp").hidden = !$("addIsApp").checked; if ($("addIsApp").checked) $("addApp").focus(); };
 $("addForm").onsubmit = (ev) => {
   ev.preventDefault();
@@ -206,7 +381,7 @@ $("forgetAll").onclick = () => {
   change(() => api("/api/memory?confirm=true", { method: "DELETE" }));
 };
 
-if (token) $("back").href = "/?t=" + encodeURIComponent(token);
+if (token) $("back").href = $("brandLink").href = "/?t=" + encodeURIComponent(token);
 load();
 setInterval(() => load(true), 15000);
 </script>
