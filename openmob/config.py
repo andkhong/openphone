@@ -126,6 +126,8 @@ class Config:
     jev_min_confidence: float = 0.6
     jev_risk_threshold: float = 0.5
     jev_auto_wait_seconds: float = 30.0  # max time to wait on screens Jev calls "loading"
+    # false: run without Jev even when TYPESAFE_API_KEY is set (for comparisons). OPENMOB_JEV=off does the same.
+    jev_enabled: bool = True
 
     # Phone
     adb_path: str = "adb"
@@ -180,6 +182,8 @@ def load_config(path: str | Path | None = None) -> Config:
     # Needed only for API keys that aren't scoped to a workspace.
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
+    if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
+        cfg.jev_enabled = False
     cfg.openai_api_key = os.environ.get("OPENAI_API_KEY")
     cfg.google_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     cfg.compatible_api_key = os.environ.get("OPENAI_COMPATIBLE_API_KEY")

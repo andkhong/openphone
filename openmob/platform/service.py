@@ -111,7 +111,22 @@ def public_event(entry: dict) -> dict | None:
         event["confirmation"] = bool(data.get("confirm"))
     if kind == "outcome":
         event["success"] = bool(data.get("success"))
+    if isinstance(data.get("timings"), dict):
+        event["timings"] = public_timings(data["timings"], data.get("jev"))
     return event
+
+
+# A step's time per phase as the API shows it: phase names only, no service names.
+PUBLIC_TIMINGS = {"observe_ms": "observe_ms", "jev_ms": "classifier_ms", "wait_ms": "wait_ms", "model_ms": "model_ms",
+                  "action_ms": "action_ms", "settle_ms": "settle_ms", "total_ms": "total_ms"}
+
+
+def public_timings(timings: dict, classifier: bool | None = None) -> dict:
+    out = {public: int(timings[name]) for name, public in PUBLIC_TIMINGS.items()
+           if isinstance(timings.get(name), (int, float))}
+    if classifier is not None:
+        out["classifier"] = bool(classifier)
+    return out
 
 
 def is_public_address(host: str) -> bool:

@@ -19,6 +19,7 @@ from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
 from .models import ModelRequest, ModelUnavailable, router_for
+from .timing import StepTimer
 from .tools import TOOL_SPECS, system_prompt
 
 OBS_PREFIX = "SCREEN:"
@@ -43,6 +44,7 @@ class AgentResult:
     summary: str
     steps: int
     usage: Usage = field(default_factory=Usage)
+    timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
 
 
 @dataclass
@@ -60,6 +62,7 @@ class Outcome:
     done: bool = False
     success: bool = False
     settle: float | None = None  # None means the default settle delay
+    timings: dict | None = None  # this step's time per phase in ms (set by _execute)
 
 
 @dataclass
@@ -107,8 +110,14 @@ class Agent:
         self.account_id: str | None = None  # whose notes to use (the phone's owner)
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
+        self.timer = StepTimer()  # where each step's time goes (measurement only)
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
+        if judge is not None:
+            try:  # classifier app picking happens inside the resolver; it reports its time here
+                judge.on_timing = lambda seconds: self.timer.add("jev", seconds)
+            except AttributeError:
+                pass
 
     # --- public ----------------------------------------------------------
 
@@ -132,12 +141,14 @@ class Agent:
         `memory`: on | read_only | off. `isolated`: a caller other than the phone's chat (e.g. an
         API key) that must neither see nor add to the chat's recent requests."""
         self.usage = Usage()
+        self.timer.reset()
         self.task_model = model or self.model
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
                            memory=memory if self.memory is not None else "off")
         result = self._run(state, go_home, isolated)
         result.usage = self.usage
+        result.timings = self.timer.task_totals()
         if state.used_notes:
             self.memory.mark_used(state.used_notes)
         if not isolated:
@@ -149,7 +160,7 @@ class Agent:
         self.driver.wake_unlock()
         if go_home:
             self.driver.key("HOME")
-            time.sleep(self.config.settle_delay)
+            self.timer.timed("settle", time.sleep, self.config.settle_delay)
 
         try:
             route = router_for(self.client, self.config).route(self.task_model)
@@ -171,13 +182,14 @@ class Agent:
 
             self._apply_corrections(state, messages)
             self._trim_history(messages)
-            response = route.adapter.complete(ModelRequest(
-                model=self.task_model,
-                system=system,
-                tools=TOOL_SPECS,
-                messages=messages,
-                max_tokens=route.spec.max_tokens,
-            ))
+            with self.timer.phase("model"):
+                response = route.adapter.complete(ModelRequest(
+                    model=self.task_model,
+                    system=system,
+                    tools=TOOL_SPECS,
+                    messages=messages,
+                    max_tokens=route.spec.max_tokens,
+                ))
             # Count under the model the API says served this call, which verifies the model choice.
             self.usage.add_model(response.usage, response.model or self.task_model)
             messages.append({"role": "assistant", "content": response.content})
@@ -206,7 +218,8 @@ class Agent:
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
                     outcome = self._execute(tool_use.name, tool_use.input, obs, state)
-                    self.io.event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}")
+                    self._event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}",
+                                {"timings": outcome.timings, "jev": self.judge is not None})
                     if outcome.settle is not None:
                         settle = outcome.settle
                     if outcome.done:
@@ -223,7 +236,7 @@ class Agent:
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step)
 
-            self._sleep(settle, state.cancel)
+            self.timer.timed("settle", self._sleep, settle, state.cancel)
             obs = self._observe_settled(state)
             # The new screen goes after the tool results, not inside them: Anthropic rejects images
             # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
@@ -244,6 +257,10 @@ class Agent:
     # --- observation -----------------------------------------------------
 
     def _observe(self, state: _TaskState) -> Observation:
+        with self.timer.phase("observe"):
+            return self._observe_untimed(state)
+
+    def _observe_untimed(self, state: _TaskState) -> Observation:
         package = self.driver.current_app()
         shot = self.driver.screenshot()
         elements: list[UIElement] = []
@@ -259,7 +276,7 @@ class Agent:
         obs = Observation(shot, elements, package)
         if self.judge:
             try:
-                obs.assessment = self.judge.assess_screen(state.task, self._describe(obs))
+                obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
             except JevError as exc:
                 self.io.event("error", str(exc))
         return obs
@@ -271,7 +288,7 @@ class Agent:
             if state.cancel.is_set():
                 break
             self.io.event("status", "Loading screen; waiting…")
-            state.cancel.wait(LOADING_POLL_SECONDS)
+            self.timer.timed("wait", state.cancel.wait, LOADING_POLL_SECONDS)
             state.auto_waited += LOADING_POLL_SECONDS
             obs = self._observe(state)
         return obs
@@ -405,9 +422,11 @@ class Agent:
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         started = time.monotonic()
         try:
-            outcome = self._dispatch(name, args, obs, state)
+            with self.timer.phase("action"):
+                outcome = self._dispatch(name, args, obs, state)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
+        outcome.timings = self.timer.take()
         state.step_index += 1
         self._record_step(state.step_index, name, args, obs, outcome, time.monotonic() - started)
         return outcome
@@ -445,6 +464,7 @@ class Agent:
                 "norm_xy": norm or None, "package": obs.package,
                 "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
                 "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
+                "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
             })
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
@@ -535,14 +555,14 @@ class Agent:
 
         if name == "wait":
             seconds = min(max(float(args["seconds"]), 0.5), 30.0)
-            self._sleep(seconds, state.cancel)
+            self.timer.timed("settle", self._sleep, seconds, state.cancel)
             return Outcome(f"Waited {seconds:g}s.", settle=0)
 
         if name == "remember":
             return self._remember(args, obs, state)
 
         if name == "ask_user":
-            answer = self.io.ask(args["question"]).strip()
+            answer = self.timer.timed("wait", self.io.ask, args["question"]).strip()
             state.approved = is_yes(answer)
             return Outcome(f"User answered: {answer or '(no answer)'}", settle=0)
 
@@ -566,7 +586,7 @@ class Agent:
         requested = any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower()) for k in hits)
         if self.judge:
             try:
-                risk, asked = self.judge.assess_tap(state.task, description.strip(), self._describe(obs))
+                risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, description.strip(), self._describe(obs))
                 risky = risky or risk >= self.config.jev_risk_threshold
                 # The classifier only ever adds caution. It reads on-screen text, so a screen could
                 # talk it into "the user asked for this"; it may veto "requested", never grant it.
@@ -581,7 +601,7 @@ class Agent:
         # A separate channel when the IO has one, so callers can tell a risky-action
         # confirmation apart from an ordinary question.
         confirm = getattr(self.io, "confirm", self.io.ask)
-        answer = confirm(f"I'm about to tap {description.strip()!r}. Should I go ahead?")
+        answer = self.timer.timed("wait", confirm, f"I'm about to tap {description.strip()!r}. Should I go ahead?")
         if is_yes(answer):
             return None
         return Outcome(

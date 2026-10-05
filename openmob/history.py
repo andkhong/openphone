@@ -81,8 +81,19 @@ CREATE TABLE IF NOT EXISTS steps (
     anchor TEXT,                      -- JSON {text, desc, resource_id, class, bounds, index} for tap_element
     outcome TEXT,
     is_error INTEGER NOT NULL,
-    latency_ms INTEGER,
+    latency_ms INTEGER,               -- the tool call itself: risk check, approval/answer waits, phone action (no settle, no model)
     source TEXT NOT NULL DEFAULT 'agent',  -- agent | user_demo | macro | routine
+    -- Where the step's time went, in ms (see agent/timing.py; NULL on rows from before timings).
+    -- A step runs from the end of the previous step's action to the end of its own.
+    observe_ms INTEGER,
+    jev_ms INTEGER,                   -- the screen classifier (0 when it was off)
+    wait_ms INTEGER,                  -- human / loading-screen time, kept out of agent time
+    model_ms INTEGER,
+    action_ms INTEGER,
+    settle_ms INTEGER,
+    total_ms INTEGER,
+    jev INTEGER,                      -- 1 / 0: whether the classifier was on for this step
+    model TEXT,                       -- the model that decided this step
     PRIMARY KEY (turn_id, idx)
 );
 CREATE INDEX IF NOT EXISTS steps_by_chat ON steps (chat_id);
@@ -101,7 +112,10 @@ CREATE INDEX IF NOT EXISTS model_runs_by_model ON model_runs (model, account_id)
 """
 
 # Columns added after the first release, for databases created before them.
-MIGRATIONS = [("turns", "package", "TEXT")]
+TIMING_COLUMNS = ("observe_ms", "jev_ms", "wait_ms", "model_ms", "action_ms", "settle_ms", "total_ms")
+MIGRATIONS = [("turns", "package", "TEXT")] + [
+    ("steps", column, "INTEGER") for column in TIMING_COLUMNS + ("jev",)
+] + [("steps", "model", "TEXT")]
 
 
 class History:
@@ -208,13 +222,16 @@ class History:
         with self._lock:
             self._db.execute(
                 """INSERT OR REPLACE INTO steps (turn_id, idx, chat_id, account_id, device_id, t, tool, args, norm_xy,
-                   package, screen_w, screen_h, anchor, outcome, is_error, latency_ms, source)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   package, screen_w, screen_h, anchor, outcome, is_error, latency_ms, source,
+                   observe_ms, jev_ms, wait_ms, model_ms, action_ms, settle_ms, total_ms, jev, model)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (turn_id, step["idx"], chat_id, account_id or LOCAL_ACCOUNT, device_id, step.get("t", time.time()),
                  step["tool"], json.dumps(step.get("args") or {}, default=str), js(step.get("norm_xy")),
                  step.get("package"), step.get("screen_w"), step.get("screen_h"), js(step.get("anchor")),
                  step.get("outcome"), 1 if step.get("is_error") else 0, step.get("latency_ms"),
-                 step.get("source", "agent")),
+                 step.get("source", "agent"),
+                 *(step.get(c) for c in TIMING_COLUMNS),
+                 None if step.get("jev") is None else int(bool(step["jev"])), step.get("model")),
             )
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
@@ -264,8 +281,26 @@ class History:
             for key in ("args", "norm_xy", "anchor"):
                 step[key] = json.loads(step[key]) if step[key] else None
             step["is_error"] = bool(step["is_error"])
+            step["jev"] = None if step["jev"] is None else bool(step["jev"])
             out.append(step)
         return out
+
+    def step_timings(self, since: float = 0.0, chat_id: str | None = None, model: str | None = None) -> list[dict]:
+        """Every account's agent steps that have timings (for `openmob timings`): the timing
+        columns plus turn_id, jev and model (the step's, else its turn's)."""
+        where, args = ["s.total_ms IS NOT NULL", "s.t >= ?", "s.source = 'agent'"], [since]
+        if chat_id:
+            where.append("s.chat_id = ?")
+            args.append(chat_id)
+        if model:
+            where.append("COALESCE(s.model, t.model) = ?")
+            args.append(model)
+        rows = self._q(
+            f"""SELECT s.turn_id, s.idx, s.jev, COALESCE(s.model, t.model) AS model, {", ".join("s." + c for c in TIMING_COLUMNS)}
+                FROM steps s LEFT JOIN turns t ON t.id = s.turn_id WHERE {" AND ".join(where)} ORDER BY s.t""",
+            tuple(args),
+        )
+        return [dict(r) for r in rows]
 
     def model_stats(self, account_id: str | None = None, since: float = 0.0) -> list[dict]:
         """Success rate per model over finished tasks (stopped tasks don't count): one account's,

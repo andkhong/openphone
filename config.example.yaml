@@ -45,6 +45,7 @@ jev_model: jev-latest
 jev_min_confidence: 0.6
 jev_risk_threshold: 0.5            # ask before taps Jev rates at least this risky
 jev_auto_wait_seconds: 30          # longest time to wait on screens Jev calls "loading"
+jev_enabled: true                  # false (or OPENMOB_JEV=off) runs without Jev even with TYPESAFE_API_KEY set
 
 # Ask before tapping anything that matches these words.
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,
