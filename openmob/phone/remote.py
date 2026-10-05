@@ -45,10 +45,18 @@ class PhoneLink:
             asyncio.run_coroutine_threadsafe(self._notify(kind, message), self.loop)
 
     async def _notify(self, kind: str, message: str) -> None:
+        await self._post({"type": "event", "kind": kind, "message": message})
+
+    def post(self, message: dict) -> None:
+        """Fire-and-forget message to the phone (an approval_request, a controller event)."""
+        if not self.closed:
+            asyncio.run_coroutine_threadsafe(self._post(message), self.loop)
+
+    async def _post(self, message: dict) -> None:
         try:
-            await self.send({"type": "event", "kind": kind, "message": message})
+            await self.send(message)
         except Exception:
-            pass  # events are best-effort; the phone may have just disconnected
+            pass  # best-effort; the phone may have just disconnected (pending approvals are re-sent on reconnect)
 
     # --- event loop side --------------------------------------------------
 

@@ -606,6 +606,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         session = await run_in_threadpool(manager.attach_remote, hello.get("device") or {}, link, account_id)
         await link.send({"type": "welcome", "session": session.info.id})
         session.coordinator.event("status", f"{session.info.model} connected over the OpenMob app protocol.")
+        await run_in_threadpool(manager.resume, session)  # pending approvals, "who is using it"
         try:
             while True:
                 raw = await ws.receive()
@@ -619,6 +620,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                     link.on_video(message)
                 elif kind == "video_state":
                     session.driver.video_available = bool(message.get("available"))
+                elif kind == "approval":  # the owner approved or denied a risky action, with screen lock
+                    await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
+                                            message.get("approved") is True)
                 elif kind == "command" and str(message.get("text", "")).strip():
                     await run_in_threadpool(session.coordinator.submit, message["text"], "phone")
         except (WebSocketDisconnect, ValueError):

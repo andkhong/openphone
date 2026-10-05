@@ -349,8 +349,10 @@ class AccountStore:
 
     # --- developer API keys --------------------------------------------------
 
-    def create_api_key(self, account_id: str, name: str, scopes=DEFAULT_SCOPES) -> tuple[str, str]:
-        """Returns (key id, key). The key is shown once; only its hash is kept."""
+    def create_api_key(self, account_id: str, name: str, scopes=DEFAULT_SCOPES,
+                       confirm_approve: bool = False) -> tuple[str, str]:
+        """Returns (key id, key). The key is shown once; only its hash is kept.
+        `confirm_approve`: the key may approve risky actions itself (else only the owner can)."""
         scopes = sorted(set(scopes))
         unknown = [sc for sc in scopes if sc not in SCOPES]
         if unknown or not scopes:
@@ -365,6 +367,7 @@ class AccountStore:
             self._data["api_keys"][key_id] = {
                 "account_id": account_id, "name": name, "scopes": scopes, "hash": _hash_token(key),
                 "created": time.time(), "last_used": None, "revoked": False, "disabled": False,
+                "confirm_approve": bool(confirm_approve),
             }
             self._save()
         return key_id, key
@@ -391,12 +394,14 @@ class AccountStore:
             if not record["last_used"] or now - record["last_used"] > LAST_USED_EVERY:
                 record["last_used"] = now
                 self._save()
-            return {"id": key_id, "account_id": record["account_id"], "scopes": list(record["scopes"]), "name": record["name"]}
+            return {"id": key_id, "account_id": record["account_id"], "scopes": list(record["scopes"]),
+                    "name": record["name"], "confirm_approve": bool(record.get("confirm_approve"))}
 
     @staticmethod
     def _public_key(key_id: str, k: dict) -> dict:
         return {"id": key_id, "prefix": f"{KEY_PREFIX}{key_id}", "name": k["name"], "scopes": list(k["scopes"]),
-                "created": k["created"], "last_used": k["last_used"], "disabled": bool(k.get("disabled"))}
+                "created": k["created"], "last_used": k["last_used"], "disabled": bool(k.get("disabled")),
+                "confirm_approve": bool(k.get("confirm_approve"))}
 
     def list_api_keys(self, account_id: str) -> list[dict]:
         """This account's live keys (never the hash)."""
@@ -427,10 +432,21 @@ class AccountStore:
             k = self._data["api_keys"].get(key_id)
             if not k or k["account_id"] != account_id or k["revoked"]:
                 return None
-            new = self.create_api_key(account_id, k["name"], k["scopes"])
+            new = self.create_api_key(account_id, k["name"], k["scopes"], k.get("confirm_approve", False))
             self._data["api_keys"][key_id]["revoked"] = True
             self._save()
             return new
+
+    def set_key_confirm_approve(self, account_id: str, key_id: str, on: bool) -> bool:
+        """Let one of the owner's keys approve risky actions itself (or take that back)."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["account_id"] != account_id or k["revoked"]:
+                return False
+            k["confirm_approve"] = bool(on)
+            self._save()
+            return True
 
     # --- per-account developer settings ------------------------------------------
 

@@ -54,6 +54,12 @@ class AnswerIn(BaseModel):
 class KeyIn(BaseModel):
     name: str = ""
     scopes: list[str] = Field(default_factory=lambda: ["devices:read", "tasks:run", "tasks:read"])
+    # Off by default: risky actions are approved by the owner (on the phone), not by the caller.
+    confirm_approve: bool = False
+
+
+class KeyPatch(BaseModel):
+    confirm_approve: bool
 
 
 class SettingsIn(BaseModel):
@@ -202,12 +208,21 @@ class DeveloperApi:
             if self.store.api_key_count(account_id) >= MAX_KEYS_PER_ACCOUNT:
                 raise HTTPException(400, f"You can have at most {MAX_KEYS_PER_ACCOUNT} keys. Revoke one first.")
             try:
-                key_id, key = self.store.create_api_key(account_id, body.name, body.scopes)
+                key_id, key = self.store.create_api_key(account_id, body.name, body.scopes, body.confirm_approve)
             except AuthError as exc:
                 raise HTTPException(400, str(exc)) from None
             self.ledger.audit("key.create", account_id, key_id, outcome=",".join(sorted(set(body.scopes))))
+            if body.confirm_approve:
+                self.ledger.audit("key.confirm_approve", account_id, key_id, outcome="on")
             created = next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
             return {**created, "key": key}  # the only time the full key is ever shown
+
+        @r.patch("/keys/{key_id}")
+        def update_key(key_id: str, body: KeyPatch, account_id: str = Depends(owner)) -> dict:
+            if not self.store.set_key_confirm_approve(account_id, key_id, body.confirm_approve):
+                raise HTTPException(404, "Unknown key.")
+            self.ledger.audit("key.confirm_approve", account_id, key_id, outcome="on" if body.confirm_approve else "off")
+            return next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
 
         @r.post("/keys/{key_id}/revoke")
         def revoke_key(key_id: str, account_id: str = Depends(owner)) -> dict:

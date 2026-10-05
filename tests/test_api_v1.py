@@ -255,9 +255,40 @@ def test_risky_tap_becomes_needs_confirmation(api):
     assert next(t for t in recent if t["id"] == task["id"])["status"] == "needs_confirmation"
     r = api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"answer": "yes"})
     assert r.status_code == 400 and "approve" in r.json()["detail"]
-    assert api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True}).json() == {"ok": True}
+    # The key can't approve its own risky action: the owner is asked on the phone instead.
+    r = api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True})
+    assert r.status_code == 403 and r.json()["code"] == "confirmation_requires_owner"
+    assert api.bob.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True}).status_code == 404
+    assert wait_for(lambda: api.alice.phone.approval_requests)
+    request = api.alice.phone.approval_requests[-1]
+    assert request["task_id"] == task["id"] and request["requester"] == "test" and "Buy now" in request["question"]
+    assert not any(a[0] == "tap" for a in api.alice.driver.actions)
+    api.alice.phone.send({"type": "approval", "id": request["id"], "approved": True})
     wait_status(api.alice, task["id"], "succeeded")
     assert any(a[0] == "tap" for a in api.alice.driver.actions)
+
+
+def test_owner_can_let_a_key_approve_risky_actions(api):
+    keys = api.alice.console.get("/api/developer/keys").json()
+    assert next(k for k in keys if k["id"] == api.alice.key_id)["confirm_approve"] is False
+    assert api.bob.console.patch(f"/api/developer/keys/{api.alice.key_id}", json={"confirm_approve": True}).status_code == 404
+    r = api.alice.console.patch(f"/api/developer/keys/{api.alice.key_id}", json={"confirm_approve": True})
+    assert r.json()["confirm_approve"] is True
+    task = run_task(api.alice, "check the cart")
+    wait_status(api.alice, task["id"], "needs_confirmation")
+    assert api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True}).json() == {"ok": True}
+    wait_status(api.alice, task["id"], "succeeded")
+    assert not api.alice.phone.approval_requests  # nobody needed to be asked on the phone
+    created = api.alice.console.post("/api/developer/keys", json={"name": "ci", "confirm_approve": True}).json()
+    assert created["confirm_approve"] is True
+
+
+def test_phone_shows_who_is_using_it(api):
+    task = run_task(api.alice, "open maps")
+    wait_status(api.alice, task["id"], "succeeded")
+    assert wait_for(lambda: ("controller", "") in api.alice.phone.events)
+    controller = [m for k, m in api.alice.phone.events if k == "controller"]
+    assert controller == ["test", ""]
 
 
 def test_declined_confirmation_does_not_tap(api):

@@ -49,6 +49,8 @@ PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "e
                 "memory": "memory"}
 OFFLINE = "That phone is offline. Open the OpenMob app on it."
 NOT_WAITING = "This task isn't waiting for an answer."
+OWNER_APPROVES = ("Risky actions are approved by the phone's owner, who has been asked on their phone. "
+                  'Check the task again later, or send {"approve": false} to decline.')
 
 
 def clean_text(message: str | None) -> str | None:
@@ -116,11 +118,13 @@ class V1Service:
         self.store = store
         self.ledger = ledger
         self.webhook_allow_private = webhook_allow_private  # tests deliver to 127.0.0.1
-        # task id → {account_id, key_id, session_id, device_id, tier, credits_per_step}
+        # task id → {account_id, key_id, session_id, device_id, tier, credits_per_step, requester, confirm_approve}
         self.registry: OrderedDict[str, dict] = OrderedDict()
         self.active: dict[str, set[str]] = {}  # key id → its unfinished task ids
         self.hits: dict[str, deque] = {}  # key id → request times in the last minute
         self._lock = threading.Lock()
+        manager.task_requesters.append(self.requester)  # the phone shows who started a task
+        manager.approval_listeners.append(self._on_phone_approval)
 
     # --- auth ---------------------------------------------------------------------------
 
@@ -279,6 +283,22 @@ class V1Service:
                 pass
         self.ledger.audit("webhook." + outcome, account_id, task_id=task["id"], outcome=event)
 
+    def requester(self, task_id: str) -> dict | None:
+        """Who started an API task, for the phone: {"name", "human"} (human: only the owner may
+        approve its risky actions). None for tasks the API didn't start."""
+        with self._lock:
+            meta = self.registry.get(task_id)
+        if meta is None:
+            return None
+        return {"name": meta["requester"], "human": not meta["confirm_approve"]}
+
+    def _on_phone_approval(self, task_id: str, approved: bool) -> None:
+        with self._lock:
+            meta = self.registry.get(task_id)
+        if meta:
+            self.ledger.audit("task.phone_approval", meta["account_id"], meta["key_id"], meta["device_id"], task_id,
+                              outcome="approved" if approved else "denied")
+
     def webhook_url_ok(self, url: str) -> bool:
         return webhook_url_ok(url, self.webhook_allow_private)
 
@@ -341,7 +361,8 @@ class V1Service:
         tier_cfg = self.cfg.api_tiers[tier]
         meta = {"account_id": account_id, "key_id": key_id, "session_id": session.info.id,
                 "device_id": session.info.id.removeprefix("app-"), "tier": tier,
-                "credits_per_step": int(tier_cfg.get("credits_per_step", 1))}
+                "credits_per_step": int(tier_cfg.get("credits_per_step", 1)),
+                "requester": p.name, "confirm_approve": p.confirm_approve}
         with self._lock:
             self.registry[task_id] = meta
             while len(self.registry) > KEEP_REGISTRY:
@@ -377,6 +398,10 @@ class V1Service:
         if info["status"] == "needs_confirmation":
             if approve is None:
                 raise BadRequest('This task needs a confirmation: send {"approve": true} or {"approve": false}.')
+            if approve and not p.confirm_approve:
+                # The calling model may have read the very screen text that asks for this purchase.
+                self.ledger.audit("task.approve_refused", p.account_id, p.id, meta["device_id"], task_id)
+                raise Forbidden(OWNER_APPROVES, code="confirmation_requires_owner")
             text = "yes" if approve else "no"
         else:
             text = (answer or "").strip()

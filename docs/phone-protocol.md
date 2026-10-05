@@ -396,3 +396,41 @@ Open the dashboard URL (`…/?t=<token>`) in a browser. A connected phone appear
 - [ ] `type_text` inserts at the cursor, handles non-ASCII, and refuses password fields.
 - [ ] Close code 4401 stops retries; other closes back off from 1 s to 30 s.
 - [ ] The kill switch disconnects immediately and stays disconnected.
+
+---
+
+## 8. Approvals and the controller line (server behaviour)
+
+This section describes what the server sends and expects. The phone-side UI is in §3.3.
+
+### 8.1 Risky actions are approved on the phone
+
+When a task is about to do something risky (buy, send, delete…) and the confirmation must come from
+the human, the server sends:
+```json
+{"type": "approval_request", "id": "5d0c…", "task_id": "9c1e0b7a2f44",
+ "question": "I'm about to tap 'Buy now'. Should I go ahead?", "requester": "CI bot"}
+```
+`requester` is the API key's name when an API or MCP client started the task, or `"You"` for the
+owner's own requests (dashboard, phone). The phone confirms with the screen lock and replies:
+```json
+{"type": "approval", "id": "5d0c…", "approved": true}
+```
+| Rule | Server behaviour |
+|---|---|
+| `approved: true` | The task gets "yes" and goes ahead. Anything but the JSON value `true` counts as denied. |
+| `approved: false` | The task gets "no"; the agent doesn't do it. |
+| Unknown id, or the task is no longer waiting | Ignored. The confirmation may have been answered elsewhere (dashboard), timed out, or the task ended. |
+| No reply within **2 minutes** | Treated as denied. The phone sends nothing when its prompt expires. |
+| Phone reconnects while the task still waits | The same `approval_request` (same `id`) is sent again after `welcome`. The phone ignores ids it already answered. |
+
+API keys can't approve risky actions themselves (`POST /v1/tasks/{id}/answer` with `approve: true`
+returns 403 `confirmation_requires_owner`) unless the owner turned on `confirm_approve` for that key.
+For such keys no `approval_request` is sent.
+
+### 8.2 Who is using the phone
+
+When a task started by an API or MCP client begins running, the server sends
+`{"type": "event", "kind": "controller", "message": "<who>"}` (the key's name), and
+`{"type": "event", "kind": "controller", "message": ""}` when it ends. After a reconnect, the server
+re-sends the current controller event if such a task is still running.

@@ -32,8 +32,10 @@ class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
     def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False,
-                 video=False):
+                 video=False, approve=None):
         self.url = f"{url}/phone/ws?t={token}"
+        self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
+        self.approval_requests = []  # every approval_request received
         self.key = key
         self.platform = platform
         self.binary = binary  # answer binary screenshot requests like the current app (else: like an old one)
@@ -79,6 +81,10 @@ class FakePhone:
                         self.welcome.set()
                     elif msg["type"] == "event":
                         self.events.append((msg["kind"], msg["message"]))
+                    elif msg["type"] == "approval_request":
+                        self.approval_requests.append(msg)
+                        if self.approve is not None:
+                            await ws.send(json.dumps({"type": "approval", "id": msg["id"], "approved": self.approve}))
                     elif msg["type"] == "call":
                         self.calls.append((msg["method"], msg["params"]))
                         if self.video and msg["method"].startswith("stream_"):
@@ -324,4 +330,88 @@ def test_polling_route_sends_newer_preview_frames(server):
     again = httpx.get(f"{base}/api/devices/app-xyz/screen.jpg?t={TOKEN}&after={taken}")
     assert float(again.headers["x-frame-time"]) > float(taken)  # a new frame, not the one already shown
     assert screenshot_params(phone) == [{"max_side": 720, "quality": 55, "binary": True}] * 2
+    phone.disconnect()
+
+
+# --- approvals on the phone ------------------------------------------------------------------
+
+@pytest.fixture
+def risky(tmp_path):
+    """A token-mode server whose agent always wants to tap "Buy now", then finishes."""
+    def build_agent(cfg, io, driver, label_cache):
+        script = [[tool_use("tap", "t", x=10, y=10, target="Buy now")],
+                  [tool_use("done", "d", summary="Checked out.", success=True)]] * 5
+        return Agent(ScriptedClient(script), driver, AppResolver(driver, label_cache=tmp_path / "l.json"),
+                     cfg, io, use_ocr=False)
+
+    manager = DeviceManager(Config(settle_delay=0, launch_settle_delay=0), build_agent, Speaker(enabled=False))
+    port = free_port()
+    serve_in_background(create_app(manager, token=TOKEN), "127.0.0.1", port)
+    assert wait_for(lambda: _listening(port))
+    return f"ws://127.0.0.1:{port}", manager
+
+
+def _listening(port):
+    try:
+        socket.create_connection(("127.0.0.1", port), 0.2).close()
+        return True
+    except OSError:
+        return False
+
+
+def _last_status(manager):
+    infos = list(manager.get("app-xyz").coordinator.task_info.values())
+    return infos[-1]["status"] if infos else None
+
+
+def test_phone_approves_a_risky_tap_with_screen_lock(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver, approve=True)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    (request,) = phone.approval_requests
+    assert request["requester"] == "You" and "Buy now" in request["question"] and request["task_id"]
+    assert any(a[0] == "tap" for a in driver.actions)
+    phone.disconnect()
+
+
+def test_phone_denial_means_no_tap(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver, approve=False)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) in ("succeeded", "failed"))
+    assert phone.approval_requests and not any(a[0] == "tap" for a in driver.actions)
+    phone.disconnect()
+
+
+def test_unknown_or_stale_approvals_are_ignored(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver)  # doesn't answer by itself
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.send({"type": "approval", "id": "not-a-real-id", "approved": True})
+    time.sleep(0.3)
+    assert _last_status(manager) == "needs_confirmation" and not any(a[0] == "tap" for a in driver.actions)
+    request = phone.approval_requests[0]
+    phone.send({"type": "approval", "id": request["id"], "approved": True})
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    phone.send({"type": "approval", "id": request["id"], "approved": True})  # answered already: ignored
+    phone.disconnect()
+
+
+def test_unanswered_approval_times_out_as_no(risky):
+    url, manager = risky
+    manager.approval_timeout = 0.3
+    driver = FakeDriver()
+    phone = FakePhone(url, driver)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) in ("succeeded", "failed"))
+    assert phone.approval_requests and not any(a[0] == "tap" for a in driver.actions)
     phone.disconnect()
