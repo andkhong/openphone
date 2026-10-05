@@ -17,7 +17,7 @@
   .spacer { flex: 1; }
   .topbar .select { width: auto; min-height: 38px; font-size: 14px; }
   /* The phone picker sits above the phone panel and matches the screen panel's width. */
-  .device-slot { flex: none; width: 308px; }
+  .device-slot { flex: none; width: auto; max-width: 280px; }
   .device-slot .select { width: 100%; }
   .nav-label { display: inline; }
   .menu { position: relative; }
@@ -35,6 +35,10 @@
   .app { flex: 1; display: flex; min-height: 0; }
   .main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
   .layout { flex: 1; display: flex; min-height: 0; position: relative; }
+  /* No box around the top of the chat: the top bar floats on the chat's own background. */
+  .main > .topbar { background: transparent; border-bottom: 0; }
+  .tip.tip-right:hover::after, .tip.tip-right:focus-visible::after { left: auto; right: 0; }
+  .panel-head { min-height: 40px; margin-top: -2px; }
   .side-head { display: flex; align-items: center; gap: 2px; min-height: 40px; margin: -2px 0 4px 6px; }
   .side-head .brand { font-size: 22px; }
   /* Tooltips (dark chip with the shortcut), like Claude's "Show sidebar ⌘B". */
@@ -235,11 +239,11 @@
   .panel small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   .panel small:empty { display: none; }
 
-  .scrim { position: fixed; inset: 56px 0 0 0; background: var(--overlay); z-index: 14; }
+  .scrim { position: fixed; inset: 0; background: var(--overlay); z-index: 45; }
   @media (max-width: 1100px) { .device-slot { width: auto; } .device-slot .select { max-width: 30vw; } }
   @media (max-width: 900px) {
     .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(300px, 86vw); }
-    .panel { position: fixed; right: 0; top: 56px; bottom: 0; z-index: 15; box-shadow: var(--shadow-lg); width: min(340px, 92vw); }
+    .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(340px, 92vw); }
     .nav-label { display: none; }
   }
   @media (max-width: 560px) {
@@ -312,10 +316,10 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>
     <span class="nav-label">What I've learned</span><span class="count warn" id="memoryNavBadge" hidden></span>
   </a>
-  <button class="btn btn-ghost" id="panelToggle" title="Show or hide the phone screen" aria-label="Phone screen" aria-controls="panel" aria-expanded="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg><span class="label nav-label">Screen</span>
-  </button>
   <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
+  <button class="btn btn-ghost icon-btn tip tip-right" id="panelToggle" type="button" data-tip="Show screen" data-kbd="⌘\" aria-label="Show phone screen" aria-controls="panel" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>
+  </button>
 </header>
 
 <div class="layout">
@@ -360,8 +364,10 @@
     </div>
   </section>
 
+</div>
+</div>
   <aside class="panel" id="panel" aria-label="Phone screen">
-    <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Off</span></div>
+    <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
     <div class="phone">
       <div class="phone-screen blank" id="phoneScreen">
         <img id="screen" alt="Live view of your phone's screen">
@@ -378,8 +384,6 @@
       <small id="sessionTokens"></small>
     </div>
   </aside>
-</div>
-</div>
 </div>
 
 <script>
@@ -1307,17 +1311,28 @@ try {
 } catch {}
 const applyPanel = () => {
   $("panel").classList.toggle("hidden", panelHidden);
-  $("panelToggle").setAttribute("aria-expanded", String(!panelHidden));
+  $("panelHide").setAttribute("aria-expanded", String(!panelHidden));
+  $("panelToggle").hidden = !panelHidden;  // stowed: only this button remains, top right
   applyScrim();
 };
 applySidebar();
 applyPanel();
-$("panelToggle").onclick = () => {
+const togglePanel = () => {
+  const wasHidden = panelHidden;
   panelHidden = !panelHidden;
   if (narrow() && !panelHidden) { sidebarHidden = true; applySidebar(); }
   applyPanel();
   try { if (!narrow()) localStorage.setItem("openmob.panel", panelHidden ? "hidden" : "shown"); } catch {}
+  (wasHidden ? $("panelHide") : $("panelToggle")).focus();  // keep the keyboard on the visible toggle
 };
+$("panelToggle").onclick = togglePanel;
+$("panelHide").onclick = togglePanel;
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === "\\") {
+    e.preventDefault();
+    togglePanel();
+  }
+});
 $("scrim").onclick = () => { sidebarHidden = panelHidden = true; applySidebar(); applyPanel(); };
 const speakLabel = () => { $("speakToggle").querySelector(".lbl").textContent = `Speak replies: ${speak ? "on" : "off"}`; };
 speakLabel();
