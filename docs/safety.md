@@ -19,6 +19,12 @@ that would act ("On Pixel 9: …"), and the owner confirms with that phone's scr
 answer wins and the other phones' prompts are dismissed. If nobody answers within about 2 minutes,
 the answer is no. Your webhook, if you have one, gets `task.needs_confirmation`.
 
+**Only that screen-lock prompt can approve.** Typing or saying "yes" (in the OpenMob app's chat, by
+voice, or in the dashboard) never approves a risky action; "no" or "stop" still declines or stops
+it. And no task may operate the OpenMob app itself: if it's on screen, the agent goes Home first,
+and a task that ends up in it stops. So an agent that read malicious screen text can't open the app
+and approve its own purchase.
+
 A key can't approve on its own:
 
 ```sh
@@ -88,8 +94,11 @@ approval when it's on.
 - **Screenshots are never stored.** `GET /v1/devices/{device_id}/screenshot` and `get_screenshot`
   send the image straight from the phone to you with `Cache-Control: no-store`. They need the
   `screen:read` scope, which is never a default, and each one is recorded in your audit log.
-- **OpenMob never unlocks a secure lock screen.** It wakes the screen and dismisses a swipe lock,
-  but never enters a PIN, pattern, password or fingerprint.
+- **OpenMob never unlocks a secure lock screen.** Before a task (or a multi-phone step) it wakes a
+  screen that's off and swipes away a swipe-only lock screen, then the task runs. A PIN, pattern,
+  password or biometric lock is left alone: the task is refused with `409 phone_locked` (a step
+  waits for the owner to unlock it), and OpenMob never enters a PIN, pattern, password or
+  fingerprint.
 
 ## Untrusted content
 
@@ -100,9 +109,11 @@ your own code or agent. Over MCP every task result carries `untrusted_content: t
 
 ## Everyone stays in their own account
 
-A key reaches only its own account's phones, tasks and notes. Anything else answers `404`, exactly
-like an id that doesn't exist, so other accounts' phones and tasks can't even be confirmed to
-exist.
+A key reaches only its own account's phones and notes, and only the tasks and multi-phone runs
+**it** started: another key's tasks, even on the same account, answer `404` exactly like an id that
+doesn't exist (getting, listing, events, answering, cancelling, and `GET /v1/history`). Other
+accounts' phones and tasks can't even be confirmed to exist. The account owner's dashboard and
+developer console still show every key's work. Rotating a key keeps it the same key, with its tasks.
 
 ## The owner stays in control
 
@@ -124,8 +135,20 @@ never its text.
 
 ## Data and privacy
 
-- The text of your tasks and their outcomes is saved in your chat history (visible in the
-  dashboard, and through `GET /v1/history`) for the server's retention period.
+What's kept, where, and for how long (`history_retention_days`, **30 days** by default; `0` keeps
+everything forever; one job deletes all of it every 6 hours):
+
+| What | Where | Kept |
+|---|---|---|
+| Task instructions, outcome summaries, events and step records | Chat history (`history.sqlite`), shown in the dashboard and, for a key's own tasks, `GET /v1/history` | Until the chat hasn't been used for the retention period |
+| Multi-phone run plans (instructions) and step results | `orchestrations` in the ledger | The words are blanked after the retention period; statuses, reasons and timing stay |
+| Webhook bodies (a snapshot of the task or run) | The webhook outbox in the ledger | Delivered or dead deliveries: the retention period. Pending ones until delivered or given up (about an hour) |
+| Idempotency replays (the first response) | The ledger | 24 hours |
+| Live task records | Server memory | Until they age out (200 per phone) or the server restarts |
+| Billing totals: task id, key, phone, tier, steps, credits, status, an instruction **hash** | `api_tasks` in the ledger | Kept (no text) |
+| Audit log (actions, with instruction **hashes**) | The ledger | Kept (no text) |
+| Memory notes | `memory.sqlite` | Until you delete them (they're your saved knowledge, not task logs) |
+
 - Screenshots are never stored.
 - To carry out a task, the phone's screen content is processed by the AI providers that power
   OpenMob's tiers. The API itself never names them: you choose a tier, not a model.

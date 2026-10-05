@@ -54,7 +54,7 @@ data: {"id": 8, "time": 1791219561.85, "type": "outcome", "message": "Opened You
 
 event: done
 data: {"id": "bce01b5f5406", "device_id": "app-3f2a9c", "status": "succeeded", "tier": "fast", "steps": 4,
-       "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."}, "credits": 4, …}
+       "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi.", "reason": null}, "credits": 4, …}
 ```
 
 This task took 4 steps at the `fast` tier (1 credit per step), so it cost 4 credits. It also

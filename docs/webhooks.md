@@ -23,7 +23,8 @@ In the developer console, open **Webhooks**, enter your URL and click **Save**. 
 public `https://` address (up to 500 characters). Saving shows the **signing secret**
 (`whsec_…`) **once**: store it with your receiver's configuration.
 
-- Saving a URL again, even the same one, makes a new signing secret.
+- Saving a URL again, even the same one, makes a new signing secret. The **previous** secret keeps
+  signing for **24 hours**, so you can switch your receiver over without dropping events (see below).
 - **Remove** stops all deliveries, including retries still pending.
 - One webhook per account. It receives events for tasks started by any of the account's keys,
   over REST or MCP.
@@ -37,9 +38,11 @@ public `https://` address (up to 500 characters). Saving shows the **signing sec
 | `task.needs_confirmation` | A task wants approval for a risky action (`needs_confirmation`) |
 | `orchestration.finished` | A [multi-phone run](api.md#orchestrations) ended; the body has `"orchestration": {…}` instead of `"task"` |
 
-The body is `{"type", "created", "task"}`. `created` is when the event happened, and `task` is the
+The body is `{"type", "created", "task"}`, or `{"type", "created", "orchestration"}` for
+`orchestration.finished`. `created` is when the event happened, and `task` is the
 [task object](api.md#the-task-object) as it was at that moment, the same shape as
-`GET /v1/tasks/{task_id}`.
+`GET /v1/tasks/{task_id}` (`orchestration` likewise matches `GET /v1/orchestrations/{id}`). Check
+`type` before reading either.
 
 Events are sent for tasks started through the API or MCP, not for tasks you start from the
 dashboard or the phone.
@@ -51,17 +54,22 @@ HMAC-SHA256 of `"{t}.{raw body}"` keyed with your signing secret. Check it again
 request body (before any JSON parsing), compare in constant time, and reject a `t` more than 5
 minutes old, which stops replays.
 
+For 24 hours after you save a new secret, the header has **two** signatures, one per secret, newest
+first: `t=…,v1=<new>,v1=<old>`. Accept the request if **any** `v1` matches the secret you hold. The
+samples below do that.
+
 Python:
 
 ```python
 import hashlib, hmac, time
 
 def verify(secret: str, header: str, body: bytes, tolerance: int = 300) -> bool:
-    parts = dict(p.split("=", 1) for p in header.split(","))
-    if abs(time.time() - int(parts["t"])) > tolerance:
+    pairs = [p.split("=", 1) for p in header.split(",") if "=" in p]
+    t = next((v for k, v in pairs if k == "t"), None)
+    if t is None or not t.isdigit() or abs(time.time() - int(t)) > tolerance:
         return False
-    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, parts["v1"])
+    expected = hmac.new(secret.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
+    return any(hmac.compare_digest(expected, v) for k, v in pairs if k == "v1")
 ```
 
 Node.js:
@@ -70,11 +78,12 @@ Node.js:
 const crypto = require("crypto");
 
 function verify(secret, header, rawBody, tolerance = 300) {
-  const parts = Object.fromEntries(header.split(",").map((p) => p.split("=", 2)));
-  if (Math.abs(Date.now() / 1000 - Number(parts.t)) > tolerance) return false;
-  const expected = crypto.createHmac("sha256", secret).update(`${parts.t}.`).update(rawBody).digest("hex");
-  return expected.length === parts.v1.length &&
-    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(parts.v1));
+  const pairs = header.split(",").map((p) => p.split("=", 2));
+  const t = (pairs.find(([k]) => k === "t") || [])[1];
+  if (!t || Math.abs(Date.now() / 1000 - Number(t)) > tolerance) return false;
+  const expected = crypto.createHmac("sha256", secret).update(`${t}.`).update(rawBody).digest("hex");
+  return pairs.some(([k, v]) => k === "v1" && v && v.length === expected.length &&
+    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(v)));
 }
 ```
 
@@ -84,7 +93,8 @@ A request is signed when it is sent, so a retry carries a new `t` and a new sign
 
 Answer with any `2xx` status within **5 seconds**, then do the work. Anything else counts as a
 failed attempt: a non-2xx status, a timeout, a connection error, or a redirect (redirects aren't
-followed).
+followed). A `4xx` other than `408`, `409` or `429` means you refused it on purpose: it isn't retried,
+and the delivery is marked **dead** with the status as its reason.
 
 ## Retries
 
@@ -92,9 +102,10 @@ Each event is stored before it is sent, so deliveries survive server restarts. A
 retried after 10 s, 30 s, 1 min, 2 min, 5 min, 10 min, then 15 min three times: 10 attempts over
 about an hour. After the last one the delivery is given up.
 
-Retries go to the webhook URL saved at the time of the retry. If the URL stops resolving to a
-public address, the delivery is blocked. Delivered, failed and blocked deliveries appear under
-**Logs** in the developer console.
+Retries go to the webhook URL saved at the time of the retry, signed when they're sent (with the
+secrets valid then). If the URL stops resolving to a public address, the delivery is blocked.
+Delivered, failed, dead and blocked deliveries appear under **Logs** in the developer console.
+Delivered and dead bodies are deleted after the server's retention period (30 days by default).
 
 ## Idempotency and ordering
 
@@ -124,10 +135,14 @@ def openmob_webhook():
     if delivery not in seen:
         seen.add(delivery)
         event = request.get_json()
-        task = event["task"]
-        if event["type"] == "task.needs_input":
+        if event["type"] == "orchestration.finished":
+            run = event["orchestration"]
+            print("Run", run["id"], run["status"], run["reason"])
+        elif event["type"] == "task.needs_input":
+            task = event["task"]
             print("Task", task["id"], "asks:", task["question"])  # untrusted text from the screen
         elif event["type"] == "task.finished":
-            print("Task", task["id"], task["status"], task["outcome"]["summary"])
+            task = event["task"]
+            print("Task", task["id"], task["status"], (task["outcome"] or {}).get("summary"))
     return "", 204
 ```

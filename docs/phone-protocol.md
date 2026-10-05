@@ -202,7 +202,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `key` | `name: string` | `null` | 10 s |
 | `open_url` | `url: string` | `null` | 15 s |
 | `wake_unlock` | none | `null` | 10 s |
-| `device_state` | none | `{"interactive": bool, "locked": bool}` | 5 s |
+| `device_state` | none | `{"interactive": bool, "locked": bool, "secure": bool}` | 5 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -311,7 +311,13 @@ Params: `{"url": "https://youtube.com/results?search_query=lofi"}`. Open the URL
 Called at the start of every task. Turn the screen on if it is off, and dismiss the lock screen **if it is not secure** (swipe-to-unlock or none). With a secure lock (PIN, pattern, password, biometric), wake the screen and return `null`. The agent sees the lock screen and asks the user. **Never** enter credentials. Reply with an error only if the screen could not be woken.
 
 ### 4.14 `device_state`
-Is the phone usable right now? `{"interactive": PowerManager.isInteractive, "locked": KeyguardManager.isKeyguardLocked}`. Answer it even when accessibility is off, and quickly (it only reads two flags). The server asks before a standalone API task and before each orchestration step: a locked phone or a dark screen means "unlock to continue" (`phone_locked`) instead of a task that times out on its first command; no answer within 5 s means `phone_unresponsive`. Optional: an app that answers `Unknown method device_state` is simply not checked.
+Is the phone usable right now? `{"interactive": PowerManager.isInteractive, "locked": KeyguardManager.isKeyguardLocked, "secure": KeyguardManager.isKeyguardSecure}`. Answer it even when accessibility is off, and quickly (it only reads three flags). The server asks before a standalone API task and before each orchestration step:
+
+- `locked` and `secure` (PIN, pattern, password, biometric): "unlock to continue" (`phone_locked`). Nothing is attempted.
+- screen off, or `locked` but not `secure` (a swipe lock): the server calls `wake_unlock`, then asks again. Still `locked` means the swipe didn't take: `phone_locked`. Otherwise the task runs.
+- no answer within 5 s: `phone_unresponsive`.
+
+Optional: an app that answers `Unknown method device_state` is simply not checked. An app that omits `secure` is treated as having a secure lock whenever it's `locked`.
 
 ---
 

@@ -118,6 +118,9 @@ response = client.responses.create(
 
 ### Your own agent (MCP Python SDK)
 
+This needs the official SDK, version 2.3 or later (`pip install "mcp>=2.3"`): the `Client` class
+below doesn't exist in 1.x.
+
 ```python
 import asyncio, os
 from mcp import Client
@@ -178,8 +181,10 @@ pass.
 | `wait_seconds` | integer 0–45 | 45 | How long to wait before returning |
 | `idempotency_key` | string, up to 255 characters | none | Retrying with the same key and arguments returns the first task instead of starting another. See [Idempotent retries](api.md#idempotent-retries) |
 
-Before starting, it checks both its scopes and that the phone is unlocked with its screen on
-(otherwise the tool error starts with `phone_locked`, `phone_unresponsive` or `phone_offline`).
+Before starting, it checks both its scopes and that the phone is usable: a screen that's off is
+woken and a swipe lock is swiped away; otherwise the tool error starts with `phone_offline` (not
+connected), `no_device_online` (no `device_id` given and none of your phones is online),
+`phone_locked` (a PIN, pattern, password or biometric lock) or `phone_unresponsive`.
 
 Returns the [task object](api.md#the-task-object) plus two fields, `next` and `untrusted_content`:
 
@@ -187,7 +192,7 @@ Returns the [task object](api.md#the-task-object) plus two fields, `next` and `u
 {"id": "155d88f8913c", "device_id": "app-3f2a9c", "status": "succeeded", "tier": "fast",
  "instruction": "open YouTube and search for lo-fi", "created": 1791219696.83, "started": 1791219696.83,
  "finished": 1791219696.84, "steps": 4, "question": null,
- "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."}, "credits": 4,
+ "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi.", "reason": null}, "credits": 4,
  "next": "The task has finished. Tell the user the outcome.",
  "untrusted_content": true}
 ```
@@ -338,14 +343,16 @@ See [Orchestrations in the API reference](api.md#orchestrations) for every statu
 |---|---|
 | No key, or a wrong or revoked key | HTTP `401` with `WWW-Authenticate: Bearer` and `{"error": "invalid_token", …}`. Most clients show a connection error |
 | The key or account was switched off | HTTP `403` |
-| Too many requests | HTTP `429` with `Retry-After` |
+| Too many requests | HTTP `429` with `Retry-After` and `{"error": "rate_limited", …}` |
 | Missing scope | Tool error: `insufficient_scope: This API key lacks the screen:read scope.` |
-| Someone else's phone or task, or a typo | Tool error: `Unknown device …` or `Unknown task …` |
+| Someone else's phone or task (another account's, or another key's task or run), or a typo | Tool error: `Unknown device …`, `Unknown task …` or `Unknown orchestration …` |
 | A key that may not approve sends `approve: true` | Tool error: `confirmation_requires_owner: …` |
-| No `device_id` and several phones online | Tool error listing the phone ids to choose from |
+| No `device_id` and several phones online | Tool error: `device_required: …`, listing the phone ids to choose from |
+| No `device_id` and no phone online | Tool error: `no_device_online: …` |
 | The phone is offline, locked or not answering | Tool error: `phone_offline: …`, `phone_locked: …` or `phone_unresponsive: …`. Ask the user to unlock or wake the phone |
+| Answering a task that isn't waiting | Tool error: `not_waiting: …` |
 | An `idempotency_key` reused with different arguments | Tool error: `idempotency_conflict: …` |
-| Concurrent-task cap, daily quota or credits, run caps | Tool error: `too_many_tasks: …`, `daily_quota: …`, `credits_exhausted: …` or `too_many_orchestrations: …` |
+| Concurrent-task cap, daily quota or credits (the key's or the account's), run caps | Tool error: `too_many_tasks: …`, `daily_quota: …`, `credits_exhausted: …`, `account_daily_quota: …`, `account_credits_exhausted: …` or `too_many_orchestrations: …` |
 
 Tool errors come back as a result with `isError: true` and the message as text.
 
