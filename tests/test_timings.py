@@ -118,7 +118,7 @@ def test_a_failing_phase_still_counts_and_closes():
 def test_phases_with_jev_on(tmp_path):
     send = UIElement(0, "Send", "", "", "Button", True, None, (100, 200, 300, 260))
     driver = FakeDriver(elements=[send])
-    io = SlowAnswerIO(["yes"], delay=0.06)
+    io = SlowAnswerIO(["yes"], delay=0.3)  # long enough to tell apart from the phone action under load
     judge = SlowJudge(0.02)
     agent = make_agent([
         [tool_use("tap_element", "a", index=0, target="Send")],  # a risky tap: the classifier, then approval
@@ -133,12 +133,13 @@ def test_phases_with_jev_on(tmp_path):
     assert tap["jev"] is True and tap["model"] == agent.task_model
     assert tap["model_ms"] >= 30  # the first model call
     assert tap["jev_ms"] >= 40  # assess_screen + assess_tap
-    assert tap["wait_ms"] >= 60  # the approval, human time
-    assert tap["action_ms"] < 60  # neither the approval nor the classifier counts as the phone action
-    assert tap["latency_ms"] >= 60  # latency_ms keeps its meaning: the whole tool call, approval included
+    assert tap["wait_ms"] >= 300  # the approval, human time
+    assert tap["action_ms"] < 250  # neither the approval nor the classifier counts as the phone action
+    assert tap["latency_ms"] >= 300  # latency_ms keeps its meaning: the whole tool call, approval included
     assert sum(tap[k] for k in PHASE_KEYS[:-1]) <= tap["total_ms"] + 2
     assert done["jev_ms"] >= 20 and done["model_ms"] >= 30  # the next observation's classifier call, the next decision
-    assert result.timings["wait_ms"] >= 60 and result.timings["total_ms"] >= tap["total_ms"] + done["total_ms"]
+    # The task total covers both steps (each step is rounded to whole ms, so allow a couple).
+    assert result.timings["wait_ms"] >= 300 and result.timings["total_ms"] >= tap["total_ms"] + done["total_ms"] - 2
 
 
 def test_phases_with_jev_off(tmp_path):
