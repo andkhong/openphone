@@ -80,6 +80,16 @@ def cmd_run(cfg: Config, args) -> None:
             print("No phone online.")
         return session
 
+    transcriber = None
+    if importlib.util.find_spec("faster_whisper"):
+        from .voice.stt import Transcriber
+
+        transcriber = Transcriber(cfg.whisper_model)
+        threading.Thread(target=transcriber._load, daemon=True).start()  # load the model before the first use
+        print(f"🎙  Mic button: Whisper ({cfg.whisper_model}) transcribes on this server.")
+    else:
+        print("🎙  Mic button disabled: install Whisper with  pip install -e '.[voice]'")
+
     from .server import create_app, lan_ip, serve_in_background
 
     store = None
@@ -89,7 +99,7 @@ def cmd_run(cfg: Config, args) -> None:
         store = AccountStore()
         print(f"🔐 Accounts on: users sign in, and each phone pairs only to its owner's account ({store.path}).")
     token = cfg.server_token or secrets.token_urlsafe(8)
-    serve_in_background(create_app(manager, token, store=store), cfg.server_host, cfg.server_port)
+    serve_in_background(create_app(manager, token, store=store, transcriber=transcriber), cfg.server_host, cfg.server_port)
     # With accounts the dashboard uses a sign-in session, so links carry no secret.
     suffix = "/login" if store else f"/?t={token}"
     print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")

@@ -283,3 +283,19 @@ def test_model_switch_applies_from_the_next_task(tmp_path):
     agent.run("second task")
     models = [r["model"] for r in client.requests]
     assert models == ["claude-sonnet-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]
+
+
+def test_new_chat_forgets_earlier_requests(tmp_path):
+    from openmob.runner import Coordinator
+    from openmob.voice.tts import Speaker
+
+    agent, client, _ = make_agent([
+        [tool_use("done", "a", summary="YouTube is open.", success=True)],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], tmp_path=tmp_path)
+    coordinator = Coordinator(Speaker(enabled=False))
+    coordinator.agent = agent
+    agent.run("open youtube")
+    coordinator.clear_log()  # what the dashboard's "New chat" calls
+    agent.run("scroll down")
+    assert client.requests[1]["messages"][0]["content"][0]["text"] == "Request: scroll down"

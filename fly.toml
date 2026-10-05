@@ -25,4 +25,4 @@ primary_region = "sjc"
 
 [[vm]]
   size = "shared-cpu-2x"
-  memory = "1gb"
+  memory = "2gb"   # Whisper speech model + agent

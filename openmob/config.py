@@ -21,7 +21,7 @@ DEFAULT_MODELS = [
     {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5 (fastest, cheapest)"},
 ]
 
-REMOVED_KEYS = {"hotkey", "whisper_model"}  # Mac push-to-talk with Whisper was removed
+REMOVED_KEYS = {"hotkey"}  # Mac push-to-talk was removed
 
 CONFIG_LOCATIONS = [
     Path("config.yaml"),
@@ -61,6 +61,8 @@ class Config:
 
     # Spoken replies on the Mac (macOS `say`)
     speak: bool = True
+    # Whisper model for the dashboard's mic button: tiny.en | base.en | small.en | medium.en
+    whisper_model: str = "base.en"
     voice: str | None = None
 
     # Phone-side web page

@@ -23,6 +23,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Whisper for the dashboard's mic button (transcribed on the server).
+voice = [
+    "faster-whisper>=1.0",
+    "av<19",  # faster-whisper 1.2 passes metadata_errors, which PyAV 19 removed
+]
 mac = [
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
 ]

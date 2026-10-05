@@ -4,13 +4,15 @@ FROM python:3.13-slim
 ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     OPENMOB_DATA_DIR=/data \
-    OPENMOB_APK=/app/OpenMob.apk
+    OPENMOB_APK=/app/OpenMob.apk \
+    HF_HOME=/opt/hf
 
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY openmob ./openmob
-# No speech model on the server: the dashboard and the phone app use their built-in speech recognition.
-RUN pip install .
+RUN pip install ".[voice]"
+# Whisper for the dashboard's mic button, baked into the image so the first use doesn't download it.
+RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8')"
 
 COPY deploy/config.yaml ./config.yaml
 COPY deploy/OpenMob.apk ./OpenMob.apk

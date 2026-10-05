@@ -167,3 +167,29 @@ def test_signed_out_visitors_get_the_landing_page(hosted):
         assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
     client, _ = signup(base, "owner@example.com")
     assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard
+
+
+class FakeTranscriber:
+    def transcribe(self, audio):
+        return "open youtube" if audio.read() else ""
+
+
+def test_transcribe_endpoint(tmp_path):
+    from openmob.accounts import AccountStore
+
+    store = AccountStore(tmp_path / "a.json")
+    manager = DeviceManager(Config(), lambda *a: None, Speaker(enabled=False), adb_discovery=False)
+    from fastapi.testclient import TestClient
+
+    with_whisper = TestClient(create_app(manager, store=store, transcriber=FakeTranscriber()))
+    without = TestClient(create_app(manager, store=store))
+    audio = {"file": ("voice.webm", b"fake-audio-bytes", "audio/webm")}
+    assert with_whisper.post("/api/transcribe", files=audio).status_code == 401  # signed out
+    for client in (with_whisper, without):
+        client.post("/api/auth/signup", json={"email": f"u{id(client)}@example.com", "password": "password123"})
+    assert with_whisper.post("/api/transcribe", files=audio).json() == {"text": "open youtube"}
+    assert without.post("/api/transcribe", files=audio).status_code == 501
+    import openmob.server as server_mod
+
+    big = {"file": ("voice.webm", b"x" * (server_mod.MAX_AUDIO_BYTES + 1), "audio/webm")}
+    assert with_whisper.post("/api/transcribe", files=big).status_code == 413

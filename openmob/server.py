@@ -12,7 +12,7 @@ import socket
 import threading
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
@@ -52,7 +52,10 @@ class RedeemIn(BaseModel):
     model: str = ""
 
 
-def create_app(manager: DeviceManager, token: str | None = None, store=None) -> FastAPI:
+MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speech
+
+
+def create_app(manager: DeviceManager, token: str | None = None, store=None, transcriber=None) -> FastAPI:
     """Two modes. Without `store`: one shared token guards everything (local/demo).
     With an AccountStore: users sign in, phones carry their own key, and everyone sees only
     their own phones — a pairing code works only for the account that made it."""
@@ -268,6 +271,20 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None) -> 
         require_auth(request)
         owned_session(device_id, request).coordinator.stop()
         return {"result": "stopped"}
+
+    @app.post("/api/transcribe", dependencies=[Depends(require_auth)])
+    async def transcribe(file: UploadFile) -> dict:
+        """The composer's mic: speech in, text out (text goes into the message box, not sent)."""
+        if transcriber is None:
+            raise HTTPException(status_code=501, detail="Speech-to-text isn't installed on this server: pip install -e '.[voice]'")
+        data = await file.read(MAX_AUDIO_BYTES + 1)
+        if len(data) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Recording is too long. Keep it under a few minutes.")
+        try:
+            text = await run_in_threadpool(transcriber.transcribe, io.BytesIO(data))
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=f"Couldn't read that recording: {type(exc).__name__}") from None
+        return {"text": text}
 
     @app.get("/api/models", dependencies=[Depends(require_auth)])
     def models() -> dict:

@@ -174,7 +174,11 @@ class Coordinator:
                     self.current_task = None
 
     def clear_log(self) -> None:
+        """New chat: empty the conversation and the agent's memory of earlier requests."""
         self.log.clear()
+        recent = getattr(self.agent, "recent", None)
+        if recent is not None:
+            recent.clear()
 
     def snapshot(self) -> dict:
         with self._lock:

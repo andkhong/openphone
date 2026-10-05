@@ -100,6 +100,12 @@
   .bar .hint { color: var(--faint); font-size: 12px; flex: 1; overflow-wrap: anywhere; }
   .model { appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--muted); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 14px; max-width: 46vw; text-overflow: ellipsis; }
   .model:hover { background: var(--user); color: var(--fg); }
+  .mic { width: 34px; height: 34px; border-radius: 50%; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; }
+  .mic svg { width: 19px; height: 19px; }
+  .mic:hover { background: var(--user); color: var(--fg); }
+  .mic.rec { background: var(--bad); color: #fff; animation: blink 1.2s infinite; }
+  .mic.busy { opacity: .5; cursor: progress; }
+  .mic:disabled { opacity: .3; cursor: default; }
   .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
   .send:disabled { opacity: .35; cursor: default; }
   .send.stop { background: var(--fg); color: var(--bg); font-size: 12px; }
@@ -156,6 +162,9 @@
         <div class="bar">
           <span class="hint" id="hint"></span>
           <select class="model" id="model" aria-label="Claude model for this phone" title="Model for this phone's next task"></select>
+          <button class="mic" id="mic" type="button" aria-label="Dictate" title="Dictate (Whisper)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+          </button>
           <button class="send" id="send" type="submit" aria-label="Send">↑</button>
         </div>
       </form>
@@ -472,7 +481,7 @@ function updateComposer() {
   btn.setAttribute("aria-label", busy ? "Stop" : "Send");
   btn.disabled = !deviceId || (!busy && !hasText);
   const offline = !last || (last.device && last.device.online === false);
-  $("hint").textContent = !deviceId ? "" : offline ? "Phone is offline." :
+  $("hint").textContent = recorder ? $("hint").dataset.note : !deviceId ? "" : offline ? "Phone is offline." :
     last.state === "asking" ? "Answer the question above, or say stop." :
     last.state === "running" ? "Working… type to queue another request." : $("hint").dataset.note || "";
 }
@@ -509,6 +518,67 @@ $("model").onchange = async (e) => {
     updateComposer();
   } catch (err) { $("hint").textContent = err.message; }
 };
+
+// ---------- mic: record in the browser, Whisper transcribes on the server ----------
+
+let recorder = null, recChunks = [], recStarted = 0, recTimer = null, recCancelled = false;
+const micReady = window.isSecureContext && navigator.mediaDevices && window.MediaRecorder;
+if (!micReady) {
+  $("mic").disabled = true;
+  $("mic").title = "The mic needs HTTPS or localhost";
+}
+function setHint(text) { $("hint").dataset.note = text; updateComposer(); }
+
+async function toggleMic() {
+  if (recorder) { recorder.stop(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    recorder = new MediaRecorder(stream);
+    recChunks = [];
+    recCancelled = false;
+    recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
+    recorder.onstop = async () => {
+      stream.getTracks().forEach((t) => t.stop());
+      clearInterval(recTimer);
+      const type = recorder.mimeType || "audio/webm";
+      recorder = null;
+      $("mic").classList.remove("rec");
+      if (recCancelled || !recChunks.length) { setHint(""); return; }
+      $("mic").classList.add("busy");
+      setHint("Transcribing…");
+      const form = new FormData();
+      form.append("file", new Blob(recChunks, { type }), "voice.webm");
+      try {
+        const r = await api("/api/transcribe", { method: "POST", body: form });
+        if (r.text) {
+          const t = $("text");
+          t.value = (t.value.trim() ? t.value.trimEnd() + " " : "") + r.text;
+          t.dispatchEvent(new Event("input"));
+          t.focus();
+          setHint("Check the text, then press Enter to send.");
+        } else {
+          setHint("Didn't catch that. Try again.");
+        }
+      } catch (e) { setHint(e.message); }
+      $("mic").classList.remove("busy");
+    };
+    recorder.start();
+    recStarted = Date.now();
+    $("mic").classList.add("rec");
+    const tick = () => {
+      const s = Math.floor((Date.now() - recStarted) / 1000);
+      setHint(`Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · click the mic to stop, Esc to cancel`);
+    };
+    tick();
+    recTimer = setInterval(tick, 500);
+  } catch (e) {
+    setHint(e.name === "NotAllowedError" ? "Microphone blocked. Allow it in the browser's site settings." : `Mic error: ${e.message}`);
+  }
+}
+$("mic").onclick = () => { if (!$("mic").classList.contains("busy")) toggleMic(); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && recorder) { recCancelled = true; recorder.stop(); }
+});
 
 // ---------- header ----------
 
