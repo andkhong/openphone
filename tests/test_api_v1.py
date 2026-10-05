@@ -282,7 +282,8 @@ def test_owner_can_let_a_key_approve_risky_actions(api):
     assert r.json()["confirm_approve"] is True
     task = run_task(api.alice, "check the cart")
     wait_status(api.alice, task["id"], "needs_confirmation")
-    assert api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()["confirm_on_phone"] is False
+    # The dashboard never approves on an app phone (only the screen-lock prompt, or this key, can).
+    assert api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()["confirm_on_phone"] is True
     assert api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True}).json() == {"ok": True}
     wait_status(api.alice, task["id"], "succeeded")
     assert not api.alice.phone.approval_requests  # nobody needed to be asked on the phone

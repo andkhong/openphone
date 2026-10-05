@@ -18,6 +18,7 @@ TIMEOUT = 5.0
 # Waits before attempts 2, 3, …: about 63 minutes in all, then the delivery is given up.
 BACKOFF = (10, 30, 60, 120, 300, 600, 900, 900, 900)
 IDLE_CHECK = 30.0  # the worker also wakes up on every new delivery
+RETRY_4XX = {408, 409, 429}  # other 4xx answers are final: the delivery is marked dead
 
 
 class WebhookOutbox:
@@ -25,7 +26,7 @@ class WebhookOutbox:
         self.ledger = ledger
         self.store = store
         self.url_ok = url_ok  # (url) -> bool: SSRF check, repeated at send time (DNS can change)
-        self.sign = sign  # (secret, body, timestamp) -> signature header
+        self.sign = sign  # (secrets, body, timestamp) -> signature header (one v1= per secret)
         self.backoff = tuple(backoff)
         self._wake = threading.Event()
         self._stopped = threading.Event()
@@ -72,7 +73,7 @@ class WebhookOutbox:
             self.ledger.audit("webhook." + final, row["account_id"], task_id=row["task_id"], outcome=row["event"])
 
     def _send(self, row: dict) -> tuple[str, str | None]:
-        """("delivered" | "blocked" | "dropped" | "retry", error)."""
+        """("delivered" | "blocked" | "dropped" | "dead" | "retry", error)."""
         hook = self.store.webhook(row["account_id"])
         if not hook:
             return "dropped", "the owner removed the webhook"
@@ -80,14 +81,18 @@ class WebhookOutbox:
         if not self.url_ok(url):
             return "blocked", "address not allowed"
         body = row["body"].encode()
+        # Signed per attempt, with every secret valid right now (the previous one during its overlap).
+        secrets_now = getattr(self.store, "webhook_secrets", lambda _: [secret])(row["account_id"]) or [secret]
         try:
             r = httpx.post(url, content=body, timeout=TIMEOUT, follow_redirects=False, headers={
                 "Content-Type": "application/json", "User-Agent": "OpenMob-Webhooks/1",
                 "X-OpenMob-Event": row["event"], "X-OpenMob-Delivery": row["id"],
-                "X-OpenMob-Signature": self.sign(secret, body, int(time.time())),
+                "X-OpenMob-Signature": self.sign(secrets_now, body, int(time.time())),
             })
         except httpx.HTTPError as exc:
             return "retry", type(exc).__name__
         if 200 <= r.status_code < 300:
             return "delivered", None
+        if 400 <= r.status_code < 500 and r.status_code not in RETRY_4XX:
+            return "dead", f"HTTP {r.status_code}"  # the receiver refused it: retrying won't help
         return "retry", f"HTTP {r.status_code}"

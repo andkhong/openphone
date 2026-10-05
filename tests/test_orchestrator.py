@@ -237,7 +237,7 @@ def test_other_accounts_phones_and_runs_are_404_and_scopes_apply(orc):
     c = httpx.Client(base_url=orc.base, headers={"Authorization": f"Bearer {read_only}"})
     assert c.post("/v1/orchestrations", json={"steps": [{"id": "a", "device_id": A, "instruction": "x"}]}).status_code == 403
     assert c.post(f"/v1/orchestrations/{o['id']}/cancel").status_code == 403
-    assert c.get(f"/v1/orchestrations/{o['id']}").status_code == 200
+    assert c.get(f"/v1/orchestrations/{o['id']}").status_code == 404  # another key's run, same account
     orc.alice.v1.post(f"/v1/orchestrations/{o['id']}/cancel")
     wait_status(orc.alice, o["id"], "cancelled")
 

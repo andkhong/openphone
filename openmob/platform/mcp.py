@@ -319,6 +319,10 @@ def build_server(service: V1Service) -> MCPServer:
     return mcp
 
 
+# The `error` of a refused /mcp request when the domain error has no more specific code.
+HTTP_ERRORS = {403: "forbidden", 404: "not_found", 409: "conflict", 429: "rate_limited", 503: "unavailable"}
+
+
 class McpAuth:
     """ASGI guard in front of the SDK: resolve the bearer credential to a Principal (rate-limited),
     or answer 401/403/429 before any MCP processing."""
@@ -335,8 +339,8 @@ class McpAuth:
             principal = await anyio.to_thread.run_sync(self.service.authenticate,
                                                        bearer_token(headers.get("authorization")))
         except ServiceError as exc:
-            body = {"error": "invalid_token" if exc.status == 401 else (exc.code or "forbidden"),
-                    "error_description": exc.message}
+            body = {"error": "invalid_token" if exc.status == 401 else (exc.code or HTTP_ERRORS.get(exc.status, "error")),
+                    "error_description": exc.message, **exc.extra}
             return await JSONResponse(body, status_code=exc.status, headers=exc.headers or None)(scope, receive, send)
         scope.setdefault("state", {})[PRINCIPAL] = principal
         await self.app(scope, receive, send)

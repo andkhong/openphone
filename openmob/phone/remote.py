@@ -238,4 +238,7 @@ class RemoteDriver(CachedScreenshots):
                 raise
             self._state_unsupported = True  # "Unknown method device_state": skip the check from now on
             return None
-        return {"interactive": bool(state.get("interactive", True)), "locked": bool(state.get("locked", False))}
+        locked = bool(state.get("locked", False))
+        # "secure" (PIN, pattern, password, biometric) came later: without it, assume a lock is secure.
+        return {"interactive": bool(state.get("interactive", True)), "locked": locked,
+                "secure": bool(state.get("secure", locked))}

@@ -34,6 +34,7 @@ KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write")
 DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
 LAST_USED_EVERY = 60  # seconds between saves of a key's last-used time
+WEBHOOK_SECRET_OVERLAP = 24 * 3600  # a replaced webhook secret still signs deliveries this long
 # OPENMOB_DATA_DIR points at persistent storage when hosted (e.g. a Fly volume at /data).
 DATA_DIR = Path(os.environ.get("OPENMOB_DATA_DIR") or Path.home() / ".config" / "openmob")
 DEFAULT_STORE = DATA_DIR / "accounts.json"
@@ -426,16 +427,18 @@ class AccountStore:
             return True
 
     def rotate_api_key(self, account_id: str, key_id: str) -> tuple[str, str] | None:
-        """Replace a key with a new one (same name and scopes); the old one stops working now."""
+        """Give a key a new secret; the old secret stops working now. It stays the same key (same
+        id, name, scopes and settings), so its limits, tasks and running work carry on unchanged."""
         with self._lock:
             self._refresh()
             k = self._data["api_keys"].get(key_id)
             if not k or k["account_id"] != account_id or k["revoked"]:
                 return None
-            new = self.create_api_key(account_id, k["name"], k["scopes"], k.get("confirm_approve", False))
-            self._data["api_keys"][key_id]["revoked"] = True
+            key = f"{KEY_PREFIX}{key_id}_{secrets.token_urlsafe(24)}"
+            k["hash"] = _hash_token(key)
+            k["rotated"] = time.time()
             self._save()
-            return new
+            return key_id, key
 
     def set_key_confirm_approve(self, account_id: str, key_id: str, on: bool) -> bool:
         """Let one of the owner's keys approve risky actions itself (or take that back)."""
@@ -474,7 +477,10 @@ class AccountStore:
                 self._save()
                 return None
             secret = "whsec_" + secrets.token_urlsafe(24)
+            old = account.get("webhook") or {}
             account["webhook"] = {"url": url, "secret": secret}
+            if old.get("secret"):  # the previous secret keeps verifying for a day, so receivers can switch over
+                account["webhook"].update(previous_secret=old["secret"], previous_until=time.time() + WEBHOOK_SECRET_OVERLAP)
             self._save()
             return secret
 
@@ -484,6 +490,18 @@ class AccountStore:
             self._refresh()
             hook = self._data["accounts"].get(account_id, {}).get("webhook")
             return (hook["url"], hook["secret"]) if hook else None
+
+    def webhook_secrets(self, account_id: str) -> list[str]:
+        """Secrets to sign with now: the current one, plus the previous one during its 24 h overlap."""
+        with self._lock:
+            self._refresh()
+            hook = self._data["accounts"].get(account_id, {}).get("webhook")
+            if not hook:
+                return []
+            out = [hook["secret"]]
+            if hook.get("previous_secret") and hook.get("previous_until", 0) > time.time():
+                out.append(hook["previous_secret"])
+            return out
 
     # --- admin: API kill switches -----------------------------------------------
 

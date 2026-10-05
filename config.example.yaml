@@ -68,9 +68,12 @@ server_port: 8765
 # api_rate_per_minute: 60
 # api_max_concurrent_tasks: 2
 # api_daily_tasks: 200
+# api_account_daily_tasks: 1000   # all of an account's keys together
+# api_account_daily_credits: 0    # 0 = unlimited
 # api_max_steps: 40
 # Package-name patterns API tasks may not open unless the phone's owner allows it (see config.py for the defaults).
 # sensitive_apps: [bank, wallet, paypal, 1password]
 
-# Delete saved chats not used for this many days (0 = keep forever).
-# history_retention_days: 0
+# Delete task text (saved chats, orchestration plans and results, webhook bodies) older than this
+# many days (0 = keep forever). Billing totals and the hashed audit log are kept.
+# history_retention_days: 30

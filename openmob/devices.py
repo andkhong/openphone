@@ -143,6 +143,7 @@ class DeviceManager:
                 session.info = info
             else:
                 session = self._create(info, RemoteDriver(link), account_id)
+                session.coordinator.text_approvals = False  # approvals only via the screen-lock prompt
                 self.sessions[info.id] = session
                 # Mirror agent activity to the phone so its app can show or speak it.
                 session.coordinator.listeners.append(
@@ -169,7 +170,8 @@ class DeviceManager:
             session.link = None
             c = session.coordinator
             busy = c.current is not None or not c.tasks.empty()
-            wait = busy and close_code != 1000 and isinstance(session.driver, RemoteDriver)
+            wait = (busy and close_code != 1000 and isinstance(session.driver, RemoteDriver)
+                    and self.sessions.get(session.info.id) is session)  # not for a phone just unpaired
             if wait:
                 session.reconnecting = True
                 session._grace = grace = object()
@@ -200,11 +202,11 @@ class DeviceManager:
                 c.cancel_task(task_id)
 
     @staticmethod
-    def _stop(session: Session) -> None:
+    def _stop(session: Session, reason: str | None = None) -> None:
         session.reconnecting, session._grace = False, None
         if isinstance(session.driver, RemoteDriver):
             session.driver.hold(None)  # release a task waiting for this phone
-        session.coordinator.stop()
+        session.coordinator.stop(reason)
 
     # --- approvals on the phone and the "who is using it" line --------------------------
 
@@ -341,13 +343,13 @@ class DeviceManager:
                 pass
 
     def confirm_on_phone(self, session: Session) -> bool:
-        """True while the pending confirmation may only be approved on the phone (an API task whose
-        key can't approve), so the dashboard hides its own Approve button."""
+        """True while the pending confirmation may only be approved on the phone, so the dashboard
+        shows Decline but not Approve. That's every confirmation on an app phone (approvals need the
+        screen-lock prompt); phones without the app (adb) can still be approved from the dashboard."""
         snap = session.coordinator.snapshot()
         if snap["question_kind"] != "confirm" or not snap["task_id"]:
             return False
-        who = self._requester(snap["task_id"])
-        return bool(who and who["human"])
+        return not getattr(session.coordinator, "text_approvals", True)
 
     def resume(self, session: Session) -> None:
         """After a (re)connected phone got its welcome: show who's using it and re-ask pending approvals."""
@@ -384,13 +386,14 @@ class DeviceManager:
         except DeviceError:
             pass  # phone went away; names are read on demand next time
 
-    def remove(self, session_id: str) -> None:
-        """Forget a phone entirely (e.g. once revoked): it disappears from every phone list."""
+    def remove(self, session_id: str, reason: str = "device_revoked") -> None:
+        """Forget a phone entirely (e.g. once unpaired): it disappears from every phone list, and its
+        running and queued tasks end cancelled with `reason`."""
         with self._lock:
             session = self.sessions.pop(session_id, None)
         if session:
             session.online = False
-            self._stop(session)
+            self._stop(session, reason)
 
     def get(self, device_id: str) -> Session | None:
         return self.sessions.get(device_id)
