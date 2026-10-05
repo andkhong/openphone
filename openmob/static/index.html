@@ -792,7 +792,8 @@ async function screenLoop() {
         if (old.startsWith("blob:")) URL.revokeObjectURL(old);
         screenError = "";
       } catch (e) {
-        screenError = "screen unavailable";
+        // Show why (e.g. "Accessibility is off…"), minus the exception class name.
+        screenError = (e.message || "screen unavailable").replace(/^\w+(Exception|Error): /, "");
         await new Promise((r) => setTimeout(r, 2000));
       }
     }

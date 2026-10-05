@@ -153,6 +153,14 @@ class DeviceManager:
         except DeviceError:
             pass  # phone went away; names are read on demand next time
 
+    def remove(self, session_id: str) -> None:
+        """Forget a phone entirely (e.g. once revoked): it disappears from every phone list."""
+        with self._lock:
+            session = self.sessions.pop(session_id, None)
+        if session:
+            session.online = False
+            session.coordinator.stop()
+
     def get(self, device_id: str) -> Session | None:
         return self.sessions.get(device_id)
 

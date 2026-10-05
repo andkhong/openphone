@@ -126,7 +126,7 @@ def test_revoke_cuts_the_connection_and_the_key(hosted):
     assert owner.post("/api/devices/app-phone-1/revoke").json() == {"ok": True}
     phone.task.result(5)
     assert phone.close_code == 4401  # the live connection was cut
-    assert wait_for(lambda: not manager.get("app-phone-1").online)
+    assert wait_for(lambda: manager.get("app-phone-1") is None)  # gone from the lists
 
     again = FakePhone(ws, FakeDriver(), device_id="phone-1", key=key)
     again.task.result(5)

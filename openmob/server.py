@@ -226,6 +226,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         s = manager.get(f"app-{raw_id}")
         if s and s.link:
             s.link.disconnect(4401, "This phone was unpaired from its account.")  # cut it off now
+        manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
         return {"ok": True}
 
     # --- pairing / device lists ------------------------------------------
@@ -421,6 +422,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     def admin_devices() -> list[dict]:
         rows = []
         for d in store.admin_list_devices():
+            if d["revoked"]:
+                continue  # revoked phones are kept in the account store, but not shown
             s = manager.get(f"app-{d['id']}")
             snap = s.coordinator.snapshot() if s else {}
             rows.append({
@@ -441,6 +444,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         s = manager.get(f"app-{raw_id}")
         if s and s.link:
             s.link.disconnect(4401, "This phone was unpaired by an administrator.")  # cut it off now
+        manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
         return {"ok": True}
 
     # --- phone connection ------------------------------------------------

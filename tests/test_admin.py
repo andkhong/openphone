@@ -72,7 +72,7 @@ def test_admin_revoke_cuts_a_live_phone_and_its_key(setup):
     assert u["admin"].post("/api/admin/devices/app-bob-live/revoke").json() == {"ok": True}
     u["phone"].task.result(5)
     assert u["phone"].close_code == 4401
-    assert wait_for(lambda: not u["manager"].get("app-bob-live").online)
+    assert wait_for(lambda: u["manager"].get("app-bob-live") is None)  # gone from the lists
     again = FakePhone(u["ws"], FakeDriver(), device_id="bob-live", key=u["live_key"])
     again.task.result(5)
     assert again.close_code == 4401
@@ -123,3 +123,17 @@ def test_session_is_never_taken_from_the_url_and_me_reports_admin(hosted):  # no
     assert client.get("/api/auth/me").json()["admin"] is False
     store.set_admin("boss@example.com", True)
     assert client.get("/api/auth/me").json()["admin"] is True
+
+
+def test_revoked_phones_disappear_from_owner_and_admin_lists(hosted):  # noqa: F811
+    base, manager, store = hosted
+    owner, session = signup(base, "owner@example.com")
+    boss, _ = signup(base, "boss@example.com")
+    store.set_admin("boss@example.com", True)
+    key = pair(base, owner, session, "gone-1")
+    phone = FakePhone(base.replace("http", "ws"), FakeDriver(), device_id="gone-1", key=key)
+    assert phone.welcome.wait(5)
+    assert [d["id"] for d in owner.get("/api/devices").json()] == ["app-gone-1"]
+    assert owner.post("/api/devices/app-gone-1/revoke").json() == {"ok": True}
+    assert owner.get("/api/devices").json() == []  # removed right away, not shown as "offline"
+    assert all(d["id"] != "gone-1" for d in boss.get("/api/admin/devices").json())

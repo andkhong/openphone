@@ -116,7 +116,7 @@ def test_revoked_phone_history_is_not_inherited(two_users):
     u = two_users
     u["alice"].post("/api/devices/app-alice-phone/command", json={"text": "private request"})
     assert u["alice"].post("/api/devices/app-alice-phone/revoke").json() == {"ok": True}
-    assert wait_for(lambda: not u["manager"].get("app-alice-phone").online)
+    assert wait_for(lambda: u["manager"].get("app-alice-phone") is None)  # gone from the lists
 
     # Bob now registers that freed-up device id to his own account and connects with it.
     code = u["bob"].get("/api/pairing").json()["code"]
