@@ -292,6 +292,26 @@ class V1Service:
             self.ledger.audit("task.phone_approval", meta["account_id"], meta["key_id"], meta["device_id"], task_id,
                               outcome="approved" if approved else "denied")
 
+    def task_credits(self, account_id: str, task_id: str) -> int:
+        """Credits a task has used so far: steps × its tier's rate while running, the ledger's figure after."""
+        live = self._live(account_id, task_id)
+        if live and live[1]:
+            return live[1]["steps"] * live[0]["credits_per_step"]
+        row = self.ledger.task(account_id, task_id)
+        return row["credits"] if row else 0
+
+    def credits_today(self, key_id: str) -> int:
+        """This key's credits today: finished tasks from the ledger, plus what running ones have used."""
+        with self._lock:
+            running = [(t, self.registry[t]["account_id"]) for t in self.active.get(key_id, ()) if t in self.registry]
+        return self.ledger.credits_today(key_id) + sum(self.task_credits(a, t) for t, a in running)
+
+    def stop_task(self, account_id: str, task_id: str) -> bool:
+        """Cancel an API task of this account on the platform's own authority (kill switches, orchestrations)."""
+        live = self._live(account_id, task_id)
+        session = self.manager.get(live[0]["session_id"]) if live else None
+        return bool(session and session.coordinator.cancel_task(task_id))
+
     def webhook_url_ok(self, url: str) -> bool:
         return webhook_url_ok(url, self.webhook_allow_private)
 
@@ -357,10 +377,12 @@ class V1Service:
         with self._lock:
             if len(self.active.get(key_id, ())) >= self.cfg.api_max_concurrent_tasks:
                 raise RateLimited(f"This key already has {self.cfg.api_max_concurrent_tasks} unfinished "
-                                  "tasks. Wait for one to finish or cancel it.")
+                                  "tasks. Wait for one to finish or cancel it.", code="too_many_tasks")
+        reset = int(day_start() + 86400 - time.time())
         if self.ledger.tasks_today(key_id) >= self.cfg.api_daily_tasks:
-            raise RateLimited("Daily task quota reached for this key.",
-                              retry_after=int(day_start() + 86400 - time.time()))
+            raise RateLimited("Daily task quota reached for this key.", retry_after=reset, code="daily_quota")
+        if self.cfg.api_daily_credits and self.credits_today(key_id) >= self.cfg.api_daily_credits:
+            raise RateLimited("Daily credit limit reached for this key.", retry_after=reset, code="credits_exhausted")
 
         coordinator = session.coordinator
         self._watch(coordinator)

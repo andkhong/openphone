@@ -64,6 +64,18 @@ CREATE TABLE IF NOT EXISTS webhook_outbox (
     last_error TEXT
 );
 CREATE INDEX IF NOT EXISTS webhook_outbox_due ON webhook_outbox (status, next_attempt);
+
+-- Multi-phone orchestrations: the plan and each step's state as JSON (instructions included, like
+-- the chat history; the audit log keeps only hashes). Rewritten as the run progresses.
+CREATE TABLE IF NOT EXISTS orchestrations (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    key_id TEXT NOT NULL,
+    created REAL NOT NULL,
+    status TEXT NOT NULL,
+    data TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS orchestrations_by_account ON orchestrations (account_id, created DESC);
 """
 
 
@@ -142,6 +154,31 @@ class Ledger:
             (account_id, limit),
         )
         return [dict(r) for r in rows]
+
+    def credits_today(self, key_id: str) -> int:
+        """Credits of this key's tasks finished today (running tasks are added by the caller)."""
+        return self._q("SELECT COALESCE(SUM(credits), 0) FROM api_tasks WHERE key_id = ? AND created >= ?",
+                       (key_id, day_start()))[0][0]
+
+    # --- orchestrations ------------------------------------------------------------
+
+    def save_orchestration(self, row: dict) -> None:
+        self._q("INSERT INTO orchestrations (id, account_id, key_id, created, status, data) VALUES (?,?,?,?,?,?) "
+                "ON CONFLICT(id) DO UPDATE SET status = excluded.status, data = excluded.data",
+                (row["id"], row["account_id"], row["key_id"], row["created"], row["status"], json.dumps(row)))
+
+    def orchestration(self, account_id: str, orchestration_id: str) -> dict | None:
+        """Only if it belongs to this account (else None → 404)."""
+        rows = self._q("SELECT data FROM orchestrations WHERE id = ? AND account_id = ?", (orchestration_id, account_id))
+        return json.loads(rows[0]["data"]) if rows else None
+
+    def recent_orchestrations(self, account_id: str, limit: int = 20) -> list[dict]:
+        rows = self._q("SELECT data FROM orchestrations WHERE account_id = ? ORDER BY created DESC LIMIT ?",
+                       (account_id, limit))
+        return [json.loads(r["data"]) for r in rows]
+
+    def unfinished_orchestrations(self) -> list[dict]:
+        return [json.loads(r["data"]) for r in self._q("SELECT data FROM orchestrations WHERE status = 'running'")]
 
     def tasks_today(self, key_id: str) -> int:
         return self._q("SELECT COUNT(*) FROM api_tasks WHERE key_id = ? AND created >= ?", (key_id, day_start()))[0][0]

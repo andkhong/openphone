@@ -496,6 +496,20 @@ class AccountStore:
                     for i, k in self._data["api_keys"].items() if not k["revoked"]]
         return sorted(keys, key=lambda k: k["created"], reverse=True)
 
+    def api_key_principal(self, key_id: str) -> dict | None:
+        """A key's current standing, read fresh (no secret needed): for re-checking long-running work
+        such as orchestrations. {id, account_id, scopes, name, confirm_approve, revoked, disabled,
+        api_disabled}, or None if the key or its account doesn't exist."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            account = self._data["accounts"].get(k["account_id"]) if k else None
+            if not k or account is None:
+                return None
+            return {"id": key_id, "account_id": k["account_id"], "scopes": list(k["scopes"]), "name": k["name"],
+                    "confirm_approve": bool(k.get("confirm_approve")), "revoked": bool(k["revoked"]),
+                    "disabled": bool(k.get("disabled")), "api_disabled": bool(account.get("api_disabled"))}
+
     def admin_set_key_disabled(self, key_id: str, on: bool) -> str | None:
         """Switch one key off or on. Returns its account, or None if unknown."""
         with self._lock:

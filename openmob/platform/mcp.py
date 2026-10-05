@@ -300,6 +300,10 @@ def build_server(service: V1Service) -> MCPServer:
         note = await _call(s.add_memory, p, text, app)
         return _json_result(note, "Saved.")
 
+    if orchestrator := getattr(service, "orchestrator", None):  # multi-phone runs (orchestrator.py)
+        from .orchestrator import register_mcp_tools
+
+        register_mcp_tools(mcp, orchestrator)
     return mcp
 
 

@@ -106,6 +106,7 @@ class Config:
     api_rate_per_minute: int = 60  # requests per key per minute
     api_max_concurrent_tasks: int = 2  # unfinished tasks per key
     api_daily_tasks: int = 200  # tasks per key per UTC day
+    api_daily_credits: int = 0  # credits per key per UTC day, counting running tasks (0: unlimited)
     api_max_steps: int = 40  # the most steps a developer may ask for
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
     # Delete chats (and their turns) older than this many days; 0 keeps them forever.
