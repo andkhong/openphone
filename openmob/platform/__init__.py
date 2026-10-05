@@ -4,4 +4,6 @@
 - service.py: V1Service, transport-free. Scopes, 404 isolation, quotas, audit and kill switches live here once.
 - rest.py: the /v1 REST routes, the developer console and the admin switches, mapping errors to HTTP.
 - mcp.py: the remote MCP server at /mcp, calling the same V1Service.
+- stdio.py: `openmob mcp`, a local stdio proxy to a server's /mcp.
+- webhooks.py: the durable webhook outbox and its delivery worker.
 """

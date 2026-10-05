@@ -7,6 +7,9 @@ Run tasks on your own phones from code: "open YouTube and play lo-fi", "check my
 Phase 1 covers **your own phones**: the ones paired to your account. Access to other people's
 phones (with their consent) comes later.
 
+AI agents (Claude Code, Cursor, Claude Desktop, the Claude and OpenAI APIs) can use the same API
+as MCP tools at `https://<server>/mcp`, with the same key and the same rules: see [mcp.md](mcp.md).
+
 ## Authentication
 
 Create a key at **`/developer`** (Dashboard → ⋯ → Developer API) or on the server with
@@ -24,7 +27,7 @@ tasks are cancelled.
 | Status | Meaning |
 |---|---|
 | 401 | Missing, malformed, wrong or revoked key |
-| 403 | The key lacks the scope this route needs, or API access was switched off for the key or account |
+| 403 | The key lacks the scope this route needs, or API access was switched off for the key or account. Also `{"code": "confirmation_requires_owner"}` when a key approves a risky action (see below). |
 | 404 | No such phone or task **for your account**. Other accounts' phones and tasks always look like this. |
 | 409 | The phone is offline, or the task isn't in a state for that action |
 | 429 | Rate limit, concurrent-task cap or daily quota reached; see `Retry-After` |
@@ -112,15 +115,26 @@ task: words like "stop" in it are never treated as commands to the phone.
 | `queued` | Waiting for the phone | Wait |
 | `running` | Working | Wait or follow the events |
 | `needs_input` | Asked a question, in `question` | `POST …/answer` with `{"answer": "…"}` |
-| `needs_confirmation` | About to do something risky (buy, send, delete, post…), described in `question` | `POST …/answer` with `{"approve": true}` or `{"approve": false}` |
+| `needs_confirmation` | About to do something risky (buy, send, delete, post…), described in `question` | The owner approves on their phone. You may decline with `{"approve": false}` |
 | `succeeded` / `failed` / `cancelled` | Finished; see `outcome` and `credits` | |
 
 `GET /v1/tasks?limit=20` lists your recent API tasks, newest first.
 
 ### `POST /v1/tasks/{task_id}/answer`, scope `tasks:run`
 
-`{"answer": "the work account"}` for `needs_input`, or `{"approve": true}` for
+`{"answer": "the work account"}` for `needs_input`, or `{"approve": true}` / `{"approve": false}` for
 `needs_confirmation`. Returns `409` if the task isn't waiting.
+
+**Risky actions are approved by the phone's owner, not by the key.** When a task reaches
+`needs_confirmation`, the owner gets an approval prompt on the phone and confirms with the screen
+lock (no answer within 2 minutes counts as "no"). `{"approve": true}` from a key returns
+`403 {"code": "confirmation_requires_owner"}`, because the model calling the API may have read the
+very screen text that asks for the purchase. Declining (`{"approve": false}`) always works.
+
+For your own headless automations you can let a key approve: turn on **Approve risky actions** for
+it in `/developer`, or `PATCH /api/developer/keys/{key_id}` with `{"confirm_approve": true}` from
+the signed-in console (also accepted on key creation). Keys with it on don't trigger the phone
+prompt. Each change is audited.
 
 ### `POST /v1/tasks/{task_id}/cancel`, scope `tasks:run`
 
@@ -186,8 +200,15 @@ Set a URL in `/developer`. OpenMob then POSTs JSON when a task finishes or needs
 {"type": "task.finished", "created": 1790000013.0, "task": { …same as GET /v1/tasks/{id}… }}
 ```
 
-Event types: `task.finished`, `task.needs_input`, `task.needs_confirmation`. A delivery that fails
-is retried twice (after 1 s, then 4 s). Webhook URLs must be public `https://` addresses.
+Event types: `task.finished`, `task.needs_input`, `task.needs_confirmation`. Webhook URLs must be
+public `https://` addresses.
+
+Deliveries are durable: each event is stored before it's sent, and one that fails (a non-2xx answer
+or no answer within 5 s) is retried after 10 s, 30 s, 1, 2, 5 and 10 minutes, then every 15 minutes,
+for about an hour in all, even across server restarts. So the same event can arrive more than once:
+every attempt carries the same `X-OpenMob-Delivery: dlv_…` header, so drop ids you've already
+handled. Answer with any 2xx quickly and do the work afterwards. Retries go to the URL saved at the
+time; clearing the webhook drops what's still pending.
 
 Every request is signed with your webhook's signing secret, shown once when you save the URL:
 
@@ -211,8 +232,10 @@ def verify(secret: str, header: str, body: bytes, tolerance: int = 300) -> bool:
 
 ## Safety
 
-- **Risky actions need approval.** Taps that buy, send, delete, post and so on pause the task in
-  `needs_confirmation` until you approve or decline.
+- **Risky actions need the owner's approval.** Taps that buy, send, delete, post and so on pause
+  the task in `needs_confirmation` until the owner approves on the phone (or anyone declines).
+- **A connection blip doesn't kill a task.** If the phone's connection drops mid-task, the task
+  waits up to 45 s for it to come back, then fails. Taps are never repeated.
 - **Sensitive apps are off-limits by default.** API tasks can't open banking, payment, wallet,
   crypto or password-manager apps. A task that finds one in front stops. The phone's owner can
   allow these in `/developer` → Safety.
