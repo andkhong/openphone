@@ -241,11 +241,8 @@ class MainActivity : Activity() {
                 source == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
         }
 
-    private fun isValidServer(url: String): Boolean {
-        val trimmed = url.trim()
-        if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) return false
-        return !Uri.parse(trimmed).host.isNullOrBlank()
-    }
+    /** https:// anywhere; http:// only on this phone or the local network (see [ServerPolicy]). */
+    private fun isValidServer(url: String): Boolean = ServerPolicy.isAllowed(url)
 
     private fun hostOf(server: String): String = Uri.parse(server).host ?: server
 
@@ -475,22 +472,65 @@ class MainActivity : Activity() {
         }
         val data = intent?.data ?: return
         if (data.scheme != "openmob" || data.host != "connect") return
-        val server = data.getQueryParameter("server")?.trim().orEmpty()
-        val token = (data.getQueryParameter("t") ?: data.getQueryParameter("token"))?.trim().orEmpty()
+        val server = data.getQueryParameter("server")?.trim().orEmpty().trimEnd('/')
+        val hasToken = !(data.getQueryParameter("t") ?: data.getQueryParameter("token")).isNullOrBlank()
         val code = data.getQueryParameter("code")?.trim().orEmpty()
         // Don't re-handle the same link if the activity is recreated from this intent later.
         setIntent(Intent(this, MainActivity::class.java))
-        if (code.isNotEmpty()) {
-            // Accounts mode: a one-time code that only the owner's account can redeem.
-            if (isValidServer(server)) startAccountPairing(server, code) else toast(getString(R.string.ui_bad_link))
+        // A link (from any web page or message) never changes anything by itself. Developer-token
+        // links aren't accepted at all; account links only after the owner confirms the server.
+        if (code.isEmpty()) {
+            toast(getString(if (hasToken) R.string.ui_token_link_refused else R.string.ui_bad_link))
             return
         }
-        if (!isValidServer(server) || token.isEmpty()) {
+        if (!isValidServer(server)) {
             toast(getString(R.string.ui_bad_link))
             return
         }
-        pair(server, token)
-        if (isAccessibilityOn) reconnect()
+        confirmConnect(server) { startAccountPairing(server, code) }
+    }
+
+    /**
+     * "Connect to <host>?" before any pairing: the server named in a link or typed in gets control
+     * of the phone, so its host is shown first, and nothing is saved until the owner says yes.
+     */
+    private fun confirmConnect(server: String, onConfirm: () -> Unit) {
+        val host = hostOf(server)
+        val message = buildString {
+            append(getString(R.string.ui_connect_body, host))
+            if (isPaired) append("\n\n").append(getString(R.string.ui_connect_replaces, hostOf(settings.server)))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.ui_connect_title, host))
+            .setMessage(message)
+            .setPositiveButton(R.string.ui_connect) { _, _ -> onConfirm() }
+            .setNegativeButton(R.string.ui_cancel) { _, _ -> toast(getString(R.string.ui_pair_cancelled)) }
+            .setOnCancelListener { toast(getString(R.string.ui_pair_cancelled)) }
+            .show()
+    }
+
+    /** Replacing an existing pairing needs the screen lock (a fresh pairing goes straight on). */
+    private fun requireScreenLockToReplace(server: String, onOk: () -> Unit) {
+        if (!isPaired) return onOk()
+        if (!screenLockReady()) return showScreenLockRequired()
+        approval?.cancel()
+        val cancel = CancellationSignal().also { approval = it }
+        BiometricPrompt.Builder(this)
+            .setTitle(getString(R.string.ui_replace_title))
+            .setDescription(getString(R.string.ui_approve_replace, hostOf(settings.server), hostOf(server)))
+            .setAllowedAuthenticators(APPROVERS)
+            .build()
+            .authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                    if (approval === cancel) approval = null
+                    onOk()
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                    if (approval === cancel) approval = null
+                    if (!isDestroyed) toast(getString(R.string.ui_pair_cancelled))
+                }
+            })
     }
 
     private fun pair(server: String, token: String) {
@@ -514,48 +554,50 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------------- account pairing
 
+    /** A pairing in progress. Nothing is saved (the current pairing stays as it is) until it succeeds. */
+    private class Pending(val target: String, val code: String, var session: String, var email: String)
+
+    private var pending: Pending? = null
+
     /**
-     * QR code with a one-time code: sign in (if needed) → approve with the screen lock → redeem
-     * the code for this phone's own device key → connect.
+     * QR code with a one-time code, after the owner confirmed the server: sign in (if needed) →
+     * approve with the screen lock → redeem the code for this phone's own device key → connect.
      */
     private fun startAccountPairing(server: String, code: String) {
-        if (settings.server != server.trim().trimEnd('/') && ConnectionService.isRunning) {
-            ConnectionService.stop(this)
-        }
-        useServer(server)
-        render()
         // Checked first so nobody signs in only to be refused afterwards.
         if (!screenLockReady()) {
             showScreenLockRequired()
             return
         }
-        val target = settings.server
-        val session = settings.session
-        if (session.isEmpty()) {
-            showSignIn(code)
+        val target = server.trim().trimEnd('/')
+        val same = target == settings.server
+        val p = Pending(target, code, if (same) settings.session else "", if (same) settings.email else "")
+        pending = p
+        if (p.session.isEmpty()) {
+            showSignIn(p)
             return
         }
         toast(getString(R.string.ui_checking_account, hostOf(target)))
-        inBackground({ AccountApi(target).me(session) }) { result ->
+        inBackground({ AccountApi(target).me(p.session) }) { result ->
+            if (pending !== p) return@inBackground
             result.onSuccess { me ->
                 when {
                     !me.accounts -> showPairError(getString(R.string.ui_no_accounts))
                     me.email == null -> {
-                        settings.session = "" // expired or signed out elsewhere
-                        settings.email = ""
-                        showSignIn(code)
+                        p.session = "" // expired or signed out elsewhere
+                        showSignIn(p)
                     }
                     else -> {
-                        settings.email = me.email
-                        approve(code)
+                        p.email = me.email
+                        approve(p)
                     }
                 }
             }.onFailure { showPairError(it) }
         }
     }
 
-    private fun showSignIn(code: String) {
-        val target = settings.server
+    private fun showSignIn(p: Pending) {
+        val target = p.target
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), 0)
@@ -568,7 +610,7 @@ class MainActivity : Activity() {
         val emailInput = input(getString(R.string.ui_email_hint)).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            setText(settings.email)
+            setText(p.email)
         }
         val passwordInput = input(getString(R.string.ui_password_hint)).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -590,6 +632,7 @@ class MainActivity : Activity() {
             .create()
 
         fun submit(create: Boolean) {
+            if (pending !== p) return dialog.dismiss() // another link was confirmed meanwhile
             val email = emailInput.text.toString().trim()
             val password = passwordInput.text.toString()
             fun showStatus(message: String, colorRes: Int) {
@@ -610,13 +653,12 @@ class MainActivity : Activity() {
             }) { result ->
                 buttons.forEach { it.isEnabled = true }
                 result.onSuccess { signedIn ->
-                    if (settings.server != target) return@onSuccess // another link was scanned meanwhile
-                    settings.session = signedIn.session
-                    settings.email = signedIn.email
+                    if (pending !== p) return@onSuccess // another link was confirmed meanwhile
+                    p.session = signedIn.session
+                    p.email = signedIn.email
                     dialog.dismiss()
                     hideKeyboard()
-                    render()
-                    approve(code)
+                    approve(p)
                 }.onFailure { showStatus(it.message ?: it.javaClass.simpleName, R.color.om_error) }
             }
         }
@@ -629,7 +671,7 @@ class MainActivity : Activity() {
             }
         }
         dialog.show()
-        if (settings.email.isEmpty()) emailInput.requestFocus() else passwordInput.requestFocus()
+        if (p.email.isEmpty()) emailInput.requestFocus() else passwordInput.requestFocus()
     }
 
     private fun screenLockReady(): Boolean =
@@ -650,26 +692,29 @@ class MainActivity : Activity() {
             .show()
     }
 
-    /** The phone's owner approves with fingerprint/face (strong) or the screen lock. */
-    private fun approve(code: String) {
+    /** The phone's owner approves with fingerprint/face (strong) or the screen lock. When this
+     *  replaces an existing pairing, the same prompt says so and names the server it leaves. */
+    private fun approve(p: Pending) {
         if (!screenLockReady()) {
             showScreenLockRequired()
             return
         }
-        val target = settings.server
-        val email = settings.email
+        val target = p.target
+        val email = p.email
         approval?.cancel()
         val cancel = CancellationSignal().also { approval = it }
+        val description = if (isPaired) getString(R.string.ui_approve_replace, hostOf(settings.server), hostOf(target))
+        else getString(R.string.ui_approve_description)
         val prompt = BiometricPrompt.Builder(this)
             .setTitle(getString(R.string.ui_approve_title))
             .setSubtitle(getString(R.string.ui_approve_subtitle, email, hostOf(target)))
-            .setDescription(getString(R.string.ui_approve_description))
+            .setDescription(description)
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
         prompt.authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                 if (approval === cancel) approval = null
-                redeem(target, email, code)
+                if (pending === p) redeem(p)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
@@ -683,28 +728,32 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun redeem(target: String, email: String, code: String) {
-        val session = settings.session
+    private fun redeem(p: Pending) {
+        val wasRunning = ConnectionService.isRunning
         inBackground({
-            val key = AccountApi(target).redeem(session, code, settings.deviceId, Build.MODEL)
-            // Saved here, so a pairing finishes even if the screen is recreated meanwhile.
-            if (settings.server == target) {
-                settings.deviceKey = key
-                settings.token = ""
-            }
+            val key = AccountApi(p.target).redeem(p.session, p.code, settings.deviceId, Build.MODEL, ApprovalKeys.publicKey())
+            // Only now, with the new pairing complete, is the old one replaced. Saved here, so a
+            // pairing finishes even if the screen is recreated meanwhile.
+            settings.server = p.target
+            settings.session = p.session
+            settings.email = p.email
+            settings.deviceKey = key
+            settings.token = ""
         }) { result ->
+            if (pending === p) pending = null
             result.onSuccess {
-                toast(getString(R.string.ui_paired_as_toast, hostOf(target), email))
+                toast(getString(R.string.ui_paired_as_toast, hostOf(p.target), p.email))
                 render()
-                if (isAccessibilityOn || ConnectionService.isRunning) reconnect()
+                if (isAccessibilityOn || wasRunning) reconnect()
             }.onFailure { error ->
                 if (error is AccountApi.ApiError && error.status == 401) {
                     // Session no longer valid; the code wasn't used, so sign in and try again.
-                    settings.session = ""
+                    p.session = ""
+                    pending = p
                     toast(error.message ?: "")
-                    showSignIn(code)
+                    showSignIn(p)
                 } else {
-                    showPairError(error)
+                    showPairError(error) // the existing pairing is untouched
                 }
             }
         }
@@ -815,10 +864,16 @@ class MainActivity : Activity() {
             token.isEmpty() -> tokenInput.error = getString(R.string.ui_missing_token)
             else -> {
                 hideKeyboard()
-                pairForm.visibility = View.GONE
-                val wasRunning = ConnectionService.isRunning
-                pair(server, token)
-                if (wasRunning) reconnect()
+                // Developer token pairing (local servers): same confirmation as a link, and the
+                // screen lock when it replaces an existing pairing.
+                confirmConnect(server) {
+                    requireScreenLockToReplace(server) {
+                        pairForm.visibility = View.GONE
+                        val wasRunning = ConnectionService.isRunning
+                        pair(server, token)
+                        if (wasRunning || isAccessibilityOn) reconnect()
+                    }
+                }
             }
         }
     }
