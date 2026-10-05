@@ -52,7 +52,9 @@ def test_unanswered_question_fails_the_task_and_frees_the_slot(orc):
     done = wait_task(orc.alice, r.json()["id"], "succeeded", "failed", "cancelled")
     assert done["status"] == "failed" and done["outcome"]["reason"] == "question_timeout"
     assert "nobody answered" in done["outcome"]["summary"]
-    assert new_task(orc.alice, A, "open maps").status_code == 201  # the key's only task slot is free again
+    # The key's only task slot is freed as the task's end is booked (a moment after its status shows).
+    assert wait_for(lambda: not orc.service.active.get(orc.alice.key_id))
+    assert new_task(orc.alice, A, "open maps").status_code == 201
 
 
 def test_unanswered_question_in_an_orchestration(orc):
