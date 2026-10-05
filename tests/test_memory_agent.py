@@ -1,7 +1,7 @@
 """The agent with memory: pinned notes reach every task as plain text, app notes appear when that
 app is in front, `remember` saves the user's own words and only proposes anything else."""
 
-from conftest import FakeDriver, RecordingIO, tool_use
+from conftest import FakeDriver, RecordingIO, system_text, tool_use
 from test_agent import make_agent as _make_agent
 
 from openmob.memory import Memory
@@ -30,7 +30,7 @@ def test_pinned_notes_reach_every_task(tmp_path):
     mem.add("alice", "Not active yet", status="proposed")
     mem.add("bob", "Bob's secret preference")
     agent.run("open the game")
-    system = agent.client.requests[0]["system"]
+    system = system_text(agent.client.requests[0])
     assert "Use my second game account" in system
     assert "Not active yet" not in system and "Bob's secret" not in system
     assert mem.get("alice", note["id"])["uses"] == 1
@@ -86,7 +86,7 @@ def test_memory_off_is_incognito(tmp_path):
     mem = with_memory(agent, tmp_path)
     mem.add("alice", "A pinned note")
     agent.run("remember x", memory="off")
-    assert "A pinned note" not in agent.client.requests[0]["system"]
+    assert "A pinned note" not in system_text(agent.client.requests[0])
     assert len(mem.list("alice")) == 1  # nothing saved
 
 
@@ -96,7 +96,7 @@ def test_read_only_uses_notes_but_saves_nothing(tmp_path):
     mem = with_memory(agent, tmp_path)
     mem.add("alice", "A pinned note")
     agent.run("remember x", memory="read_only")
-    assert "A pinned note" in agent.client.requests[0]["system"]
+    assert "A pinned note" in system_text(agent.client.requests[0])
     assert len(mem.list("alice")) == 1
 
 

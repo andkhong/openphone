@@ -28,6 +28,10 @@ class OpenMobTileService : TileService() {
                     else -> R.string.tile_tap_to_connect
                 }
             )
+            // Someone is driving the phone right now: say who.
+            if (AppState.connected && AppState.controller.isNotEmpty()) {
+                tile.subtitle = getString(R.string.tile_in_use, AppState.controller)
+            }
         }
         tile.updateTile()
     }

@@ -15,11 +15,44 @@ DEFAULT_CONFIRM_KEYWORDS = [
 ]
 
 DEFAULT_MODELS = [
-    {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)"},
-    {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)"},
-    {"id": "claude-fable-5-1", "label": "Fable 5.1"},
-    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5 (fastest, cheapest)"},
+    {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)", "provider": "anthropic"},
+    {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)", "provider": "anthropic"},
+    {"id": "claude-fable-5-1", "label": "Fable 5.1", "provider": "anthropic"},
+    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5 (fastest, cheapest)", "provider": "anthropic"},
 ]
+
+# Who serves a model. Keys come from the environment only; `openai_compatible` is any endpoint that
+# speaks OpenAI Chat Completions (vLLM, Ollama, LM Studio, OpenRouter…) at a `base_url`.
+PROVIDERS = ("anthropic", "openai", "google", "openai_compatible")
+# Optional per-model settings in `models:` besides id, label and provider.
+MODEL_OPTIONS = ("base_url", "api_key_env", "max_tokens", "vision", "tools", "context")
+
+
+def infer_provider(model_id: str) -> str | None:
+    """The provider a model id belongs to, from its name (None: say `provider:` in the config)."""
+    name = model_id.lower()
+    if name.startswith("claude"):
+        return "anthropic"
+    if name.startswith(("gpt-", "chatgpt", "o1", "o3", "o4", "o5")):
+        return "openai"
+    if name.startswith(("gemini", "gemma")):
+        return "google"
+    return None
+
+
+def normalize_model(entry) -> dict:
+    """One `models:` entry as {id, label, provider, ...options}."""
+    if not isinstance(entry, dict):
+        entry = {"id": entry}
+    if "api_key" in entry:
+        raise ValueError(f"models: {entry['id']}: keys stay out of config.yaml; name an environment variable with api_key_env")
+    model = {"id": str(entry["id"]), "label": str(entry.get("label") or entry["id"])}
+    provider = entry.get("provider") or infer_provider(model["id"])
+    if provider not in PROVIDERS:
+        raise ValueError(f"models: {model['id']} needs a provider: one of {', '.join(PROVIDERS)}")
+    model["provider"] = provider
+    model.update({k: entry[k] for k in MODEL_OPTIONS if entry.get(k) is not None})
+    return model
 
 # Developer API tiers: the public name -> the model that runs it, and what a step costs in credits.
 # The mapping is internal; API responses only ever show the tier name.
@@ -38,7 +71,8 @@ DEFAULT_SENSITIVE_APPS = [
     r"\\.keeper", r"authenticator", r"authy",
 ]
 
-REMOVED_KEYS = {"hotkey"}  # Mac push-to-talk was removed
+REMOVED_KEYS = {"hotkey"}
+SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
 
 CONFIG_LOCATIONS = [
     Path("config.yaml"),
@@ -51,8 +85,11 @@ class Config:
     # Agent
     model: str = "claude-sonnet-5-5"
     resolver_model: str = "claude-haiku-4-5-20251001"
-    # Models the dashboard may switch a phone to (an allowlist; anything else is refused).
+    # Models the dashboard may switch a phone to (an allowlist; anything else is refused):
+    # {id, label, provider} plus optional base_url, api_key_env, max_tokens, vision, tools, context.
     models: list[dict] = field(default_factory=lambda: [dict(m) for m in DEFAULT_MODELS])
+    # Default endpoint for `openai_compatible` models without their own base_url (not a secret).
+    openai_compatible_base_url: str | None = None
     max_steps: int = 40
     keep_screenshots: int = 2
     settle_delay: float = 0.8
@@ -99,7 +136,10 @@ class Config:
     server_token: str | None = None
 
     # Secrets come from the environment, never from the YAML file.
-    api_key: str | None = None
+    api_key: str | None = None  # ANTHROPIC_API_KEY
+    openai_api_key: str | None = None
+    google_api_key: str | None = None  # GEMINI_API_KEY or GOOGLE_API_KEY
+    compatible_api_key: str | None = None  # OPENAI_COMPATIBLE_API_KEY (often not needed locally)
     workspace_id: str | None = None
     jev_api_key: str | None = None
     source: Path | None = None
@@ -120,7 +160,7 @@ def load_config(path: str | Path | None = None) -> Config:
 
     for removed in REMOVED_KEYS:  # settings of features that no longer exist: ignore, don't fail
         data.pop(removed, None)
-    known = {f.name for f in fields(Config)} - {"api_key", "workspace_id", "jev_api_key", "source"}
+    known = {f.name for f in fields(Config)} - SECRET_FIELDS
     unknown = set(data) - known
     if unknown:
         raise ValueError(f"Unknown config keys in {source}: {', '.join(sorted(unknown))}")
@@ -131,14 +171,15 @@ def load_config(path: str | Path | None = None) -> Config:
     # Needed only for API keys that aren't scoped to a workspace.
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
+    cfg.openai_api_key = os.environ.get("OPENAI_API_KEY")
+    cfg.google_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    cfg.compatible_api_key = os.environ.get("OPENAI_COMPATIBLE_API_KEY")
+    cfg.openai_compatible_base_url = os.environ.get("OPENAI_COMPATIBLE_BASE_URL", cfg.openai_compatible_base_url)
     cfg.adb_serial = os.environ.get("ANDROID_SERIAL", cfg.adb_serial)
     cfg.source = source
-    cfg.models = [
-        {"id": str(m["id"]), "label": str(m.get("label") or m["id"])} if isinstance(m, dict) else {"id": str(m), "label": str(m)}
-        for m in cfg.models or []
-    ]
+    cfg.models = [normalize_model(m) for m in cfg.models or []]
     if cfg.model not in {m["id"] for m in cfg.models}:  # the default is always selectable
-        cfg.models.insert(0, {"id": cfg.model, "label": cfg.model})
+        cfg.models.insert(0, normalize_model(cfg.model))
     if cfg.confirm_actions not in {"unrequested", "always", "never"}:
         raise ValueError("confirm_actions must be one of: unrequested, always, never")
     if cfg.api_default_tier not in cfg.api_tiers:
@@ -147,6 +188,12 @@ def load_config(path: str | Path | None = None) -> Config:
         if not isinstance(tier, dict) or "model" not in tier:
             raise ValueError(f"api_tiers.{name} needs a model")
         tier.setdefault("credits_per_step", 1)
+        # A tier may name any provider's model; one that isn't in `models:` needs a known provider.
+        if tier["model"] not in {m["id"] for m in cfg.models}:
+            provider = tier.get("provider") or infer_provider(str(tier["model"]))
+            if provider not in PROVIDERS:
+                raise ValueError(f"api_tiers.{name}: say which provider serves {tier['model']} (provider: ...)")
+            tier["provider"] = provider
     if cfg.ui_tree not in {"auto", "always", "never"}:
         raise ValueError("ui_tree must be one of: auto, always, never")
     return cfg

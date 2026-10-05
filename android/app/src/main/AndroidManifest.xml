@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Setup checklist: ask to be exempt from battery optimization, so the connection survives screen-off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Pairing must be approved with the phone's screen lock (BiometricPrompt). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- The agent opens any app the user names, so it must see every installed app. -->
@@ -57,6 +59,19 @@
                 <data android:scheme="openmob" android:host="connect" />
             </intent-filter>
         </activity>
+
+        <!-- Approve a risky action with the screen lock; opened from the approval notification. -->
+        <activity
+            android:name=".ApprovalActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="" />
+
+        <!-- The approval notification's Deny button. -->
+        <receiver
+            android:name=".ApprovalReceiver"
+            android:exported="false" />
 
         <service
             android:name=".ConnectionService"

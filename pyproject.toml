@@ -35,6 +35,9 @@ ios = [
 mac = [
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
 ]
+# More model providers (Anthropic is built in). OpenAI also serves OpenAI-compatible endpoints.
+openai = ["openai>=1.40"]
+gemini = ["google-genai>=1.30"]  # parameters_json_schema on function declarations
 dev = ["pytest>=8"]
 
 [project.scripts]

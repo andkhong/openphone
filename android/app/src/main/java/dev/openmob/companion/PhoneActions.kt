@@ -252,6 +252,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             .put("clickable", clickable)
             .put("checked", if (node.isCheckable) node.isChecked else JSONObject.NULL)
             .put("bounds", JSONArray().put(r.left).put(r.top).put(r.right).put(r.bottom))
+            // Optional, only when true: lets the server keep the model away from password fields.
+            .apply { if (node.isPassword) put("password", true) }
+            .apply { if (node.isEditable) put("editable", true) }
     }
 
     // --- apps ------------------------------------------------------------------------------------
@@ -343,9 +346,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     private fun typeText(text: String): Any? {
         val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
-        if (node.isPassword) {
-            throw IllegalStateException("The focused field is a password field. Ask the user to type it themselves.")
-        }
+        // Defense in depth: the server should never ask, but a password is never typed for anyone.
+        if (node.isPassword) throw IllegalStateException("I don't type passwords. Please type it yourself.")
         val old = currentText(node)
         // Insert at the cursor, replacing any selection; unknown selection (-1) means append.
         val (start, end) = selection(node, old) ?: (old.length to old.length)

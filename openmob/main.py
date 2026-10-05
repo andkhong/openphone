@@ -25,21 +25,31 @@ def make_anthropic_client(cfg: Config):
 
 def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=None):
     from .agent import Agent
+    from .agent.models import ModelRouter
     from .jev import JevClient, JevJudge
     from .phone.apps import AppResolver, chain_pickers, make_jev_picker, make_llm_picker
 
-    client = make_anthropic_client(cfg)
+    router = ModelRouter(cfg)
+    if not router.available(cfg.model):
+        usable = [m["id"] for m in cfg.models if router.available(m["id"])]
+        if not usable:
+            sys.exit("No model provider is set up. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY "
+                     "(or a base_url for an OpenAI-compatible endpoint).")
+        print(f"⚠️  {cfg.model} isn't available here (no key for its provider); using {usable[0]}.", flush=True)
+        cfg.model = usable[0]
+    # App names are picked by a small model: the resolver model if its provider is set up, else the default.
+    picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
     judge = None
     if cfg.jev_api_key:
         judge = JevJudge(JevClient(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url))
     picker = chain_pickers(
         make_jev_picker(judge, cfg.jev_min_confidence) if judge else None,
-        make_llm_picker(client, cfg.resolver_model),
+        make_llm_picker(router, picker_model),
     )
     extra = {"label_cache": label_cache} if label_cache else {}
     resolver = AppResolver(driver, cfg.aliases, llm_picker=picker, **extra)
-    return Agent(client, driver, resolver, cfg, io, judge=judge)
+    return Agent(router, driver, resolver, cfg, io, judge=judge)
 
 
 def cmd_do(cfg: Config, args) -> None:
