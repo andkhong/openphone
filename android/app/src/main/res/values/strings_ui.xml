@@ -102,4 +102,17 @@
     <string name="ui_pair_new_code">Generate a new code on your dashboard and scan again.</string>
     <string name="ui_paired_as_toast">Paired with %1$s as %2$s</string>
     <string name="ui_no_accounts">This server doesn\'t use accounts. Scan the QR code from its Connect page again.</string>
+
+    <!-- Home-screen shortcuts and the Quick Settings tile -->
+    <string name="shortcut_a11y_short">Accessibility</string>
+    <string name="shortcut_a11y_long">Turn on Accessibility</string>
+    <string name="shortcut_connect_short">Connect</string>
+    <string name="shortcut_connect_long">Connect to my agent</string>
+    <string name="shortcut_ask_short">Ask</string>
+    <string name="shortcut_ask_long">Ask my agent</string>
+    <string name="shortcut_need_pairing">Pair this phone first: scan the QR code on your dashboard.</string>
+    <string name="shortcut_need_connection">Connect to your agent first.</string>
+    <string name="tile_turn_on_accessibility">Turn on Accessibility</string>
+    <string name="tile_tap_to_connect">Tap to connect</string>
+    <string name="tile_connected">Connected</string>
 </resources>

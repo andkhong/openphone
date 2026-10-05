@@ -331,6 +331,14 @@ class MainActivity : Activity() {
     // ---------------------------------------------------------------- actions
 
     private fun handleIntent(intent: Intent?) {
+        // Shortcuts (long-press the app icon, or the Quick Settings tile).
+        when (intent?.action) {
+            Shortcuts.OPEN_ACCESSIBILITY, Shortcuts.CONNECT, Shortcuts.ASK -> {
+                setIntent(Intent(this, MainActivity::class.java))  // handle once, not again on recreate
+                runShortcut(intent.action!!)
+                return
+            }
+        }
         val data = intent?.data ?: return
         if (data.scheme != "openmob" || data.host != "connect") return
         val server = data.getQueryParameter("server")?.trim().orEmpty()
@@ -721,6 +729,20 @@ class MainActivity : Activity() {
         } else {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
         }
+    }
+
+    private fun runShortcut(action: String) {
+        when (action) {
+            // Same path as the in-app button: explanation first, then Android's Accessibility settings.
+            Shortcuts.OPEN_ACCESSIBILITY -> if (isAccessibilityOn) toast(getString(R.string.ui_step_a11y_done)) else onAccessibilityClicked()
+            Shortcuts.CONNECT -> when {
+                !isPaired -> toast(getString(R.string.shortcut_need_pairing))
+                ConnectionService.isRunning -> toast(AppState.connection)
+                else -> ConnectionService.start(this)
+            }
+            Shortcuts.ASK -> if (AppState.connected) startVoiceInput() else toast(getString(R.string.shortcut_need_connection))
+        }
+        render()
     }
 
     private fun onConnectClicked() {

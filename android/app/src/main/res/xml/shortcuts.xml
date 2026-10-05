@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the OpenMob icon; each can be dragged to the home screen as its own icon. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="accessibility"
+        android:enabled="true"
+        android:icon="@drawable/ic_openmob_tile"
+        android:shortcutShortLabel="@string/shortcut_a11y_short"
+        android:shortcutLongLabel="@string/shortcut_a11y_long">
+        <intent
+            android:action="dev.openmob.action.OPEN_ACCESSIBILITY"
+            android:targetClass="dev.openmob.companion.MainActivity"
+            android:targetPackage="dev.openmob.companion" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="connect"
+        android:enabled="true"
+        android:icon="@drawable/ic_openmob_tile"
+        android:shortcutShortLabel="@string/shortcut_connect_short"
+        android:shortcutLongLabel="@string/shortcut_connect_long">
+        <intent
+            android:action="dev.openmob.action.CONNECT"
+            android:targetClass="dev.openmob.companion.MainActivity"
+            android:targetPackage="dev.openmob.companion" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="ask"
+        android:enabled="true"
+        android:icon="@drawable/ic_openmob_tile"
+        android:shortcutShortLabel="@string/shortcut_ask_short"
+        android:shortcutLongLabel="@string/shortcut_ask_long">
+        <intent
+            android:action="dev.openmob.action.ASK"
+            android:targetClass="dev.openmob.companion.MainActivity"
+            android:targetPackage="dev.openmob.companion" />
+    </shortcut>
+</shortcuts>
