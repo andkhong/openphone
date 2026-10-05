@@ -113,3 +113,8 @@ def test_every_public_doc_is_in_the_console_and_links_only_to_public_docs():
     dockerfile = (Path(__file__).parent.parent / "Dockerfile").read_text()
     for filename in PUBLIC_DOCS.values():
         assert f"docs/{filename}" in dockerfile, f"Dockerfile doesn't copy docs/{filename}"
+    # …and .dockerignore must let them into the build context.
+    ignore = (Path(__file__).parent.parent / ".dockerignore").read_text().splitlines()
+    if "docs" in ignore or "docs/*" in ignore:
+        for filename in PUBLIC_DOCS.values():
+            assert f"!docs/{filename}" in ignore, f".dockerignore keeps docs/{filename} out of the image"
