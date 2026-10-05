@@ -9,7 +9,7 @@ same limits, the same audit log. Anything a key can't do over `/v1`, it can't do
 
 ## 1. Get a key
 
-In **`/developer`** (Dashboard → ⋯ → Developer API), create a key with the scopes your agent needs:
+In **`/developer`** (Dashboard → account menu, bottom left → Developer API & AI agents), create a key with the scopes your agent needs:
 
 | Scope | Tools |
 |---|---|
