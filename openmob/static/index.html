@@ -8,162 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
 <style>
-  /* @ds:start — OpenMob design system v1. This block is identical on every page in openmob/static;
-     change it in one page, then copy it to the others (pages have no build step and no shared files). */
-  :root {
-    color-scheme: light;
-    --bg: #f5f6f8; --surface: #ffffff; --surface-2: #f0f2f5; --sunken: #eceef2;
-    --fg: #15171b; --muted: #5a606a; --faint: #697079; --line: #e2e5ea; --line-strong: #cdd2da;
-    --accent: #3550e8; --accent-hover: #2a43d4; --accent-ink: #ffffff; --accent-soft: #eaeeff; --accent-line: #c6cffd;
-    --ok: #157a46; --ok-soft: #e4f4ea; --warn: #9a5a00; --warn-soft: #fdf1dc; --bad: #c42b2f; --bad-soft: #fde8e8;
-    --code: #f0f2f5; --overlay: rgba(15, 17, 21, .45);
-    --shadow-sm: 0 1px 2px rgba(16, 24, 40, .05);
-    --shadow: 0 1px 2px rgba(16, 24, 40, .04), 0 6px 20px rgba(16, 24, 40, .06);
-    --shadow-lg: 0 4px 10px rgba(16, 24, 40, .06), 0 18px 48px rgba(16, 24, 40, .12);
-    --r-sm: 8px; --r: 12px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
-    --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-    --gutter: 16px;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      color-scheme: dark;
-      --bg: #0e1013; --surface: #15181c; --surface-2: #1c2025; --sunken: #111317;
-      --fg: #e9ebef; --muted: #a2a8b2; --faint: #858c97; --line: #252a31; --line-strong: #343a43;
-      --accent: #8193ff; --accent-hover: #97a6ff; --accent-ink: #0b0d12; --accent-soft: #1b2142; --accent-line: #33407a;
-      --ok: #4cd48a; --ok-soft: #12291c; --warn: #f0b04a; --warn-soft: #2d2210; --bad: #ff7a72; --bad-soft: #321718;
-      --code: #1c2025; --overlay: rgba(0, 0, 0, .6);
-      --shadow-sm: none; --shadow: 0 0 0 1px rgba(255,255,255,.02); --shadow-lg: 0 18px 48px rgba(0, 0, 0, .5);
-    }
-  }
-  :root[data-theme="dark"] {
-    color-scheme: dark;
-    --bg: #0e1013; --surface: #15181c; --surface-2: #1c2025; --sunken: #111317;
-    --fg: #e9ebef; --muted: #a2a8b2; --faint: #858c97; --line: #252a31; --line-strong: #343a43;
-    --accent: #8193ff; --accent-hover: #97a6ff; --accent-ink: #0b0d12; --accent-soft: #1b2142; --accent-line: #33407a;
-    --ok: #4cd48a; --ok-soft: #12291c; --warn: #f0b04a; --warn-soft: #2d2210; --bad: #ff7a72; --bad-soft: #321718;
-    --code: #1c2025; --overlay: rgba(0, 0, 0, .6);
-    --shadow-sm: none; --shadow: 0 0 0 1px rgba(255,255,255,.02); --shadow-lg: 0 18px 48px rgba(0, 0, 0, .5);
-  }
-  *, *::before, *::after { box-sizing: border-box; }
-  html { -webkit-text-size-adjust: 100%; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--font); -webkit-font-smoothing: antialiased; }
-  button, input, select, textarea { font: inherit; color: inherit; }
-  a { color: var(--accent); }
-  code, pre, kbd { font-family: var(--mono); font-size: 13px; }
-  [hidden] { display: none !important; }
-  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
-  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition: none !important; } }
-
-  /* Top bar shared by every signed-in page */
-  .topbar { display: flex; align-items: center; gap: 10px; padding: 10px var(--gutter); min-height: 56px; background: var(--surface); border-bottom: 1px solid var(--line); }
-  .brand { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); text-decoration: none; font-weight: 700; font-size: 17px; letter-spacing: -.015em; white-space: nowrap; }
-  .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
-  .brand-mark svg { width: 17px; height: 17px; }
-  .brand .page-name { font-weight: 500; color: var(--muted); font-size: 15px; letter-spacing: 0; }
-  .brand .page-name::before { content: "/"; color: var(--line-strong); margin: 0 8px 0 2px; }
-  .topnav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
-
-  /* Buttons */
-  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; line-height: 1.2; text-decoration: none; cursor: pointer; white-space: nowrap; transition: background .12s, border-color .12s, color .12s; }
-  .btn:hover { background: var(--surface-2); }
-  .btn:disabled, .btn[aria-disabled="true"] { opacity: .5; cursor: default; }
-  .btn svg { width: 16px; height: 16px; flex: none; }
-  .btn-primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); font-weight: 600; }
-  .btn-primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
-  .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
-  .btn-ghost:hover { background: var(--surface-2); color: var(--fg); }
-  .btn-danger { color: var(--bad); }
-  .btn-danger:hover { background: var(--bad-soft); border-color: var(--bad); }
-  .btn-sm { min-height: 30px; padding: 4px 10px; font-size: 13px; border-radius: 8px; }
-  .btn-lg { min-height: 46px; padding: 12px 20px; font-size: 15px; border-radius: 12px; }
-  .btn-block { display: flex; width: 100%; }
-  .icon-btn { width: 38px; height: 38px; padding: 0; }
-
-  /* Inputs */
-  .input, .select { width: 100%; min-width: 0; min-height: 40px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); color: var(--fg); font-size: 15px; }
-  .input::placeholder { color: var(--faint); }
-  .input:focus, .select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-  .field { display: grid; gap: 6px; }
-  .field > label, .label { font-size: 13px; font-weight: 600; color: var(--muted); }
-  .check { display: inline-flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted); cursor: pointer; }
-  .check input { width: 16px; height: 16px; accent-color: var(--accent); margin: 0; }
-
-  /* Layout and cards */
-  .page { max-width: 1040px; margin: 0 auto; padding: 28px var(--gutter) 56px; display: grid; gap: 20px; }
-  .page.narrow { max-width: 760px; }
-  .page-head h1 { font-size: 26px; line-height: 1.2; letter-spacing: -.02em; margin: 0 0 6px; }
-  .page-head p { color: var(--muted); margin: 0; max-width: 62ch; }
-  .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 20px; box-shadow: var(--shadow-sm); min-width: 0; }
-  .card-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 0 0 14px; }
-  .card-head h2 { font-size: 16px; font-weight: 600; letter-spacing: -.005em; margin: 0; display: flex; align-items: center; gap: 8px; }
-  .card-head .grow { flex: 1; }
-  .card-sub { color: var(--muted); font-size: 14px; margin: -8px 0 14px; }
-  .count { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 20px; padding: 0 7px; border-radius: var(--r-pill); background: var(--surface-2); color: var(--muted); font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .muted { color: var(--muted); }
-  .small { font-size: 13px; }
-  .error { color: var(--bad); font-size: 13px; min-height: 1em; }
-  .error:empty { min-height: 0; }
-
-  /* Pills: statuses */
-  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; min-height: 22px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; white-space: nowrap; background: var(--surface-2); color: var(--muted); }
-  .pill.dotted::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; flex: none; }
-  .pill.ok { background: var(--ok-soft); color: var(--ok); }
-  .pill.warn { background: var(--warn-soft); color: var(--warn); }
-  .pill.bad { background: var(--bad-soft); color: var(--bad); }
-  .pill.info { background: var(--accent-soft); color: var(--accent); }
-  .pill.live::before { animation: om-pulse 1.4s ease-in-out infinite; }
-  @keyframes om-pulse { 50% { opacity: .35; } }
-
-  /* Callouts */
-  .callout { display: flex; gap: 12px; align-items: flex-start; padding: 12px 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface-2); font-size: 14px; }
-  .callout > svg { width: 18px; height: 18px; flex: none; margin-top: 2px; }
-  .callout.info { background: var(--accent-soft); border-color: var(--accent-line); }
-  .callout.warn { background: var(--warn-soft); border-color: color-mix(in srgb, var(--warn) 35%, transparent); }
-  .callout.warn > svg { color: var(--warn); }
-  .callout.info > svg { color: var(--accent); }
-  .callout b { display: block; }
-
-  /* Code blocks with a copy button */
-  .codebox { position: relative; background: var(--code); border: 1px solid var(--line); border-radius: var(--r); }
-  .codebox pre { margin: 0; padding: 12px 14px; padding-right: 84px; overflow-x: auto; white-space: pre; line-height: 1.6; }
-  .codebox .copy { position: absolute; top: 7px; right: 7px; }
-  .codebox.inline pre { white-space: pre-wrap; overflow-wrap: anywhere; }
-
-  /* Tables: stack into labelled cards on phones */
-  .table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  .table th { text-align: left; font-weight: 600; color: var(--muted); font-size: 12px; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
-  .table td { padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
-  .table tr:last-child td { border-bottom: 0; }
-  .table td.empty { text-align: center; color: var(--muted); padding: 28px 10px; }
-  .table-wrap { overflow-x: auto; margin: 0 -4px; padding: 0 4px; }
-  @media (max-width: 700px) {
-    .table thead { display: none; }
-    .table, .table tbody, .table tr, .table td { display: block; width: 100%; }
-    .table tr { border: 1px solid var(--line); border-radius: var(--r); padding: 4px 12px; margin-bottom: 10px; }
-    .table td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px dashed var(--line); text-align: right; }
-    .table td:last-child { border-bottom: 0; }
-    .table td::before { content: attr(data-label); color: var(--muted); font-size: 12px; font-weight: 600; text-align: left; flex: none; }
-    .table td.empty { justify-content: center; } .table td.empty::before { content: none; }
-    .table tr.empty-row { border: 0; }
-  }
-
-  /* Empty states */
-  .empty-state { text-align: center; padding: 28px 16px; color: var(--muted); font-size: 14px; }
-  .empty-state .art { width: 44px; height: 44px; margin: 0 auto 10px; border-radius: 12px; background: var(--surface-2); color: var(--faint); display: flex; align-items: center; justify-content: center; }
-  .empty-state .art svg { width: 22px; height: 22px; }
-  .empty-state b { display: block; color: var(--fg); font-size: 15px; margin-bottom: 2px; }
-
-  @media (max-width: 560px) {
-    .page { padding-top: 20px; gap: 16px; }
-    .card { padding: 16px; border-radius: var(--r); }
-    .page-head h1 { font-size: 22px; }
-    .brand .page-name { display: none; }
-  }
-  /* @ds:end */
-
   /* ---------- dashboard ---------- */
   html, body { height: 100%; }
   body { display: flex; flex-direction: column; overflow: hidden; }
@@ -571,6 +417,15 @@ async function checkAccount() {
 // Models, grouped by provider. Older servers send neither `provider` nor `available`:
 // those models are Anthropic's and usable.
 const shortModel = (label) => label.replace(/\s*\(.*\)$/, "");
+// The closed picker shows only the model's name; "add an API key" stays on the options in the list.
+// (A disabled option is only ever selected when the phone already uses a model whose key is missing.)
+const NEEDS_KEY = " · add an API key";
+function syncModelLabel() {
+  for (const o of $("model").options) {
+    const name = o.dataset.name || o.textContent;
+    o.textContent = o.disabled && !o.selected ? name + NEEDS_KEY : name;
+  }
+}
 const PROVIDERS = { anthropic: "Anthropic", openai: "OpenAI", google: "Google", gemini: "Google", mistral: "Mistral", xai: "xAI", openrouter: "OpenRouter", local: "Local" };
 const providerName = (p) => PROVIDERS[(p || "anthropic").toLowerCase()] || (p.charAt(0).toUpperCase() + p.slice(1));
 async function loadModels() {
@@ -585,8 +440,9 @@ async function loadModels() {
     }
     const option = (x) => {
       const usable = x.available !== false;
-      const o = el("option", "", shortModel(x.label) + (usable ? "" : " · add an API key"));
+      const o = el("option", "", shortModel(x.label) + (usable ? "" : NEEDS_KEY));
       o.value = x.id;
+      o.dataset.name = shortModel(x.label);
       o.disabled = !usable;
       if (!usable) o.title = `Add a ${providerName(x.provider)} API key to use this model.`;
       return o;
@@ -600,6 +456,7 @@ async function loadModels() {
       return g;
     })));
     $("model").value = m.default;
+    syncModelLabel();
     const locked = m.models.filter((x) => x.available === false).length;
     $("model").title = locked ? `Model for this phone's next task. ${locked} more model${locked === 1 ? "" : "s"} unlock when you add that provider's API key.` : "Model for this phone's next task";
   } catch {}
@@ -757,6 +614,8 @@ function renderTurn(turn, s) {
           call.append(icon("phone"), txt);
           body.append(call);
         }
+        // confirm_on_phone: only the phone may approve this step, so the dashboard offers no buttons.
+        if (confirm && s.confirm_on_phone) return;
         const row = el("div", "answers");
         const yes = el("button", "btn btn-sm btn-primary", confirm ? "Approve" : "Yes");
         const no = el("button", "btn btn-sm", confirm ? "Don't" : "No");
@@ -974,11 +833,13 @@ function renderTaskBar(s) {
   const started = (events.find(isStart) || events[0] || { time: Date.now() / 1000 }).time;
   const secs = Math.max(0, Math.round(Date.now() / 1000 - started));
   bar.hidden = false;
-  bar.classList.toggle("warn", state === "asking" || state === "confirm");
-  const [label, cls] = STATES[state];
+  const reconnecting = !!(s.device && s.device.reconnecting);
+  bar.classList.toggle("warn", reconnecting || state === "asking" || state === "confirm");
+  const [label, cls] = reconnecting ? ["Reconnecting", "dotted warn live"] : STATES[state];
   $("taskPill").className = `pill ${cls}`;
   $("taskPill").textContent = label;
-  $("taskNow").textContent = state === "confirm" ? "Check your phone to approve the next step."
+  $("taskNow").textContent = reconnecting ? "Reconnecting to your phone… The task waits up to 45 s for it."
+    : state === "confirm" ? "Check your phone to approve the next step."
     : state === "asking" ? (s.question || "Answer below, or type a reply.")
     : latest ? stepText(latest) : (s.current || "Starting…");
   const time = secs >= 60 ? `${Math.floor(secs / 60)}m ${secs % 60}s` : `${secs}s`;
@@ -987,23 +848,24 @@ function renderTaskBar(s) {
 
 function render(s) {
   last = s;
-  const state = !s ? "offline" : (s.device && s.device.online === false ? "offline" : s.state);
+  const reconnecting = !!(s && s.device && s.device.reconnecting);
+  const state = !s ? "offline" : reconnecting ? "asking" : (s.device && s.device.online === false ? "offline" : s.state);
   $("dot").className = `dot ${state}`;
   const confirming = s && s.state === "asking" && s.question_kind === "confirm";
-  $("state").textContent = confirming ? "Approve on your phone" : ({ idle: "Ready", running: "Working", asking: "Waiting for your answer", offline: deviceId ? "Phone offline" : "No phone connected" }[state] || state);
+  $("state").textContent = reconnecting ? "Reconnecting to your phone…" : confirming ? "Approve on your phone" : ({ idle: "Ready", running: "Working", asking: "Waiting for your answer", offline: deviceId ? "Phone offline" : "No phone connected" }[state] || state);
   $("deviceLine").textContent = s && s.device ? `${s.device.model} · ${s.device.connection}` : "";
   const sess = s && s.usage && s.usage.session;
   const selected = (s && s.model) || $("model").value;
   const sessionText = modelTokens(sess, selected);
   $("sessionTokens").textContent = sessionText ? `This session: ${sessionText}` : "";
-  if (s && s.model && document.activeElement !== $("model")) $("model").value = s.model;
+  if (s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
   renderTaskBar(s);
   renderScreenState();
   updateComposer();
 
   // Rebuild the thread only when the conversation changed.
   const log = s ? s.log : [];
-  const signature = `${deviceId}|${log.length ? log[log.length - 1].seq : 0}|${log.length}|${s && s.state}|${s && s.question_kind}|${s && s.queued}|${s && s.task_id}|${s && s.chat_id}|${s && s.device && s.device.online}|${accounts}|${JSON.stringify((s && s.feedback) || {})}`;
+  const signature = `${deviceId}|${log.length ? log[log.length - 1].seq : 0}|${log.length}|${s && s.state}|${s && s.question_kind}|${s && s.queued}|${s && s.task_id}|${s && s.chat_id}|${s && s.device && s.device.online}|${s && s.device && s.device.reconnecting}|${s && s.confirm_on_phone}|${accounts}|${JSON.stringify((s && s.feedback) || {})}`;
   if (signature === lastSignature) return;
   lastSignature = signature;
   // Refresh the sidebar when the open chat changes, or when a task has just finished.
@@ -1040,6 +902,7 @@ function updateComposer() {
   const taskOn = !!(last && last.task_id);
   const running = !!(last && last.state === "running");
   const asking = !!(last && last.state === "asking");
+  const phoneOnly = asking && last.question_kind === "confirm" && !!last.confirm_on_phone;  // only the phone can approve
   const busy = running && !hasText;  // empty box while working: the button stops
   const btn = $("send");
   const kind = busy ? "stop" : "up";
@@ -1053,11 +916,12 @@ function updateComposer() {
   $("queueToggle").hidden = !taskOn;
   $("queueToggle").setAttribute("aria-pressed", String(queueNext));
   $("text").placeholder = !deviceId ? "Connect a phone to start" : queueNext && taskOn ? "Describe the next task…"
-    : asking ? "Type your answer…" : running ? "Correct or add to the current task…" : "Tell your phone what to do…";
+    : phoneOnly ? "Approve or decline on your phone…" : asking ? "Type your answer…" : running ? "Correct or add to the current task…" : "Tell your phone what to do…";
   const offline = !last || (last.device && last.device.online === false);
   $("hint").textContent = recorder ? $("hint").dataset.note : !deviceId ? "" : offline ? "Phone is offline." :
     $("hint").dataset.note ? $("hint").dataset.note :
     queueNext && taskOn ? "Runs after the current task finishes." :
+    phoneOnly ? "Approve on your phone, or press Stop." :
     asking ? "Answer the question above, or say stop." :
     running ? "Messages now correct the running task." : "";
 }
@@ -1089,6 +953,7 @@ $("composer").addEventListener("submit", (e) => {
 $("queueToggle").onclick = () => { queueNext = !queueNext; updateComposer(); $("text").focus(); };
 $("stopTask").onclick = () => stopTask();
 $("model").onchange = async (e) => {
+  syncModelLabel();
   if (!deviceId) return;
   try {
     const r = await api(`/api/devices/${deviceId}/model`, {
@@ -1345,15 +1210,16 @@ let screenSocketAfter = 0;  // after a failed socket, poll until this time, then
 // stale frame when the phone reports a problem, and a badge for the stream's kind.
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
+  const reconnecting = !!(last && last.device && last.device.reconnecting);
   const cover = !deviceId || !hasFrame;
-  const message = !deviceId ? "No phone connected yet." : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
+  const message = !deviceId ? "No phone connected yet." : reconnecting ? "Reconnecting to your phone…" : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
     : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
-  $("screenOverlay").hidden = !cover && !screenError;
+  $("screenOverlay").hidden = !cover && !screenError && !reconnecting;
   $("screenOverlay").classList.toggle("banner", !cover);
   $("screenMsg").textContent = message;
   const badge = $("liveBadge");
-  const [text, cls] = !deviceId ? ["No phone", ""] : offline ? ["Offline", "bad dotted"] : screenError ? ["Unavailable", "warn dotted"]
+  const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"] : screenError ? ["Unavailable", "warn dotted"]
     : hasFrame ? [screenMode === "video" ? "Live · video" : "Live", "ok dotted live"] : ["Connecting", "dotted"];
   badge.textContent = text;
   badge.className = `pill ${cls}`;
