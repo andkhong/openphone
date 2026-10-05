@@ -27,6 +27,12 @@ from .phone.remote import PhoneLink
 from .screencast import ScreenFeed, live_frame
 
 STATIC = Path(__file__).parent / "static"
+# Public developer docs served to the /developer console, by name. Only these files, nothing else
+# from docs/ (architecture notes and research stay out). Found next to the package (a source checkout)
+# or in the working directory (the Docker image copies docs/ to /app/docs).
+PUBLIC_DOCS = {"quickstart": "quickstart.md", "api": "api.md", "mcp": "mcp.md", "errors": "errors.md"}
+DOCS_DIRS = [Path(os.environ["OPENMOB_DOCS_DIR"])] if os.environ.get("OPENMOB_DOCS_DIR") else []
+DOCS_DIRS += [Path(__file__).parent.parent / "docs", Path.cwd() / "docs"]
 PAGE = STATIC / "index.html"
 # Debug build of the companion app (built from android/ in this repo).
 APK = Path(
@@ -135,6 +141,16 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         """The design system every page links (public: the phone's /pair page uses it too)."""
         css = (STATIC / "ds.css").read_text()
         return Response(css, media_type="text/css", headers={"Cache-Control": "public, max-age=300"})
+
+    @app.get("/docs/{name}")
+    def public_doc(name: str) -> Response:
+        """A public developer doc as Markdown (rendered, sanitized, by /developer). Allowlisted names only."""
+        filename = PUBLIC_DOCS.get(name.removesuffix(".md"))
+        path = next((d / filename for d in DOCS_DIRS if filename and (d / filename).is_file()), None)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Unknown doc.")
+        return Response(path.read_text(), media_type="text/markdown; charset=utf-8",
+                        headers={"Cache-Control": "public, max-age=300"})
 
     @app.get("/connect", response_class=HTMLResponse)
     def connect_page() -> str:

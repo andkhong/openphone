@@ -18,11 +18,14 @@ from pydantic import BaseModel, Field
 
 from ..accounts import SCOPES, AuthError
 from ..ledger import day_start
+from ..runner import FINAL_STATUSES
 from .errors import ServiceError
 from .principal import Principal, bearer_token
 from .service import MAX_INSTRUCTION, V1Service, public_event
 
 MAX_KEYS_PER_ACCOUNT = 20
+SESSION_SCAN = 1000  # newest API tasks a sessions filter looks through
+LOG_SCAN = 2000  # newest audit rows an action filter looks through
 SSE_POLL = 0.25
 SSE_HEARTBEAT = 15.0
 
@@ -257,6 +260,67 @@ class DeveloperApi:
                 "recent_tasks": [self.service.with_live_status(account_id, row)
                                  for row in self.ledger.recent_tasks(account_id, 25)],
             }
+
+        # --- sessions (this account's API/MCP tasks) and its own audit log ----------------
+
+        def key_names(account_id: str) -> dict[str, str]:
+            return {k["id"]: k["name"] for k in self.store.list_api_keys(account_id)}  # revoked keys: no name
+
+        def phone_names(account_id: str) -> dict[str, str]:
+            return {f"app-{d.id}": d.model for d in self.store.list_devices(account_id)}
+
+        def session_status(account_id: str, row: dict) -> str:
+            """The live status while the task runs; a ledger status otherwise (unfinished = lost in a restart)."""
+            live = self.service._live(account_id, row["id"])
+            if live and live[1]:
+                return live[1]["status"]
+            return row["status"] if row["status"] in FINAL_STATUSES else "failed"
+
+        def session(account_id: str, task_id: str, key_id: str | None, keys: dict, phones: dict) -> dict:
+            task = self.service.public_task(account_id, task_id)  # NotFound unless it's this account's
+            return {**task, "key_id": key_id, "key_name": keys.get(key_id),
+                    "device_name": phones.get(task["device_id"])}
+
+        @r.get("/sessions")
+        def sessions(limit: int = 50, status: str | None = None, key_id: str | None = None,
+                     account_id: str = Depends(owner)) -> dict:
+            rows = self.ledger.recent_tasks(account_id, SESSION_SCAN)
+            if key_id:
+                rows = [row for row in rows if row["key_id"] == key_id]
+            if status:
+                rows = [row for row in rows if session_status(account_id, row) == status]
+            keys, phones = key_names(account_id), phone_names(account_id)
+            return {"sessions": [session(account_id, row["id"], row["key_id"], keys, phones)
+                                 for row in rows[:max(1, min(limit, 200))]]}
+
+        @r.get("/sessions/{task_id}")
+        def session_detail(task_id: str, account_id: str = Depends(owner)) -> dict:
+            row = self.ledger.task(account_id, task_id)
+            if row is None:
+                raise HTTPException(404, f"Unknown task {task_id}")
+            detail = session(account_id, task_id, row["key_id"], key_names(account_id), phone_names(account_id))
+            return {**detail, "events": session_events(account_id, task_id)}
+
+        def session_events(account_id: str, task_id: str) -> list[dict]:
+            """The task's public events: live while it's in memory, else from the owner's chat history."""
+            entries, _ = self.service.live_events(account_id, task_id)
+            history = getattr(self.service.manager, "history", None)
+            if not entries and history is not None:
+                turn = history.turn(account_id, task_id)
+                logged = history.events(account_id, turn["chat_id"]) if turn else None
+                entries = [{**e, "seq": i} for i, e in enumerate(logged or [], 1) if e["task"] == task_id]
+            return [event for entry in entries if (event := public_event(entry))]
+
+        @r.get("/logs")
+        def logs(limit: int = 200, action: str | None = None, account_id: str = Depends(owner)) -> dict:
+            rows = self.ledger.audit_log(LOG_SCAN if action else max(1, min(limit, 1000)), account_id=account_id)
+            if action:
+                rows = [row for row in rows if row["action"] == action or row["action"].startswith(action + ".")]
+            keys = key_names(account_id)
+            return {"logs": [{"id": row["id"], "time": row["time"], "action": row["action"], "key_id": row["key_id"],
+                              "key_name": keys.get(row["key_id"]), "device_id": row["device_id"],
+                              "task_id": row["task_id"], "outcome": row["outcome"]}
+                             for row in rows[:max(1, min(limit, 1000))]]}
 
         @r.post("/settings")
         def settings(body: SettingsIn, account_id: str = Depends(owner)) -> dict:
