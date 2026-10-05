@@ -84,10 +84,27 @@ def test_console_endpoints_need_a_signed_in_owner(api):
 
 def test_docs_serve_only_the_allowlist(api):
     anonymous = httpx.Client(base_url=api.base)
-    for name in ("api", "mcp", "quickstart", "errors", "api.md"):
+    for name in ("quickstart", "concepts", "api", "mcp", "memory", "webhooks", "safety", "errors", "api.md"):
         r = anonymous.get(f"/docs/{name}")
         assert r.status_code == 200, name
         assert r.headers["content-type"].startswith("text/markdown") and r.text.startswith("# ")
     for name in ("architecture", "phone-protocol", "..%2Fpyproject.toml", "../README.md", "%2e%2e%2fREADME",
                  "research", "api.md.bak", ""):
         assert anonymous.get(f"/docs/{name}").status_code == 404, name
+
+
+def test_every_public_doc_is_in_the_console_and_links_only_to_public_docs():
+    import re
+    from pathlib import Path
+
+    from openmob.server import PUBLIC_DOCS
+
+    html = (Path(__file__).parent.parent / "openmob" / "static" / "developer.html").read_text()
+    docs_map = re.search(r"const DOCS = \{(.*?)\};", html, re.S).group(1)
+    assert set(re.findall(r"(\w+):", docs_map)) == set(PUBLIC_DOCS)
+    for name in PUBLIC_DOCS:
+        assert f'data-route="docs/{name}"' in html, name
+    docs = Path(__file__).parent.parent / "docs"
+    for filename in PUBLIC_DOCS.values():
+        for target in re.findall(r"\]\((?:\./)?([\w-]+)\.md", (docs / filename).read_text()):
+            assert target in PUBLIC_DOCS, f"{filename} links to non-public {target}.md"
