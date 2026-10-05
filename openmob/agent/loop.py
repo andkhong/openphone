@@ -568,7 +568,9 @@ class Agent:
             try:
                 risk, asked = self.judge.assess_tap(state.task, description.strip(), self._describe(obs))
                 risky = risky or risk >= self.config.jev_risk_threshold
-                requested = asked >= 0.5
+                # The classifier only ever adds caution. It reads on-screen text, so a screen could
+                # talk it into "the user asked for this"; it may veto "requested", never grant it.
+                requested = requested and asked >= 0.5
             except JevError as exc:
                 self.io.event("error", str(exc))
         if not risky or (policy == "unrequested" and requested):

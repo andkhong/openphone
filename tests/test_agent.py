@@ -220,14 +220,40 @@ def test_requested_risky_action_runs_without_asking(tmp_path):
     assert io.questions == [] and ("tap", 20, 20) in driver.actions
 
 
-def test_jev_decides_whether_risky_tap_was_requested(tmp_path):
+def test_jev_can_veto_requested_but_never_grant_it(tmp_path):
+    # The request names the action ("send"), so it counts as requested... unless Jev disagrees.
+    steps = lambda: [[tool_use("tap", "a", x=10, y=10, target="Send button")],  # noqa: E731
+                     [tool_use("done", "b", summary="ok", success=True)]]
     io = RecordingIO()
+    agent, _, driver = make_agent(steps(), io=io, judge=FakeJudge(["app_content"], risk=0.7, requested=0.9),
+                                  tmp_path=tmp_path)
+    agent.run("send hello world to myself")
+    assert io.questions == [] and ("tap", 20, 20) in driver.actions
+    io = RecordingIO(answers=["no"])
+    agent, _, _ = make_agent(steps(), io=io, judge=FakeJudge(["app_content"], risk=0.7, requested=0.1),
+                             tmp_path=tmp_path)
+    agent.run("send hello world to myself")
+    assert len(io.questions) == 1  # Jev's doubt adds a confirmation
+
+
+def test_screen_text_cant_talk_jev_into_skipping_approval(tmp_path):
+    # A screen could persuade the classifier that "the user asked for this": the purchase isn't in
+    # the request, so the owner is still asked however sure Jev is.
+    io = RecordingIO(answers=["no"])
+    agent, _, driver = make_agent([
+        [tool_use("tap", "a", x=10, y=10, target="Buy 100 gems")],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], io=io, judge=FakeJudge(["app_content"], risk=0.9, requested=0.99), tmp_path=tmp_path)
+    agent.run("open the shop")
+    assert len(io.questions) == 1 and ("tap", 20, 20) not in driver.actions
+    # The same when only Jev sees the risk (no keyword): it can't also declare it requested.
+    io = RecordingIO(answers=["no"])
     agent, _, driver = make_agent([
         [tool_use("tap", "a", x=10, y=10, target="Compose")],
         [tool_use("done", "b", summary="ok", success=True)],
     ], io=io, judge=FakeJudge(["app_content"], risk=0.7, requested=0.9), tmp_path=tmp_path)
     agent.run("email myself hello world")
-    assert io.questions == [] and ("tap", 20, 20) in driver.actions
+    assert len(io.questions) == 1 and ("tap", 20, 20) not in driver.actions
 
 
 def test_confirm_policies(tmp_path):
