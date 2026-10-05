@@ -351,6 +351,44 @@ def cmd_account(cfg: Config, args) -> None:
         print(f"{base.rstrip('/')}/auth/link?code={code}")
 
 
+def cmd_key(cfg: Config, args) -> None:
+    """Developer API keys for an account (the same keys /developer makes)."""
+    from .accounts import DEFAULT_SCOPES, AccountStore, AuthError
+    from .ledger import Ledger
+
+    store = AccountStore()
+    account_id = store.account_id_for(args.email)
+    if not account_id:
+        sys.exit(f"✗ No account {args.email}. Create it: openmob account add {args.email}")
+    if args.action == "list":
+        keys = store.list_api_keys(account_id)
+        for k in keys:
+            print(f"{k['prefix']}_…  {k['name']}  [{', '.join(k['scopes'])}]{'  (turned off)' if k['disabled'] else ''}")
+        if not keys:
+            print("No keys.")
+        return
+    ledger = Ledger(store.path.with_name("ledger.sqlite"))
+    if args.action == "create":
+        scopes = [s.strip() for s in args.scopes.split(",")] if args.scopes else list(DEFAULT_SCOPES)
+        try:
+            key_id, key = store.create_api_key(account_id, args.name or "CLI key", scopes)
+        except AuthError as exc:
+            sys.exit(f"✗ {exc}")
+        ledger.audit("key.create", account_id, key_id, outcome=",".join(sorted(set(scopes))))
+        print(f"✓ Created key {key_id}. Copy it now; it won't be shown again:")
+        print(key)
+        return
+    if not args.key_id:
+        sys.exit("openmob key revoke needs a KEY_ID (see: openmob key list EMAIL).")
+    key_id = args.key_id.removeprefix("om_live_").split("_")[0]
+    if not store.revoke_api_key(account_id, key_id):
+        sys.exit(f"✗ {args.email} has no key {key_id}.")
+    ledger.audit("key.revoke", account_id, key_id)
+    # The server re-reads the store, so the key fails on its next request. Revoking from /developer
+    # also cancels the key's running tasks; from here they run to the end.
+    print(f"✓ Revoked {key_id}. It stops working on its next request.")
+
+
 def _public_url(port: int) -> str | None:
     """The running tunnel's URL, if `openmob run --public` started one."""
     import json as _json
@@ -406,10 +444,18 @@ def main(argv: list[str] | None = None) -> None:
     p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
     p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")
 
+    p_key = sub.add_parser("key", help="developer API keys for an account (create, list, revoke)")
+    p_key.add_argument("action", choices=["create", "list", "revoke"])
+    p_key.add_argument("email")
+    p_key.add_argument("key_id", nargs="?", help="revoke: the key's id or prefix")
+    p_key.add_argument("--name", help="create: a name to recognise the key by")
+    p_key.add_argument("--scopes", help="create: comma-separated, e.g. devices:read,tasks:run,tasks:read (default)")
+
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
-    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge}[args.command](cfg, args)
+    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
+     "key": cmd_key}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

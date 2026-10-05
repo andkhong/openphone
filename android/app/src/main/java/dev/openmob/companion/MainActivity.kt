@@ -15,6 +15,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -50,6 +52,7 @@ class MainActivity : Activity() {
     private companion object {
         const val REQ_SPEECH = 1
         const val REQ_NOTIFICATIONS = 2
+        const val REQ_SCREEN = 3
         const val MAX_EVENTS = 30
         /** Pairing must be approved with a strong biometric or the screen lock PIN/pattern/password. */
         const val APPROVERS = BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -166,6 +169,12 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SCREEN) {
+            // Connect either way: declining only means the web dashboard shows screenshots, not video.
+            ConnectionService.start(this, data.takeIf { resultCode == RESULT_OK }, resultCode)
+            render()
+            return
+        }
         if (requestCode != REQ_SPEECH || resultCode != RESULT_OK) return
         val heard = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!heard.isNullOrBlank()) sendCommand(heard)
@@ -628,8 +637,25 @@ class MainActivity : Activity() {
     private fun reconnect() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
-            main.postDelayed({ ConnectionService.start(this) }, 600)
+            main.postDelayed({ connect() }, 600)
         } else {
+            connect()
+        }
+    }
+
+    /** Start the connection, first asking Android for screen streaming (the "Start recording or
+     *  casting?" prompt) so the web dashboard can show smooth video. One tap per connection. */
+    @Suppress("DEPRECATION")
+    private fun connect() {
+        val projections = getSystemService(MediaProjectionManager::class.java)
+        val consent = if (Build.VERSION.SDK_INT >= 34) {
+            projections.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()) // whole screen
+        } else {
+            projections.createScreenCaptureIntent()
+        }
+        try {
+            startActivityForResult(consent, REQ_SCREEN)
+        } catch (e: ActivityNotFoundException) {
             ConnectionService.start(this)
         }
     }
@@ -738,7 +764,7 @@ class MainActivity : Activity() {
             Shortcuts.CONNECT -> when {
                 !isPaired -> toast(getString(R.string.shortcut_need_pairing))
                 ConnectionService.isRunning -> toast(AppState.connection)
-                else -> ConnectionService.start(this)
+                else -> connect()
             }
             Shortcuts.ASK -> if (AppState.connected) startVoiceInput() else toast(getString(R.string.shortcut_need_connection))
         }
@@ -749,7 +775,7 @@ class MainActivity : Activity() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
         } else if (isPaired) {
-            ConnectionService.start(this)
+            connect()
         }
         render()
     }

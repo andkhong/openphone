@@ -8,7 +8,7 @@ import httpx
 import pytest
 from conftest import FakeDriver
 from test_hosted import hosted, pair, signup  # noqa: F401  (fixture + helpers)
-from test_remote import FakePhone, wait_for
+from test_remote import FakePhone, wait_for, watch
 
 DEVICE_ROUTES = [
     ("GET", "/api/devices/{id}/status", None),
@@ -62,6 +62,46 @@ def test_user_cannot_touch_another_users_phone(two_users, method, path, extra):
 def test_signed_out_requests_are_refused(two_users, method, path, extra):
     anonymous = httpx.Client(base_url=two_users["base"])
     assert call(anonymous, method, path.format(id="app-alice-phone"), extra).status_code == 401
+
+
+def test_live_screen_socket_is_owner_only(two_users):
+    u = two_users
+    alice_url = f"{u['ws']}/api/devices/app-alice-phone/screen/ws"
+    # Bob (by header or cookie) gets a 4404 close, the same as for a phone that doesn't exist, and no frame.
+    assert watch(alice_url, headers={"X-OpenMob-Session": u["bob_session"]}) == ([], 4404)
+    assert watch(alice_url, headers={"Cookie": f"openmob_session={u['bob_session']}"}) == ([], 4404)
+    assert watch(f"{u['ws']}/api/devices/app-nobody/screen/ws", headers={"X-OpenMob-Session": u["bob_session"]}) == ([], 4404)
+    # Signed out, or a made-up session: refused before anything is sent.
+    assert watch(alice_url) == ([], 4401)
+    assert watch(alice_url, headers={"Cookie": "openmob_session=forged"}) == ([], 4401)
+    assert not any(m == "screenshot" for m, _ in u["alice_phone"].calls)  # her phone was never asked
+    # Alice herself gets frames.
+    frames, code = watch(alice_url, headers={"Cookie": f"openmob_session={u['alice_session']}"})
+    assert code is None and all(f[:2] == b"\xff\xd8" for f in frames)
+
+
+def test_live_screen_socket_closes_when_the_phone_is_revoked(two_users, monkeypatch):
+    import asyncio
+
+    import websockets
+
+    from openmob import screencast
+
+    monkeypatch.setattr(screencast, "RECHECK_SECONDS", 0.2)
+    u = two_users
+
+    async def run():
+        url = f"{u['ws']}/api/devices/app-alice-phone/screen/ws"
+        async with websockets.connect(url, additional_headers={"X-OpenMob-Session": u["alice_session"]}) as ws:
+            assert (await asyncio.wait_for(ws.recv(), 5))[:2] == b"\xff\xd8"
+            await asyncio.to_thread(u["alice"].post, "/api/devices/app-alice-phone/revoke")
+            try:
+                while True:
+                    await asyncio.wait_for(ws.recv(), 5)
+            except websockets.ConnectionClosed as exc:
+                return exc.rcvd.code if exc.rcvd else None
+
+    assert asyncio.run(run()) == 4404
 
 
 def test_device_lists_never_mix(two_users):

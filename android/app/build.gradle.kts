@@ -13,6 +13,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        // Real phones only: WebRTC's native library is large, and emulators aren't a target.
+        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
     }
 
     buildTypes {
@@ -31,4 +33,6 @@ android {
 
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    // WebRTC for the dashboard's live view: video straight to the viewer's browser when the network allows.
+    implementation("io.github.webrtc-sdk:android:150.7871.01")
 }

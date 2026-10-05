@@ -98,6 +98,20 @@ openmob account list                     # admins are marked "(admin)"
 
 Then sign in and open `https://<server>/admin`. Non-admins get "You're not an admin." (the API returns 403), and signed-out visitors are sent to sign in. Listings never include password, session or key hashes.
 
+The admin page also lists developer API keys, can switch off one key or a whole account's API access (cancelling their running tasks), and shows the API audit log.
+
+## Developer API
+
+With `--accounts`, developers can run tasks on their own phones from code: `POST /v1/devices/{id}/tasks`, then poll the task or follow its live events. Create keys at `https://<server>/developer` or on the server:
+
+```sh
+openmob key create you@example.com --name my-agent    # shown once; scopes default to devices:read,tasks:run,tasks:read
+openmob key list you@example.com
+openmob key revoke you@example.com <key id>
+```
+
+Keys carry scopes (`screen:read` is opt-in), per-key rate limits and quotas, and every action is audited. Responses talk in tiers (`fast`, `balanced`, `best`), steps and credits. See [docs/api.md](docs/api.md).
+
 ## Use
 
 ```sh

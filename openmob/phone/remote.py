@@ -23,6 +23,7 @@ class PhoneLink:
         self.closed = False
         self._pending: dict[str, asyncio.Future] = {}
         self._send_lock = asyncio.Lock()
+        self.video_listeners: set = set()  # callables(packet dict), run on the event loop
 
     # --- called from agent / worker threads -------------------------------
 
@@ -84,6 +85,14 @@ class PhoneLink:
         except Exception:
             pass  # already closed
 
+    def on_video(self, packet: dict) -> None:
+        """A live-view video packet from the phone (event loop)."""
+        for listener in list(self.video_listeners):
+            try:
+                listener(packet)
+            except Exception:  # one broken viewer must not stop the stream for the others
+                pass
+
     def resolve(self, message: dict) -> None:
         future = self._pending.get(message.get("id", ""))
         if future and not future.done():
@@ -99,18 +108,47 @@ class PhoneLink:
 class RemoteDriver(CachedScreenshots):
     def __init__(self, link: PhoneLink):
         self.link = link
+        self.video_available = False  # the owner allowed screen streaming (hello "video", video_state)
+        self.rtc_available = False  # ...and the app can send it over WebRTC (hello "rtc")
         self._init_screenshot_cache()
 
     def attach(self, link: PhoneLink) -> None:
         """Swap in a new connection after the phone reconnects."""
         self.link = link
         self._last_shot = None
+        self._last_preview = None
 
     def _call(self, method: str, **params):
         return self.link.call(method, params)
 
     def _capture(self) -> Screenshot:
         return decode_screenshot(self._call("screenshot"))
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        # Older apps ignore these params and send a full JSON frame; that decodes the same way.
+        return decode_screenshot(self._call("screenshot", max_side=max_side, quality=quality, binary=True))
+
+    # Live-view video (the dashboard's screen panel only; see screencast.ScreenFeed).
+
+    def stream_start(self, max_side: int, bitrate: int, fps: int) -> dict:
+        size = self._call("stream_start", max_side=int(max_side), bitrate=int(bitrate), fps=int(fps)) or {}
+        return {"width": int(size.get("width", 0)), "height": int(size.get("height", 0))}
+
+    def stream_stop(self) -> None:
+        self._call("stream_stop")
+
+    def stream_keyframe(self) -> None:
+        self._call("stream_keyframe")
+
+    def rtc_offer(self, session: str, sdp: str, ice_servers: list, max_side: int, bitrate: int, fps: int) -> str:
+        answer = self._call("rtc_offer", session=session, sdp=sdp, ice_servers=ice_servers,
+                            max_side=int(max_side), bitrate=int(bitrate), fps=int(fps)) or {}
+        if not answer.get("sdp"):
+            raise DeviceError("The phone didn't answer the WebRTC offer")
+        return answer["sdp"]
+
+    def rtc_close(self, session: str) -> None:
+        self._call("rtc_close", session=session)
 
     def ui_elements(self) -> list[UIElement]:
         return [decode_element(i, data) for i, data in enumerate(self._call("ui_elements") or [])]

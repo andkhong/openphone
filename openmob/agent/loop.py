@@ -8,7 +8,7 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, describe_screen
@@ -24,6 +24,7 @@ OMITTED = "(earlier screen omitted)"
 LOADING_POLL_SECONDS = 2.0
 RECENT_REQUESTS = 5
 OCR_MIN_CONFIDENCE = 0.3
+BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -64,6 +65,8 @@ class _TaskState:
     auto_waited: float = 0.0
     treeless_misses: dict[str, int] = field(default_factory=dict)
     approved: bool = False  # the user just said yes to an ask_user question
+    max_steps: int = 0
+    blocked: Callable[[str], bool] | None = None  # packages this task may not touch (API safety)
 
 
 def is_yes(answer: str) -> bool:
@@ -109,16 +112,28 @@ class Agent:
 
     # --- public ----------------------------------------------------------
 
-    def run(self, task: str, cancel: threading.Event | None = None, go_home: bool = False) -> AgentResult:
+    def run(
+        self,
+        task: str,
+        cancel: threading.Event | None = None,
+        go_home: bool = False,
+        model: str | None = None,
+        max_steps: int | None = None,
+        blocked: Callable[[str], bool] | None = None,
+    ) -> AgentResult:
+        """`model` and `max_steps` override this phone's settings for one task; `blocked` names
+        packages the task must not open or operate (the task stops if one comes to the front)."""
         self.usage = Usage()
-        self.task_model = self.model
-        result = self._run(task, cancel, go_home)
+        self.task_model = model or self.model
+        state = _TaskState(task=task, cancel=cancel or threading.Event(),
+                           max_steps=max_steps or self.config.max_steps, blocked=blocked)
+        result = self._run(state, go_home)
         result.usage = self.usage
         self.recent.append((task, result.summary))
         return result
 
-    def _run(self, task: str, cancel: threading.Event | None, go_home: bool) -> AgentResult:
-        state = _TaskState(task=task, cancel=cancel or threading.Event())
+    def _run(self, state: _TaskState, go_home: bool) -> AgentResult:
+        task = state.task
         self.driver.wake_unlock()
         if go_home:
             self.driver.key("HOME")
@@ -131,9 +146,11 @@ class Agent:
         }]
         nudged = False
 
-        for step in range(1, self.config.max_steps + 1):
+        for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
+            if self._is_blocked(state, obs.package):
+                return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._trim_history(messages)
             response = self.client.messages.create(
@@ -195,7 +212,11 @@ class Agent:
             # images inside a tool_result marked is_error.
             messages.append({"role": "user", "content": results + self._obs_blocks(obs)})
 
-        return AgentResult(False, f"I gave up after {self.config.max_steps} steps.", self.config.max_steps)
+        return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
+
+    @staticmethod
+    def _is_blocked(state: _TaskState, package: str | None) -> bool:
+        return bool(state.blocked and package and state.blocked(package))
 
     def _request_text(self, task: str) -> str:
         if not self.recent:
@@ -329,6 +350,8 @@ class Agent:
                     is_error=True,
                     settle=0,
                 )
+            if self._is_blocked(state, resolution.package):
+                return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
             self.driver.launch_app(resolution.package)
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
@@ -438,7 +461,10 @@ class Agent:
         if state.approved:
             state.approved = False
             return None
-        answer = self.io.ask(f"I'm about to tap {description.strip()!r}. Should I go ahead?")
+        # A separate channel when the IO has one, so callers can tell a risky-action
+        # confirmation apart from an ordinary question.
+        confirm = getattr(self.io, "confirm", self.io.ask)
+        answer = confirm(f"I'm about to tap {description.strip()!r}. Should I go ahead?")
         if is_yes(answer):
             return None
         return Outcome(

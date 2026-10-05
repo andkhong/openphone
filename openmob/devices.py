@@ -123,6 +123,8 @@ class DeviceManager:
                 )
             session.link = link
             session.online = True
+            session.driver.video_available = bool(device.get("video"))
+            session.driver.rtc_available = bool(device.get("rtc"))
             return session
 
     def detach_remote(self, session: Session, link: PhoneLink) -> None:

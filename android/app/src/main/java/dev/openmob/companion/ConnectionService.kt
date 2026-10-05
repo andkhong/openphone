@@ -8,6 +8,7 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -20,8 +21,10 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -30,6 +33,9 @@ import kotlin.random.Random
  * Foreground service holding the WebSocket to the OpenMob server (protocol v1, see
  * docs/phone-protocol.md). Runs calls through PhoneActions, reconnects with backoff, and keeps
  * a notification visible the whole time the agent can act, with a Disconnect button.
+ *
+ * If the owner allowed screen streaming when connecting, it also holds a [ScreenStreamer] so the
+ * web dashboard can show the screen as smooth video (the agent keeps using screenshots).
  */
 class ConnectionService : Service() {
     companion object {
@@ -40,11 +46,16 @@ class ConnectionService : Service() {
         private const val PROTOCOL_VERSION = 1
         private const val CLOSE_BAD_TOKEN = 4401
         private const val CLOSE_BAD_HELLO = 4400
+        private const val EXTRA_PROJECTION = "dev.openmob.PROJECTION"
+        private const val EXTRA_PROJECTION_CODE = "dev.openmob.PROJECTION_CODE"
 
         @Volatile private var running: ConnectionService? = null
 
-        fun start(context: Context) = context.startForegroundService(
-            Intent(context, ConnectionService::class.java).setAction(ACTION_START)
+        /** [projection]: the result of Android's screen-capture consent, if the owner allowed it. */
+        fun start(context: Context, projection: Intent? = null, projectionCode: Int = 0) = context.startForegroundService(
+            Intent(context, ConnectionService::class.java).setAction(ACTION_START).apply {
+                projection?.let { putExtra(EXTRA_PROJECTION, it).putExtra(EXTRA_PROJECTION_CODE, projectionCode) }
+            }
         )
 
         fun stop(context: Context) = context.startService(
@@ -86,6 +97,8 @@ class ConnectionService : Service() {
     private var backoffSeconds = 1.0
     private var wakeLock: PowerManager.WakeLock? = null
     private var tts: TextToSpeech? = null
+    @Volatile private var streamer: ScreenStreamer? = null
+    @Volatile private var rtc: RtcStreamer? = null
     private lateinit var settings: Settings
     private val actions: PhoneActions?
         get() = OpenMobAccessibilityService.instance?.let { PhoneActions(it) }
@@ -103,19 +116,58 @@ class ConnectionService : Service() {
             shutDown("Disconnected")
             return START_NOT_STICKY
         }
+        @Suppress("DEPRECATION")
+        val projection = intent?.getParcelableExtra<Intent>(EXTRA_PROJECTION)
+        // Android 14+: the service must be a mediaProjection foreground service before it may use
+        // the consent result, so declare that type whenever one came with this start.
+        val types = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE or
+            (if (projection != null) ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION else 0)
         if (running == null) {
             running = this
             stopped = false
-            startForeground(
-                NOTIFICATION_ID, notification("Connecting to your agent…"),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE,
-            )
+            startForeground(NOTIFICATION_ID, notification("Connecting to your agent…"), types)
+            projection?.let { startStreaming(intent.getIntExtra(EXTRA_PROJECTION_CODE, 0), it) }
             // Keep the CPU awake so the agent can keep working with the screen off between steps.
             wakeLock = (getSystemService(POWER_SERVICE) as PowerManager)
                 .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "openmob:agent").apply { acquire(4 * 60 * 60 * 1000L) }
             connect()
+        } else if (projection != null) {
+            startForeground(NOTIFICATION_ID, notification("Agent connected · ready"), types)
+            startStreaming(intent.getIntExtra(EXTRA_PROJECTION_CODE, 0), projection)
         }
         return START_NOT_STICKY
+    }
+
+    /** Hold the screen-streaming approval for this connection; video only flows while someone watches. */
+    private fun startStreaming(code: Int, data: Intent) {
+        rtc?.release()
+        rtc = null
+        streamer?.release()
+        streamer = try {
+            val projection = getSystemService(MediaProjectionManager::class.java).getMediaProjection(code, data)
+                ?: return
+            ScreenStreamer(this, projection, object : ScreenStreamer.Sink {
+                override fun send(header: JSONObject, data: ByteArray) = sendBinary(header, data)
+                override fun queuedBytes() = socket?.queueSize() ?: 0L
+            }) {
+                main.post {
+                    rtc?.release()
+                    rtc = null
+                    streamer = null
+                    send(JSONObject().put("type", "video_state").put("available", false).put("rtc", false)
+                        .put("reason", "Screen sharing stopped"))
+                }
+            }
+        } catch (e: Exception) {
+            null // e.g. the approval was already used; the dashboard falls back to screenshots
+        }
+        streamer?.let { screen ->
+            // While WebRTC has the screen, the WebSocket stream isn't available (one display per approval).
+            rtc = RtcStreamer(this, screen) { lent ->
+                send(JSONObject().put("type", "video_state").put("available", !lent).put("rtc", true))
+            }
+            send(JSONObject().put("type", "video_state").put("available", true).put("rtc", true))
+        }
     }
 
     override fun onDestroy() {
@@ -147,6 +199,10 @@ class ConnectionService : Service() {
         main.removeCallbacksAndMessages(null)
         socket?.close(1000, "User disconnected")
         socket = null
+        rtc?.release()
+        rtc = null
+        streamer?.release()
+        streamer = null
         wakeLock?.takeIf { it.isHeld }?.release()
         running = null
         status?.let { AppState.setConnection(it, false) }
@@ -168,6 +224,14 @@ class ConnectionService : Service() {
 
     private fun send(message: JSONObject): Boolean = socket?.send(message.toString()) ?: false
 
+    /** A result or video packet with raw bytes (a live-view screenshot, H.264) as one binary message: a 4-byte big-endian
+     *  header length, the JSON [header], then [payload]. Saves base64's extra third and its encode time. */
+    private fun sendBinary(header: JSONObject, payload: ByteArray): Boolean {
+        val head = header.toString().toByteArray(Charsets.UTF_8)
+        val frame = ByteBuffer.allocate(4 + head.size + payload.size).putInt(head.size).put(head).put(payload)
+        return socket?.send(frame.array().toByteString()) ?: false
+    }
+
     private fun hello() = JSONObject()
         .put("type", "hello")
         .put("protocol", PROTOCOL_VERSION)
@@ -179,6 +243,8 @@ class ConnectionService : Service() {
                 .put("manufacturer", Build.MANUFACTURER)
                 .put("android", Build.VERSION.RELEASE)
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
+                .put("video", streamer?.let { it.alive && !it.lent } == true)
+                .put("rtc", streamer?.alive == true && rtc != null)
         )
 
     private fun handleCall(message: JSONObject) {
@@ -188,14 +254,44 @@ class ConnectionService : Service() {
         calls.execute {
             val reply = JSONObject().put("type", "result").put("id", id)
             try {
+                if (method.startsWith("stream_") || method.startsWith("rtc_")) {
+                    reply.put("ok", true).put("result", handleStream(method, params) ?: JSONObject.NULL)
+                    send(reply)
+                    return@execute
+                }
                 val handler = actions
                     ?: error("Accessibility is off. Turn on OpenMob in Settings › Accessibility.")
-                reply.put("ok", true).put("result", handler.handle(method, params) ?: JSONObject.NULL)
+                val result = handler.handle(method, params)
+                if (result is PhoneActions.Frame) {
+                    sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
+                    return@execute
+                }
+                reply.put("ok", true).put("result", result ?: JSONObject.NULL)
             } catch (e: Throwable) {
                 reply.put("ok", false).put("error", "${e.javaClass.simpleName}: ${e.message}")
             }
             send(reply)
         }
+    }
+
+    /** Live-view video calls (see ScreenStreamer). */
+    private fun handleStream(method: String, params: JSONObject): JSONObject? {
+        val video = streamer?.takeIf { it.alive }
+            ?: error("Screen streaming isn't allowed on this connection. Reconnect the app and tap Start.")
+        when (method) {
+            "stream_start" -> return video.start(
+                params.optInt("max_side", 1280), params.optInt("bitrate", 2_500_000), params.optInt("fps", 30),
+            )
+            "stream_stop" -> video.stop()
+            "stream_keyframe" -> video.requestKeyframe()
+            "rtc_offer" -> return JSONObject().put("sdp", (rtc ?: error("WebRTC isn't available")).answer(
+                params.getString("session"), params.getString("sdp"), params.optJSONArray("ice_servers") ?: org.json.JSONArray(),
+                params.optInt("max_side", 1280), params.optInt("bitrate", 2_500_000), params.optInt("fps", 30),
+            ))
+            "rtc_close" -> rtc?.close(params.getString("session"))
+            else -> error("Unknown method $method")
+        }
+        return null
     }
 
     private fun handleEvent(kind: String, text: String) {

@@ -175,6 +175,33 @@ class History:
             return []
         return [dict(r) for r in self._q("SELECT * FROM turns WHERE chat_id = ? ORDER BY started", (chat_id,))]
 
+    def turn(self, account_id: str | None, turn_id: str) -> dict | None:
+        """One turn (a task) by its id, if this account owns it, with its chat's device."""
+        rows = self._q(
+            """SELECT t.*, c.device_id FROM turns t JOIN chats c ON c.id = t.chat_id
+               WHERE t.id = ? AND c.account_id = ?""",
+            (turn_id, account_id or LOCAL_ACCOUNT),
+        )
+        return dict(rows[0]) if rows else None
+
+    def recent_turns(self, account_id: str | None, limit: int = 50) -> list[dict]:
+        """This account's latest turns across all chats, newest first."""
+        rows = self._q(
+            """SELECT t.id, t.request, t.started, t.finished, t.success, t.summary, t.steps, c.device_id
+               FROM turns t JOIN chats c ON c.id = t.chat_id WHERE c.account_id = ?
+               ORDER BY t.started DESC LIMIT ?""",
+            (account_id or LOCAL_ACCOUNT, limit),
+        )
+        return [dict(r) for r in rows]
+
+    def purge(self, older_than_days: float) -> int:
+        """Retention: delete chats not updated for this many days (turns and events go with them)."""
+        if older_than_days <= 0:
+            return 0
+        cutoff = time.time() - older_than_days * 86400
+        with self._lock:
+            return self._db.execute("DELETE FROM chats WHERE updated < ?", (cutoff,)).rowcount
+
     def recent_requests(self, account_id: str | None, chat_id: str, limit: int = 5) -> list[tuple[str, str]]:
         """(request, outcome) pairs to restore the agent's memory when a chat is reopened."""
         done = [t for t in self.turns(account_id, chat_id) if t["finished"]]
