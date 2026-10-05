@@ -160,7 +160,33 @@ looks like the [`GET /v1/tasks/{id}`](api.md) object plus two fields:
   (see [api.md](api.md#post-v1taskstask_idanswer-scope-tasksrun)).
 - **Sensitive apps** (banking, payments, passwords) stay blocked unless the owner allows them.
 
-## 5. Errors
+## 5. Several phones at once (orchestrations)
+
+| Tool | What it does | Annotations |
+|---|---|---|
+| `start_orchestration` | Run up to 10 steps across your phones: `steps` (`{id, device_id, instruction, tier?, max_steps?, depends_on?}`), `on_failure` (`stop`/`continue`), `max_credits`, `wait_for_phone_seconds`, `wait_seconds` (0–45) | destructive, open-world |
+| `get_orchestration` | Status of the run and of every step; `wait_seconds` waits for it to end or for a step to need an answer | read-only |
+| `cancel_orchestration` | Cancel running steps and skip the rest | destructive, idempotent |
+
+Steps on different phones run in parallel; a step with `depends_on` waits for those steps to
+succeed. `{{steps.<id>.summary}}` in an instruction passes an earlier step's result along, quoted
+and marked as data (it was read off a screen). Example, "send the code shown on phone A to phone B":
+
+```json
+{"steps": [
+  {"id": "read", "device_id": "app-phone-a", "instruction": "Open Messages and read the latest login code"},
+  {"id": "type", "device_id": "app-phone-b", "depends_on": ["read"],
+   "instruction": "In the Acme app, enter the login code from this result: {{steps.read.summary}}"}]}
+```
+
+The result carries every step's `status`, `task_id`, `question`, `outcome` and `credits`, plus
+`next` and `untrusted_content: true`. If a step asks a question, answer it with `answer_question`
+and that step's `task_id`. Like tasks, a dropped request never stops the run, only
+`cancel_orchestration` does. Access is checked again before every step and while steps run: a
+revoked key or unpaired phone stops the affected work at once. See
+[api.md](api.md#orchestrations-one-request-across-several-phones) for every status and reason.
+
+## 6. Errors
 
 | What happened | What the client sees |
 |---|---|
