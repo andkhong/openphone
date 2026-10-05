@@ -31,9 +31,10 @@ def free_port() -> int:
 class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
-    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None):
+    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None):
         self.url = f"{url}/phone/ws?t={token}"
         self.key = key
+        self.platform = platform
         self.driver = driver
         self.device_id = device_id
         self.events = []
@@ -61,6 +62,8 @@ class FakePhone:
                     "id": self.device_id, "model": "Pixel 9", "manufacturer": "google"}}
                 if self.key:
                     hello["key"] = self.key
+                if self.platform:
+                    hello["device"]["platform"] = self.platform
                 await ws.send(json.dumps(hello))
                 async for raw in ws:
                     msg = json.loads(raw)
@@ -178,3 +181,15 @@ def test_disconnect_marks_offline_and_reconnect_reuses_session(server):
     session.driver.tap(3, 4)
     assert ("tap", 3, 4) in again.driver.actions
     again.disconnect()
+
+
+def test_iphone_hello_sets_platform(server):
+    url, manager, _ = server
+    iphone = FakePhone(url, FakeDriver(), device_id="ios-1", platform="ios")
+    android = FakePhone(url, FakeDriver(), device_id="and-1")
+    assert iphone.welcome.wait(5) and android.welcome.wait(5)
+    ios_session, android_session = manager.get("app-ios-1"), manager.get("app-and-1")
+    assert ios_session.describe()["platform"] == "ios" and ios_session.coordinator.agent.platform == "ios"
+    assert android_session.describe()["platform"] == "android" and android_session.coordinator.agent.platform == "android"
+    iphone.disconnect()
+    android.disconnect()

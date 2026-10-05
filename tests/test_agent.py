@@ -299,3 +299,32 @@ def test_new_chat_forgets_earlier_requests(tmp_path):
     coordinator.clear_log()  # what the dashboard's "New chat" calls
     agent.run("scroll down")
     assert client.requests[1]["messages"][0]["content"][0]["text"] == "Request: scroll down"
+
+
+def test_tokens_are_counted_under_the_model_the_api_reports(tmp_path):
+    from types import SimpleNamespace
+
+    agent, client, _ = make_agent([[tool_use("done", "a", summary="ok", success=True)]], tmp_path=tmp_path)
+    original = client.create
+
+    def served(**kwargs):
+        response = original(**kwargs)
+        response.usage = SimpleNamespace(input_tokens=500, output_tokens=20, cache_read_input_tokens=0)
+        response.model = "claude-sonnet-5-5"  # what the API says it used
+        return response
+
+    client.create = served
+    result = agent.run("check")
+    assert client.requests[0]["model"] == "claude-sonnet-5-5"
+    assert result.usage.by_model == {"claude-sonnet-5-5": {"input": 500, "output": 20, "calls": 1}}
+
+
+def test_iphone_gets_ios_instructions(tmp_path):
+    agent, client, _ = make_agent([[tool_use("done", "a", summary="ok", success=True)],
+                                   [tool_use("done", "b", summary="ok", success=True)]], tmp_path=tmp_path)
+    agent.run("open settings")
+    assert "Android" in client.requests[0]["system"] and "no BACK key" not in client.requests[0]["system"]
+    agent.platform = "ios"
+    agent.run("open settings")
+    ios_prompt = client.requests[1]["system"]
+    assert "no BACK key" in ios_prompt and "Spotlight" in ios_prompt and "Android phone" not in ios_prompt

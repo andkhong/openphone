@@ -180,3 +180,25 @@ security settings, call ask_user to confirm, unless the user explicitly asked fo
 - Never type passwords, payment details, or verification codes. Ask the user to do that themselves.
 - If the request is ambiguous, use ask_user.
 """
+
+
+IOS_NOTES = """
+This phone is an iPhone (iOS), so some Android habits don't apply:
+- There is no BACK key. Go back with the on-screen Back button (usually top left, often labelled with the \
+previous screen's name) or by swiping right from the left edge of the screen.
+- If launch_app can't find an app, press HOME, swipe down on the middle of the home screen to open Spotlight \
+search, type the app's name, and tap the result.
+- To hide the keyboard, tap "Done" or "Return", or tap outside the text field.
+- APP_SWITCH and the Android-only keys aren't available.
+"""
+
+
+def system_prompt(platform: str = "android") -> str:
+    """The agent's instructions, with notes for the phone's platform."""
+    if platform == "ios":
+        return (
+            SYSTEM_PROMPT.replace("the user's Android phone", "the user's iPhone")
+            .replace("It can be any Android phone and any app", "It can be any app")
+            + IOS_NOTES
+        )
+    return SYSTEM_PROMPT

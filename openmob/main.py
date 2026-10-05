@@ -65,7 +65,10 @@ def cmd_run(cfg: Config, args) -> None:
     from .voice.tts import Speaker
 
     speaker = Speaker(cfg.speak and not args.quiet, cfg.voice)
-    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb)
+    from .history import History
+
+    history = History()  # saved chats: the data agents will learn from
+    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history)
     sessions = manager.refresh()
     for s in sessions:
         print(f"📱 {s.info.model} ({s.info.connection}, {s.info.transport})")
@@ -234,23 +237,32 @@ def cmd_doctor(cfg: Config, args) -> None:
 
 
 def cmd_bridge(cfg: Config, args) -> None:
-    """Connect a local adb phone to a hosted OpenMob server."""
+    """Connect a local phone (Android over adb, or an iPhone through WebDriverAgent) to an OpenMob server."""
     import os
 
     from .bridge import BridgeAuthError, device_info_from_adb, load_key, pair_with_account, run_bridge, save_key
+    from .phone.base import DeviceError
 
     token = args.token or os.environ.get("OPENMOB_TOKEN") or ""
     serial = args.serial or cfg.adb_serial
     try:
-        if not serial:
-            ready = [s for s, state in PhoneDriver(adb_path=cfg.adb_path).devices() if state == "device"]
-            if len(ready) != 1:
-                sys.exit("No phone connected." if not ready else f"Several phones connected ({', '.join(ready)}); pass --serial.")
-            serial = ready[0]
-        driver = PhoneDriver(serial, cfg.adb_path, cfg.screenshot_max_side)
-        info = device_info_from_adb(driver)
-    except AdbError as exc:
-        sys.exit(f"✗ {exc}")
+        if args.ios:
+            from .phone.ios import IOSDriver
+
+            driver = IOSDriver(args.wda_url, udid=args.udid, max_side=cfg.screenshot_max_side)
+            driver.screenshot(attempts=1)  # fail now, with a clear message, if WebDriverAgent isn't running
+            info = driver.device_info()
+        else:
+            if not serial:
+                ready = [s for s, state in PhoneDriver(adb_path=cfg.adb_path).devices() if state == "device"]
+                if len(ready) != 1:
+                    sys.exit("No phone connected." if not ready else f"Several phones connected ({', '.join(ready)}); pass --serial.")
+                serial = ready[0]
+            driver = PhoneDriver(serial, cfg.adb_path, cfg.screenshot_max_side)
+            info = device_info_from_adb(driver)
+    except (AdbError, DeviceError) as exc:
+        hint = "  Is WebDriverAgent running? Start it from Xcode (see docs/ios.md)." if args.ios else ""
+        sys.exit(f"✗ {exc}{hint}")
 
     # Account mode: pair once with --email, then reconnect with the saved per-phone key.
     key = None
@@ -382,6 +394,9 @@ def main(argv: list[str] | None = None) -> None:
     p_bridge.add_argument("server_url", help="server address, e.g. https://openmob.example.com")
     p_bridge.add_argument("--token", help="phone token (default: $OPENMOB_TOKEN)")
     p_bridge.add_argument("--serial", help="adb serial of the phone (default: adb_serial or the only connected phone)")
+    p_bridge.add_argument("--ios", action="store_true", help="bridge an iPhone through WebDriverAgent instead of adb")
+    p_bridge.add_argument("--wda-url", default="http://localhost:8100", help="WebDriverAgent address (default: http://localhost:8100)")
+    p_bridge.add_argument("--udid", help="iPhone UDID, for listing its apps over USB (default: the only connected iPhone)")
     p_bridge.add_argument("--email", help="account mode: pair this phone to your account (prompts for the password)")
     p_bridge.add_argument("--password-file", help="read the account password from this file instead of prompting")
 

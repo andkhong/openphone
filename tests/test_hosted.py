@@ -23,9 +23,11 @@ def hosted(tmp_path):
         client = ScriptedClient([[tool_use("done", "a", summary="ok", success=True)]] * 5)
         return Agent(client, driver, AppResolver(driver, label_cache=tmp_path / "l.json"), cfg, io, use_ocr=False)
 
+    from openmob.history import History
+
     store = AccountStore(tmp_path / "accounts.json")
     manager = DeviceManager(Config(settle_delay=0, launch_settle_delay=0), build_agent, Speaker(enabled=False),
-                            adb_discovery=False)
+                            adb_discovery=False, history=History(tmp_path / "history.sqlite"))
     port = free_port()
     serve_in_background(create_app(manager, store=store), "127.0.0.1", port)
     base = f"http://127.0.0.1:{port}"

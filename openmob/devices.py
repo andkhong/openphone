@@ -21,6 +21,7 @@ class DeviceInfo:
     transport: str  # adb serial currently used (USB serial or ip:port); "" for app phones
     model: str
     connection: str  # usb | wifi (adb on this computer) | app (connected to us over WebSocket)
+    platform: str = "android"  # android | ios
 
 
 class Session:
@@ -38,6 +39,7 @@ class Session:
             "id": self.info.id,
             "model": self.info.model,
             "connection": self.info.connection,
+            "platform": self.info.platform,
             "online": self.online,
             "state": snap["state"],
             "current": snap["current"],
@@ -45,8 +47,9 @@ class Session:
 
 
 class DeviceManager:
-    def __init__(self, cfg: Config, build_agent, speaker: Speaker, adb_discovery: bool = True):
+    def __init__(self, cfg: Config, build_agent, speaker: Speaker, adb_discovery: bool = True, history=None):
         self.cfg = cfg
+        self.history = history  # chat history store shared by every phone (None: not saved)
         self.adb_discovery = adb_discovery  # off for a hosted server: only app-connected phones
         self.build_agent = build_agent  # (cfg, io, driver, label_cache) -> Agent
         self.speaker = speaker
@@ -99,6 +102,7 @@ class DeviceManager:
             transport="",
             model=" ".join(filter(None, [str(device.get("manufacturer", "")).title(), device.get("model")])) or "Android phone",
             connection="app",
+            platform="ios" if device.get("platform") == "ios" else "android",
         )
         with self._lock:
             session = self.sessions.get(info.id)
@@ -129,9 +133,14 @@ class DeviceManager:
                 session.coordinator.stop()
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:
-        coordinator = Coordinator(self.speaker)
+        coordinator = Coordinator(self.speaker, history=self.history)
+        coordinator.account_id = account_id
+        coordinator.device_id = info.id
+        coordinator.device_model = info.model
         cache = Path(DEFAULT_LABEL_CACHE).with_name(f"labels-{info.id}.json")
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
+        if coordinator.agent is not None:
+            coordinator.agent.platform = info.platform
         coordinator.start()
         threading.Thread(target=self._index_apps, args=(coordinator,), daemon=True).start()
         return Session(info, coordinator, driver, account_id)

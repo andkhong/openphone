@@ -5,6 +5,7 @@ from __future__ import annotations
 import itertools
 import queue
 import re
+import uuid
 import threading
 import time
 from collections import deque
@@ -49,15 +50,19 @@ class ConsoleIO:
 class Coordinator:
     """Queues tasks, runs them one at a time, and routes answers to the agent's questions."""
 
-    def __init__(self, speaker: Speaker):
+    def __init__(self, speaker: Speaker, history=None):
         self.agent: Agent | None = None
+        self.history = history  # History store, or None (tests, no persistence)
+        self.account_id: str | None = None  # owner of this phone (hosted mode)
+        self.device_id = ""
+        self.device_model = ""
+        self.chat_id: str | None = None  # created on the first request after "New chat"
         self.speaker = speaker
         self.tasks: queue.Queue[tuple[str, str, int]] = queue.Queue()
         self.answers: queue.Queue[str] = queue.Queue()
         self.cancel = threading.Event()
         self.log: deque[dict] = deque(maxlen=500)
-        self.current_task: int | None = None  # id of the running task; every event is tagged with one
-        self._task_ids = itertools.count(1)
+        self.current_task: str | None = None  # id of the running task; every event is tagged with one
         self._seq = itertools.count(1)
         self.current: str | None = None
         self.question: str | None = None
@@ -81,7 +86,10 @@ class Coordinator:
             else:
                 kind = "task"
         # Answers and stops belong to the running task's turn; a new request starts its own.
-        task_id = next(self._task_ids) if kind == "task" else running
+        # Ids are random so turns stay unique in the history across server restarts.
+        task_id = uuid.uuid4().hex[:12] if kind == "task" else running
+        if kind == "task" and self.chat_id is None and self.history is not None:
+            self.chat_id = self.history.create_chat(self.account_id, self.device_id, self.device_model, text)
         self.event("heard", f"[{source}] {text}", task=task_id)
         if kind == "answer":
             self.answers.put(text)
@@ -133,6 +141,11 @@ class Coordinator:
         if data:
             entry["data"] = data
         self.log.append(entry)
+        if self.history is not None and self.chat_id is not None:
+            try:
+                self.history.record(self.chat_id, entry)
+            except Exception as exc:  # history must never break the agent
+                print(format_event("error", f"History not saved: {exc}"), flush=True)
         print(format_event(kind, message), flush=True)
         for listener in self.listeners:
             try:
@@ -174,11 +187,36 @@ class Coordinator:
                     self.current_task = None
 
     def clear_log(self) -> None:
-        """New chat: empty the conversation and the agent's memory of earlier requests."""
-        self.log.clear()
+        """New chat: empty the conversation and the agent's memory of earlier requests.
+        The next request starts a new saved chat; earlier chats stay in the history."""
+        with self._lock:
+            if self.current is not None:
+                raise RuntimeError("Stop the current task before starting a new chat.")
+            self.log.clear()
+            self.chat_id = None
         recent = getattr(self.agent, "recent", None)
         if recent is not None:
             recent.clear()
+
+    def open_chat(self, chat_id: str) -> bool:
+        """Show a saved chat and continue it: its log comes back, and the agent remembers its requests."""
+        if self.history is None:
+            return False
+        events = self.history.events(self.account_id, chat_id)
+        if events is None:
+            return False
+        with self._lock:
+            if self.current is not None:
+                raise RuntimeError("Stop the current task before opening another chat.")
+            self.log.clear()
+            for entry in events:
+                self.log.append({"seq": next(self._seq), **entry})
+            self.chat_id = chat_id
+        recent = getattr(self.agent, "recent", None)
+        if recent is not None:
+            recent.clear()
+            recent.extend(self.history.recent_requests(self.account_id, chat_id))
+        return True
 
     def snapshot(self) -> dict:
         with self._lock:
@@ -194,5 +232,6 @@ class Coordinator:
                     "session": self.session_usage.as_dict(),
                 },
                 "task_id": self.current_task,
+                "chat_id": self.chat_id,
                 "log": list(self.log)[-400:],
             }

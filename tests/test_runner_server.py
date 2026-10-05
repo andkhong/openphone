@@ -70,6 +70,7 @@ class FakeManager:
         )
         self.sessions = {"abc": self.session}
         self.refreshed = 0
+        self.history = None
 
     def refresh(self):
         self.refreshed += 1
@@ -148,7 +149,7 @@ def test_events_are_grouped_by_task_for_the_chat():
     c.submit("open mail", "dashboard")
     wait_finals(c, 2)
     log = c.snapshot()["log"]
-    tasks = sorted({e["task"] for e in log if e["task"] is not None})
+    tasks = list(dict.fromkeys(e["task"] for e in log if e["task"] is not None))  # in order of arrival
     assert len(tasks) == 2
     first = [e for e in log if e["task"] == tasks[0]]
     assert [e["kind"] for e in first][0] == "heard" and "open maps" in first[0]["message"]

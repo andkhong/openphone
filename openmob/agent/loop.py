@@ -17,7 +17,7 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from .tools import SYSTEM_PROMPT, TOOLS
+from .tools import TOOLS, system_prompt
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -101,6 +101,7 @@ class Agent:
         self.use_ocr = (config.ocr and ocr.available()) if use_ocr is None else use_ocr
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
         self.usage = Usage()  # tokens for the task in progress (or the last one)
+        self.platform = "android"  # set by the DeviceManager from the phone's hello (android | ios)
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         if judge is not None and hasattr(judge, "client"):
@@ -138,11 +139,12 @@ class Agent:
             response = self.client.messages.create(
                 model=self.task_model,
                 max_tokens=1024,
-                system=SYSTEM_PROMPT,
+                system=system_prompt(self.platform),
                 tools=TOOLS,
                 messages=messages,
             )
-            self.usage.add_claude(getattr(response, "usage", None))
+            # Count under the model the API says served this call, which verifies the model choice.
+            self.usage.add_claude(getattr(response, "usage", None), getattr(response, "model", None) or self.task_model)
             content = [_block_to_dict(b) for b in response.content]
             messages.append({"role": "assistant", "content": content})
 

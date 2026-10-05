@@ -46,6 +46,19 @@ class ModelIn(BaseModel):
     model: str
 
 
+class ChatOpenIn(BaseModel):
+    chat_id: str
+
+
+class RenameIn(BaseModel):
+    title: str
+
+
+class FeedbackIn(BaseModel):
+    value: int  # 1 = 👍, -1 = 👎, 0 = clear
+    note: str = ""
+
+
 class RedeemIn(BaseModel):
     code: str
     device_id: str
@@ -302,17 +315,88 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         running = session.coordinator.snapshot()["state"] != "idle"
         return {"model": body.model, "applies": "next task" if running else "now"}
 
-    @app.post("/api/devices/{device_id}/log/clear")
-    def clear_log(device_id: str, request: Request) -> dict:
+    # --- chats (history) ----------------------------------------------------
+
+    history = manager.history
+
+    def need_history():
+        if history is None:
+            raise HTTPException(status_code=501, detail="Chat history isn't enabled on this server.")
+        return history
+
+    @app.post("/api/devices/{device_id}/log/clear")  # older name for "New chat"
+    @app.post("/api/devices/{device_id}/chat/new")
+    def new_chat(device_id: str, request: Request) -> dict:
         require_auth(request)
-        owned_session(device_id, request).coordinator.clear_log()
+        try:
+            owned_session(device_id, request).coordinator.clear_log()
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"ok": True}
+
+    @app.post("/api/devices/{device_id}/chat/open")
+    def open_chat(device_id: str, body: ChatOpenIn, request: Request) -> dict:
+        require_auth(request)
+        session = owned_session(device_id, request)
+        chat = need_history().chat(account(request), body.chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Unknown chat.")
+        if chat["device_id"] != session.info.id:
+            raise HTTPException(status_code=400, detail="That chat was with a different phone.")
+        try:
+            session.coordinator.open_chat(body.chat_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from None
+        return {"ok": True, "chat_id": body.chat_id}
+
+    @app.get("/api/chats", dependencies=[Depends(require_auth)])
+    def list_chats(request: Request) -> list[dict]:
+        if history is None:
+            return []
+        return need_history().list_chats(account(request))
+
+    @app.get("/api/chats/{chat_id}", dependencies=[Depends(require_auth)])
+    def get_chat(chat_id: str, request: Request) -> dict:
+        h = need_history()
+        chat = h.chat(account(request), chat_id)
+        if not chat:
+            raise HTTPException(status_code=404, detail="Unknown chat.")
+        return {**chat, "turns": h.turns(account(request), chat_id)}
+
+    @app.patch("/api/chats/{chat_id}", dependencies=[Depends(require_auth)])
+    def rename_chat(chat_id: str, body: RenameIn, request: Request) -> dict:
+        if not need_history().rename_chat(account(request), chat_id, body.title):
+            raise HTTPException(status_code=404, detail="Unknown chat, or empty title.")
+        return {"ok": True}
+
+    @app.delete("/api/chats/{chat_id}", dependencies=[Depends(require_auth)])
+    def delete_chat(chat_id: str, request: Request) -> dict:
+        acct = account(request)
+        if not need_history().delete_chat(acct, chat_id):
+            raise HTTPException(status_code=404, detail="Unknown chat.")
+        # If a phone is showing this chat, it continues as a fresh one.
+        for s in manager.sessions_for(acct):
+            if s.coordinator.chat_id == chat_id and s.coordinator.current is None:
+                s.coordinator.clear_log()
+        return {"ok": True}
+
+    @app.post("/api/turns/{turn_id}/feedback", dependencies=[Depends(require_auth)])
+    def feedback(turn_id: str, body: FeedbackIn, request: Request) -> dict:
+        try:
+            ok = need_history().set_feedback(account(request), turn_id, body.value, body.note)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        if not ok:
+            raise HTTPException(status_code=404, detail="Unknown turn.")
         return {"ok": True}
 
     @app.get("/api/devices/{device_id}/status")
     def status(device_id: str, request: Request) -> dict:
         require_auth(request)
         s = owned_session(device_id, request)
-        return {**s.coordinator.snapshot(), "device": s.describe()}
+        snap = s.coordinator.snapshot()
+        feedback = history.feedback_map(account(request), snap["chat_id"]) if history and snap.get("chat_id") else {}
+        return {**snap, "device": s.describe(), "feedback": feedback}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
 

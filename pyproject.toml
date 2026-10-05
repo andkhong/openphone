@@ -28,6 +28,10 @@ voice = [
     "faster-whisper>=1.0",
     "av<19",  # faster-whisper 1.2 passes metadata_errors, which PyAV 19 removed
 ]
+# iPhone bridge (openmob bridge --ios): lists installed apps over USB and forwards WebDriverAgent's port.
+ios = [
+    "pymobiledevice3",
+]
 mac = [
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
 ]

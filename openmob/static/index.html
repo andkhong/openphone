@@ -32,6 +32,10 @@
   .logo { font-weight: 700; font-size: 17px; letter-spacing: -.01em; margin-right: 6px; }
   .logo span { color: var(--accent); }
   header select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); max-width: 42vw; }
+  /* The phone picker sits above the phone panel and matches the screen box's width
+     (panel 330px minus its 16px padding on each side; the header's right padding lines it up). */
+  .device-slot { flex: none; width: 298px; margin-left: 6px; }
+  .device-slot select { width: 100%; max-width: none; }
   .spacer { flex: 1; }
   .ghost { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-decoration: none; color: var(--fg); white-space: nowrap; font-size: 14px; }
   .ghost:hover { background: var(--user); }
@@ -42,6 +46,28 @@
   .menu-items button, .menu-items a { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--fg); text-decoration: none; font-size: 14px; }
   .menu-items button:hover, .menu-items a:hover { background: var(--user); }
   .menu-items .who { padding: 8px 10px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }
+
+  /* Sidebar: saved chats */
+  .sidebar { width: 268px; flex: none; border-right: 1px solid var(--line); background: var(--panel); display: flex; flex-direction: column; padding: 12px 10px; gap: 8px; min-height: 0; }
+  .sidebar.hidden { display: none; }
+  .new-chat { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--raised); cursor: pointer; font-weight: 600; text-align: left; }
+  .new-chat:hover { background: var(--user); }
+  .chat-search { padding: 8px 10px; border-radius: 9px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: inherit; font-size: 14px; }
+  .side-label { color: var(--faint); font-size: 12px; font-weight: 600; margin: 8px 6px 0; }
+  .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 1px; min-height: 0; }
+  .chat-item { display: flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 9px; cursor: pointer; min-width: 0; }
+  .chat-item:hover { background: var(--user); }
+  .chat-item.active { background: var(--user); }
+  .chat-item .meta { flex: 1; min-width: 0; }
+  .chat-item .title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-item .sub { font-size: 12px; color: var(--faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .chat-item .act { display: none; border: 0; background: transparent; cursor: pointer; color: var(--faint); padding: 2px 4px; border-radius: 6px; font-size: 13px; }
+  .chat-item:hover .act, .chat-item.active .act { display: inline-block; }
+  .chat-item .act:hover { color: var(--fg); background: var(--panel); }
+  .side-empty { color: var(--faint); font-size: 13px; padding: 8px 10px; }
+  .foot .fb { filter: grayscale(1); opacity: .5; }
+  .foot .fb:hover { opacity: .85; }
+  .foot .fb.on { filter: none; opacity: 1; background: var(--user); }
 
   /* Layout */
   .layout { flex: 1; display: flex; min-height: 0; }
@@ -123,22 +149,26 @@
   .dot.asking { background: var(--warn); }
   .dot.offline { background: var(--bad); }
   .panel small { display: block; color: var(--muted); margin: 2px 2px; font-size: 12px; overflow-wrap: anywhere; }
+  @media (max-width: 900px) {
+    .device-slot { width: auto; }
+    .device-slot select { max-width: 40vw; }
+  }
   @media (max-width: 640px) {
     header { gap: 6px; padding: 10px 12px; }
     header .label { display: none; }
     header select { max-width: 46vw; }
   }
   @media (max-width: 900px) {
+    .sidebar { position: fixed; left: 0; top: 53px; bottom: 0; z-index: 16; box-shadow: var(--shadow); width: min(290px, 86vw); }
     .panel { position: fixed; right: 0; top: 53px; bottom: 0; z-index: 15; box-shadow: var(--shadow); width: min(330px, 90vw); }
   }
 </style>
 </head>
 <body>
 <header>
+  <button class="ghost" id="sidebarToggle" title="Show or hide chats" aria-label="Chats">☰</button>
   <div class="logo">Open<span>Mob</span></div>
-  <select id="device" aria-label="Phone"></select>
   <div class="spacer"></div>
-  <button class="ghost" id="newChat" title="Clear this phone's conversation" aria-label="New chat">＋<span class="label"> New chat</span></button>
   <button class="ghost" id="panelToggle" title="Show or hide the phone screen" aria-label="Phone screen">📱<span class="label"> Screen</span></button>
   <details class="menu" id="menu">
     <summary class="ghost" aria-label="More">⋯</summary>
@@ -151,9 +181,16 @@
       <button id="signout" hidden>Sign out</button>
     </div>
   </details>
+  <div class="device-slot"><select id="device" aria-label="Phone"></select></div>
 </header>
 
 <div class="layout">
+  <nav class="sidebar" id="sidebar" aria-label="Chats">
+    <button class="new-chat" id="newChat">＋ New chat</button>
+    <input class="chat-search" id="chatSearch" type="search" placeholder="Search chats" aria-label="Search chats">
+    <div class="side-label">Chats</div>
+    <div class="chat-list" id="chatList"></div>
+  </nav>
   <section class="chat">
     <div class="thread" id="thread"><div class="column" id="column"></div></div>
     <div class="composer-wrap">
@@ -201,6 +238,7 @@ let accounts = false;
 let deviceId = null;
 let last = null;            // latest status snapshot
 let lastSignature = "";     // re-render only when something changed
+let lastChatId = null;
 let modelLabels = {};
 let openSteps = new Set();  // task ids whose step list the user expanded
 let screenError = "";
@@ -388,8 +426,24 @@ function renderTurn(turn, s) {
     const retry = el("button", "", "↻");
     retry.title = "Run this request again";
     retry.onclick = () => heard[0] && send(stripSource(heard[0].message));
+    const given = (s && s.feedback && s.feedback[turn.id]) || 0;
+    for (const [value, label, title] of [[1, "👍", "Good result"], [-1, "👎", "Bad result"]]) {
+      const b = el("button", given === value ? "fb on" : "fb", label);
+      b.setAttribute("aria-pressed", String(given === value));
+      b.title = title;
+      b.onclick = async () => {
+        const next = given === value ? 0 : value;  // click again to clear
+        try {
+          await api(`/api/turns/${turn.id}/feedback`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ value: next }) });
+        } catch (e) { $("hint").dataset.note = e.message; }
+        lastSignature = "";
+        pollNow();
+      };
+      foot.append(b);
+    }
     foot.append(copy, retry);
-    if (usage && usage.data) foot.append(el("span", "tokens", tokenText(usage.data)));
+    const used = usage && usage.data ? modelTokens(usage.data) : "";
+    if (used) foot.append(el("span", "tokens", used));
     body.append(foot);
   } else if (active && s.state !== "asking") {
     const latest = [...steps].reverse().find((e) => e.kind !== "error");
@@ -405,7 +459,12 @@ function renderTurn(turn, s) {
 }
 
 const fmt = (n) => (n || 0) >= 10000 ? `${(n / 1000).toFixed(1)}k` : (n || 0).toLocaleString();
-const tokenText = (u) => `${fmt(u.claude_input + u.claude_output)} Claude tokens${u.jev_input ? ` · ${fmt(u.jev_input)} Jev` : ""}`;
+const modelName = (id) => shortModel(modelLabels[id] || id);
+// Tokens per model that served them (as reported by the API), optionally only one model. Jev isn't shown.
+function modelTokens(u, onlyModel) {
+  const entries = Object.entries((u && u.by_model) || {}).filter(([m]) => !onlyModel || m === onlyModel);
+  return entries.map(([m, c]) => `${fmt(c.input + c.output)} tokens · ${modelName(m)}`).join("  ·  ");
+}
 
 function renderEmpty() {
   const box = el("div", "empty");
@@ -438,15 +497,21 @@ function render(s) {
   $("state").textContent = { idle: "Ready", running: "Working", asking: "Waiting for your answer", offline: deviceId ? "Phone offline" : "No phone" }[state] || state;
   $("deviceLine").textContent = s && s.device ? `${s.device.model} · ${s.device.connection}${screenError ? " · " + screenError : ""}` : "";
   const sess = s && s.usage && s.usage.session;
-  $("sessionTokens").textContent = sess && sess.claude_calls + sess.jev_calls ? `This session: ${tokenText(sess)}` : "";
+  const selected = (s && s.model) || $("model").value;
+  const sessionText = modelTokens(sess, selected);
+  $("sessionTokens").textContent = sessionText ? `This session: ${sessionText}` : "";
   if (s && s.model && document.activeElement !== $("model")) $("model").value = s.model;
   updateComposer();
 
   // Rebuild the thread only when the conversation changed.
   const log = s ? s.log : [];
-  const signature = `${deviceId}|${log.length ? log[log.length - 1].seq : 0}|${log.length}|${s && s.state}|${s && s.task_id}`;
+  const signature = `${deviceId}|${log.length ? log[log.length - 1].seq : 0}|${log.length}|${s && s.state}|${s && s.task_id}|${s && s.chat_id}|${JSON.stringify((s && s.feedback) || {})}`;
   if (signature === lastSignature) return;
   lastSignature = signature;
+  // Refresh the sidebar when the open chat changes, or when a task has just finished.
+  const chatId = (s && s.chat_id) || null;
+  if (chatId !== lastChatId || (s && s.state === "idle")) loadChats();
+  lastChatId = chatId;
   const items = buildTurns(log);
   const column = $("column");
   if (!items.some((x) => x.events)) {
@@ -580,12 +645,89 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && recorder) { recCancelled = true; recorder.stop(); }
 });
 
+// ---------- saved chats (sidebar) ----------
+
+let chats = [];
+const ago = (t) => {
+  const s = Math.max(0, Date.now() / 1000 - t);
+  return s < 60 ? "just now" : s < 3600 ? `${Math.floor(s / 60)}m ago` : s < 86400 ? `${Math.floor(s / 3600)}h ago` : `${Math.floor(s / 86400)}d ago`;
+};
+async function loadChats() {
+  try { chats = await api("/api/chats"); } catch { chats = []; }
+  renderChats();
+}
+function renderChats() {
+  const q = $("chatSearch").value.trim().toLowerCase();
+  const shown = chats.filter((c) => !q || c.title.toLowerCase().includes(q) || (c.device_model || "").toLowerCase().includes(q));
+  const active = last && last.chat_id;
+  $("chatList").replaceChildren(...(shown.length ? shown.map((c) => {
+    const row = el("div", `chat-item${c.id === active ? " active" : ""}`);
+    const meta = el("div", "meta");
+    meta.append(el("div", "title", c.title), el("div", "sub", `${c.device_model || "Phone"} · ${ago(c.updated)}`));
+    const rename = el("button", "act", "✎");
+    rename.title = "Rename";
+    rename.onclick = async (e) => {
+      e.stopPropagation();
+      const title = prompt("Rename chat", c.title);
+      if (title && title.trim()) { await api(`/api/chats/${c.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title }) }).catch(() => {}); loadChats(); }
+    };
+    const del = el("button", "act", "🗑");
+    del.title = "Delete";
+    del.onclick = async (e) => {
+      e.stopPropagation();
+      if (!confirm(`Delete "${c.title}"? This removes its saved history.`)) return;
+      await api(`/api/chats/${c.id}`, { method: "DELETE" }).catch(() => {});
+      lastSignature = "";
+      loadChats();
+      pollNow();
+    };
+    row.append(meta, rename, del);
+    row.onclick = () => openChat(c);
+    return row;
+  }) : [el("div", "side-empty", q ? "No matching chats." : "Your chats will appear here.")]));
+}
+async function openChat(c) {
+  if (c.id === (last && last.chat_id)) return;
+  if (c.device_id !== deviceId) {
+    if (![...$("device").options].some((o) => o.value === c.device_id)) {
+      $("hint").dataset.note = "That chat's phone isn't connected right now.";
+      updateComposer();
+      return;
+    }
+    deviceId = c.device_id;
+    $("device").value = deviceId;
+  }
+  try {
+    await api(`/api/devices/${deviceId}/chat/open`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ chat_id: c.id }) });
+    $("hint").dataset.note = "";
+  } catch (e) { $("hint").dataset.note = e.message; }
+  openSteps.clear();
+  lastSignature = "";
+  if (narrow()) { sidebarHidden = true; applySidebar(); }
+  pollNow();
+}
+$("chatSearch").addEventListener("input", renderChats);
+let sidebarHidden = window.matchMedia("(max-width: 900px)").matches;
+try {
+  const saved = localStorage.getItem("openmob.sidebar");
+  if (saved !== null && !window.matchMedia("(max-width: 900px)").matches) sidebarHidden = saved === "hidden";
+} catch {}
+const applySidebar = () => $("sidebar").classList.toggle("hidden", sidebarHidden);
+applySidebar();
+$("sidebarToggle").onclick = () => {
+  sidebarHidden = !sidebarHidden;
+  applySidebar();
+  try { if (!narrow()) localStorage.setItem("openmob.sidebar", sidebarHidden ? "hidden" : "shown"); } catch {}
+};
+
 // ---------- header ----------
 
 $("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); pollNow(); };
 $("newChat").onclick = async () => {
   if (!deviceId) return;
-  try { await api(`/api/devices/${deviceId}/log/clear`, { method: "POST" }); } catch {}
+  try {
+    await api(`/api/devices/${deviceId}/chat/new`, { method: "POST" });
+  } catch (e) { $("hint").dataset.note = e.message; updateComposer(); return; }
   openSteps.clear();
   lastSignature = "";
   pollNow();
@@ -658,7 +800,8 @@ async function screenLoop() {
   }
 }
 
-checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { statusLoop(); screenLoop(); }));
+checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); statusLoop(); screenLoop(); }));
+setInterval(loadChats, 15000);
 setInterval(() => loadDevices(false), 10000);
 </script>
 </body>
