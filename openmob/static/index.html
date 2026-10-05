@@ -17,7 +17,7 @@
   .spacer { flex: 1; }
   .topbar .select { width: auto; min-height: 38px; font-size: 14px; }
   /* The phone picker sits above the phone panel and matches the screen panel's width. */
-  .device-slot { flex: none; width: auto; max-width: 280px; }
+  .device-slot { width: 100%; }
   .device-slot .select { width: 100%; }
   .nav-label { display: inline; }
   .menu { position: relative; }
@@ -240,7 +240,6 @@
   .panel small:empty { display: none; }
 
   .scrim { position: fixed; inset: 0; background: var(--overlay); z-index: 45; }
-  @media (max-width: 1100px) { .device-slot { width: auto; } .device-slot .select { max-width: 30vw; } }
   @media (max-width: 900px) {
     .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(300px, 86vw); }
     .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(340px, 92vw); }
@@ -249,8 +248,6 @@
   @media (max-width: 560px) {
     .topbar { gap: 4px; padding-left: 10px; padding-right: 10px; }
     .brand { font-size: 20px; }
-    .device-slot .select { max-width: 44vw; }
-    #memoryNav { display: none; }
     .thread { padding-top: 16px; }
     .empty { margin-top: 4vh; }
     .empty h1 { font-size: 23px; }
@@ -312,11 +309,6 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg>
   </button>
   <div class="spacer"></div>
-  <a class="btn btn-ghost" id="memoryNav" href="/memory" title="What your agent remembers about you and your apps">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>
-    <span class="nav-label">What I've learned</span><span class="count warn" id="memoryNavBadge" hidden></span>
-  </a>
-  <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
   <button class="btn btn-ghost icon-btn tip tip-right" id="panelToggle" type="button" data-tip="Show screen" data-kbd="⌘\" aria-label="Show phone screen" aria-controls="panel" hidden>
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>
   </button>
@@ -368,6 +360,7 @@
 </div>
   <aside class="panel" id="panel" aria-label="Phone screen">
     <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
+    <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
     <div class="phone">
       <div class="phone-screen blank" id="phoneScreen">
         <img id="screen" alt="Live view of your phone's screen">
@@ -792,11 +785,11 @@ async function loadPendingNotes() {
     const next = new Set(notes.filter((n) => n.status === "proposed").map((n) => n.id));
     for (const n of notes) checkedNotes.add(n.id);
     if ([...next].join() !== [...pendingNotes].join()) { pendingNotes = next; lastSignature = ""; }
-    for (const id of ["memoryBadge", "memoryNavBadge"]) {
+    for (const id of ["memoryBadge"]) {
       $(id).hidden = !next.size;
       $(id).textContent = next.size;
     }
-    $("memoryNavBadge").title = $("memoryBadge").title = `${next.size} suggestion${next.size === 1 ? "" : "s"} waiting for your OK`;
+    $("memoryBadge").title = `${next.size} suggestion${next.size === 1 ? "" : "s"} waiting for your OK`;
   } catch {}  // memory is optional on some servers
 }
 
@@ -1554,7 +1547,7 @@ async function screenLoop() {
 }
 
 if (token) {
-  for (const id of ["memoryLink", "memoryNav"]) $(id).href = "/memory?t=" + encodeURIComponent(token);
+  for (const id of ["memoryLink"]) $(id).href = "/memory?t=" + encodeURIComponent(token);
   $("home").href = "/?t=" + encodeURIComponent(token);
 }
 updateComposer();
