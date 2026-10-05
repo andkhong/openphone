@@ -1,5 +1,6 @@
 package dev.openmob.companion
 
+import android.app.KeyguardManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -252,6 +253,11 @@ class ConnectionService : Service() {
         calls.execute {
             val reply = JSONObject().put("type", "result").put("id", id)
             try {
+                if (method == "device_state") { // no accessibility needed: is the phone usable right now?
+                    reply.put("ok", true).put("result", deviceState())
+                    send(reply)
+                    return@execute
+                }
                 if (method.startsWith("stream_")) {
                     reply.put("ok", true).put("result", handleStream(method, params) ?: JSONObject.NULL)
                     send(reply)
@@ -271,6 +277,11 @@ class ConnectionService : Service() {
             send(reply)
         }
     }
+
+    /** Screen on and keyguard state, so the server can say "unlock to continue" instead of timing out. */
+    private fun deviceState(): JSONObject = JSONObject()
+        .put("interactive", getSystemService(PowerManager::class.java).isInteractive)
+        .put("locked", getSystemService(KeyguardManager::class.java).isKeyguardLocked)
 
     /** Live-view video calls (see ScreenStreamer). */
     private fun handleStream(method: String, params: JSONObject): JSONObject? {
@@ -318,6 +329,8 @@ class ConnectionService : Service() {
                 "approval_request" -> main.post {
                     if (running === this@ConnectionService) Approvals.request(this@ConnectionService, message)
                 }
+                // Answered on another of the owner's phones (or no longer needed): drop the prompt.
+                "approval_cancel" -> main.post { Approvals.cancel(this@ConnectionService, message.optString("id")) }
             }
         }
 

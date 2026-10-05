@@ -379,7 +379,7 @@ class MainActivity : Activity() {
                 setPadding(dp(16), dp(14), dp(16), dp(16))
             }
             box.addView(text(getString(R.string.approval_label), 12f, color(R.color.om_question), bold = true))
-            box.addView(text(request.question, 17f, color(R.color.om_text), bold = true), margins(top = 4))
+            box.addView(text(request.shownQuestion, 17f, color(R.color.om_text), bold = true), margins(top = 4))
             box.addView(
                 text(getString(R.string.approval_requester, request.requester), 14f, color(R.color.om_text_secondary)),
                 margins(top = 4),

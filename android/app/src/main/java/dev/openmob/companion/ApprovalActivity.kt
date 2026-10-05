@@ -91,7 +91,7 @@ class ApprovalActivity : Activity() {
         Approvals.get(requestId)?.let { shown = it }
         val request = shown
         val open = Approvals.get(requestId) != null
-        questionText.text = request?.question ?: getString(R.string.approval_gone)
+        questionText.text = request?.shownQuestion ?: getString(R.string.approval_gone)
         requesterText.text = request?.let { getString(R.string.approval_requester, it.requester) }.orEmpty()
         requesterText.visibility = if (request == null) View.GONE else View.VISIBLE
         if (!open && request != null) showStatus(getString(R.string.approval_gone))
@@ -113,7 +113,7 @@ class ApprovalActivity : Activity() {
         BiometricPrompt.Builder(this)
             .setTitle(getString(R.string.approval_prompt_title))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
-            .setDescription(request.question)
+            .setDescription(request.shownQuestion)
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
             .authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
