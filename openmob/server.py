@@ -566,7 +566,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         app.state.developer_api = developer_api
 
         from .platform import mcp
+        from .platform.orchestrator import Orchestrator, routes as orchestration_routes
 
+        service.orchestrator = Orchestrator(service)  # multi-phone runs, /v1/orchestrations
+        app.include_router(orchestration_routes(service.orchestrator, developer_api.need))
         app.state.mcp = mcp.mount(app, service)  # the remote MCP server at /mcp, same rules as /v1
         app.include_router(developer_api.router)
         app.include_router(developer_api.console)

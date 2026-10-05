@@ -19,7 +19,7 @@ from test_api_v1 import LEAKS, ScriptClient, api, run_task, wait_status  # noqa:
 from test_remote import wait_for
 
 TOOLS = {"list_devices", "run_task", "get_task", "answer_question", "cancel_task", "get_screenshot",
-         "list_memory", "remember"}
+         "list_memory", "remember", "start_orchestration", "get_orchestration", "cancel_orchestration"}
 
 
 def key_of(user):
