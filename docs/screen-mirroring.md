@@ -1,6 +1,6 @@
 # Live screen mirroring
 
-How the dashboard shows a phone's screen, and what real video would take. Option 5 below is a design note only; it is not implemented.
+How the dashboard shows a phone's screen: H.264 video when the owner allowed screen sharing, screenshots otherwise. Option 5 below is the original design note for the video mode.
 
 ## What ships today
 
@@ -14,7 +14,26 @@ How the dashboard shows a phone's screen, and what real video would take. Option
 
 The ceiling is `AccessibilityService.takeScreenshot`, which Android throttles to about 3 captures a second. A preview frame is roughly 4-5 times smaller than the agent's base64 frame (about 50 KB versus 250 KB on a busy screen), so on a phone's uplink the transfer time drops from hundreds of milliseconds to tens. Expect about 3 fps with roughly 250-400 ms from screen change to dashboard, versus about 1.5 fps and often over a second before (400 ms sleep, up to 1 s cache reuse, base64 frames). These are estimates, not measurements on a real phone.
 
-## Option 5: real video (not implemented)
+## Sharpness and size (video and screenshots)
+
+The live view is sized for the panel it is shown in, measured in **device pixels** (CSS size x `devicePixelRatio`). The dashboard sends `?side=<long side>&quality=<sharp|balanced|saver>` when it opens the screen socket, and `{"view": {"side", "quality"}}` when the panel is resized, moved to another display, or the quality picker under the phone changes. `screencast.video_params` and `preview_params` turn that into stream settings; with several viewers the largest panel and the sharpest preference win, and sizes round up to steps of 160 px so small resizes don't restart the stream.
+
+| Quality | Video long side | Video bitrate (30 fps hint) | Screenshot long side, JPEG quality |
+|---|---|---|---|
+| Sharp | panel x 1.25, max 1920 | 0.16 bit/pixel/frame | panel, max 1280, q82 |
+| Balanced (default) | panel x 1, max 1600 | 0.10 | panel, max 1280, q72 |
+| Data saver | panel x 0.7, max 960 | 0.06 | panel x 0.7, max 720, q50 |
+| (viewer says nothing) | 1280 | 2.5 Mbps | 720, q55 |
+
+The dashboard panel (about 284 x 615 CSS px) on a 2x display therefore gets 1280p video at about 2.3 Mbps, or 1280p q72 screenshots instead of the old 720p q55 ones that were blown up 1.7x. A size change restarts the phone's encoder in place (`stream_start` again, no `stream_stop`); viewers get a new `mode` message and a keyframe.
+
+The canvas holds as many pixels as it shows (CSS width x DPR) and the decoder's frames are scaled into it with `imageSmoothingQuality = "high"` the moment they're decoded. The line under the phone says what's on screen: "Video · 1280p · 30 fps · 2.1 Mbps", or "Screenshots · 1280p · 2.9 fps" when the phone has no video (the owner didn't allow screen sharing, or an app build without it). `window.openmobLive` in the console has the same numbers plus decode time.
+
+On the phone (`ScreenStreamer.kt`): H.264 High profile when the encoder offers it (Baseline otherwise); VBR so a change of text can take the bits it needs while a still screen costs almost nothing; a keyframe every 4 s as a safety net (viewers ask for one when they need it); no B-frames; realtime priority and `KEY_LATENCY` 1. The upload queue starts dropping frames at about 350 ms of video (at least 128 KB, room for one keyframe) instead of a fixed 256 KB (about 0.8 s at 2.5 Mbps), and a weak upload lowers the bitrate to no less than 40% of the target: frame rate goes before sharpness.
+
+The server skips a viewer ahead to the next keyframe when its oldest unsent packet is more than 0.5 s old (and at least 4 are waiting), or 45 packets are waiting.
+
+## Option 5: real video (the original design notes; it now ships as the video mode above)
 
 Stream the screen as H.264 video instead of a series of screenshots.
 

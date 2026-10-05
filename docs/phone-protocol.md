@@ -218,7 +218,7 @@ Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keepi
 The server maps model coordinates with `device_x = round(x * device_width / width)`, so both sizes must be exact and in the same orientation. Use the captured bitmap's own size for `device_*`.
 Errors: if capture fails, reply with an error. The server retries once. If the app blocks capture (`FLAG_SECURE`), send an **all-black image** of the normal size rather than an error. The agent recognises black frames as "this app blocks screen capture".
 
-**Live-view params (optional).** The agent's calls carry no params and always get the frame above. The dashboard's live view asks for smaller frames, typically `{"max_side": 720, "quality": 55, "binary": true}`:
+**Live-view params (optional).** The agent's calls carry no params and always get the frame above. The dashboard's live view asks for frames sized for the viewer's panel in device pixels: for example `{"max_side": 1280, "quality": 72, "binary": true}` for a 2x display, or `{"max_side": 720, "quality": 55, "binary": true}` when the viewer didn't give its size:
 
 | Param | Meaning |
 |---|---|

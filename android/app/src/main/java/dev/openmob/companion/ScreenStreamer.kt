@@ -73,27 +73,54 @@ class ScreenStreamer(
     fun start(maxSide: Int, bitrate: Int, fps: Int): JSONObject = synchronized(lock) {
         check(alive) { "Screen streaming ended. Reconnect the app to allow it again." }
         stop()
-        val (w, h) = encodedSize(maxSide.coerceIn(MIN_SIDE, MAX_SIDE))
         val target = bitrate.coerceIn(MIN_BITRATE, MAX_BITRATE)
         val encoder = MediaCodec.createEncoderByType(MIME)
-        val format = MediaFormat.createVideoFormat(MIME, w, h).apply {
+        val caps = encoder.codecInfo.getCapabilitiesForType(MIME)
+        // The size the viewer's panel needs, stepped down until this encoder accepts it.
+        var side = maxSide.coerceIn(MIN_SIDE, MAX_SIDE)
+        var (w, h) = encodedSize(side)
+        while (side > MIN_SIDE && !caps.videoCapabilities.isSizeSupported(w, h)) {
+            side -= 160
+            encodedSize(side).let { w = it.first; h = it.second }
+        }
+        fun format(highProfile: Boolean) = MediaFormat.createVideoFormat(MIME, w, h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, target)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps.coerceIn(5, 60))
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 2)
+            // Viewers that join or fall behind ask for a keyframe, so periodic ones are only a safety
+            // net; fewer of them leaves more bits for sharp text in between.
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 4)
             // A still screen produces no frames; repeat the last one so viewers that join (or skip
-            // ahead) get a keyframe quickly, and the decoder doesn't sit on a stale frame.
+            // ahead) get a keyframe quickly, and a still screen keeps getting sharper.
             setLong(MediaFormat.KEY_REPEAT_PREVIOUS_FRAME_AFTER, 250_000)
             setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0) // B-frames add a frame of delay
-            setInteger(MediaFormat.KEY_LATENCY, 1)
+            setInteger(MediaFormat.KEY_LATENCY, 1) // hand out each frame as soon as it's encoded
             setInteger(MediaFormat.KEY_PRIORITY, 0) // realtime
             setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1) // SPS/PPS before each keyframe
-            val caps = encoder.codecInfo.getCapabilitiesForType(MIME).encoderCapabilities
-            if (caps.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)) {
-                setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+            // VBR: a still screen costs almost nothing and a change (a keyframe of text) can take the
+            // bits it needs. CBR evens every frame out, so keyframes and scrolling text come out soft.
+            val modes = caps.encoderCapabilities
+            when {
+                modes.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR) ->
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_VBR)
+                modes.isBitrateModeSupported(MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR) ->
+                    setInteger(MediaFormat.KEY_BITRATE_MODE, MediaCodecInfo.EncoderCapabilities.BITRATE_MODE_CBR)
+            }
+            // High profile (CABAC, 8x8 transforms): roughly 10-20% fewer bits for the same picture
+            // than Baseline. Every browser's H.264 decoder handles it.
+            val high = caps.profileLevels.filter { it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh }
+            if (highProfile && high.isNotEmpty()) {
+                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
+                setInteger(MediaFormat.KEY_LEVEL, high.maxOf { it.level })
             }
         }
-        encoder.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        try {
+            encoder.configure(format(highProfile = true), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        } catch (e: Exception) {
+            // Some encoders list High but refuse the combination: the defaults always work.
+            encoder.reset()
+            encoder.configure(format(highProfile = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+        }
         val surface: Surface = encoder.createInputSurface()
         encoder.start()
         display.resize(w, h, context.resources.displayMetrics.densityDpi)
@@ -139,6 +166,13 @@ class ScreenStreamer(
     private fun drain(encoder: MediaCodec, surface: Surface, target: Int) {
         val info = MediaCodec.BufferInfo()
         var bitrate = target
+        // Upload queue limits scale with the bitrate, so "behind" means the same delay at any
+        // quality (about a third of a second), with room for one large keyframe.
+        val highWater = max(MIN_HIGH_WATER, target.toLong() / 8 * HIGH_WATER_MS / 1000)
+        val lowWater = highWater / 8
+        // Under a weak upload, trade frame rate (dropped frames) before sharpness: never go below
+        // this, or text turns to blocks.
+        val floor = max(MIN_BITRATE, target * 2 / 5)
         var dropping = false // upload fell behind: skip frames until a keyframe
         var lastDrop = 0L
         var lastRaise = SystemClock.uptimeMillis()
@@ -148,12 +182,12 @@ class ScreenStreamer(
                 val queued = sink.queuedBytes()
                 val now = SystemClock.uptimeMillis()
                 // Recovered for a while: step the bitrate back up towards the target.
-                if (!dropping && bitrate < target && queued < LOW_WATER && now - lastDrop > 3000 && now - lastRaise > 2000) {
+                if (!dropping && bitrate < target && queued < lowWater && now - lastDrop > 3000 && now - lastRaise > 2000) {
                     bitrate = min(target, (bitrate * 1.25).toInt())
                     setBitrate(encoder, bitrate)
                     lastRaise = now
                 }
-                if (dropping && queued < LOW_WATER && !keyRequested) {
+                if (dropping && queued < lowWater && !keyRequested) {
                     keyRequested = true
                     requestSync(encoder) // caught up: restart from a fresh keyframe
                 }
@@ -167,12 +201,12 @@ class ScreenStreamer(
                 encoder.releaseOutputBuffer(index, false)
                 val config = flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0
                 val key = flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
-                if (!config && !key && (dropping || queued > HIGH_WATER)) {
+                if (!config && !key && (dropping || queued > highWater)) {
                     if (!dropping) {
                         dropping = true
                         keyRequested = false
                         lastDrop = now
-                        bitrate = max(MIN_BITRATE, (bitrate * 0.6).toInt())
+                        bitrate = max(floor, (bitrate * 0.6).toInt())
                         setBitrate(encoder, bitrate)
                     }
                     continue
@@ -207,7 +241,7 @@ class ScreenStreamer(
         const val MAX_SIDE = 1920
         const val MIN_BITRATE = 300_000
         const val MAX_BITRATE = 8_000_000
-        const val HIGH_WATER = 256 * 1024L // ~1 s behind at 2 Mbps: start dropping
-        const val LOW_WATER = 32 * 1024L // caught up
+        const val HIGH_WATER_MS = 350L // this much video waiting to upload: start dropping frames
+        const val MIN_HIGH_WATER = 128 * 1024L // but always room for one big keyframe
     }
 }

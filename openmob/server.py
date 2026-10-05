@@ -24,7 +24,7 @@ from .devices import DeviceManager, Session
 from .phone.base import DeviceError
 from .phone.protocol import PROTOCOL_VERSION, decode_message
 from .phone.remote import PhoneLink
-from .screencast import ScreenFeed, live_frame
+from .screencast import ScreenFeed, View, live_frame, preview_params
 
 STATIC = Path(__file__).parent / "static"
 # Public developer docs served to the /developer console, by name. Only these files, nothing else
@@ -308,11 +308,13 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         return [s.describe() for s in manager.sessions_for(account(request))]
 
     @app.get("/api/devices/{device_id}/screen.jpg")
-    def screen(device_id: str, request: Request, after: float = 0.0) -> Response:
-        """One live-view frame (polling fallback for screen/ws). `after`: the X-Frame-Time already shown."""
+    def screen(device_id: str, request: Request, after: float = 0.0, side: int = 0, quality: str = "") -> Response:
+        """One live-view frame (polling fallback for screen/ws). `after`: the X-Frame-Time already shown;
+        `side`, `quality`: the viewer's panel size in device pixels and its preference (see screencast)."""
         require_auth(request)
         try:
-            taken, shot = live_frame(owned_session(device_id, request).driver, newer_than=after)
+            taken, shot = live_frame(owned_session(device_id, request).driver, after,
+                                     *preview_params([View.parse(side, quality)]))
         except DeviceError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from None
         headers = {"Cache-Control": "no-store", "X-Frame-Time": repr(taken)}
@@ -322,8 +324,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
 
     @app.websocket("/api/devices/{device_id}/screen/ws")
     async def screen_socket(ws: WebSocket, device_id: str) -> None:
-        """Live view, pushed: binary JPEG preview frames (and {"error"} texts) while the viewer is open.
-        Same auth as screen.jpg: cookie or header session, or ?t= in token mode."""
+        """Live view, pushed: H.264 packets or JPEG preview frames (and JSON texts) while the viewer is
+        open; ?side=&quality= size them for the viewer's panel (see screencast). Same auth as
+        screen.jpg: cookie or header session, or ?t= in token mode."""
         await ws.accept()  # accept first: a close before accepting reaches clients as a bare HTTP 403
         try:
             require_auth(ws)
@@ -340,7 +343,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 return False
 
         feed = screen_feeds.get(session) or screen_feeds.setdefault(session, ScreenFeed(session.driver))
-        await feed.serve(ws, allowed)
+        await feed.serve(ws, allowed, View.parse(ws.query_params.get("side"), ws.query_params.get("quality")))
 
     @app.post("/api/devices/{device_id}/command")
     def command(device_id: str, body: CommandIn, request: Request) -> dict:

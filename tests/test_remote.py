@@ -111,6 +111,9 @@ class FakePhone:
     def _stream(self, ws, method):
         """Fake encoder: SPS/PPS, a keyframe, then a delta every 20 ms (a keyframe when asked)."""
         if method == "stream_start":
+            if self.streaming:  # like the app: a new start replaces the running encoder
+                self.streaming.cancel()
+
             async def packets():
                 try:
                     await ws.send(protocol.encode_video_packet(b"\x00\x00\x00\x01SPSPPS", 0, config=True))
