@@ -367,10 +367,17 @@ Scope `tasks:run`.
 | `steps` | 1–10 of `{id, device_id, instruction, tier?, max_steps?, depends_on?}`. Ids are letters, digits, `-` and `_`. |
 | `on_failure` | `stop` (default): a failed step cancels the running ones and skips the rest. `continue`: only steps depending on it are skipped. |
 | `max_credits` | Budget for the whole run (optional). A running step is cancelled once the run has spent it. |
-| `wait_for_phone_seconds` | How long a step waits for its phone to come online (default 60, at most 600). |
+| `wait_for_phone_seconds` | How long a step waits for its phone to be usable: online, unlocked and with the screen on (default 60, at most 600). Offline and locked time share this one timer. |
+| `max_duration_seconds` | The whole run's time limit (default 1800, at most 7200). Past it, running steps are cancelled and the rest skipped: `failed` / `timed_out`. |
+
+Send an `Idempotency-Key` header to make retries safe: the same key with the same body within 24
+hours returns the first response again (`200`, header `Idempotent-Replayed: true`) instead of
+starting a second run; the same key with a different body is `409 idempotency_conflict`. Keys are
+per API key. A request that failed doesn't use up its key.
 
 Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate step id, more than
-10 steps, or a reference to a step that isn't an ancestor; `404` for a phone that isn't yours.
+10 steps, or a reference to a step that isn't an ancestor; `404` for a phone that isn't yours;
+`429 too_many_orchestrations` when the key already has 3 runs in progress (or the account 10).
 
 ```json
 {"id": "orc_5f2a9c0e1b7d4a36", "status": "running", "reason": null, "on_failure": "stop",
@@ -388,17 +395,24 @@ Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate
 |---|---|
 | `running` | |
 | `succeeded` | |
-| `failed` | the first failure: `task_failed`, `phone_offline` (didn't come online in time), `phone_disconnected` (lost mid-step past the 45 s grace), `device_revoked`, `access_revoked` (key revoked or disabled, account API off, or `tasks:run` removed), `task_cancelled`, `server_restarted` |
-| `cancelled` | `cancelled` |
+| `failed` | the first failure: `task_failed`, `phone_offline` (didn't come online in time), `phone_locked` (stayed locked or with the screen off), `phone_unresponsive` (connected but not answering), `phone_disconnected` (lost mid-step past the 45 s grace), `question_timeout` (nobody answered a step's question within 5 minutes), `device_revoked`, `access_revoked` (key revoked or disabled, account API off, or `tasks:run` removed), `task_cancelled`, `timed_out` (past `max_duration_seconds`), `internal_error`, `server_restarted` |
+| `cancelled` | `cancelled` (you cancelled it) or `stopped_on_phone` (the owner tapped Stop, said "stop", or denied an approval on a phone running a step: the whole run ends, whatever `on_failure` says) |
 | `budget_exhausted` | `max_credits`, `credits_exhausted` (the key's daily credits) or `quota_exhausted` (its daily tasks) |
 
 Steps are `pending`, `waiting_for_phone`, `running`, `succeeded`, `failed`, `cancelled` or `skipped`
-(with a `reason`, such as `dependency_failed`). A step whose task asks a question shows it in
+(with a `reason`, such as `dependency_failed`). A step `waiting_for_phone` says why in `reason`:
+`phone_offline`, or `phone_locked` ("unlock to continue"). Each step starts by pressing Home, so an
+earlier step's half-finished screen isn't where it begins. A step whose task asks a question shows it in
 `question` and `task_status`; answer it with [`POST /v1/tasks/{task_id}/answer`](#post-v1taskstask_idanswer) as usual.
 
 Access is checked again before every step and continuously while steps run: revoking or disabling
 the key, switching off the account's API, or unpairing a step's phone stops the affected work at
 once. Runs aren't resumed after a server restart yet; they end as `failed` / `server_restarted`.
+
+**Credits.** Each step is charged like any task. `max_credits` is checked as steps run, so steps
+running in parallel can overshoot it by up to one step's cost each before they're cut off. Steps
+that end through OpenMob's own fault (`internal_error`, `server_restarted`) are charged 0; the
+amount is kept as `credits_waived` for the record and doesn't count towards daily limits.
 
 ### GET /v1/orchestrations/{id} and GET /v1/orchestrations
 

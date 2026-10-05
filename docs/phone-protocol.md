@@ -202,6 +202,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `key` | `name: string` | `null` | 10 s |
 | `open_url` | `url: string` | `null` | 15 s |
 | `wake_unlock` | none | `null` | 10 s |
+| `device_state` | none | `{"interactive": bool, "locked": bool}` | 5 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -308,6 +309,9 @@ Params: `{"url": "https://youtube.com/results?search_query=lofi"}`. Open the URL
 
 ### 4.13 `wake_unlock`
 Called at the start of every task. Turn the screen on if it is off, and dismiss the lock screen **if it is not secure** (swipe-to-unlock or none). With a secure lock (PIN, pattern, password, biometric), wake the screen and return `null`. The agent sees the lock screen and asks the user. **Never** enter credentials. Reply with an error only if the screen could not be woken.
+
+### 4.14 `device_state`
+Is the phone usable right now? `{"interactive": PowerManager.isInteractive, "locked": KeyguardManager.isKeyguardLocked}`. Answer it even when accessibility is off, and quickly (it only reads two flags). The server asks before a standalone API task and before each orchestration step: a locked phone or a dark screen means "unlock to continue" (`phone_locked`) instead of a task that times out on its first command; no answer within 5 s means `phone_unresponsive`. Optional: an app that answers `Unknown method device_state` is simply not checked.
 
 ---
 
@@ -451,7 +455,10 @@ the human, the server sends:
  "question": "I'm about to tap 'Buy now'. Should I go ahead?", "requester": "CI bot"}
 ```
 `requester` is the API key's name when an API or MCP client started the task, or `"You"` for the
-owner's own requests (dashboard, phone). The phone confirms with the screen lock and replies:
+owner's own requests (dashboard, phone). Newer servers add `device_id` and `device_name`: the phone
+that would act. The request goes to **every** online phone of the owner, so it may name another
+phone; show it as "On Pixel 9: Send message to Mom?". The phone confirms with the screen lock and
+replies:
 ```json
 {"type": "approval", "id": "5d0c…", "approved": true}
 ```
@@ -462,6 +469,8 @@ owner's own requests (dashboard, phone). The phone confirms with the screen lock
 | Unknown id, or the task is no longer waiting | Ignored. The confirmation may have been answered elsewhere (dashboard), timed out, or the task ended. |
 | No reply within **2 minutes** | Treated as denied. The phone sends nothing when its prompt expires. |
 | Phone reconnects while the task still waits | The same `approval_request` (same `id`) is sent again after `welcome`. The phone ignores ids it already answered. |
+| Several phones asked | The first answer wins. Every other phone that was asked gets `{"type": "approval_cancel", "id": "5d0c…"}` and drops its prompt without answering. The same message is sent when the confirmation is settled some other way (dashboard, API decline, timeout, task ended). |
+| Denied on a phone, for a step of an orchestration | The owner's "no" ends the whole run (`cancelled` / `stopped_on_phone`), not just that action. |
 
 API keys can't approve risky actions themselves (`POST /v1/tasks/{id}/answer` with `approve: true`
 returns 403 `confirmation_requires_owner`) unless the owner turned on `confirm_approve` for that key.
@@ -478,7 +487,7 @@ re-sends the current controller event if such a task is still running.
 
 | The socket closes… | Server behaviour |
 |---|---|
-| with close code **1000** (the user tapped Stop or disconnected on purpose) | Stops the running task and clears the queue right away, as before. |
+| with close code **1000** (the user tapped Stop or disconnected on purpose) | Stops the running task and clears the queue right away, as before. If one of them was an orchestration step, the whole run ends as `cancelled` / `stopped_on_phone`; so does saying "stop" on the phone. |
 | any other way (network change, dead connection) while a task runs or is queued | The phone shows as offline but the task is kept. Its next phone call waits up to **45 s** for the same `device.id` to reconnect, then continues on the new socket. |
 | …and no reconnect within 45 s | The waiting call fails, so the task fails; queued tasks are cancelled. |
 | any way, with nothing running | Nothing to keep. |
