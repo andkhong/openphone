@@ -233,3 +233,40 @@ def test_results_name_no_model_or_provider(api):
     done = call(api, api.alice, "get_task", task_id=task["id"], wait_seconds=10)
     blob = "\n".join(text(r) + json.dumps(r.structured_content) for r in (result, answered, done))
     assert not LEAKS.search(blob), LEAKS.search(blob)
+
+
+# --- `openmob mcp`: the local stdio proxy ------------------------------------------------------
+
+
+def test_stdio_proxy_forwards_to_the_remote_server(api):
+    import os
+    import sys
+
+    from mcp import StdioServerParameters
+
+    env = {**os.environ, "OPENMOB_API_KEY": key_of(api.alice)}
+    params = StdioServerParameters(command=sys.executable, args=["-m", "openmob.main", "mcp", "--server", api.base],
+                                   env=env)
+
+    async def session():
+        async with Client(params) as client:
+            tools = {t.name for t in (await client.list_tools()).tools}
+            devices = await client.call_tool("list_devices", {})
+            task = await client.call_tool("run_task", {"instruction": "open maps"})
+            other = await client.call_tool("get_task", {"task_id": "nope"})
+            return tools, devices, task, other, client.instructions
+
+    tools, devices, task, other, instructions = asyncio.run(session())
+    assert tools == TOOLS and "run_task" in instructions
+    assert [d["id"] for d in ok(devices)["devices"]] == [api.alice.device]
+    assert ok(task)["status"] == "succeeded"
+    assert other.is_error and "Unknown task" in text(other)
+
+
+def test_stdio_proxy_needs_a_key():
+    import subprocess
+    import sys
+
+    r = subprocess.run([sys.executable, "-m", "openmob.main", "mcp", "--server", "http://127.0.0.1:9"],
+                       capture_output=True, text=True, env={"PATH": "/usr/bin:/bin"}, timeout=30)
+    assert r.returncode == 2 and "OPENMOB_API_KEY" in r.stderr and r.stdout == ""

@@ -402,6 +402,15 @@ def cmd_key(cfg: Config, args) -> None:
     print(f"✓ Revoked {key_id}. It stops working on its next request.")
 
 
+def cmd_mcp(cfg: Config, args) -> None:
+    """A local stdio MCP server for Claude Desktop & co.: a thin proxy to a server's /mcp."""
+    import os
+
+    from .platform import stdio
+
+    stdio.main(args.server or os.environ.get("OPENMOB_SERVER"), args.key or os.environ.get("OPENMOB_API_KEY"))
+
+
 def _public_url(port: int) -> str | None:
     """The running tunnel's URL, if `openmob run --public` started one."""
     import json as _json
@@ -464,11 +473,15 @@ def main(argv: list[str] | None = None) -> None:
     p_key.add_argument("--name", help="create: a name to recognise the key by")
     p_key.add_argument("--scopes", help="create: comma-separated, e.g. devices:read,tasks:run,tasks:read (default)")
 
+    p_mcp = sub.add_parser("mcp", help="serve MCP over stdio, forwarding to an OpenMob server's /mcp")
+    p_mcp.add_argument("--server", help="the server, e.g. https://openmob.example.com (default: $OPENMOB_SERVER)")
+    p_mcp.add_argument("--key", help="API key (default: $OPENMOB_API_KEY, which keeps it out of process lists)")
+
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
     {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
-     "key": cmd_key}[args.command](cfg, args)
+     "key": cmd_key, "mcp": cmd_mcp}[args.command](cfg, args)
 
 
 if __name__ == "__main__":
