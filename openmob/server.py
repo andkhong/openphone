@@ -12,6 +12,7 @@ import socket
 import threading
 import weakref
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
@@ -37,6 +38,7 @@ HELLO_TIMEOUT = 10
 
 class CommandIn(BaseModel):
     text: str
+    mode: Literal["auto", "queue"] = "auto"  # auto: corrects a running task; queue: always a new task
 
 
 class Credentials(BaseModel):
@@ -318,7 +320,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     @app.post("/api/devices/{device_id}/command")
     def command(device_id: str, body: CommandIn, request: Request) -> dict:
         require_auth(request)
-        return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard")}
+        return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard", mode=body.mode)}
 
     @app.post("/api/devices/{device_id}/stop")
     def stop(device_id: str, request: Request) -> dict:

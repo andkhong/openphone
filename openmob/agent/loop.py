@@ -169,6 +169,7 @@ class Agent:
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
+            self._apply_corrections(state, messages)
             self._trim_history(messages)
             response = route.adapter.complete(ModelRequest(
                 model=self.task_model,
@@ -360,6 +361,24 @@ class Agent:
             {"type": "text", "text": f"{header}\n{body}"},
             {"type": "image", "media_type": "image/jpeg", "data": base64.b64encode(obs.shot.jpeg).decode()},
         ]
+
+    # --- mid-task corrections ("steer") ----------------------------------------
+
+    def _apply_corrections(self, state: _TaskState, messages: list[dict]) -> None:
+        """What the user said while the task ran (Coordinator.steer) joins the next user message.
+        It's the user's own words, so it also counts as part of the request (the risky-tap and
+        "remember" checks read it)."""
+        take = getattr(self.io, "take_corrections", None)
+        for text in take() if take else []:
+            line = f"User correction: {text}"
+            last = messages[-1]
+            if last["role"] != "user":
+                messages.append({"role": "user", "content": []})
+                last = messages[-1]
+            if isinstance(last["content"], str):
+                last["content"] = [{"type": "text", "text": last["content"]}]
+            last["content"].append({"type": "text", "text": line})
+            state.task = f"{state.task}\n{line}"
 
     def _trim_history(self, messages: list[dict]) -> None:
         """Keep only the most recent screenshots (and element lists) in the history."""

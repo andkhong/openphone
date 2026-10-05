@@ -18,7 +18,7 @@ _CURRENT = object()  # event(): tag with whichever task is running
 
 STOP_PHRASES = {"stop", "cancel", "abort", "stop it", "never mind", "nevermind", "stop stop"}
 
-ICONS = {"memory": "📌", "usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
+ICONS = {"correction": "✏️ ", "memory": "📌", "usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
 
 
 FINAL_STATUSES = {"succeeded", "failed", "cancelled"}
@@ -65,6 +65,7 @@ class Coordinator:
         self.speaker = speaker
         self.tasks: queue.Queue[tuple[str, str, str, dict]] = queue.Queue()
         self.answers: queue.Queue[str] = queue.Queue()
+        self.corrections: queue.Queue[str] = queue.Queue()  # steer: what the user said mid-task
         self.cancel = threading.Event()
         self.log: deque[dict] = deque(maxlen=500)
         self.current_task: str | None = None  # id of the running task; every event is tagged with one
@@ -82,8 +83,11 @@ class Coordinator:
 
     # --- inputs ----------------------------------------------------------
 
-    def submit(self, text: str, source: str) -> str:
-        """Handle one utterance. Returns what happened: queued, answered, stopped, or ignored."""
+    def submit(self, text: str, source: str, mode: str = "auto") -> str:
+        """Handle one utterance. Returns what happened: queued, steered, answered, stopped, or ignored.
+
+        mode "auto": while a task runs (and isn't asking anything), anything but "stop" corrects
+        that task. mode "queue": it's a new task, queued behind the running one."""
         text = text.strip()
         if not text:
             return "ignored"
@@ -93,10 +97,17 @@ class Coordinator:
                 kind = "stop" if is_stop(text) else "answer"
             elif is_stop(text):
                 kind = "stop" if (self.current is not None or not self.tasks.empty()) else "ignore"
+            elif running is not None and mode == "auto":
+                kind = "steer"
             else:
                 kind = "task"
         if kind == "task":
             self.enqueue(text, source)
+            return "queued"
+        if kind == "steer":
+            if self.steer(text, source):
+                return "steered"
+            self.enqueue(text, source)  # the task finished in the meantime: it's a new request
             return "queued"
         # Answers and stops belong to the running task's turn.
         self.event("heard", f"[{source}] {text}", task=running)
@@ -158,6 +169,26 @@ class Coordinator:
             self.event("error", "Cancelled before it started.", task=task_id,
                        data={"final": True, "success": False, "cancelled": True})
         return True
+
+    def steer(self, text: str, source: str = "api") -> bool:
+        """Correct the running task ("no, the other button"). The agent reads it before its next
+        step. False when nothing is running, or a question is pending (that wants an answer)."""
+        text = text.strip()
+        with self._lock:
+            if not text or self.current_task is None or self.question is not None:
+                return False
+            self.corrections.put(text)
+        self.event("correction", f"[{source}] {text}")
+        return True
+
+    def take_corrections(self) -> list[str]:
+        """The agent's side of steer: everything said since its last step, oldest first."""
+        out = []
+        while True:
+            try:
+                out.append(self.corrections.get_nowait())
+            except queue.Empty:
+                return out
 
     def record_step(self, step: dict) -> None:
         """The agent's structured record of one tool call (redacted, no screenshot) → history."""
@@ -294,6 +325,7 @@ class Coordinator:
                     self._skip.discard(task_id)
                     continue
             self.cancel.clear()
+            self.take_corrections()  # anything left from an earlier task isn't about this one
             with self._lock:
                 self.current = text
                 self.current_task = task_id
@@ -315,6 +347,8 @@ class Coordinator:
                 self.speaker.say("Sorry, something went wrong.")
                 self._record_model_run(task_id, False, None)
             finally:
+                if self.take_corrections():
+                    self.event("status", "A correction came in as the task ended; send it again as a new request.", task=task_id)
                 # Count tokens even when a task fails or is stopped part-way.
                 usage = getattr(self.agent, "usage", None)
                 if usage is not None:
