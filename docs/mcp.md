@@ -54,7 +54,7 @@ In `~/.cursor/mcp.json` (or `.cursor/mcp.json` in a project):
 
 `openmob mcp` is a small local MCP server (stdio) that forwards every call to the remote one. It
 has no tools of its own, so it always matches the server. Install OpenMob on the computer
-(`pip install openmob`), then in `claude_desktop_config.json`:
+(`pip install git+https://github.com/andkhong/openphone`; OpenMob isn't on PyPI, so don't `pip install openmob`), then in `claude_desktop_config.json`:
 
 ```json
 {

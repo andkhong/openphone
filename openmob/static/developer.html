@@ -1211,7 +1211,7 @@ function renderAgents() {
         test("open Cursor Settings → MCP: openmob should be green with its tools listed."));
     } },
     { id: "desktop", label: "Claude Desktop", render: () => el("div", { className: "panel-body" },
-      p("Claude Desktop runs local MCP servers. openmob mcp is a small stdio proxy that forwards to this server; install it with pip install openmob."),
+      p("Claude Desktop runs local MCP servers. openmob mcp is a small stdio proxy that forwards to this server; install it from the OpenMob repository with pip install git+https://github.com/andkhong/openphone (it isn't on PyPI)."),
       label("claude_desktop_config.json"),
       codeBox(stdio, "json"),
       test("restart Claude Desktop, then look for openmob under the tools (🔨) menu.")) },
