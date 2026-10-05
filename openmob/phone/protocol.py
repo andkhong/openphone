@@ -54,6 +54,8 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     "key": ({"name": "HOME|BACK|ENTER|APP_SWITCH|DELETE|... (see adb.KEYCODES)"}, "null", 10),
     "open_url": ({"url": "str"}, "null", 15),
     "wake_unlock": ({}, "null (wake the screen; dismiss a non-secure keyguard)", 10),
+    # Newer apps: is the phone usable right now? Older apps answer "Unknown method" (the check is skipped).
+    "device_state": ({}, "{interactive: bool, locked: bool}: screen on, keyguard showing", 5),
     # Live-view video, only for phones whose hello says "video": true (the owner allowed screen
     # streaming). The agent never uses these; it keeps taking screenshots.
     "stream_start": (

@@ -8,11 +8,13 @@ class ServiceError(Exception):
     status = 400  # the HTTP status REST answers with
     code: str | None = None  # a stable machine-readable reason, when there is one
 
-    def __init__(self, message: str, *, code: str | None = None, headers: dict[str, str] | None = None):
+    def __init__(self, message: str, *, code: str | None = None, headers: dict[str, str] | None = None,
+                 extra: dict | None = None):
         super().__init__(message)
         self.message = message
         self.code = code or self.code
         self.headers = headers or {}
+        self.extra = extra or {}  # more fields for the error body, e.g. resets_at
 
 
 class BadRequest(ServiceError):

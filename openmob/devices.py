@@ -33,7 +33,6 @@ class Session:
         self.online = True
         self.account_id = account_id  # owning account in hosted mode; None for local adb phones
         self.link: PhoneLink | None = None  # app phones only
-        self.approvals: dict[str, str] = {}  # approval id sent to the phone → the task waiting on it
         # (task id, who) of the last API task to run here; who is "" once it finished
         self.controller: tuple[str, str] | None = None
         self.reconnecting = False  # the socket dropped mid-task; the task waits for the phone to come back
@@ -73,6 +72,10 @@ class DeviceManager:
         # registers one). "human": its risky actions must be approved by the owner on the phone.
         self.task_requesters: list = []
         self.approval_listeners: list = []  # callables(task id, approved) after a phone approval
+        # callables(session, task ids, how): the owner stopped work from that phone ("stop", "denied")
+        self.phone_stop_listeners: list = []
+        # open approval id → {session (the acting phone), task_id, question, who, sent (phones asked)}
+        self.approvals: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -172,6 +175,8 @@ class DeviceManager:
                 session._grace = grace = object()
                 session.driver.hold(self.reconnect_grace)
         if not wait:
+            if close_code == 1000:  # the owner's Stop on the phone (it closes the connection normally)
+                self.phone_stopped(session, self.phone_stop_targets(session), "stop")
             session.coordinator.stop()
             return
         session.coordinator.event("status", f"Lost the connection to the phone. Waiting up to "
@@ -232,23 +237,50 @@ class DeviceManager:
             session.controller = (task_id, who["name"])  # the API task just started
             self._post(session, {"type": "event", "kind": "controller", "message": who["name"]})
         if entry["kind"] == "question" and data.get("confirm") and (who is None or who["human"]):
-            approval_id = uuid.uuid4().hex
-            with self._approvals_lock:
-                session.approvals[approval_id] = task_id
-            self._post(session, self._approval_request(approval_id, task_id, entry["message"], who))
-            timer = threading.Timer(self.approval_timeout, self._expire_approval, (session, approval_id))
-            timer.daemon = True
-            timer.start()
+            self._ask_owner(session, task_id, entry["message"], who)
 
-    @staticmethod
-    def _approval_request(approval_id: str, task_id: str, question: str, who: dict | None) -> dict:
-        return {"type": "approval_request", "id": approval_id, "task_id": task_id, "question": question,
-                "requester": who["name"] if who else "You"}
+    # Approvals go to every online phone of the owner, not just the one acting: the owner may be
+    # holding another. The first answer wins (screen lock on that phone); the others are told to
+    # dismiss their prompt with approval_cancel.
+
+    def _approval_targets(self, acting: Session) -> list[Session]:
+        return [s for s in list(self.sessions.values()) if s.link and s.account_id == acting.account_id]
+
+    def _ask_owner(self, acting: Session, task_id: str, question: str, who: dict | None) -> None:
+        approval_id = uuid.uuid4().hex
+        record = {"session": acting, "task_id": task_id, "question": question, "who": who, "sent": set()}
+        with self._approvals_lock:
+            self.approvals[approval_id] = record
+        for target in self._approval_targets(acting):
+            self._send_approval(target, approval_id, record)
+        timer = threading.Timer(self.approval_timeout, self._expire_approval, (approval_id,))
+        timer.daemon = True
+        timer.start()
+
+    def _send_approval(self, target: Session, approval_id: str, record: dict) -> None:
+        acting = record["session"]
+        with self._approvals_lock:
+            record["sent"].add(target.info.id)
+        self._post(target, {
+            "type": "approval_request", "id": approval_id, "task_id": record["task_id"],
+            "question": record["question"], "requester": record["who"]["name"] if record["who"] else "You",
+            "device_id": acting.info.id, "device_name": acting.info.model,  # which phone would act
+        })
+
+    def _dismiss(self, approval_id: str, record: dict, except_id: str | None = None) -> None:
+        """Tell every phone that was asked (but the one that answered) to drop the prompt."""
+        for session_id in record["sent"]:
+            target = self.sessions.get(session_id)
+            if target is not None and session_id != except_id:
+                self._post(target, {"type": "approval_cancel", "id": approval_id})
 
     def _forget_approvals(self, session: Session, task_id: str) -> None:
         with self._approvals_lock:
-            for approval_id in [a for a, t in session.approvals.items() if t == task_id]:
-                del session.approvals[approval_id]
+            gone = [(a, r) for a, r in self.approvals.items() if r["task_id"] == task_id and r["session"] is session]
+            for approval_id, _ in gone:
+                del self.approvals[approval_id]
+        for approval_id, record in gone:
+            self._dismiss(approval_id, record)
 
     @staticmethod
     def _post(session: Session, message: dict) -> None:
@@ -256,32 +288,57 @@ class DeviceManager:
             session.link.post(message)
 
     def resolve_approval(self, session: Session, approval_id: str, approved: bool) -> bool:
-        """The owner answered an approval_request on the phone (after the screen-lock check).
-        Ignored (False) unless that request's task is still waiting for this confirmation."""
+        """The owner answered an approval_request on one of their phones (after its screen-lock
+        check). Ignored (False) unless that request is still open and its task still waiting."""
         with self._approvals_lock:
-            task_id = session.approvals.pop(str(approval_id or ""), None)
-        if task_id is None:
-            return False
-        info = session.coordinator.task(task_id)
+            record = self.approvals.get(str(approval_id or ""))
+            if record is None or record["session"].account_id != session.account_id:
+                return False
+            del self.approvals[approval_id]
+        acting, task_id = record["session"], record["task_id"]
+        self._dismiss(approval_id, record, except_id=session.info.id)
+        info = acting.coordinator.task(task_id)
         if not info or info["status"] != "needs_confirmation":
             return False
-        if not session.coordinator.answer(task_id, "yes" if approved else "no"):
+        if not acting.coordinator.answer(task_id, "yes" if approved else "no"):
             return False
         for listener in self.approval_listeners:
             try:
                 listener(task_id, approved)
             except Exception:
                 pass
+        if not approved:  # the owner said no on a phone: for an orchestration, that's a stop
+            self.phone_stopped(acting, [task_id], "denied")
         return True
 
-    def _expire_approval(self, session: Session, approval_id: str) -> None:
-        """Nobody answered on the phone in time: decline, so the agent never acts on silence."""
+    def _expire_approval(self, approval_id: str) -> None:
+        """Nobody answered on any phone in time: decline, so the agent never acts on silence."""
         with self._approvals_lock:
-            task_id = session.approvals.pop(approval_id, None)
-        info = session.coordinator.task(task_id) if task_id else None
+            record = self.approvals.pop(approval_id, None)
+        if record is None:
+            return
+        self._dismiss(approval_id, record)
+        acting, task_id = record["session"], record["task_id"]
+        info = acting.coordinator.task(task_id)
         if info and info["status"] == "needs_confirmation":
-            session.coordinator.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
-            session.coordinator.answer(task_id, "no")
+            acting.coordinator.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
+            acting.coordinator.answer(task_id, "no")
+
+    # --- the owner stopping work from the phone ----------------------------------------
+
+    def phone_stop_targets(self, session: Session) -> list[str]:
+        """The tasks a stop on this phone ends: the running one and everything queued."""
+        c = session.coordinator
+        with c._lock:
+            return [t for t, i in c.task_info.items() if i["status"] not in ("succeeded", "failed", "cancelled")]
+
+    def phone_stopped(self, session: Session, task_ids: list[str], how: str) -> None:
+        """The owner stopped these tasks from the phone (Stop, "stop", or denying an approval)."""
+        for listener in self.phone_stop_listeners:
+            try:
+                listener(session, list(task_ids), how)
+            except Exception:
+                pass
 
     def confirm_on_phone(self, session: Session) -> bool:
         """True while the pending confirmation may only be approved on the phone (an API task whose
@@ -297,18 +354,18 @@ class DeviceManager:
         if session.controller and session.controller[1]:
             self._post(session, {"type": "event", "kind": "controller", "message": session.controller[1]})
         with self._approvals_lock:
-            pending = list(session.approvals.items())
-        for approval_id, task_id in pending:
-            info = session.coordinator.task(task_id)
+            pending = [(a, r) for a, r in self.approvals.items() if r["session"].account_id == session.account_id]
+        for approval_id, record in pending:
+            info = record["session"].coordinator.task(record["task_id"])
             if info and info["status"] == "needs_confirmation":
-                self._post(session, self._approval_request(approval_id, task_id, info["question"],
-                                                           self._requester(task_id)))
+                self._send_approval(session, approval_id, record)  # same id: phones ignore ones they answered
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:
         coordinator = Coordinator(self.speaker, history=self.history)
         coordinator.account_id = account_id
         coordinator.device_id = info.id
         coordinator.device_model = info.model
+        coordinator.question_timeout = float(getattr(self.cfg, "question_timeout_seconds", 300) or 0)
         cache = Path(DEFAULT_LABEL_CACHE).with_name(f"labels-{info.id}.json")
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:

@@ -663,7 +663,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                     await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
                                             message.get("approved") is True)
                 elif kind == "command" and str(message.get("text", "")).strip():
-                    await run_in_threadpool(session.coordinator.submit, message["text"], "phone")
+                    targets = manager.phone_stop_targets(session)
+                    result = await run_in_threadpool(session.coordinator.submit, message["text"], "phone")
+                    if result == "stopped":  # "stop" said or typed on the phone: the owner's call
+                        await run_in_threadpool(manager.phone_stopped, session, targets, "stop")
         except (WebSocketDisconnect, ValueError):
             pass
         finally:

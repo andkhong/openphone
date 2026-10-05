@@ -14,7 +14,7 @@ import time
 import uuid
 
 from .adb import Screenshot, UIElement
-from .base import CachedScreenshots, DeviceError
+from .base import CachedScreenshots, DeviceError, PhoneTimeout
 from .protocol import METHODS, decode_element, decode_screenshot
 
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
@@ -43,7 +43,7 @@ class PhoneLink:
             return future.result(timeout + 5)
         except concurrent.futures.TimeoutError:
             future.cancel()
-            raise DeviceError(f"Phone did not answer {method} within {timeout:g}s") from None
+            raise PhoneTimeout(f"Phone did not answer {method} within {timeout:g}s") from None
 
     def notify(self, kind: str, message: str) -> None:
         """Fire-and-forget activity event for the phone to show or speak."""
@@ -81,7 +81,7 @@ class PhoneLink:
                 raise DeviceError("Phone disconnected") from exc
             reply = await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
-            raise DeviceError(f"Phone did not answer {method} within {timeout:g}s") from None
+            raise PhoneTimeout(f"Phone did not answer {method} within {timeout:g}s") from None
         finally:
             self._pending.pop(call_id, None)
         if not reply.get("ok"):
@@ -123,6 +123,7 @@ class RemoteDriver(CachedScreenshots):
     def __init__(self, link: PhoneLink):
         self.link = link
         self.video_available = False  # the owner allowed screen streaming (hello "video", video_state)
+        self._state_unsupported = False  # an older app without device_state
         self._init_screenshot_cache()
         self._reconnect = threading.Condition()
         self._wait_until: float | None = None  # monotonic deadline while the phone may come back
@@ -134,6 +135,7 @@ class RemoteDriver(CachedScreenshots):
             self._wait_until = None
             self._last_shot = None
             self._last_preview = None
+            self._state_unsupported = False  # the app may have been updated
             self._reconnect.notify_all()
 
     def hold(self, seconds: float | None) -> None:
@@ -221,3 +223,19 @@ class RemoteDriver(CachedScreenshots):
 
     def wake_unlock(self) -> None:
         self._call("wake_unlock")
+
+    def device_state(self) -> dict | None:
+        """{"interactive", "locked"} right now, or None if this app version can't say. Never waits
+        for a reconnect; PhoneTimeout means connected but not answering."""
+        if self._state_unsupported:
+            return None
+        try:
+            state = self._call("device_state", _wait=False) or {}
+        except PhoneTimeout:
+            raise
+        except DeviceError:
+            if self.link.closed:
+                raise
+            self._state_unsupported = True  # "Unknown method device_state": skip the check from now on
+            return None
+        return {"interactive": bool(state.get("interactive", True)), "locked": bool(state.get("locked", False))}

@@ -20,6 +20,10 @@ class DeviceError(RuntimeError):
     """A phone command failed, timed out, or the phone went away."""
 
 
+class PhoneTimeout(DeviceError):
+    """The phone is connected but didn't answer a command in time (e.g. asleep or stuck)."""
+
+
 class Device(Protocol):
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot: ...
     def capture_preview(self, max_side: int, quality: int) -> Screenshot: ...

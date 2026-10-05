@@ -107,6 +107,10 @@ class Config:
     api_max_concurrent_tasks: int = 2  # unfinished tasks per key
     api_daily_tasks: int = 200  # tasks per key per UTC day
     api_daily_credits: int = 0  # credits per key per UTC day, counting running tasks (0: unlimited)
+    api_max_running_orchestrations: int = 3  # multi-phone runs in progress per key
+    api_max_running_orchestrations_per_account: int = 10
+    # A task whose question nobody answers ends (failed, question_timeout) after this long. 0: never.
+    question_timeout_seconds: int = 300
     api_max_steps: int = 40  # the most steps a developer may ask for
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
     # Delete chats (and their turns) older than this many days; 0 keeps them forever.

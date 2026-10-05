@@ -57,6 +57,12 @@ class Script:
         elif "loop" in low:
             time.sleep(0.05)
             content = back
+        elif "ask me" in low:
+            content = [tool_use("ask_user", "q", question="Which one?")] if step == 0 else done()
+        elif "crash" in low:
+            if step:
+                raise RuntimeError("the model provider fell over")
+            content = back
         elif "fail" in low:
             content = done("Couldn't find it.", success=False)
         elif "cart" in low:
@@ -125,7 +131,7 @@ def get(user, orchestration_id):
     return user.v1.get(f"/v1/orchestrations/{orchestration_id}").json()
 
 
-def wait_status(user, orchestration_id, *statuses, timeout=10):
+def wait_status(user, orchestration_id, *statuses, timeout=20):
     last = {}
 
     def reached():
