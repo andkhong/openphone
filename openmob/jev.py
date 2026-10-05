@@ -123,6 +123,9 @@ class JevJudge:
 
     def __init__(self, client: JevClient):
         self.client = client
+        # callable(seconds): told how long each app pick took. The agent times assess_screen and
+        # assess_tap itself; app picking runs inside the app resolver, where it can't.
+        self.on_timing = None
 
     def assess_screen(self, request: str, screen: dict) -> ScreenAssessment:
         answers = self.client.ask(
@@ -164,6 +167,14 @@ class JevJudge:
         """Choose which package matches a spoken app name. Returns (package|None, probability, confidence)."""
         if not candidates:
             return None, 0.0, 0.0
+        started = time.perf_counter()
+        try:
+            return self._pick_package(spoken_name, candidates)
+        finally:
+            if self.on_timing:
+                self.on_timing(time.perf_counter() - started)
+
+    def _pick_package(self, spoken_name: str, candidates: dict[str, str]) -> tuple[str | None, float, float]:
         items = list(candidates.items())[: MAX_CHOICE_OPTIONS - 1]
         random.shuffle(items)  # Jev favors earlier options; don't let list order decide.
         criteria = {pkg: desc for pkg, desc in items}

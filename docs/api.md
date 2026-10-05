@@ -325,12 +325,14 @@ data: {"id": "e111505afeb9", "status": "succeeded", "steps": 2, "credits": 6, �
 |---|---|---|
 | `status` | A progress note ("Working on: …", "Lost the connection to the phone…") | |
 | `thought` | What the agent is thinking | |
-| `action` | An action it took and its result, as `tool: result` | |
-| `warning` | Something went wrong in a step; the task usually carries on | |
+| `action` | An action it took and its result, as `tool: result` | `timings` |
+| `warning` | Something went wrong in a step; the task usually carries on | `timings` when a step failed |
 | `question` | It asked something (`needs_input`) or wants approval (`needs_confirmation`) | `confirmation`: true for an approval |
 | `memory` | It saved or proposed a memory note | |
 | `outcome` | The task's result | `success` |
 | `done` | The stream's last event; `data` is the final task | |
+
+`timings` says where the step's time went, in milliseconds: `observe_ms` (reading the screen), `classifier_ms` (screen classification), `model_ms` (the model deciding), `action_ms` (the phone acting), `settle_ms` (waiting for the screen to settle after the previous action), `wait_ms` (waiting for a person or a loading screen) and `total_ms`; `classifier` says whether screen classification was on.
 
 Event ids increase but aren't consecutive. To resume after a dropped connection, reconnect with
 `Last-Event-ID: <last id you saw>`; most SSE clients do this for you.
