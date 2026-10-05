@@ -220,10 +220,12 @@
   .panel.hidden { display: none; }
   .panel-head { display: flex; align-items: center; gap: 8px; }
   .panel-head h2 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
-  .phone { background: #0a0b0d; border-radius: 30px; padding: 8px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.08); width: 100%; max-width: 300px; margin: 0 auto; }
+  /* The frame hugs the picture: its width follows the screen's shape, so a tall phone shown in a
+     short window gets a narrower frame instead of black bars on both sides. */
+  .phone { background: #0a0b0d; border-radius: 30px; padding: 8px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.08); width: fit-content; max-width: 100%; margin: 0 auto; }
   .phone-screen { position: relative; border-radius: 23px; overflow: hidden; background: #14161b; }
-  .phone-screen.blank { aspect-ratio: 9 / 19; }
-  .phone img, .phone canvas { width: 100%; display: block; max-height: calc(100vh - 170px); object-fit: contain; background: #14161b; }
+  .phone-screen.blank { aspect-ratio: 9 / 19; width: min(284px, calc((100vh - 170px) * 9 / 19)); }
+  .phone img, .phone canvas { width: auto; height: auto; max-width: min(284px, 100%); display: block; max-height: calc(100vh - 170px); background: #14161b; }
   .phone-screen.blank img, .phone-screen.blank canvas { display: none; }
   /* What the live view is showing (video or snapshots, its size and rate) and the quality choice. */
   .screen-meta { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 300px; margin: -4px auto 0; min-height: 28px; }
