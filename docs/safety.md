@@ -13,9 +13,11 @@ Before a tap that would buy, send, delete, post or similar, the task pauses with
  "question": "I'm about to tap 'Buy now'. Should I go ahead?", …}
 ```
 
-The phone's owner then gets an approval prompt **on the phone**, showing which key is asking, and
-confirms with the phone's screen lock. If nobody answers within about 2 minutes, the answer is no.
-Your webhook, if you have one, gets `task.needs_confirmation`.
+The owner then gets an approval prompt on **every one of their phones that is online**, not only
+the one acting: they may be holding another. The prompt names the key that is asking and the phone
+that would act ("On Pixel 9: …"), and the owner confirms with that phone's screen lock. The first
+answer wins and the other phones' prompts are dismissed. If nobody answers within about 2 minutes,
+the answer is no. Your webhook, if you have one, gets `task.needs_confirmation`.
 
 A key can't approve on its own:
 
@@ -105,7 +107,10 @@ exist.
 ## The owner stays in control
 
 - The phone shows which key is using it while an API task runs, and the owner can stop the task
-  from the phone.
+  from the phone (Stop, or saying "stop").
+- For a [multi-phone run](api.md#orchestrations), stopping on a phone that runs one of its steps,
+  or denying one of its approvals, ends the **whole run** as `cancelled` with reason
+  `stopped_on_phone`, whatever its `on_failure` says. Don't start it again unless the owner asks.
 - **Revoking** a key in **API keys** cancels its unfinished tasks at once.
 - A server's admin can switch off a key or a whole account's API access, which also cancels its
   running tasks. Requests then get `403`.

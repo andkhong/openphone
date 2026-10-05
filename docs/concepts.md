@@ -24,10 +24,11 @@ The app is how OpenMob sees and operates the phone (through Android's accessibil
 phone can only run tasks while:
 
 - **It is online.** The OpenMob app is running and connected (`"online": true`). Creating a task
-  for an offline phone fails with `409`.
-- **It is unlocked.** At the start of each task OpenMob wakes the screen and dismisses a simple
-  swipe lock, but it never enters a PIN, pattern, password or fingerprint. If a secure lock screen
-  is showing, the task sees it and asks you to unlock the phone, or fails.
+  for an offline phone fails with `409 phone_offline`.
+- **It is unlocked, with the screen on.** Before starting a task OpenMob asks the phone whether
+  it's usable. A locked phone, or one with its screen off, is refused with `409 phone_locked`
+  ("Unlock it to continue"); a phone that doesn't answer within 5 seconds (often: asleep) gets
+  `409 phone_unresponsive`. OpenMob never enters a PIN, pattern, password or fingerprint.
 
 A phone runs **one task at a time**. Tasks you start while it's busy (from the API or from the
 dashboard) wait in its queue with status `queued`. `"busy": true` means it's working right now.
@@ -54,8 +55,13 @@ A **task** is one instruction run on one phone, from start to finish. You create
 | `failed` | Finished without reaching the goal, or hit an error | Read `outcome.summary` |
 | `cancelled` | Stopped by a cancel, by the owner, or by a revoked key | |
 
-`succeeded`, `failed` and `cancelled` are final. A finished task has an `outcome` with `success`
-and a `summary`, and its `credits`.
+`succeeded`, `failed` and `cancelled` are final. A finished task has an `outcome` with `success`,
+a `summary` and, when something outside the task ended it, a `reason`; and its `credits`.
+
+A question doesn't hold the phone forever. If nobody answers it within the server's question
+timeout (**5 minutes** by default), the task ends as `failed` with
+`outcome.reason: "question_timeout"`. Approval prompts on the phone expire after about 2 minutes,
+which counts as "no".
 
 A task that runs but doesn't reach its goal is `failed`. That isn't an HTTP error: the request
 itself succeeded.
@@ -99,8 +105,11 @@ and cost more per step.
 
 A task costs **steps × its tier's rate** in credits, known when it finishes (`credits` is `null`
 until then). A task cancelled before it starts costs 0; one cancelled mid-way costs the steps it
-took. These are the defaults: a server's operator can change the tiers and their rates, and the
-current values are on the **Overview** page of the developer console.
+took. A task that ends through OpenMob's own fault (`outcome.reason` `internal_error` or
+`server_restarted`) costs 0: the amount is waived, shown as `credits_waived` in your usage on the
+console's **Overview**, and doesn't count toward a daily credit limit. These are the defaults: a
+server's operator can change the tiers and their rates, and the current values are on the
+**Overview** page of the developer console.
 
 ## Sessions
 
