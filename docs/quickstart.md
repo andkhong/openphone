@@ -83,3 +83,4 @@ are covered in [MCP](mcp.md).
 - [Webhooks](webhooks.md): get called when a task finishes or needs you, instead of polling.
 - [Safety & approvals](safety.md): risky actions, sensitive apps and what is stored.
 - [Errors & limits](errors.md): what each error means, and the per-key limits.
+- See also: [Set up a phone](phone-setup.md), [Code examples](examples.md), [Testing without a phone](testing.md) and [Run your own server](self-hosting.md).
