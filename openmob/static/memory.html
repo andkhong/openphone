@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What I've Learned</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --bad:#d6383b; --warn:#c97a00; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; } }
+  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
+  .logo small { font-weight:500; color:var(--muted); margin-left:6px; font-size:14px; }
+  header a { margin-left:auto; color:var(--muted); text-decoration:none; font-size:14px; }
+  main { max-width:760px; margin:0 auto; padding:24px 16px 48px; display:grid; gap:20px; }
+  .intro { color:var(--muted); font-size:14px; margin:0; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); min-width:0; }
+  .card.pending { border-color:var(--warn); }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; display:flex; gap:8px; align-items:center; }
+  h2 .count { background:var(--bg); border-radius:999px; padding:0 8px; font-size:12px; letter-spacing:0; }
+  h3 { font-size:14px; margin:16px 0 6px; overflow-wrap:anywhere; }
+  h3:first-of-type { margin-top:0; }
+  form.add { display:grid; gap:10px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input[type=text] { flex:1; min-width:0; width:100%; font:inherit; padding:10px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  button { font:inherit; font-size:14px; border-radius:10px; padding:8px 14px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--fg); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.small { padding:4px 10px; font-size:13px; border-radius:8px; color:var(--muted); }
+  button.small.danger:hover, button.danger { color:var(--bad); border-color:var(--bad); }
+  label.toggle { display:flex; gap:8px; align-items:center; font-size:14px; color:var(--muted); }
+  ul { list-style:none; margin:0; padding:0; }
+  li { display:flex; gap:12px; align-items:center; padding:10px 0; border-bottom:1px solid var(--line); }
+  li:last-child { border-bottom:0; }
+  li .text { flex:1; min-width:0; overflow-wrap:anywhere; }
+  li .meta { display:block; color:var(--muted); font-size:12px; }
+  li .actions { display:flex; gap:6px; flex:none; }
+  .empty { color:var(--muted); font-size:14px; }
+  .error { color:var(--bad); font-size:13px; min-height:1em; }
+  @media (max-width: 560px) {
+    header { padding:12px 16px; }
+    .card { padding:16px; }
+    li { flex-direction:column; align-items:stretch; gap:6px; }
+    li .actions { justify-content:flex-end; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Open<span>Mob</span> <small>What I've learned</small></div>
+  <a href="/" id="back">← Dashboard</a>
+</header>
+<main>
+  <p class="intro">Notes your agent reads before every task: things about you, and things about your apps. Tell it "remember …" in a chat, or add a note here. Notes are yours: they work with any model you choose, and you can change or delete them any time.</p>
+
+  <section class="card">
+    <h2>Add a note</h2>
+    <form class="add" id="addForm">
+      <input type="text" id="addText" maxlength="300" placeholder="e.g. Use my second account in games" aria-label="Note">
+      <div class="row">
+        <label class="toggle"><input type="checkbox" id="addIsApp"> About one app</label>
+        <input type="text" id="addApp" placeholder="App package, e.g. com.google.android.youtube" aria-label="App package" hidden>
+        <button class="primary" type="submit" style="margin-left:auto">Save</button>
+      </div>
+    </form>
+    <div class="error" id="error"></div>
+  </section>
+
+  <section class="card pending" id="pendingCard" hidden>
+    <h2>Waiting for your OK <span class="count" id="pendingCount">0</span></h2>
+    <p class="intro" style="margin-bottom:8px">Your agent suggested these. They're not used until you keep them.</p>
+    <ul id="pending"></ul>
+  </section>
+
+  <section class="card">
+    <h2>About you <span class="count" id="userCount">0</span></h2>
+    <ul id="userNotes"></ul>
+  </section>
+
+  <section class="card">
+    <h2>About your apps <span class="count" id="appCount">0</span></h2>
+    <div id="appNotes"></div>
+  </section>
+
+  <div class="row"><button class="danger" id="forgetAll" type="button" style="margin-left:auto">Forget everything</button></div>
+</main>
+<script>
+// Notes are the user's own words but still user-controlled text: textContent only, never innerHTML.
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("t") || "";  // servers without accounts
+let notes = [];
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json", "X-OpenMob-Token": token }, ...opts });
+  if (res.status === 401) {
+    location.href = "/login?next=" + encodeURIComponent("/memory");
+    throw new Error("signed out");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const body = await res.json(); detail = typeof body.detail === "string" ? body.detail : "Check the note and try again."; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+const fail = (e) => { if (e.message !== "signed out") $("error").textContent = e.message; };
+
+function ago(ts) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  if (s < 3600) return "just now";
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function meta(n) {
+  const from = n.source === "agent" ? "suggested by your agent" : n.source === "api" ? "added by an API key" : "from you";
+  const used = n.uses ? ` · used in ${n.uses} task${n.uses === 1 ? "" : "s"}` : "";
+  return `${from} · ${ago(n.created)}${used}`;
+}
+
+function noteRow(n) {
+  const text = el("span", { className: "text" }, n.text, el("span", { className: "meta", textContent: meta(n) }));
+  const actions = el("div", { className: "actions" });
+  const li = el("li", {}, text, actions);
+  if (n.status === "proposed") {
+    const keep = el("button", { className: "small", type: "button", textContent: "Keep" });
+    keep.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ status: "active" }) }));
+    const dismiss = el("button", { className: "small danger", type: "button", textContent: "Dismiss" });
+    dismiss.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
+    actions.append(keep, dismiss);
+    return li;
+  }
+  const edit = el("button", { className: "small", type: "button", textContent: "Edit" });
+  edit.onclick = () => {
+    const input = el("input", { type: "text", value: n.text, maxLength: 300 });
+    const save = el("button", { className: "small", type: "button", textContent: "Save" });
+    const cancel = el("button", { className: "small", type: "button", textContent: "Cancel" });
+    save.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ text: input.value }) }));
+    cancel.onclick = render;
+    input.onkeydown = (e) => { if (e.key === "Enter") save.click(); if (e.key === "Escape") render(); };
+    text.replaceChildren(input);
+    actions.replaceChildren(save, cancel);
+    input.focus();
+  };
+  const del = el("button", { className: "small danger", type: "button", textContent: "Delete" });
+  del.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
+  actions.append(edit, del);
+  return li;
+}
+
+function render() {
+  const pending = notes.filter((n) => n.status === "proposed");
+  const user = notes.filter((n) => n.status === "active" && !n.package);
+  const apps = notes.filter((n) => n.status === "active" && n.package);
+  $("pendingCard").hidden = !pending.length;
+  $("pendingCount").textContent = pending.length;
+  $("pending").replaceChildren(...pending.map(noteRow));
+  $("userCount").textContent = user.length;
+  $("userNotes").replaceChildren(...(user.length ? user.map(noteRow)
+    : [el("li", { className: "empty", textContent: 'Nothing yet. Try saying "remember that I prefer dark mode" in a chat.' })]));
+  $("appCount").textContent = apps.length;
+  const byApp = {};
+  for (const n of apps) (byApp[n.package] ||= []).push(n);
+  $("appNotes").replaceChildren(...(apps.length ? Object.entries(byApp).flatMap(([pkg, list]) =>
+    [el("h3", { textContent: pkg }), el("ul", {}, ...list.map(noteRow))])
+    : [el("p", { className: "empty", textContent: "Nothing yet. Notes about how your apps work show up here." })]));
+}
+
+async function load(auto = false) {
+  // A background refresh must not wipe a note being edited.
+  if (auto && document.activeElement && document.activeElement.closest("li")) return;
+  try { notes = (await api("/api/memory")).notes; $("error").textContent = ""; render(); } catch (e) { fail(e); }
+}
+
+async function change(call) {
+  $("error").textContent = "";
+  try { await call(); } catch (e) { fail(e); }
+  load();
+}
+
+$("addIsApp").onchange = () => { $("addApp").hidden = !$("addIsApp").checked; if ($("addIsApp").checked) $("addApp").focus(); };
+$("addForm").onsubmit = (ev) => {
+  ev.preventDefault();
+  const text = $("addText").value.trim();
+  if (!text) return;
+  const pkg = $("addIsApp").checked ? $("addApp").value.trim() : "";
+  if ($("addIsApp").checked && !pkg) { $("error").textContent = "Enter the app's package name, or untick \"About one app\"."; return; }
+  change(async () => {
+    await api("/api/memory", { method: "POST", body: JSON.stringify({ text, package: pkg || null }) });
+    $("addText").value = "";
+  });
+};
+$("forgetAll").onclick = () => {
+  if (!confirm("Delete every note your agent remembers? This can't be undone.")) return;
+  change(() => api("/api/memory?confirm=true", { method: "DELETE" }));
+};
+
+if (token) $("back").href = "/?t=" + encodeURIComponent(token);
+load();
+setInterval(() => load(true), 15000);
+</script>
+</body>
+</html>

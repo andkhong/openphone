@@ -102,6 +102,8 @@
   .step b { font-weight: 600; color: var(--fg); margin-right: 4px; }
   .step.err { color: var(--bad); }
   .answers { display: flex; gap: 8px; margin-top: 10px; }
+  .memory-note { margin-top: 10px; padding: 8px 12px; border-radius: 12px; background: var(--raised); font-size: 14px; }
+  .memory-note .answers { margin-top: 8px; }
   .answers button { padding: 7px 18px; border-radius: 99px; border: 1px solid var(--line); background: var(--raised); cursor: pointer; font-weight: 600; }
   .answers .yes { background: var(--ok); color: #fff; border-color: transparent; }
   .foot { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--faint); font-size: 12px; }
@@ -141,7 +143,8 @@
   .panel { width: 330px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; }
   .panel.hidden { display: none; }
   .phone { background: #000; border-radius: 26px; padding: 8px; }
-  .phone img { width: 100%; display: block; border-radius: 19px; min-height: 160px; background: #111; }
+  .phone img, .phone canvas { width: 100%; display: block; border-radius: 19px; min-height: 160px; background: #111; }
+  .phone [hidden] { display: none; }
   .status { display: flex; align-items: center; gap: 8px; margin: 12px 2px 4px; font-weight: 600; font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
   .dot.idle { background: var(--ok); }
@@ -176,6 +179,8 @@
       <div class="who" id="who" hidden></div>
       <a id="connectPhone" href="/connect">＋ Connect a phone</a>
       <a id="adminLink" href="/admin" hidden>🛡 Admin</a>
+      <a id="memoryLink" href="/memory">📌 What I've learned</a>
+      <a id="developerLink" href="/developer" hidden>⌨️ Developer API</a>
       <button id="speakToggle">🔈 Speak replies: off</button>
       <button id="rescan">↻ Find phones</button>
       <button id="signout" hidden>Sign out</button>
@@ -210,7 +215,7 @@
   </section>
 
   <aside class="panel" id="panel">
-    <div class="phone"><img id="screen" alt=""></div>
+    <div class="phone"><img id="screen" alt=""><canvas id="screenVideo" hidden></canvas></div>
     <div class="status"><span class="dot" id="dot"></span><span id="state">Connecting…</span></div>
     <small id="deviceLine"></small>
     <small id="sessionTokens"></small>
@@ -238,6 +243,8 @@ let accounts = false;
 let deviceId = null;
 let last = null;            // latest status snapshot
 let lastSignature = "";     // re-render only when something changed
+let pendingNotes = new Set();  // ids of memory suggestions still waiting for Keep/Dismiss
+const checkedNotes = new Set();  // suggestion ids we've already looked up once
 let lastChatId = null;
 let modelLabels = {};
 let openSteps = new Set();  // task ids whose step list the user expanded
@@ -274,6 +281,7 @@ async function checkAccount() {
       $("who").textContent = me.email;
       $("who").hidden = $("signout").hidden = false;
       $("adminLink").hidden = !me.admin;
+      $("developerLink").hidden = !me.accounts;
       $("connectPhone").href = "/connect";
     } else {
       $("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
@@ -417,6 +425,26 @@ function renderTurn(turn, s) {
     }
   });
 
+  // Memory: what the agent saved, or suggests saving (Keep/Dismiss while it's still pending).
+  for (const e of events.filter((x) => x.kind === "memory")) {
+    const card = el("div", "memory-note", "📌 " + e.message);
+    const id = e.data && e.data.note_id;
+    if (e.data && e.data.status === "proposed" && !pendingNotes.has(id) && !checkedNotes.has(id)) {
+      checkedNotes.add(id);  // a suggestion that arrived since the last lookup: fetch its state once
+      loadPendingNotes().then(() => pollNow());
+    }
+    if (e.data && e.data.status === "proposed" && pendingNotes.has(id)) {
+      const row = el("div", "answers");
+      const keep = el("button", "yes", "Keep");
+      const dismiss = el("button", "", "Dismiss");
+      keep.onclick = () => decideNote(id, true);
+      dismiss.onclick = () => decideNote(id, false);
+      row.append(keep, dismiss);
+      card.append(row);
+    }
+    body.append(card);
+  }
+
   if (final) {
     body.append(el("div", `text${final.data.success ? "" : " error"}`, stripSteps(final.message)));
     const foot = el("div", "foot");
@@ -456,6 +484,26 @@ function renderTurn(turn, s) {
 
   wrap.append(agent);
   return wrap;
+}
+
+async function loadPendingNotes() {
+  try {
+    const notes = (await api("/api/memory")).notes;  // api() returns parsed JSON
+    const next = new Set(notes.filter((n) => n.status === "proposed").map((n) => n.id));
+    for (const n of notes) checkedNotes.add(n.id);
+    if ([...next].join() !== [...pendingNotes].join()) { pendingNotes = next; lastSignature = ""; }
+  } catch {}  // memory is optional on some servers
+}
+
+async function decideNote(id, keep) {
+  try {
+    await api(`/api/memory/${id}`, keep
+      ? { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "active" }) }
+      : { method: "DELETE" });
+  } catch (e) { $("hint").dataset.note = e.message; }
+  await loadPendingNotes();
+  lastSignature = "";
+  pollNow();
 }
 
 const fmt = (n) => (n || 0) >= 10000 ? `${(n / 1000).toFixed(1)}k` : (n || 0).toLocaleString();
@@ -779,30 +827,153 @@ async function statusLoop() {
   }
 }
 
-// Live screen: fetch frames back to back while the panel is visible.
+// Live screen: the server pushes frames over a WebSocket while the panel is visible; if the socket
+// can't be used (e.g. a proxy without WebSocket support) we poll instead, back to back.
+// Show why a frame is missing (e.g. "Accessibility is off…"), minus the exception class name.
+const screenReason = (message) => (message || "screen unavailable").replace(/^\w+(Exception|Error): /, "");
+let frameTime = 0;          // X-Frame-Time of the polled frame on screen; the server sends a newer one
+let screenSocketAfter = 0;  // after a failed socket, poll until this time, then try the socket again
+
+// Exactly one live-view surface is visible: JPEG frames in the <img>, decoded video on the <canvas>.
+function showSurface(id) {
+  for (const el of ["screen", "screenVideo"]) $(el).hidden = el !== id;
+}
+
+async function showFrame(blob) {
+  const img = $("screen");
+  showSurface("screen");
+  const old = img.src;
+  img.src = URL.createObjectURL(blob);
+  try { await img.decode(); } catch {}
+  if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+}
+
+// Smooth live view: H.264 from the phone, decoded with WebCodecs onto the canvas. Phones whose owner
+// didn't allow screen streaming (or older apps) send JPEG frames instead, shown in the <img>.
+const VIDEO_BACKLOG = 8;  // frames waiting to decode before we skip ahead to the next keyframe
+
+function avcCodec(data) {  // "avc1.PPCCLL" from the SPS in a keyframe (Annex B)
+  for (let i = 0; i + 7 < data.length; i++) {
+    if (data[i] === 0 && data[i + 1] === 0 && data[i + 2] === 1 && (data[i + 3] & 0x1f) === 7) {
+      return "avc1." + [data[i + 4], data[i + 5], data[i + 6]].map((b) => b.toString(16).padStart(2, "0")).join("");
+    }
+  }
+  return null;
+}
+
+function videoPlayer(askKeyframe) {
+  const canvas = $("screenVideo");
+  const ctx = canvas.getContext("2d");
+  let decoder = null, needKey = true;
+  const reset = () => {
+    if (decoder && decoder.state !== "closed") decoder.close();
+    decoder = null;
+    needKey = true;
+  };
+  return {
+    packet(buf) {  // b"V", flags (bit 0: keyframe), 8-byte timestamp (µs), Annex B H.264
+      const view = new DataView(buf);
+      const key = (view.getUint8(1) & 1) === 1;
+      const data = new Uint8Array(buf, 10);
+      if (decoder && decoder.decodeQueueSize > VIDEO_BACKLOG) { reset(); askKeyframe(); }  // fell behind
+      if (needKey && !key) return;
+      if (!decoder) {
+        const codec = avcCodec(data);
+        if (!codec) return;
+        decoder = new VideoDecoder({
+          output: (frame) => {
+            if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
+              canvas.width = frame.displayWidth;
+              canvas.height = frame.displayHeight;
+            }
+            ctx.drawImage(frame, 0, 0);
+            frame.close();
+            showSurface("screenVideo");
+          },
+          error: () => { reset(); askKeyframe(); },
+        });
+        decoder.configure({ codec, optimizeForLatency: true });
+      }
+      needKey = false;
+      try {
+        decoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp: Number(view.getBigInt64(2)), data }));
+      } catch { reset(); askKeyframe(); }
+    },
+    close: reset,
+  };
+}
+
+// Resolves when the socket closes: true if it worked (or we closed it), false if it failed outright.
+function streamScreen(id) {
+  return new Promise((resolve) => {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const query = token ? `?t=${encodeURIComponent(token)}` : "";  // accounts mode: the session cookie
+    const ws = new WebSocket(`${proto}//${location.host}/api/devices/${encodeURIComponent(id)}/screen/ws${query}`);
+    ws.binaryType = "arraybuffer";
+    let heard = false, stopped = false, latest = null, drawing = false, unsupported = false;
+    const video = "VideoDecoder" in window ? videoPlayer(() => ws.readyState === 1 && ws.send("keyframe")) : null;
+    const draw = async () => {  // newest frame wins: frames that arrive while one decodes are skipped
+      drawing = true;
+      while (latest) { const blob = latest; latest = null; await showFrame(blob); }
+      drawing = false;
+    };
+    const watch = setInterval(() => {
+      if (id !== deviceId || panelHidden || document.hidden) { stopped = true; ws.close(); }
+    }, 250);
+    ws.onmessage = (e) => {
+      heard = true;
+      if (typeof e.data === "string") {
+        let msg = {};
+        try { msg = JSON.parse(e.data); } catch {}
+        if (msg.mode === "video" && !video) { unsupported = true; ws.close(); return; }  // no WebCodecs: poll JPEGs
+        if (msg.mode) { if (video) video.close(); return; }
+        if (msg.error) screenError = screenReason(msg.error);
+        return;
+      }
+      screenError = "";
+      if (new Uint8Array(e.data, 0, 1)[0] === 0x56) {  // "V": a video packet
+        if (video) video.packet(e.data);
+        return;
+      }
+      latest = new Blob([e.data], { type: "image/jpeg" });
+      if (!drawing) draw();
+    };
+    ws.onclose = () => {
+      clearInterval(watch);
+      if (video) video.close();
+      resolve(!unsupported && (heard || stopped));
+    };
+  });
+}
+
 async function screenLoop() {
   while (true) {
+    const visible = deviceId && !panelHidden && !document.hidden;
+    if (visible && Date.now() >= screenSocketAfter) {
+      if (!(await streamScreen(deviceId))) screenSocketAfter = Date.now() + 30000;
+      else await new Promise((r) => setTimeout(r, 300));  // brief pause before reconnecting
+      continue;
+    }
     if (deviceId && !panelHidden) {
       try {
-        const res = await api(`/api/devices/${deviceId}/screen.jpg?ts=${Date.now()}`);
-        const url = URL.createObjectURL(await res.blob());
-        const img = $("screen");
-        const old = img.src;
-        img.src = url;
-        if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+        const res = await api(`/api/devices/${deviceId}/screen.jpg?after=${frameTime}`);
+        frameTime = res.headers.get("X-Frame-Time") || 0;
+        await showFrame(await res.blob());
         screenError = "";
       } catch (e) {
-        // Show why (e.g. "Accessibility is off…"), minus the exception class name.
-        screenError = (e.message || "screen unavailable").replace(/^\w+(Exception|Error): /, "");
+        screenError = screenReason(e.message);
         await new Promise((r) => setTimeout(r, 2000));
       }
     }
-    await new Promise((r) => setTimeout(r, document.hidden || panelHidden ? 2000 : 400));
+    // Visible: next frame right away (the server waits for a newer one). Hidden: every 2 s.
+    if (!visible) await new Promise((r) => setTimeout(r, deviceId ? 2000 : 400));
   }
 }
 
-checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); statusLoop(); screenLoop(); }));
+if (token) $("memoryLink").href = "/memory?t=" + encodeURIComponent(token);
+checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); loadPendingNotes(); statusLoop(); screenLoop(); }));
 setInterval(loadChats, 15000);
+setInterval(loadPendingNotes, 15000);
 setInterval(() => loadDevices(false), 10000);
 </script>
 </body>

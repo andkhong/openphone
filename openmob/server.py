@@ -10,6 +10,7 @@ import io
 import os
 import socket
 import threading
+import weakref
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -19,8 +20,9 @@ from pydantic import BaseModel
 
 from .devices import DeviceManager, Session
 from .phone.base import DeviceError
-from .phone.protocol import PROTOCOL_VERSION
+from .phone.protocol import PROTOCOL_VERSION, decode_message
 from .phone.remote import PhoneLink
+from .screencast import ScreenFeed, live_frame
 
 STATIC = Path(__file__).parent / "static"
 PAGE = STATIC / "index.html"
@@ -30,7 +32,6 @@ APK = Path(
     or Path(__file__).resolve().parent.parent / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 )
 HELLO_TIMEOUT = 10
-SCREEN_MAX_AGE = 1.0  # the live view reuses the agent's frames when they're this fresh
 
 
 class CommandIn(BaseModel):
@@ -59,6 +60,16 @@ class FeedbackIn(BaseModel):
     note: str = ""
 
 
+class NoteIn(BaseModel):
+    text: str
+    package: str | None = None  # set: a note about that app; else about the user
+
+
+class NotePatch(BaseModel):
+    text: str | None = None
+    status: str | None = None  # "active" approves a proposal
+
+
 class RedeemIn(BaseModel):
     code: str
     device_id: str
@@ -68,10 +79,12 @@ class RedeemIn(BaseModel):
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speech
 
 
-def create_app(manager: DeviceManager, token: str | None = None, store=None, transcriber=None) -> FastAPI:
+def create_app(manager: DeviceManager, token: str | None = None, store=None, transcriber=None,
+               ledger=None, webhook_allow_private: bool = False) -> FastAPI:
     """Two modes. Without `store`: one shared token guards everything (local/demo).
     With an AccountStore: users sign in, phones carry their own key, and everyone sees only
-    their own phones — a pairing code works only for the account that made it."""
+    their own phones — a pairing code works only for the account that made it. Accounts mode
+    also serves the developer API (/v1) and its console (/developer)."""
     app = FastAPI(title="OpenMob", docs_url=None, redoc_url=None)
 
     def session_token(request: Request) -> str | None:
@@ -267,13 +280,39 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         return [s.describe() for s in manager.sessions_for(account(request))]
 
     @app.get("/api/devices/{device_id}/screen.jpg")
-    def screen(device_id: str, request: Request) -> Response:
+    def screen(device_id: str, request: Request, after: float = 0.0) -> Response:
+        """One live-view frame (polling fallback for screen/ws). `after`: the X-Frame-Time already shown."""
         require_auth(request)
         try:
-            jpeg = owned_session(device_id, request).driver.screenshot(max_age=SCREEN_MAX_AGE).jpeg
+            taken, shot = live_frame(owned_session(device_id, request).driver, newer_than=after)
         except DeviceError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from None
-        return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store", "X-Frame-Time": repr(taken)}
+        return Response(shot.jpeg, media_type="image/jpeg", headers=headers)
+
+    screen_feeds: weakref.WeakKeyDictionary[Session, ScreenFeed] = weakref.WeakKeyDictionary()
+
+    @app.websocket("/api/devices/{device_id}/screen/ws")
+    async def screen_socket(ws: WebSocket, device_id: str) -> None:
+        """Live view, pushed: binary JPEG preview frames (and {"error"} texts) while the viewer is open.
+        Same auth as screen.jpg: cookie or header session, or ?t= in token mode."""
+        await ws.accept()  # accept first: a close before accepting reaches clients as a bare HTTP 403
+        try:
+            require_auth(ws)
+            session = owned_session(device_id, ws)
+        except HTTPException as exc:
+            await ws.close(code=4000 + exc.status_code, reason=str(exc.detail)[:100])  # 4401 or 4404, nothing sent
+            return
+
+        def allowed() -> bool:
+            try:
+                require_auth(ws)
+                return owned_session(device_id, ws) is session
+            except HTTPException:
+                return False
+
+        feed = screen_feeds.get(session) or screen_feeds.setdefault(session, ScreenFeed(session.driver))
+        await feed.serve(ws, allowed)
 
     @app.post("/api/devices/{device_id}/command")
     def command(device_id: str, body: CommandIn, request: Request) -> dict:
@@ -391,6 +430,57 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             raise HTTPException(status_code=404, detail="Unknown turn.")
         return {"ok": True}
 
+    # --- memory: pinned notes (what the agent remembers about its user) ---------------
+
+    memory = getattr(manager, "memory", None)  # optional: no store, no memory
+
+    def need_memory():
+        if memory is None:
+            raise HTTPException(status_code=501, detail="Memory isn't enabled on this server.")
+        return memory
+
+    @app.get("/memory", response_class=HTMLResponse)
+    def memory_page() -> str:
+        return (STATIC / "memory.html").read_text()  # all data comes from /api/memory
+
+    @app.get("/api/memory", dependencies=[Depends(require_auth)])
+    def list_notes(request: Request) -> dict:
+        return {"notes": need_memory().list(account(request))}
+
+    @app.post("/api/memory", dependencies=[Depends(require_auth)])
+    def add_note(body: NoteIn, request: Request) -> dict:
+        from .memory import NoteError
+
+        try:  # typed by the user themselves: active right away
+            return need_memory().add(account(request), body.text, package=body.package, source="user")
+        except NoteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    @app.patch("/api/memory/{note_id}", dependencies=[Depends(require_auth)])
+    def edit_note(note_id: str, body: NotePatch, request: Request) -> dict:
+        from .memory import NoteError
+
+        try:
+            note = need_memory().update(account(request), note_id, text=body.text, status=body.status)
+        except NoteError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        if note is None:
+            raise HTTPException(status_code=404, detail="Unknown note.")
+        return note
+
+    @app.delete("/api/memory/{note_id}", dependencies=[Depends(require_auth)])
+    def delete_note(note_id: str, request: Request) -> dict:
+        """Delete a note, or dismiss a proposal."""
+        if not need_memory().delete(account(request), note_id):
+            raise HTTPException(status_code=404, detail="Unknown note.")
+        return {"ok": True}
+
+    @app.delete("/api/memory", dependencies=[Depends(require_auth)])
+    def forget_everything(request: Request, confirm: bool = False) -> dict:
+        if not confirm:
+            raise HTTPException(status_code=400, detail="Add ?confirm=true to delete every note.")
+        return {"deleted": need_memory().delete_all(account(request))}
+
     @app.get("/api/devices/{device_id}/status")
     def status(device_id: str, request: Request) -> dict:
         require_auth(request)
@@ -447,6 +537,36 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
         return {"ok": True}
 
+    # --- developer API (accounts mode only: keys belong to accounts) -------------
+
+    if store is not None:
+        from .api_v1 import DeveloperApi
+        from .ledger import Ledger
+
+        developer_api = DeveloperApi(
+            manager, store, ledger or Ledger(store.path.with_name("ledger.sqlite")), account, require_admin,
+            webhook_allow_private=webhook_allow_private,
+        )
+        app.state.developer_api = developer_api
+        app.include_router(developer_api.router)
+        app.include_router(developer_api.console)
+        app.include_router(developer_api.admin)
+
+        @app.get("/developer", response_class=HTMLResponse)
+        def developer_page() -> str:
+            return (STATIC / "developer.html").read_text()  # all data comes from /api/developer
+
+    if history is not None and manager.cfg.history_retention_days > 0:
+        def purge_forever() -> None:
+            while True:
+                try:
+                    history.purge(manager.cfg.history_retention_days)
+                except Exception as exc:  # retention must never take the server down
+                    print(f"⚠️  History retention failed: {exc}", flush=True)
+                threading.Event().wait(6 * 3600)
+
+        threading.Thread(target=purge_forever, name="openmob-retention", daemon=True).start()
+
     # --- phone connection ------------------------------------------------
 
     @app.websocket("/phone/ws")
@@ -485,10 +605,17 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         session.coordinator.event("status", f"{session.info.model} connected over the OpenMob app protocol.")
         try:
             while True:
-                message = await ws.receive_json()
+                raw = await ws.receive()
+                if raw["type"] == "websocket.disconnect":
+                    break
+                message = decode_message(raw.get("text"), raw.get("bytes"))  # binary: a screenshot result
                 kind = message.get("type")
                 if kind == "result":
                     link.resolve(message)
+                elif kind == "video":
+                    link.on_video(message)
+                elif kind == "video_state":
+                    session.driver.video_available = bool(message.get("available"))
                 elif kind == "command" and str(message.get("text", "")).strip():
                     await run_in_threadpool(session.coordinator.submit, message["text"], "phone")
         except (WebSocketDisconnect, ValueError):

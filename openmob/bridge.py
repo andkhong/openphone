@@ -21,7 +21,8 @@ from urllib.parse import quote, urlsplit, urlunsplit
 
 import websockets
 
-from .phone.protocol import METHODS, PROTOCOL_VERSION, encode_element, encode_screenshot
+from .phone.adb import Screenshot
+from .phone.protocol import METHODS, PROTOCOL_VERSION, encode_binary_result, encode_element, encode_screenshot
 
 if TYPE_CHECKING:
     from .phone.adb import PhoneDriver
@@ -220,12 +221,15 @@ class PhoneBridge:
         method = msg.get("method")
         try:
             result = await asyncio.to_thread(self._dispatch, method, msg.get("params") or {})
-            reply = {"type": "result", "id": call_id, "ok": True, "result": result}
+            if isinstance(result, Screenshot):  # a live-view frame asked for as binary
+                reply = encode_binary_result(call_id, result)
+            else:
+                reply = {"type": "result", "id": call_id, "ok": True, "result": result}
         except Exception as exc:
             reply = {"type": "result", "id": call_id, "ok": False, "error": f"{type(exc).__name__}: {exc}"}
             log.warning("%s failed: %s", method, reply["error"])
         try:
-            await self._send(reply)
+            await (self._send_raw(reply) if isinstance(reply, bytes) else self._send(reply))
         except websockets.exceptions.ConnectionClosed:
             log.warning("Connection lost before the %s result was sent", method)
 
@@ -237,7 +241,11 @@ class PhoneBridge:
             raise TypeError("params must be an object")
         kwargs = {**DEFAULTS.get(method, {}), **{k: params[k] for k in METHODS[method][0] if k in params}}
         if method == "screenshot":
-            return encode_screenshot(self.driver.screenshot())
+            if "max_side" in kwargs or "quality" in kwargs:  # live view: smaller frame, never cached for the agent
+                shot = self.driver.capture_preview(int(kwargs.get("max_side", 1280)), int(kwargs.get("quality", 80)))
+            else:
+                shot = self.driver.screenshot()
+            return shot if kwargs.get("binary") else encode_screenshot(shot)
         if method == "ui_elements":
             return [encode_element(e) for e in self.driver.ui_elements()]
         if method == "app_labels":
@@ -245,11 +253,14 @@ class PhoneBridge:
         return getattr(self.driver, method)(**kwargs)
 
     async def _send(self, msg: dict) -> None:
+        await self._send_raw(json.dumps(msg))
+
+    async def _send_raw(self, data: str | bytes) -> None:
         ws = self._ws
         if ws is None:
             raise websockets.exceptions.ConnectionClosedError(None, None)
         async with self._send_lock:
-            await ws.send(json.dumps(msg))
+            await ws.send(data)
 
 
 def device_info_from_adb(driver: PhoneDriver) -> dict:

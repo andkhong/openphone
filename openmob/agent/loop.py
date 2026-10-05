@@ -8,10 +8,11 @@ import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Protocol
+from typing import Callable, Protocol
 
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, describe_screen
+from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, format_elements
 from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
@@ -24,6 +25,7 @@ OMITTED = "(earlier screen omitted)"
 LOADING_POLL_SECONDS = 2.0
 RECENT_REQUESTS = 5
 OCR_MIN_CONFIDENCE = 0.3
+BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -64,6 +66,11 @@ class _TaskState:
     auto_waited: float = 0.0
     treeless_misses: dict[str, int] = field(default_factory=dict)
     approved: bool = False  # the user just said yes to an ask_user question
+    max_steps: int = 0
+    blocked: Callable[[str], bool] | None = None  # packages this task may not touch (API safety)
+    memory: str = "on"  # on | read_only (use notes, save none) | off (incognito)
+    notes_package: str | None = None  # the app whose notes were last shown
+    used_notes: list[str] = field(default_factory=list)
 
 
 def is_yes(answer: str) -> bool:
@@ -102,6 +109,8 @@ class Agent:
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
         self.usage = Usage()  # tokens for the task in progress (or the last one)
         self.platform = "android"  # set by the DeviceManager from the phone's hello (android | ios)
+        self.memory = None  # Memory store (pinned notes), set by the DeviceManager; None: no memory
+        self.account_id: str | None = None  # whose notes to use (the phone's owner)
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         if judge is not None and hasattr(judge, "client"):
@@ -109,16 +118,36 @@ class Agent:
 
     # --- public ----------------------------------------------------------
 
-    def run(self, task: str, cancel: threading.Event | None = None, go_home: bool = False) -> AgentResult:
+    def run(
+        self,
+        task: str,
+        cancel: threading.Event | None = None,
+        go_home: bool = False,
+        model: str | None = None,
+        max_steps: int | None = None,
+        blocked: Callable[[str], bool] | None = None,
+        memory: str = "on",
+        isolated: bool = False,
+    ) -> AgentResult:
+        """`model` and `max_steps` override this phone's settings for one task; `blocked` names
+        packages the task must not open or operate (the task stops if one comes to the front).
+        `memory`: on | read_only | off. `isolated`: a caller other than the phone's chat (e.g. an
+        API key) that must neither see nor add to the chat's recent requests."""
         self.usage = Usage()
-        self.task_model = self.model
-        result = self._run(task, cancel, go_home)
+        self.task_model = model or self.model
+        state = _TaskState(task=task, cancel=cancel or threading.Event(),
+                           max_steps=max_steps or self.config.max_steps, blocked=blocked,
+                           memory=memory if self.memory is not None else "off")
+        result = self._run(state, go_home, isolated)
         result.usage = self.usage
-        self.recent.append((task, result.summary))
+        if state.used_notes:
+            self.memory.mark_used(state.used_notes)
+        if not isolated:
+            self.recent.append((task, result.summary))
         return result
 
-    def _run(self, task: str, cancel: threading.Event | None, go_home: bool) -> AgentResult:
-        state = _TaskState(task=task, cancel=cancel or threading.Event())
+    def _run(self, state: _TaskState, go_home: bool, isolated: bool = False) -> AgentResult:
+        task = state.task
         self.driver.wake_unlock()
         if go_home:
             self.driver.key("HOME")
@@ -127,19 +156,22 @@ class Agent:
         obs = self._observe_settled(state)
         messages: list[dict] = [{
             "role": "user",
-            "content": [{"type": "text", "text": self._request_text(task)}, *self._obs_blocks(obs)],
+            "content": [{"type": "text", "text": self._request_text(task, isolated)}, *self._obs_blocks(obs, self._app_notes(state, obs))],
         }]
         nudged = False
 
-        for step in range(1, self.config.max_steps + 1):
+        system = system_prompt(self.platform) + self._user_notes(state)
+        for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
+            if self._is_blocked(state, obs.package):
+                return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._trim_history(messages)
             response = self.client.messages.create(
                 model=self.task_model,
                 max_tokens=1024,
-                system=system_prompt(self.platform),
+                system=system,
                 tools=TOOLS,
                 messages=messages,
             )
@@ -193,12 +225,16 @@ class Agent:
             obs = self._observe_settled(state)
             # The new screen goes after the tool results, not inside them: the API rejects
             # images inside a tool_result marked is_error.
-            messages.append({"role": "user", "content": results + self._obs_blocks(obs)})
+            messages.append({"role": "user", "content": results + self._obs_blocks(obs, self._app_notes(state, obs))})
 
-        return AgentResult(False, f"I gave up after {self.config.max_steps} steps.", self.config.max_steps)
+        return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
 
-    def _request_text(self, task: str) -> str:
-        if not self.recent:
+    @staticmethod
+    def _is_blocked(state: _TaskState, package: str | None) -> bool:
+        return bool(state.blocked and package and state.blocked(package))
+
+    def _request_text(self, task: str, isolated: bool = False) -> str:
+        if not self.recent or isolated:
             return f"Request: {task}"
         earlier = "\n".join(f"- {t!r} -> {summary}" for t, summary in self.recent)
         return f"Earlier requests this session (oldest first):\n{earlier}\n\nRequest: {task}"
@@ -265,11 +301,54 @@ class Agent:
         words = [el.text for el in obs.elements if el.cls == "OCRText"]
         return describe_screen(obs.package, labels, words)
 
-    def _obs_blocks(self, obs: Observation) -> list[dict]:
+    # --- memory (plain text, so it works the same with any model) --------------
+
+    def _user_notes(self, state: _TaskState) -> str:
+        if state.memory == "off":
+            return ""
+        notes = self.memory.user_notes(self.account_id)
+        state.used_notes.extend(n["id"] for n in notes)
+        return render_user_notes(notes)
+
+    def _app_notes(self, state: _TaskState, obs: Observation) -> str:
+        """The user's notes about the app in front, once each time that app comes to the front."""
+        if state.memory == "off" or not obs.package or obs.package == state.notes_package:
+            return ""
+        state.notes_package = obs.package
+        notes = self.memory.app_notes(self.account_id, obs.package)
+        state.used_notes.extend(n["id"] for n in notes)
+        return render_app_notes(obs.package, notes)
+
+    def _event(self, kind: str, message: str, data: dict) -> None:
+        """An event with structured details for IOs that take them (the dashboard's Coordinator)."""
+        try:
+            self.io.event(kind, message, data=data)
+        except TypeError:  # a plain UserIO (terminal, tests): kind and message only
+            self.io.event(kind, message)
+
+    def _remember(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        if state.memory != "on":
+            return Outcome("Memory is off for this task, so nothing was saved.", settle=0)
+        package = obs.package if args.get("about_app") else None
+        # The user's own words asked for it: save now. Otherwise (the agent inferred it, possibly from
+        # screen text) it's only a proposal the user approves, so nothing on screen can plant a note.
+        status = "active" if REMEMBER_INTENT.search(state.task) else "proposed"
+        try:
+            note = self.memory.add(self.account_id, args["text"], package=package, status=status, source="agent" if status == "proposed" else "user")
+        except NoteError as exc:
+            return Outcome(f"Not saved: {exc}", is_error=True, settle=0)
+        where = f" (about {package})" if package else ""
+        if note["status"] == "active":
+            self._event("memory", f"Remembered{where}: {note['text']}", {"note_id": note["id"], "status": "active"})
+            return Outcome(f"Saved to memory{where}: {note['text']}", settle=0)
+        self._event("memory", f"Remember this{where}? {note['text']}", {"note_id": note["id"], "status": "proposed"})
+        return Outcome(f"Suggested for memory{where}; the user will confirm it: {note['text']}", settle=0)
+
+    def _obs_blocks(self, obs: Observation, notes: str = "") -> list[dict]:
         header = (
             f"{OBS_PREFIX} foreground app {obs.package or 'unknown'}; "
             f"screenshot is {obs.shot.width}x{obs.shot.height} px."
-        )
+        ) + notes
         if obs.elements:
             body = "UI elements (OCRText = words read from the screenshot; centers are screenshot pixels):\n" + format_elements(obs.elements, obs.shot)
         else:
@@ -329,6 +408,8 @@ class Agent:
                     is_error=True,
                     settle=0,
                 )
+            if self._is_blocked(state, resolution.package):
+                return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
             self.driver.launch_app(resolution.package)
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
@@ -403,6 +484,9 @@ class Agent:
             self._sleep(seconds, state.cancel)
             return Outcome(f"Waited {seconds:g}s.", settle=0)
 
+        if name == "remember":
+            return self._remember(args, obs, state)
+
         if name == "ask_user":
             answer = self.io.ask(args["question"]).strip()
             state.approved = is_yes(answer)
@@ -438,7 +522,10 @@ class Agent:
         if state.approved:
             state.approved = False
             return None
-        answer = self.io.ask(f"I'm about to tap {description.strip()!r}. Should I go ahead?")
+        # A separate channel when the IO has one, so callers can tell a risky-action
+        # confirmation apart from an ordinary question.
+        confirm = getattr(self.io, "confirm", self.io.ask)
+        answer = confirm(f"I'm about to tap {description.strip()!r}. Should I go ahead?")
         if is_yes(answer):
             return None
         return Outcome(

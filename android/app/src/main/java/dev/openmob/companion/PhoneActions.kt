@@ -51,7 +51,14 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** Runs one protocol call. Called on a background thread (never the main thread); may block up to the
      *  method's timeout. Returns a value org.json can serialize as `result`; throws on failure. */
     fun handle(method: String, params: JSONObject): Any? = when (method) {
-        "screenshot" -> screenshot()
+        "screenshot" -> {
+            // The dashboard's live view asks for smaller frames, as raw bytes; the agent sends no params.
+            val frame = screenshot(
+                params.optInt("max_side", MAX_SIDE).coerceIn(MIN_SIDE, MAX_SIDE),
+                params.optInt("quality", JPEG_QUALITY).coerceIn(MIN_QUALITY, 100),
+            )
+            if (params.optBoolean("binary")) frame else frame.toJson()
+        }
         "ui_elements" -> uiElements()
         "current_app" -> currentApp()
         "launchable_packages" -> launchablePackages()
@@ -79,9 +86,27 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     // --- screenshot ------------------------------------------------------------------------------
 
-    private fun screenshot(): JSONObject {
+    /** One encoded screenshot. The connection service sends it as JSON (base64) or, when the server
+     *  asked for `binary`, as a binary WebSocket message (see ConnectionService.sendBinaryResult). */
+    class Frame(val jpeg: ByteArray, val width: Int, val height: Int, val deviceWidth: Int, val deviceHeight: Int) {
+        /** The result object without the image, for the binary message's header. */
+        fun meta(): JSONObject = JSONObject()
+            .put("width", width).put("height", height)
+            .put("device_width", deviceWidth).put("device_height", deviceHeight)
+
+        fun toJson(): JSONObject = meta().put("jpeg", Base64.encodeToString(jpeg, Base64.NO_WRAP))
+    }
+
+    private fun screenshot(maxSide: Int, quality: Int): Frame {
         repeat(SCREENSHOT_ATTEMPTS) { attempt ->
+            // The system allows one capture per ~333 ms. Wait out exactly the rest of that window
+            // instead of getting refused and sleeping a fixed retry delay: back-to-back live-view
+            // frames then arrive every ~1/3 s rather than every ~1/2 s.
+            val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+            if (wait > 0) SystemClock.sleep(wait)
+            val requested = SystemClock.uptimeMillis()
             val outcome = captureOnce()
+            if (outcome.result != null) lastCaptureAt = requested
             outcome.result?.let { result ->
                 return result.hardwareBuffer.use { buffer ->
                     // A hardware bitmap lives in GPU memory and can't be scaled/compressed directly;
@@ -94,21 +119,23 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                     } finally {
                         hw.recycle()
                     }
-                    encodeFrame(sw, sw.width, sw.height)
+                    encodeFrame(sw, sw.width, sw.height, maxSide, quality)
                 }
             }
             when (outcome.error) {
-                // Rate limited (one capture per ~333 ms): wait and retry.
+                // Still too soon by the system's clock (e.g. another app captured): retry shortly.
                 AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT ->
-                    if (attempt < SCREENSHOT_ATTEMPTS - 1) SystemClock.sleep(400)
+                    if (attempt < SCREENSHOT_ATTEMPTS - 1) SystemClock.sleep(RATE_LIMIT_RETRY_MS)
                 // FLAG_SECURE window (API 34+ reports this; older versions just return black pixels).
                 // The spec asks for an all-black frame so the agent knows the app blocks capture.
-                AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW -> return blackFrame()
+                AccessibilityService.ERROR_TAKE_SCREENSHOT_SECURE_WINDOW -> return blackFrame(maxSide, quality)
                 else -> throw IllegalStateException("Screenshot failed (${screenshotError(outcome.error)})")
             }
         }
         throw IllegalStateException("Screenshot failed: the system rate-limited capture, try again")
     }
+
+    @Volatile private var lastCaptureAt = 0L // uptime of the last successful capture request
 
     private class Capture(val result: AccessibilityService.ScreenshotResult?, val error: Int)
 
@@ -128,32 +155,29 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return capture
     }
 
-    private fun blackFrame(): JSONObject {
+    private fun blackFrame(maxSide: Int, quality: Int): Frame {
         val size = displaySize()
-        val (w, h) = scaledSize(size.x, size.y)
+        val (w, h) = scaledSize(size.x, size.y, maxSide)
         val frame = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
-        return encodeFrame(frame, size.x, size.y)
+        return encodeFrame(frame, size.x, size.y, maxSide, quality)
     }
 
-    /** Downscales [src] (long side <= 1280), JPEG-encodes it and recycles it. */
-    private fun encodeFrame(src: Bitmap, deviceWidth: Int, deviceHeight: Int): JSONObject {
-        val (w, h) = scaledSize(src.width, src.height)
+    /** Downscales [src] (long side <= [maxSide]), JPEG-encodes it and recycles it. */
+    private fun encodeFrame(src: Bitmap, deviceWidth: Int, deviceHeight: Int, maxSide: Int, quality: Int): Frame {
+        val (w, h) = scaledSize(src.width, src.height, maxSide)
         val scaled = if (w == src.width && h == src.height) src else Bitmap.createScaledBitmap(src, w, h, true)
         try {
             val out = ByteArrayOutputStream()
-            scaled.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
-            return JSONObject()
-                .put("jpeg", Base64.encodeToString(out.toByteArray(), Base64.NO_WRAP))
-                .put("width", w).put("height", h)
-                .put("device_width", deviceWidth).put("device_height", deviceHeight)
+            scaled.compress(Bitmap.CompressFormat.JPEG, quality, out)
+            return Frame(out.toByteArray(), w, h, deviceWidth, deviceHeight)
         } finally {
             if (scaled !== src) scaled.recycle()
             src.recycle()
         }
     }
 
-    private fun scaledSize(w: Int, h: Int): Pair<Int, Int> {
-        val ratio = min(1.0, MAX_SIDE.toDouble() / max(w, h))
+    private fun scaledSize(w: Int, h: Int, maxSide: Int): Pair<Int, Int> {
+        val ratio = min(1.0, maxSide.toDouble() / max(w, h))
         return max(1, (w * ratio).roundToInt()) to max(1, (h * ratio).roundToInt())
     }
 
@@ -493,7 +517,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private companion object {
         const val MAX_SIDE = 1280
         const val JPEG_QUALITY = 80
-        const val SCREENSHOT_ATTEMPTS = 4 // first try + 3 retries on rate limiting
+        const val MIN_SIDE = 160 // floor for the live view's max_side param
+        const val MIN_QUALITY = 10
+        const val SCREENSHOT_ATTEMPTS = 10 // first try + retries on rate limiting (~0.5 s at most)
+        const val MIN_CAPTURE_INTERVAL_MS = 340L // the system's limit is 333 ms between captures
+        const val RATE_LIMIT_RETRY_MS = 50L
         const val MAX_ELEMENTS = 150
         const val UI_DEADLINE_MS = 10_000L
         const val TAP_MS = 50L

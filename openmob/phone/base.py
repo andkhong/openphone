@@ -22,6 +22,8 @@ class DeviceError(RuntimeError):
 
 class Device(Protocol):
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot: ...
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot: ...
+    def preview(self, max_side: int, quality: int, max_age: float = 0.0, newer_than: float = 0.0) -> tuple[float, Screenshot]: ...
     def ui_elements(self) -> list[UIElement]: ...
     def current_app(self) -> str | None: ...
     def launchable_packages(self) -> list[str]: ...
@@ -39,16 +41,34 @@ class Device(Protocol):
 class CachedScreenshots:
     """screenshot() with sharing and retry. Subclasses implement _capture().
 
-    Callers that accept a slightly old frame (the dashboard's live view) pass max_age,
-    so they reuse the agent's captures instead of adding load on a slow link.
+    Callers that accept a slightly old frame pass max_age, so they reuse the agent's captures
+    instead of adding load on a slow link. The dashboard's live view uses preview(), which
+    keeps its smaller frames apart: screenshot() never returns a preview frame.
     """
 
     def _init_screenshot_cache(self) -> None:
         self._shot_lock = threading.Lock()
         self._last_shot: tuple[float, Screenshot] | None = None
+        self._last_preview: tuple[float, Screenshot] | None = None
 
     def _capture(self) -> Screenshot:
         raise NotImplementedError
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        """One uncached, smaller frame for the live view. Drivers that can't scale return a full one."""
+        return self._capture()
+
+    def preview(self, max_side: int, quality: int, max_age: float = 0.0, newer_than: float = 0.0) -> tuple[float, Screenshot]:
+        """(capture time, frame) for the live view: the newest cached frame (the agent's or an earlier
+        preview) that is newer than `newer_than` and at most max_age old, else a fresh small capture."""
+        with self._shot_lock:
+            now = time.time()
+            fresh = [c for c in (self._last_shot, self._last_preview) if c and c[0] > newer_than and now - c[0] <= max_age]
+            if fresh:
+                return max(fresh, key=lambda c: c[0])
+            shot = self.capture_preview(max_side, quality)
+            self._last_preview = (time.time(), shot)
+            return self._last_preview
 
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot:
         with self._shot_lock:

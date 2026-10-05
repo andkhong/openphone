@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMob Developer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --ok:#1f9d55; --warn:#c97a00; --bad:#d6383b; --code:#f0f0ec; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --code:#1f2226; --shadow:none; } }
+  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --code:#1f2226; --shadow:none; }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
+  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
+  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
+  .logo small { font-weight:500; color:var(--muted); margin-left:6px; font-size:14px; }
+  header nav { margin-left:auto; display:flex; gap:16px; }
+  header a { color:var(--muted); text-decoration:none; font-size:14px; }
+  main { max-width:1100px; margin:0 auto; padding:24px 16px; display:grid; gap:20px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); min-width:0; }
+  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; display:flex; gap:8px; align-items:center; }
+  h2 .count { background:var(--bg); border-radius:999px; padding:0 8px; font-size:12px; letter-spacing:0; }
+  p.hint { color:var(--muted); font-size:14px; margin:0 0 12px; }
+  code, pre { font-family:"JetBrains Mono", ui-monospace, monospace; font-size:13px; }
+  pre { background:var(--code); border-radius:10px; padding:12px 14px; overflow-x:auto; margin:0; }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:12px; }
+  .stat { background:var(--bg); border-radius:12px; padding:12px 14px; }
+  .stat b { display:block; font-size:22px; font-variant-numeric:tabular-nums; }
+  .stat span { color:var(--muted); font-size:13px; }
+  form.row { display:flex; gap:10px; flex-wrap:wrap; align-items:center; }
+  input[type=text], input[type=url] { flex:1; min-width:200px; font:inherit; padding:9px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); }
+  input:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+  .scopes { display:flex; flex-wrap:wrap; gap:8px 16px; margin:12px 0; font-size:14px; }
+  .scopes label { display:flex; gap:6px; align-items:center; }
+  .scopes .sensitive { color:var(--warn); }
+  button { font:inherit; font-size:14px; border-radius:10px; padding:8px 14px; cursor:pointer; border:1px solid var(--line); background:transparent; color:var(--fg); }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
+  button.small { padding:4px 10px; font-size:13px; border-radius:8px; color:var(--muted); }
+  button.small.danger:hover { color:var(--bad); border-color:var(--bad); }
+  button:disabled { opacity:.5; cursor:default; }
+  .reveal { border:1px solid var(--warn); background:rgba(201,122,0,.08); border-radius:12px; padding:14px; margin-top:14px; }
+  .reveal p { margin:0 0 8px; font-size:14px; }
+  .reveal .secret { display:flex; gap:8px; align-items:center; }
+  .reveal code { flex:1; min-width:0; overflow-wrap:anywhere; background:var(--code); padding:8px 10px; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  th { text-align:left; font-weight:600; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:1px solid var(--line); }
+  td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle; overflow-wrap:anywhere; }
+  tr:last-child td { border-bottom:0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .pill { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
+  .pill.succeeded { color:var(--ok); background:rgba(31,157,85,.12); }
+  .pill.failed, .pill.off { color:var(--bad); background:rgba(214,56,59,.1); }
+  .pill.cancelled, .pill.queued { color:var(--muted); background:var(--bg); }
+  .pill.running, .pill.needs_input, .pill.needs_confirmation { color:var(--warn); background:rgba(201,122,0,.1); }
+  .switch { display:flex; gap:10px; align-items:flex-start; font-size:14px; }
+  .switch input { margin-top:4px; }
+  .error { color:var(--bad); font-size:13px; min-height:1em; margin-top:8px; }
+  .actions { display:flex; gap:6px; justify-content:flex-end; }
+  @media (max-width: 700px) {
+    header { padding:12px 16px; }
+    .card { padding:16px; }
+    thead { display:none; }
+    table, tbody, tr, td { display:block; width:100%; }
+    tr { border:1px solid var(--line); border-radius:12px; padding:6px 12px; margin-bottom:10px; }
+    td { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px dashed var(--line); text-align:right; }
+    td:last-child { border-bottom:0; }
+    td::before { content:attr(data-label); color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; text-align:left; flex:none; }
+    td.empty { justify-content:center; } td.empty::before { content:none; }
+    tr.empty-row { border:0; }
+    .actions { justify-content:flex-end; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Open<span>Mob</span> <small>Developer</small></div>
+  <nav><a href="/">← Dashboard</a></nav>
+</header>
+<main id="main">
+  <section class="card">
+    <h2>Usage</h2>
+    <div class="stats" id="stats"></div>
+    <p class="hint" id="limits" style="margin-top:12px"></p>
+  </section>
+
+  <section class="card">
+    <h2>API keys <span class="count" id="keyCount">0</span></h2>
+    <p class="hint">Keys act as your account on your own phones. Send one as <code>Authorization: Bearer om_live_…</code>. Keep keys out of code and out of shared places.</p>
+    <form class="row" id="createKey">
+      <input type="text" id="keyName" placeholder="Key name, e.g. my-agent" maxlength="60" aria-label="Key name">
+      <button class="primary" type="submit">Create key</button>
+    </form>
+    <div class="scopes" id="scopes"></div>
+    <div id="newKey"></div>
+    <table>
+      <thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Created</th><th>Last used</th><th></th></tr></thead>
+      <tbody id="keys"><tr class="empty-row"><td class="empty" colspan="6">Loading…</td></tr></tbody>
+    </table>
+    <div class="error" id="keyError"></div>
+  </section>
+
+  <section class="card">
+    <h2>Quick start</h2>
+    <pre id="quickstart"></pre>
+  </section>
+
+  <section class="card">
+    <h2>Webhook</h2>
+    <p class="hint">OpenMob POSTs to this URL when a task finishes or needs an answer. Each request carries <code>X-OpenMob-Signature: t=…,v1=…</code>, an HMAC-SHA256 of <code>t.body</code> made with your signing secret. Reject requests whose <code>t</code> is more than 5 minutes old.</p>
+    <form class="row" id="webhookForm">
+      <input type="url" id="webhookUrl" placeholder="https://example.com/openmob-webhook" aria-label="Webhook URL">
+      <button class="primary" type="submit">Save</button>
+      <button type="button" id="webhookClear" hidden>Remove</button>
+    </form>
+    <div id="webhookSecret"></div>
+    <div class="error" id="webhookError"></div>
+  </section>
+
+  <section class="card">
+    <h2>Safety</h2>
+    <label class="switch">
+      <input type="checkbox" id="sensitive">
+      <span>Allow API tasks to open banking, payment, wallet and password-manager apps on my phones.
+        <span class="muted" style="display:block">Off by default. While it's off, an API task that reaches one of these apps stops immediately. Risky taps (buy, send, delete…) always need confirmation.</span></span>
+    </label>
+    <div class="error" id="settingsError"></div>
+  </section>
+
+  <section class="card">
+    <h2>Recent API tasks <span class="count" id="taskCount">0</span></h2>
+    <table>
+      <thead><tr><th>Task</th><th>Phone</th><th>Tier</th><th>Status</th><th>Steps</th><th>Credits</th><th>Started</th></tr></thead>
+      <tbody id="tasks"><tr class="empty-row"><td class="empty" colspan="7">Loading…</td></tr></tbody>
+    </table>
+  </section>
+</main>
+<script>
+// Names and URLs are user-controlled: every value goes in with textContent, never innerHTML.
+const $ = (id) => document.getElementById(id);
+const SCOPE_HELP = {
+  "devices:read": "list phones",
+  "tasks:run": "run, answer, cancel tasks",
+  "tasks:read": "read tasks and events",
+  "screen:read": "see the phone's screen (sensitive)",
+  "history:read": "read chat history",
+  "memory:read": "read what the agent remembers about you",
+  "memory:write": "add or delete memory notes",
+};
+const DEFAULT_SCOPES = ["devices:read", "tasks:run", "tasks:read"];
+let overview = null, keys = [], scopesBuilt = false;
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+function cell(label, ...children) { const td = el("td", {}, ...children); td.dataset.label = label; return td; }
+function emptyRow(cols, text) { return el("tr", { className: "empty-row" }, el("td", { className: "empty", colSpan: cols, textContent: text })); }
+function date(ts) { return ts ? new Date(ts * 1000).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }) : "—"; }
+function ago(ts) {
+  if (!ts) return "never";
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
+  if (res.status === 401) {
+    location.href = "/login?next=" + encodeURIComponent("/developer");
+    throw new Error("signed out");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const body = await res.json(); detail = typeof body.detail === "string" ? body.detail : "Check the form and try again."; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+function secretBox(title, value, note) {
+  const code = el("code", { textContent: value });
+  const copy = el("button", { type: "button", textContent: "Copy" });
+  copy.onclick = async () => {
+    try { await navigator.clipboard.writeText(value); copy.textContent = "Copied"; } catch { copy.textContent = "Select and copy"; }
+  };
+  const done = el("button", { type: "button", textContent: "Done" });
+  const box = el("div", { className: "reveal" }, el("p", {}, el("b", { textContent: title }), " ", note), el("div", { className: "secret" }, code, copy, done));
+  done.onclick = () => box.remove();
+  return box;
+}
+
+function buildScopes(all) {
+  if (scopesBuilt) return;
+  scopesBuilt = true;
+  $("scopes").replaceChildren(...all.map((s) => {
+    const box = el("input", { type: "checkbox", value: s, checked: DEFAULT_SCOPES.includes(s) });
+    return el("label", { className: s === "screen:read" ? "sensitive" : "" }, box, el("code", { textContent: s }), el("span", { className: "muted", textContent: SCOPE_HELP[s] || "" }));
+  }));
+}
+
+function render() {
+  const o = overview;
+  buildScopes(o.scopes);
+  const stat = (n, label) => el("div", { className: "stat" }, el("b", { textContent: n.toLocaleString() }), el("span", { textContent: label }));
+  $("stats").replaceChildren(
+    stat(o.usage.today.tasks, "tasks today"), stat(o.usage.today.credits, "credits today"),
+    stat(o.usage.last_30_days.tasks, "tasks, 30 days"), stat(o.usage.last_30_days.credits, "credits, 30 days"));
+  const tiers = o.tiers.map((t) => `${t.name} ${t.credits_per_step}/step${t.default ? " (default)" : ""}`).join(" · ");
+  $("limits").textContent = `Per key: ${o.limits.requests_per_minute} requests/min · ${o.limits.concurrent_tasks} tasks at once · ` +
+    `${o.limits.tasks_per_day} tasks/day · up to ${o.limits.max_steps} steps per task. Tiers: ${tiers}.`;
+
+  $("keyCount").textContent = keys.length;
+  $("keys").replaceChildren(...(keys.length ? keys.map((k) => {
+    const rotate = el("button", { className: "small", type: "button", textContent: "Rotate" });
+    rotate.onclick = () => rotateKey(k, rotate);
+    const revoke = el("button", { className: "small danger", type: "button", textContent: "Revoke" });
+    revoke.onclick = () => revokeKey(k, revoke);
+    const status = k.disabled ? el("span", { className: "pill off", textContent: "turned off by admin" }) : "";
+    return el("tr", {},
+      cell("Name", el("span", { textContent: k.name }), " ", status),
+      cell("Key", el("code", { textContent: k.prefix + "_…" })),
+      cell("Scopes", el("span", { className: "muted", textContent: k.scopes.join(", ") })),
+      cell("Created", date(k.created)), cell("Last used", ago(k.last_used)),
+      cell("", el("div", { className: "actions" }, rotate, revoke)));
+  }) : [emptyRow(6, "No keys yet. Create one above.")]));
+
+  const hook = o.settings.webhook_url;
+  if (document.activeElement !== $("webhookUrl")) $("webhookUrl").value = hook || "";
+  $("webhookClear").hidden = !hook;
+  $("sensitive").checked = o.settings.allow_sensitive_apps;
+
+  const t = o.recent_tasks;
+  $("taskCount").textContent = t.length;
+  $("tasks").replaceChildren(...(t.length ? t.map((x) => el("tr", {},
+    cell("Task", el("code", { textContent: x.id })),
+    cell("Phone", `app-${x.device_id}`),
+    cell("Tier", x.tier),
+    cell("Status", el("span", { className: `pill ${x.status}`, textContent: x.status.replace("_", " ") })),
+    cell("Steps", String(x.steps)), cell("Credits", String(x.credits)), cell("Started", date(x.created)),
+  )) : [emptyRow(7, "No API tasks yet.")]));
+
+  const base = location.origin;
+  $("quickstart").textContent = [
+    `export OPENMOB_API_KEY=om_live_…`,
+    ``,
+    `# Your phones`,
+    `curl -H "Authorization: Bearer $OPENMOB_API_KEY" ${base}/v1/devices`,
+    ``,
+    `# Run a task (tier: fast | balanced | best)`,
+    `curl -X POST -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \\`,
+    `  -d '{"instruction": "open YouTube", "tier": "balanced"}' ${base}/v1/devices/DEVICE_ID/tasks`,
+    ``,
+    `# Follow it live (Server-Sent Events)`,
+    `curl -N -H "Authorization: Bearer $OPENMOB_API_KEY" ${base}/v1/tasks/TASK_ID/events`,
+  ].join("\n");
+}
+
+async function load() {
+  try {
+    [overview, keys] = await Promise.all([api("/api/developer/overview"), api("/api/developer/keys")]);
+    render();
+  } catch (e) {
+    if (e.message !== "signed out") $("keyError").textContent = `Couldn't load: ${e.message}`;
+  }
+}
+
+$("createKey").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const scopes = [...$("scopes").querySelectorAll("input:checked")].map((b) => b.value);
+  if (scopes.includes("screen:read") && !confirm("screen:read lets this key see everything on your phone's screen. Create it anyway?")) return;
+  $("keyError").textContent = "";
+  try {
+    const k = await api("/api/developer/keys", { method: "POST", body: JSON.stringify({ name: $("keyName").value, scopes }) });
+    $("keyName").value = "";
+    $("newKey").replaceChildren(secretBox("Your new key.", k.key, "Copy it now: it won't be shown again."));
+    load();
+  } catch (e) { $("keyError").textContent = e.message; }
+};
+
+async function rotateKey(k, btn) {
+  if (!confirm(`Rotate "${k.name}"? The current key stops working immediately.`)) return;
+  btn.disabled = true;
+  try {
+    const n = await api(`/api/developer/keys/${encodeURIComponent(k.id)}/rotate`, { method: "POST" });
+    $("newKey").replaceChildren(secretBox(`New key for "${n.name}".`, n.key, "Copy it now: it won't be shown again."));
+  } catch (e) { $("keyError").textContent = e.message; }
+  load();
+}
+
+async function revokeKey(k, btn) {
+  if (!confirm(`Revoke "${k.name}"? It stops working now and its running tasks are cancelled.`)) return;
+  btn.disabled = true;
+  try { await api(`/api/developer/keys/${encodeURIComponent(k.id)}/revoke`, { method: "POST" }); }
+  catch (e) { $("keyError").textContent = e.message; }
+  load();
+}
+
+$("webhookForm").onsubmit = async (ev) => {
+  ev.preventDefault();
+  $("webhookError").textContent = "";
+  try {
+    const r = await api("/api/developer/webhook", { method: "POST", body: JSON.stringify({ url: $("webhookUrl").value.trim() }) });
+    $("webhookSecret").replaceChildren(secretBox("Signing secret.", r.secret, "Copy it now: saving the URL again makes a new one."));
+    load();
+  } catch (e) { $("webhookError").textContent = e.message; }
+};
+
+$("webhookClear").onclick = async () => {
+  if (!confirm("Remove the webhook? OpenMob stops sending task events.")) return;
+  try { await api("/api/developer/webhook", { method: "DELETE" }); $("webhookSecret").replaceChildren(); }
+  catch (e) { $("webhookError").textContent = e.message; }
+  load();
+};
+
+$("sensitive").onchange = async (ev) => {
+  const on = ev.target.checked;
+  if (on && !confirm("Let API tasks open banking, payment and password apps on your phones?")) { ev.target.checked = false; return; }
+  $("settingsError").textContent = "";
+  try { await api("/api/developer/settings", { method: "POST", body: JSON.stringify({ allow_sensitive_apps: on }) }); }
+  catch (e) { $("settingsError").textContent = e.message; ev.target.checked = !on; }
+};
+
+load();
+setInterval(load, 10000);
+</script>
+</body>
+</html>

@@ -45,6 +45,9 @@
     <!-- Connection -->
     <string name="ui_connection_title">Connection</string>
     <string name="ui_connect">Connect</string>
+    <string name="ui_live_view">Smooth live view</string>
+    <string name="ui_live_view_help">Shows this screen as video on your dashboard. Android asks to start screen sharing each time you connect. Off: the dashboard shows a few screenshots a second, with no prompt.</string>
+    <string name="ui_live_view_declined">Smooth live view is off. Turn it on under Connection any time.</string>
     <string name="ui_disconnect">Disconnect</string>
     <string name="ui_pair_first">Pair with your agent server first.</string>
     <string name="ui_a11y_warning">Accessibility is off, so the agent can\'t see or control the screen yet.</string>

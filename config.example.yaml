@@ -44,3 +44,20 @@ speak: true
 # Phone web page (http://<mac-ip>:8765/?t=<token>)
 server_port: 8765
 # server_token: pick-a-fixed-token   # otherwise a new one is generated each run
+
+# Developer API (/v1, accounts mode). Tiers map public names to the model that runs them;
+# API responses show only the tier name. Limits are per API key.
+# api_tiers:
+#   fast:     {model: claude-haiku-4-5-20251001, credits_per_step: 1}
+#   balanced: {model: claude-sonnet-5-5, credits_per_step: 3}
+#   best:     {model: claude-opus-5-5, credits_per_step: 10}
+# api_default_tier: balanced
+# api_rate_per_minute: 60
+# api_max_concurrent_tasks: 2
+# api_daily_tasks: 200
+# api_max_steps: 40
+# Package-name patterns API tasks may not open unless the phone's owner allows it (see config.py for the defaults).
+# sensitive_apps: [bank, wallet, paypal, 1password]
+
+# Delete saved chats not used for this many days (0 = keep forever).
+# history_retention_days: 0

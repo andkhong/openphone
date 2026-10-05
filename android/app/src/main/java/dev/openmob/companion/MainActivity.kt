@@ -15,6 +15,8 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -37,6 +39,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import java.util.concurrent.Executors
@@ -50,6 +53,7 @@ class MainActivity : Activity() {
     private companion object {
         const val REQ_SPEECH = 1
         const val REQ_NOTIFICATIONS = 2
+        const val REQ_SCREEN = 3
         const val MAX_EVENTS = 30
         /** Pairing must be approved with a strong biometric or the screen lock PIN/pattern/password. */
         const val APPROVERS = BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -91,6 +95,7 @@ class MainActivity : Activity() {
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
     private lateinit var connectButton: Button
+    private lateinit var liveViewSwitch: Switch
     private lateinit var connectionWarning: TextView
 
     // Ask
@@ -166,6 +171,16 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SCREEN) {
+            // Connect either way: declining only means the web dashboard shows screenshots, not video.
+            if (resultCode != RESULT_OK) {
+                settings.smoothLiveView = false // remembered: Connect won't ask again
+                toast(getString(R.string.ui_live_view_declined))
+            }
+            ConnectionService.start(this, data.takeIf { resultCode == RESULT_OK }, resultCode)
+            render()
+            return
+        }
         if (requestCode != REQ_SPEECH || resultCode != RESULT_OK) return
         val heard = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!heard.isNullOrBlank()) sendCommand(heard)
@@ -239,6 +254,7 @@ class MainActivity : Activity() {
         (statusDot.background as GradientDrawable).setColor(dotColor)
         statusText.text = AppState.connection
         connectButton.text = getString(if (running) R.string.ui_disconnect else R.string.ui_connect)
+        if (liveViewSwitch.isChecked != settings.smoothLiveView) liveViewSwitch.isChecked = settings.smoothLiveView
         styleButton(connectButton, if (running) Style.DANGER else Style.PRIMARY)
         setEnabled(connectButton, running || paired)
         when {
@@ -628,8 +644,35 @@ class MainActivity : Activity() {
     private fun reconnect() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
-            main.postDelayed({ ConnectionService.start(this) }, 600)
+            main.postDelayed({ connect() }, 600)
         } else {
+            connect()
+        }
+    }
+
+    /** Start the connection, first asking Android for screen streaming (the "Start recording or
+     *  casting?" prompt) so the web dashboard can show smooth video. One tap per connection. */
+    @Suppress("DEPRECATION")
+    private fun connect() {
+        if (!settings.smoothLiveView) {
+            ConnectionService.start(this) // no prompt: the dashboard shows screenshots
+            return
+        }
+        askForScreenSharing()
+    }
+
+    /** Android's "Start recording or casting?" prompt; the result lands in onActivityResult. */
+    @Suppress("DEPRECATION")
+    private fun askForScreenSharing() {
+        val projections = getSystemService(MediaProjectionManager::class.java)
+        val consent = if (Build.VERSION.SDK_INT >= 34) {
+            projections.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()) // whole screen
+        } else {
+            projections.createScreenCaptureIntent()
+        }
+        try {
+            startActivityForResult(consent, REQ_SCREEN)
+        } catch (e: ActivityNotFoundException) {
             ConnectionService.start(this)
         }
     }
@@ -738,7 +781,7 @@ class MainActivity : Activity() {
             Shortcuts.CONNECT -> when {
                 !isPaired -> toast(getString(R.string.shortcut_need_pairing))
                 ConnectionService.isRunning -> toast(AppState.connection)
-                else -> ConnectionService.start(this)
+                else -> connect()
             }
             Shortcuts.ASK -> if (AppState.connected) startVoiceInput() else toast(getString(R.string.shortcut_need_connection))
         }
@@ -749,7 +792,7 @@ class MainActivity : Activity() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
         } else if (isPaired) {
-            ConnectionService.start(this)
+            connect()
         }
         render()
     }
@@ -918,6 +961,21 @@ class MainActivity : Activity() {
             minHeight = dp(54)
         }
         card.addView(connectButton, margins(top = 14, width = match))
+
+        liveViewSwitch = Switch(this).apply {
+            text = getString(R.string.ui_live_view)
+            textSize = 15f
+            setTextColor(color(R.color.om_text))
+            isChecked = settings.smoothLiveView
+            setOnCheckedChangeListener { _, on ->
+                if (on == settings.smoothLiveView) return@setOnCheckedChangeListener
+                settings.smoothLiveView = on
+                // Turned on while connected: ask now rather than at the next Connect.
+                if (on && ConnectionService.isRunning) askForScreenSharing()
+            }
+        }
+        card.addView(liveViewSwitch, margins(top = 16, width = match))
+        card.addView(text(getString(R.string.ui_live_view_help), 13f, color(R.color.om_grey)), margins(top = 2))
         return card
     }
 

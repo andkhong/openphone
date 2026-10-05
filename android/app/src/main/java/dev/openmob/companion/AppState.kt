@@ -70,6 +70,12 @@ class Settings(context: Context) {
         get() = prefs.getString("email", "") ?: ""
         set(value) = prefs.edit().putString("email", value.trim()).apply()
 
+    /** Ask Android for screen sharing on Connect, so the web dashboard shows smooth video. Turned off
+     *  when the owner declines that prompt, so declining is remembered rather than asked every time. */
+    var smoothLiveView: Boolean
+        get() = prefs.getBoolean("smooth_live_view", true)
+        set(value) = prefs.edit().putBoolean("smooth_live_view", value).apply()
+
     /** This phone's device key, sent in the hello message. */
     var deviceKey: String
         get() = prefs.getString("device_key", "") ?: ""

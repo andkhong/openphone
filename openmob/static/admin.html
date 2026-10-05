@@ -74,8 +74,8 @@
   <section class="card">
     <h2>Users <span class="count" id="userCount">0</span></h2>
     <table>
-      <thead><tr><th>Email</th><th>Created</th><th>Phones</th></tr></thead>
-      <tbody id="users"><tr class="empty-row"><td class="empty" colspan="3">Loading…</td></tr></tbody>
+      <thead><tr><th>Email</th><th>Created</th><th>Phones</th><th>API access</th></tr></thead>
+      <tbody id="users"><tr class="empty-row"><td class="empty" colspan="4">Loading…</td></tr></tbody>
     </table>
   </section>
 
@@ -87,11 +87,27 @@
     </table>
     <div class="error" id="error"></div>
   </section>
+
+  <section class="card">
+    <h2>API keys <span class="count" id="keyCount">0</span></h2>
+    <table>
+      <thead><tr><th>Key</th><th>Owner</th><th>Scopes</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+      <tbody id="keys"><tr class="empty-row"><td class="empty" colspan="6">Loading…</td></tr></tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>API audit log <span class="count" id="auditCount">0</span></h2>
+    <table>
+      <thead><tr><th>Time</th><th>Action</th><th>Owner</th><th>Key</th><th>Phone</th><th>Task</th><th>Outcome</th></tr></thead>
+      <tbody id="audit"><tr class="empty-row"><td class="empty" colspan="7">Loading…</td></tr></tbody>
+    </table>
+  </section>
 </main>
 <script>
 // Emails and phone models are user-controlled: every value goes in with textContent, never innerHTML.
 const $ = (id) => document.getElementById(id);
-let users = [], devices = [];
+let users = [], devices = [], keys = [], audit = [];
 
 function el(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -135,8 +151,41 @@ function render() {
   $("users").replaceChildren(...(u.length ? u.map((a) => {
     const email = cell("Email", el("span", { textContent: a.email }));
     if (a.is_admin) email.append(el("span", { className: "badge", textContent: "admin" }));
-    return el("tr", {}, email, cell("Created", date(a.created)), cell("Phones", String(a.device_count)));
-  }) : [emptyRow(3, q ? "No users match." : "No users yet.")]));
+    const apiBtn = el("button", { className: "revoke", textContent: a.api_disabled ? "Turn on" : "Turn off" });
+    apiBtn.onclick = () => toggle(`/api/admin/users/${encodeURIComponent(a.id)}/api`, !a.api_disabled,
+      `Turn off API access for ${a.email}? Every key stops working and running API tasks are cancelled.`, apiBtn);
+    const access = cell("API access", el("span", { className: `pill ${a.api_disabled ? "revoked" : "on"}`,
+      textContent: a.api_disabled ? "Off" : "On" }), " ", apiBtn);
+    return el("tr", {}, email, cell("Created", date(a.created)), cell("Phones", String(a.device_count)), access);
+  }) : [emptyRow(4, q ? "No users match." : "No users yet.")]));
+
+  const k = keys.filter((x) => matches(q, x.email, x.name, x.prefix));
+  $("keyCount").textContent = k.length;
+  $("keys").replaceChildren(...(k.length ? k.map((x) => {
+    const btn = el("button", { className: "revoke", textContent: x.disabled ? "Turn on" : "Turn off" });
+    btn.onclick = () => toggle(`/api/admin/api-keys/${encodeURIComponent(x.id)}/disable`, !x.disabled,
+      `Turn off key ${x.prefix} (${x.email})? Its running tasks are cancelled.`, btn);
+    return el("tr", { className: x.disabled ? "revoked" : "" },
+      cell("Key", el("code", { textContent: x.prefix }), " ", el("span", { className: "task", textContent: x.name })),
+      cell("Owner", x.email || "(deleted account)"),
+      cell("Scopes", el("span", { className: "task", textContent: x.scopes.join(", ") })),
+      cell("Last used", ago(x.last_used)),
+      cell("Status", el("span", { className: `pill ${x.disabled ? "revoked" : "on"}`, textContent: x.disabled ? "Off" : "On" })),
+      cell("", btn));
+  }) : [emptyRow(6, q ? "No keys match." : "No API keys yet.")]));
+
+  const emails = Object.fromEntries(users.map((a) => [a.id, a.email]));
+  const l = audit.filter((x) => matches(q, emails[x.account_id], x.action, x.task_id, x.key_id));
+  $("auditCount").textContent = l.length;
+  $("audit").replaceChildren(...(l.length ? l.map((x) => el("tr", {},
+    cell("Time", new Date(x.time * 1000).toLocaleString()),
+    cell("Action", el("code", { textContent: x.action })),
+    cell("Owner", emails[x.account_id] || "—"),
+    cell("Key", x.key_id || "—"),
+    cell("Phone", x.device_id || "—"),
+    cell("Task", x.task_id || "—"),
+    cell("Outcome", x.outcome || "—"),
+  )) : [emptyRow(7, q ? "No entries match." : "No API activity yet.")]));
 
   const d = devices.filter((x) => matches(q, x.email, x.model));
   $("deviceCount").textContent = d.length;
@@ -188,7 +237,8 @@ async function api(path, opts) {
 
 async function load() {
   try {
-    [users, devices] = await Promise.all([api("/api/admin/users"), api("/api/admin/devices")]);
+    [users, devices, keys, audit] = await Promise.all([api("/api/admin/users"), api("/api/admin/devices"),
+      api("/api/admin/api-keys"), api("/api/admin/audit?limit=200")]);
     $("error").textContent = "";
     $("updated").textContent = "Updated " + new Date().toLocaleTimeString();
     render();
@@ -205,6 +255,17 @@ async function revoke(device, btn) {
     await api(`/api/admin/devices/${encodeURIComponent(device.id)}/revoke`, { method: "POST" });
   } catch (e) {
     if (e.message !== "signed out" && e.message !== "forbidden") alert(`Couldn't revoke: ${e.message}`);
+  }
+  load();
+}
+
+async function toggle(path, disabled, question, btn) {
+  if (disabled && !confirm(question)) return;
+  btn.disabled = true;
+  try {
+    await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled }) });
+  } catch (e) {
+    if (e.message !== "signed out" && e.message !== "forbidden") alert(`Couldn't change it: ${e.message}`);
   }
   load();
 }

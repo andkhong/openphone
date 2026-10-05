@@ -58,6 +58,17 @@ def test_screenshot_is_downscaled_to_max_side():
     assert shot.jpeg[:2] == b"\xff\xd8"
 
 
+def test_preview_frames_are_small_and_never_given_to_the_agent():
+    driver = RecordingDriver({"screencap": make_png(1080, 2400)}, max_side=1280)
+    taken, preview = driver.preview(720, 55)
+    assert (preview.width, preview.height) == (324, 720)
+    assert driver.preview(720, 55, max_age=60, newer_than=0)[1] is preview  # shared between viewers
+    assert driver.preview(720, 55, max_age=60, newer_than=taken)[1] is not preview  # but a viewer wants newer
+    shot = driver.screenshot(max_age=60)  # the agent: a fresh full-size capture, not the cached preview
+    assert (shot.width, shot.height) == (576, 1280)
+    assert driver.preview(720, 55, max_age=60, newer_than=taken)[1] is shot  # the live view may reuse it
+
+
 def test_landscape_screenshot_keeps_orientation():
     driver = RecordingDriver({"screencap": make_png(2400, 1080)}, max_side=1280)
     shot = driver.screenshot()
