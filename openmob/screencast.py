@@ -224,6 +224,8 @@ class ScreenFeed:
         if key and self._config and not data.startswith(self._config):
             data = self._config + data  # decoders joining here need the SPS/PPS
         message = b"V" + bytes([1 if key else 0]) + struct.pack(">q", int(packet.get("pts") or 0)) + data
+        if key and all(not v.need_key for v in self._viewers if v.backlog() < VIEWER_BACKLOG):
+            self._key_wanted = False  # this keyframe serves everyone waiting: don't ask for another
         for viewer in self._viewers:
             if viewer.need_key:
                 if not key:

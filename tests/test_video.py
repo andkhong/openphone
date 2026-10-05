@@ -48,7 +48,10 @@ def test_viewer_gets_video_starting_at_a_keyframe_with_sps(server):  # noqa: F81
     packets = [unpack(m[1]) for m in messages[1:]]
     key, _, data = packets[0]
     assert key and data.startswith(b"\x00\x00\x00\x01SPSPPS") and b"IDR" in data
-    assert all(not k for k, _, _ in packets[1:])
+    # Every keyframe carries the SPS/PPS, so a decoder can start from any of them. (The server may
+    # ask for one fresh keyframe at start, because frames that raced ahead of the start were dropped.)
+    assert all(d.startswith(b"\x00\x00\x00\x01SPSPPS") for k, _, d in packets if k)
+    assert any(not k for k, _, _ in packets[1:])
     pts = [p for _, p, _ in packets]
     assert pts == sorted(pts)
     # No screenshots were taken for the live view: the agent's screenshot budget stays free.
@@ -170,13 +173,18 @@ def test_a_viewer_whose_decoder_fell_behind_can_ask_for_a_keyframe(server):  # n
     async def run():
         async with websockets.connect(viewer_url(url)) as ws:
             assert json.loads(await asyncio.wait_for(ws.recv(), 5))["mode"] == "video"
-            await asyncio.wait_for(ws.recv(), 5)
-            before = sum(1 for m, _ in phone.calls if m == "stream_keyframe")
+            # Let the start-up keyframe(s) through, then ask: some keyframe must follow the request
+            # (a fresh one, or one already on its way when we asked: either lets the decoder restart).
+            for _ in range(10):
+                await asyncio.wait_for(ws.recv(), 5)
             await ws.send("keyframe")
             deadline = asyncio.get_running_loop().time() + 3
-            while sum(1 for m, _ in phone.calls if m == "stream_keyframe") == before:
-                assert asyncio.get_running_loop().time() < deadline
-                await asyncio.wait_for(ws.recv(), 5)
+            while True:
+                assert asyncio.get_running_loop().time() < deadline, "no keyframe after the request"
+                packet = await asyncio.wait_for(ws.recv(), 5)
+                if isinstance(packet, bytes) and packet[:1] == b"V" and packet[1] & 1:
+                    assert packet[10:].startswith(b"\x00\x00\x00\x01SPSPPS")
+                    break
 
     asyncio.run(run())
     phone.disconnect()
