@@ -18,6 +18,7 @@
   --r-sm: 8px; --r: 12px; --r-lg: 16px; --r-xl: 22px; --r-pill: 999px;
   --font: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --serif: "Source Serif 4", "Iowan Old Style", Georgia, serif;
   --gutter: 16px;
 }
 @media (prefers-color-scheme: dark) {
@@ -55,10 +56,11 @@ code, pre, kbd { font-family: var(--mono); font-size: 13px; }
 
 /* Top bar shared by every signed-in page */
 .topbar { display: flex; align-items: center; gap: 10px; padding: 10px var(--gutter); min-height: 56px; background: var(--surface); border-bottom: 1px solid var(--line); }
-.brand { display: inline-flex; align-items: center; gap: 9px; color: var(--fg); text-decoration: none; font-weight: 700; font-size: 17px; letter-spacing: -.015em; white-space: nowrap; }
-.brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
+/* Logo: a serif wordmark, like Claude's. */
+.brand { display: inline-flex; align-items: baseline; gap: 9px; color: var(--fg); text-decoration: none; font-family: var(--serif); font-weight: 600; font-size: 22px; letter-spacing: -.01em; white-space: nowrap; }
+.brand-mark { display: none !important; width: 28px; height: 28px; border-radius: 8px; background: var(--accent); color: var(--accent-ink); display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .brand-mark svg { width: 17px; height: 17px; }
-.brand .page-name { font-weight: 500; color: var(--muted); font-size: 15px; letter-spacing: 0; }
+.brand .page-name { font-family: var(--font); font-weight: 500; color: var(--muted); font-size: 15px; letter-spacing: 0; }
 .brand .page-name::before { content: "/"; color: var(--line-strong); margin: 0 8px 0 2px; }
 .topnav { margin-left: auto; display: flex; align-items: center; gap: 4px; }
 

@@ -6,7 +6,7 @@
 <title>OpenMob</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
 <script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="stylesheet" href="/static/ds.css">
 <style>
@@ -52,6 +52,26 @@
   @media (hover: none) { .chat-item .act { visibility: visible; } }
   .side-empty { color: var(--faint); font-size: 13px; padding: 8px 10px; }
   .side-foot { border-top: 1px solid var(--line); padding-top: 8px; display: grid; gap: 2px; }
+  /* Search dialog (the 🔍 in the header, or ⌘K / Ctrl+K), like Claude's. */
+  .search-overlay { position: fixed; inset: 0; z-index: 60; background: var(--overlay); display: flex; align-items: flex-start; justify-content: center; padding: 12vh var(--gutter) var(--gutter); }
+  .search-dialog { width: min(720px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow-lg); overflow: hidden; }
+  .search-head { display: flex; align-items: center; gap: 12px; padding: 14px 14px 14px 20px; border-bottom: 1px solid var(--line); }
+  .search-head > svg { width: 20px; height: 20px; color: var(--faint); flex: none; }
+  .search-head input { flex: 1; min-width: 0; border: 0; background: transparent; font-size: 17px; outline: none; padding: 6px 0; }
+  .search-head input::placeholder { color: var(--faint); }
+  .search-head input::-webkit-search-cancel-button { display: none; }
+  .search-results { overflow-y: auto; padding: 8px; }
+  .search-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; color: var(--fg); }
+  .search-row[aria-selected="true"] { background: var(--surface-2); }
+  .search-row > svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+  .search-row .t { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 15px; }
+  .search-row .when { color: var(--faint); font-size: 13px; flex: none; }
+  .search-row .enter { display: none; color: var(--faint); flex: none; }
+  .search-row .enter svg { width: 16px; height: 16px; }
+  .search-row[aria-selected="true"] .when { display: none; }
+  .search-row[aria-selected="true"] .enter { display: inline-flex; }
+  .search-empty { color: var(--faint); font-size: 14px; padding: 14px 12px; }
+  @media (max-width: 560px) { .search-overlay { padding-top: 8px; } .search-dialog { max-height: 82vh; } }
   /* Account button (bottom left, like Claude): opens the account and settings menu upward. */
   .account-btn { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; cursor: pointer; color: var(--fg); }
   .account-btn:hover, .menu.account[open] .account-btn { background: var(--surface-2); }
@@ -214,7 +234,7 @@
   }
   @media (max-width: 560px) {
     .topbar { gap: 4px; padding-left: 10px; padding-right: 10px; }
-    .brand .brand-text { display: none; }
+    .brand { font-size: 20px; }
     .device-slot .select { max-width: 44vw; }
     #memoryNav { display: none; }
     .thread { padding-top: 16px; }
@@ -230,10 +250,13 @@
 </head>
 <body>
 <header class="topbar">
+  <a class="brand" href="/" id="home"><span class="brand-text">OpenMob</span></a>
   <button class="btn btn-ghost icon-btn" id="sidebarToggle" title="Show or hide chats" aria-label="Chats" aria-controls="sidebar" aria-expanded="true">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M9.5 4.5v15"/></svg>
   </button>
-  <a class="brand" href="/" id="home"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span><span class="brand-text">OpenMob</span></a>
+  <button class="btn btn-ghost icon-btn" id="searchOpen" type="button" title="Search chats (⌘K)" aria-label="Search chats" aria-haspopup="dialog">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+  </button>
   <div class="spacer"></div>
   <a class="btn btn-ghost" id="memoryNav" href="/memory" title="What your agent remembers about you and your apps">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>
@@ -250,7 +273,7 @@
     <button class="btn new-chat" id="newChat" type="button">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>New chat
     </button>
-    <input class="input chat-search" id="chatSearch" type="search" placeholder="Search chats" aria-label="Search chats">
+    <input class="input chat-search" id="chatSearch" type="search" placeholder="Search chats" aria-label="Search chats" hidden>
     <div class="side-label" id="chatsLabel">Chats</div>
     <div class="chat-list" id="chatList" aria-labelledby="chatsLabel"></div>
     <div class="side-foot">
@@ -279,6 +302,18 @@
     </div>
   </nav>
   <div class="scrim" id="scrim" hidden></div>
+  <div class="search-overlay" id="searchOverlay" hidden>
+    <div class="search-dialog" role="dialog" aria-modal="true" aria-label="Search chats">
+      <div class="search-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+        <input id="searchInput" type="search" placeholder="Search chats" aria-label="Search chats" autocomplete="off" aria-controls="searchResults">
+        <button class="btn btn-ghost icon-btn" id="searchClose" type="button" aria-label="Close search">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="search-results" id="searchResults" role="listbox" aria-label="Chats"></div>
+    </div>
+  </div>
   <section class="chat" aria-label="Conversation">
     <div class="thread" id="thread" aria-live="polite"><div class="column" id="column"></div></div>
     <div class="composer-wrap">
@@ -1038,6 +1073,7 @@ $("mic").onclick = () => { if (!$("mic").classList.contains("busy")) toggleMic()
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && recorder) { recCancelled = true; recorder.stop(); return; }
   if (e.key === "Escape") {
+    if (!$("searchOverlay").hidden) { closeSearch(); return; }
     if ($("menu").open) { $("menu").open = false; $("menu").querySelector("summary").focus(); return; }
     if (narrow() && !sidebarHidden) { sidebarHidden = true; applySidebar(); $("sidebarToggle").focus(); return; }
     if (narrow() && !panelHidden) { panelHidden = true; applyPanel(); $("panelToggle").focus(); }
@@ -1115,6 +1151,91 @@ async function openChat(c) {
   pollNow();
 }
 $("chatSearch").addEventListener("input", renderChats);
+
+// ---------- search dialog ----------
+
+let searchHits = [];
+let searchSel = 0;
+// Coarse, Claude-style dates: Today, Yesterday, Past week, Past month, then the month.
+function whenLabel(t) {
+  const d = new Date(t * 1000), now = new Date();
+  const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  if (d.getTime() >= midnight) return "Today";
+  if (d.getTime() >= midnight - 86400000) return "Yesterday";
+  const days = (now - d) / 86400000;
+  if (days < 7) return "Past week";
+  if (days < 31) return "Past month";
+  return d.toLocaleDateString(undefined, { month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
+}
+const SEARCH_ICON_CHAT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3.5c4.7 0 8.5 3.4 8.5 7.6s-3.8 7.6-8.5 7.6c-1.1 0-2.2-.2-3.2-.5L4 20l1.2-3.9c-1.1-1.4-1.7-3.1-1.7-5 0-4.2 3.8-7.6 8.5-7.6z"/></svg>';
+const SEARCH_ICON_ENTER = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5v7a3 3 0 01-3 3H6"/><path d="M9.5 11.5L6 15l3.5 3.5"/></svg>';
+function renderSearch() {
+  const q = $("searchInput").value.trim().toLowerCase();
+  searchHits = chats.filter((c) => !q || c.title.toLowerCase().includes(q) || (c.device_model || "").toLowerCase().includes(q)).slice(0, 50);
+  searchSel = Math.min(searchSel, Math.max(0, searchHits.length - 1));
+  $("searchResults").replaceChildren(...(searchHits.length ? searchHits.map((c, i) => {
+    const row = el("button", "search-row");
+    row.type = "button";
+    row.id = `search-${i}`;
+    row.setAttribute("role", "option");
+    row.setAttribute("aria-selected", String(i === searchSel));
+    row.insertAdjacentHTML("afterbegin", SEARCH_ICON_CHAT);  // fixed icon markup, no user data
+    row.append(el("span", "t", c.title), el("span", "when", whenLabel(c.updated)));
+    const enter = el("span", "enter");
+    enter.insertAdjacentHTML("afterbegin", SEARCH_ICON_ENTER);
+    row.append(enter);
+    row.onmousemove = () => { if (searchSel !== i) { searchSel = i; markSearch(); } };
+    row.onclick = () => pickSearch(i);
+    return row;
+  }) : [el("div", "search-empty", q ? "No chats match." : "No chats yet.")]));
+  if (searchHits.length) $("searchInput").setAttribute("aria-activedescendant", `search-${searchSel}`);
+}
+function markSearch() {
+  $("searchResults").querySelectorAll(".search-row").forEach((r, i) => r.setAttribute("aria-selected", String(i === searchSel)));
+  const row = $(`search-${searchSel}`);
+  if (row) { row.scrollIntoView({ block: "nearest" }); $("searchInput").setAttribute("aria-activedescendant", row.id); }
+}
+function pickSearch(i) {
+  const c = searchHits[i];
+  if (!c) return;
+  closeSearch();
+  openChat(c);
+}
+let searchReturnFocus = null;
+function openSearch() {
+  searchReturnFocus = document.activeElement;
+  $("searchOverlay").hidden = false;
+  $("searchInput").value = "";
+  searchSel = 0;
+  renderSearch();
+  $("searchInput").focus();
+  loadChats().then(() => { if (!$("searchOverlay").hidden) renderSearch(); });  // freshest list
+}
+function closeSearch() {
+  $("searchOverlay").hidden = true;
+  if (searchReturnFocus && searchReturnFocus.focus) searchReturnFocus.focus();
+}
+$("searchOpen").onclick = openSearch;
+$("searchClose").onclick = closeSearch;
+$("searchOverlay").addEventListener("mousedown", (e) => { if (e.target === $("searchOverlay")) closeSearch(); });
+$("searchInput").addEventListener("input", () => { searchSel = 0; renderSearch(); });
+$("searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    if (!searchHits.length) return;
+    searchSel = (searchSel + (e.key === "ArrowDown" ? 1 : -1) + searchHits.length) % searchHits.length;
+    markSearch();
+  } else if (e.key === "Enter" && !e.isComposing) {
+    e.preventDefault();
+    pickSearch(searchSel);
+  }
+});
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if ($("searchOverlay").hidden) openSearch(); else closeSearch();
+  }
+});
 const narrow = () => window.matchMedia("(max-width: 900px)").matches;
 let sidebarHidden = narrow();
 try {
