@@ -283,6 +283,15 @@ class DeviceManager:
             session.coordinator.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
             session.coordinator.answer(task_id, "no")
 
+    def confirm_on_phone(self, session: Session) -> bool:
+        """True while the pending confirmation may only be approved on the phone (an API task whose
+        key can't approve), so the dashboard hides its own Approve button."""
+        snap = session.coordinator.snapshot()
+        if snap["question_kind"] != "confirm" or not snap["task_id"]:
+            return False
+        who = self._requester(snap["task_id"])
+        return bool(who and who["human"])
+
     def resume(self, session: Session) -> None:
         """After a (re)connected phone got its welcome: show who's using it and re-ask pending approvals."""
         if session.controller and session.controller[1]:

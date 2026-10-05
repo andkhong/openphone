@@ -40,9 +40,21 @@ WEBHOOK_RETRIES = (1.0, 4.0)  # waits before the 2nd and 3rd attempts
 
 # Internal names that must never reach a developer: model families, providers, classifiers.
 INTERNAL_NAMES = re.compile(
-    r"\b(claude[\w.-]*|anthropic|sonnet|opus|haiku|fable|jev[\w-]*|typesafe|whisper|openai|gpt-[\w.-]+)\b",
+    r"\b(claude[\w.-]*|anthropic|sonnet|opus|haiku|fable|jev[\w-]*|typesafe|whisper|openai|gpt-[\w.-]+"
+    r"|o[134](?:-[\w.-]+)?|gemini[\w.-]*|google[ -]?(?:ai|deepmind|vertex)[\w-]*|vertex ai|googleapis[\w.]*"
+    r"|deepmind)\b",
     re.IGNORECASE,
 )
+# Plus the exact model ids this server is configured with (any provider, local models too).
+_configured_names: re.Pattern | None = None
+
+
+def register_model_names(names) -> None:
+    """Scrub these configured model ids from public text too (e.g. a self-hosted "llama-3.3-70b")."""
+    global _configured_names
+    names = sorted({n for n in names if n}, key=len, reverse=True)
+    _configured_names = (re.compile("|".join(rf"(?<![\w.-]){re.escape(n)}(?![\w-])" for n in names), re.IGNORECASE)
+                         if names else None)
 EXCEPTION_TEXT = re.compile(r"^[A-Za-z_.]*(Error|Exception)\b")
 GENERIC_ERROR = "The task hit an internal error."
 PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "error": "warning", "question": "question",
@@ -60,6 +72,8 @@ def clean_text(message: str | None) -> str | None:
     if EXCEPTION_TEXT.match(message):
         return GENERIC_ERROR
     message = re.sub(r" \(matched by \w+\)", "", message)  # how an app name was resolved
+    if _configured_names is not None:
+        message = _configured_names.sub("OpenMob", message)
     return INTERNAL_NAMES.sub("OpenMob", message)
 
 
@@ -123,6 +137,7 @@ class V1Service:
         self.active: dict[str, set[str]] = {}  # key id → its unfinished task ids
         self.hits: dict[str, deque] = {}  # key id → request times in the last minute
         self._lock = threading.Lock()
+        register_model_names([m["id"] for m in self.cfg.models] + [t["model"] for t in self.cfg.api_tiers.values()])
         manager.task_requesters.append(self.requester)  # the phone shows who started a task
         manager.approval_listeners.append(self._on_phone_approval)
 

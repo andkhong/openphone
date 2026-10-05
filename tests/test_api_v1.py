@@ -39,6 +39,9 @@ class ScriptClient:
     """Fake model client: picks a script from the request's wording; step = assistant turns so far.
     Every response claims to come from an internal model, so leaks would be visible."""
 
+    # (model id, how a summary names it): swapped to test other providers' names
+    brand = ("claude-sonnet-5-5", "Claude Sonnet via Anthropic")
+
     def __init__(self):
         self.messages = self
 
@@ -47,8 +50,9 @@ class ScriptClient:
         first = msgs[0]["content"][0]["text"]
         request = first.rsplit("Request: ", 1)[-1].lower()
         step = sum(1 for m in msgs if m["role"] == "assistant")
-        done = [text_block("claude-sonnet-5-5 thinks this is done"),
-                tool_use("done", f"d{step}", summary="Finished with Claude Sonnet via Anthropic", success=True)]
+        model, named = self.brand
+        done = [text_block(f"{model} thinks this is done"),
+                tool_use("done", f"d{step}", summary=f"Finished with {named}", success=True)]
         if "ask me" in request:
             script = [[tool_use("ask_user", "q", question="Which account, Claude?")], done]
         elif "cart" in request:
@@ -60,7 +64,7 @@ class ScriptClient:
         else:
             script = [done]
         content = script[min(step, len(script) - 1)]
-        return SimpleNamespace(content=content, stop_reason="tool_use", model="claude-sonnet-5-5",
+        return SimpleNamespace(content=content, stop_reason="tool_use", model=model,
                                usage=SimpleNamespace(input_tokens=1000, output_tokens=50, cache_read_input_tokens=0))
 
 
@@ -263,6 +267,8 @@ def test_risky_tap_becomes_needs_confirmation(api):
     request = api.alice.phone.approval_requests[-1]
     assert request["task_id"] == task["id"] and request["requester"] == "test" and "Buy now" in request["question"]
     assert not any(a[0] == "tap" for a in api.alice.driver.actions)
+    status = api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()
+    assert status["confirm_on_phone"] is True  # the dashboard hides its own Approve button
     api.alice.phone.send({"type": "approval", "id": request["id"], "approved": True})
     wait_status(api.alice, task["id"], "succeeded")
     assert any(a[0] == "tap" for a in api.alice.driver.actions)
@@ -276,6 +282,7 @@ def test_owner_can_let_a_key_approve_risky_actions(api):
     assert r.json()["confirm_approve"] is True
     task = run_task(api.alice, "check the cart")
     wait_status(api.alice, task["id"], "needs_confirmation")
+    assert api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()["confirm_on_phone"] is False
     assert api.alice.v1.post(f"/v1/tasks/{task['id']}/answer", json={"approve": True}).json() == {"ok": True}
     wait_status(api.alice, task["id"], "succeeded")
     assert not api.alice.phone.approval_requests  # nobody needed to be asked on the phone
@@ -384,6 +391,28 @@ def test_public_responses_name_no_model_or_provider(api):
     # ...while internally the tokens and the model were recorded for billing reconciliation.
     row = api.ledger.task(api.store.account_id_for("alice@example.com"), task["id"])
     assert "claude-sonnet-5-5" in row["internal_usage"] and row["credits"] == 2 * 10
+
+
+def test_other_providers_model_names_never_leak(api, monkeypatch):
+    monkeypatch.setattr(ScriptClient, "brand", ("gemini-3-pro", "Gemini 3 Pro on Google AI (via OpenAI-compatible gpt-5.1 and o4-mini)"))
+    gemini = re.compile(r"gemini|google|openai|gpt|o4-mini", re.IGNORECASE)
+    task = run_task(api.alice, "open maps", tier="best")
+    wait_status(api.alice, task["id"], "succeeded")
+    dumps = [api.alice.v1.get(f"/v1/tasks/{task['id']}").text, api.alice.v1.get("/v1/history").text]
+    with api.alice.v1.stream("GET", f"/v1/tasks/{task['id']}/events") as r:
+        dumps.append("".join(r.iter_text()))
+    blob = "\n".join(dumps)
+    assert "Finished with OpenMob" in blob and not gemini.search(blob), gemini.search(blob)
+
+
+def test_configured_model_ids_are_scrubbed():
+    from openmob.platform.service import clean_text, register_model_names
+
+    register_model_names(["llama-3.3-70b-local"])
+    try:
+        assert clean_text("llama-3.3-70b-local opened Google Maps") == "OpenMob opened Google Maps"
+    finally:
+        register_model_names(m["id"] for m in Config().models)
 
 
 def test_upstream_error_text_is_reworded():

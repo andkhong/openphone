@@ -492,7 +492,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         s = owned_session(device_id, request)
         snap = s.coordinator.snapshot()
         feedback = history.feedback_map(account(request), snap["chat_id"]) if history and snap.get("chat_id") else {}
-        return {**snap, "device": s.describe(), "feedback": feedback}
+        # confirm_on_phone: only the phone may approve the pending risky action (the dashboard hides its buttons)
+        on_phone = getattr(manager, "confirm_on_phone", None)
+        return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s))}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
 
