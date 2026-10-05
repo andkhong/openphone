@@ -49,11 +49,12 @@
     <div class="card">
       <div class="qr" id="qr" role="img" aria-label="Pairing QR code"></div>
       <div class="scan">Scan with the phone's camera</div>
+      <div class="scan" id="serverLine" hidden>The phone connects to <b id="serverName"></b>. Keep it on the same network as this computer.</div>
       <div class="scan expiry" id="expiry" hidden aria-live="polite"></div>
       <div style="text-align:center; margin-top:10px"><a class="btn btn-sm" id="newCode" href="#" hidden>Make a new code</a></div>
       <div class="callout warn" id="localWarn" hidden>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19zM12 10v4M12 17.5v.01"/></svg>
-        <div>You're on a localhost address, which phones can't reach. Start the server with <code>openmob run --public</code> and open this page from the public link.</div>
+        <div>You're on a localhost address, which phones can't reach. Open this page with your computer's network address instead (the one <code>openmob run</code> prints under "On your network"), or start the server with <code>openmob run --public</code> and open the public link.</div>
       </div>
     </div>
 
@@ -120,6 +121,9 @@ async function init() {
     const p = await api("/api/pairing");  // in account mode this issues a fresh one-time code
     $("pairUrl").textContent = p.pair_url;
     $("localWarn").hidden = !p.local;
+    const host = (() => { try { return new URL(p.server).host; } catch { return ""; } })();
+    $("serverName").textContent = host;
+    $("serverLine").hidden = !host || p.local || p.server.startsWith("https://");  // only for local-network servers
     $("apkLine").textContent = p.apk_url ? "Download it from that page and allow the install." : "The app isn't built on this server yet (cd android && ./gradlew assembleDebug).";
     $("qr").replaceChildren();
     $("qr").classList.remove("expired");

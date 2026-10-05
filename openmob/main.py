@@ -106,7 +106,7 @@ def cmd_run(cfg: Config, args) -> None:
     else:
         print("🎙  Mic button disabled: install Whisper with  pip install -e '.[voice]'")
 
-    from .server import create_app, lan_ip, serve_in_background
+    from .server import create_app, lan_ip, local_hostname, serve_in_background
 
     store = None
     if args.accounts:
@@ -119,7 +119,11 @@ def cmd_run(cfg: Config, args) -> None:
     # With accounts the dashboard uses a sign-in session, so links carry no secret.
     suffix = "/login" if store else f"/?t={token}"
     print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")
-    print(f"   On your network: http://{lan_ip()}:{cfg.server_port}{suffix}")
+    if local_hostname():  # the name stays the same when the IP changes (sleep, another Wi-Fi)
+        print(f"   On your network: http://{local_hostname()}:{cfg.server_port}{suffix}")
+        print(f"                    (or http://{lan_ip()}:{cfg.server_port}{suffix} until this computer's IP changes)")
+    else:
+        print(f"   On your network: http://{lan_ip()}:{cfg.server_port}{suffix}")
     if args.public:
         from .tunnel import open_tunnel
 

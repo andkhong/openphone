@@ -265,10 +265,17 @@
     .bar .model { margin-right: auto; }
     .disclaimer { display: none; }
   }
+  /* Shown when the dashboard can't reach its server at all (Mac asleep, IP changed, server stopped). */
+  .server-down { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); z-index: 60; width: min(560px, calc(100vw - 32px)); box-shadow: var(--shadow-lg); }
+  .server-down b { display: block; }
 </style>
 </head>
 <body>
 <div class="app">
+<div class="callout warn server-down" id="serverDown" role="status" aria-live="polite" hidden>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19zM12 10v4M12 17.5v.01"/></svg>
+  <div><b id="serverDownTitle">Can't reach your OpenMob server</b><span id="serverDownText"></span></div>
+</div>
 <nav class="sidebar" id="sidebar" aria-label="Chats">
   <div class="side-head">
     <a class="brand" href="/" id="home"><span class="brand-text">OpenMob</span></a>
@@ -1650,7 +1657,35 @@ if (token) {
   $("home").href = "/?t=" + encodeURIComponent(token);
 }
 updateComposer();
-checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); loadPendingNotes(); statusLoop(); screenLoop(); }));
+// Server heartbeat: if the dashboard can't reach its server at all (not just the phone), say so and
+// why that usually happens, and pick up where it left off once the server answers again.
+let serverMisses = 0;
+async function serverHeartbeat() {
+  while (true) {
+    let up = false;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    try { up = (await fetch("/api/auth/me", { signal: ctl.signal, cache: "no-store" })).ok; } catch {}
+    clearTimeout(timer);
+    if (up) {
+      if (serverMisses >= 2) { loadDevices().then(() => pollNow()); }  // back: refresh what may have changed
+      serverMisses = 0;
+    } else {
+      serverMisses++;
+    }
+    const down = serverMisses >= 2;  // one miss can be a blip
+    $("serverDown").hidden = !down;
+    if (down) {
+      $("serverDownTitle").textContent = navigator.onLine === false ? "You're offline" : "Can't reach your OpenMob server";
+      $("serverDownText").textContent = navigator.onLine === false
+        ? "Check this computer's internet connection. The dashboard reconnects by itself."
+        : `Is the computer running it asleep (lid closed), stopped, or on a different network? If its address changed, open it by name (the "On your network" link that openmob run prints). Retrying every few seconds…`;
+    }
+    await new Promise((r) => setTimeout(r, down ? 3000 : 5000));
+  }
+}
+
+checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); loadPendingNotes(); statusLoop(); screenLoop(); serverHeartbeat(); }));
 setInterval(loadChats, 15000);
 setInterval(loadPendingNotes, 15000);
 setInterval(() => loadDevices(false), 10000);

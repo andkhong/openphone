@@ -9,6 +9,8 @@ import asyncio
 import io
 import os
 import socket
+import subprocess
+import sys
 import threading
 import time
 import weakref
@@ -309,6 +311,11 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         from urllib.parse import quote
 
         base = public_base(request)
+        # A phone can't reach "localhost": pair it with this computer's network name instead, which
+        # also keeps working when the computer's IP changes. (Not behind a tunnel: that's public.)
+        tunneled = "x-forwarded-host" in request.headers
+        if base.startswith(("http://localhost", "http://127.0.0.1")) and not tunneled and local_hostname():
+            base = f"http://{local_hostname()}:{request.url.port or 80}"
         common = {
             "server": base,
             "apk_url": f"{base}/download/openmob.apk" if APK.exists() else None,
@@ -795,3 +802,24 @@ def lan_ip() -> str:
             return s.getsockname()[0]
         except OSError:
             return "127.0.0.1"
+
+
+_local_name: list[str | None] = []
+
+
+def local_hostname() -> str | None:
+    """This computer's Bonjour name (e.g. "ans-MacBook-Air.local"), which phones and browsers on the
+    same network can reach. Unlike lan_ip() it survives the IP changing (sleep, another Wi-Fi)."""
+    if not _local_name:
+        name = None
+        if sys.platform == "darwin":
+            try:
+                out = subprocess.run(["scutil", "--get", "LocalHostName"], capture_output=True, text=True, timeout=2)
+                name = out.stdout.strip() or None
+            except (OSError, subprocess.SubprocessError):
+                name = None
+        if not name:
+            host = socket.gethostname()
+            name = host.removesuffix(".local") if host.endswith(".local") else None
+        _local_name.append(f"{name}.local" if name else None)
+    return _local_name[0]
