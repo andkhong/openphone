@@ -130,6 +130,12 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             return (STATIC / "landing.html").read_text()
         return PAGE.read_text()  # re-read so page tweaks show up without a restart
 
+    @app.get("/static/ds.css")
+    def design_system() -> Response:
+        """The design system every page links (public: the phone's /pair page uses it too)."""
+        css = (STATIC / "ds.css").read_text()
+        return Response(css, media_type="text/css", headers={"Cache-Control": "public, max-age=300"})
+
     @app.get("/connect", response_class=HTMLResponse)
     def connect_page() -> str:
         return (STATIC / "connect.html").read_text()
