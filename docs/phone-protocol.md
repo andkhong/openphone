@@ -219,6 +219,10 @@ Stop after **150** elements. On any failure (no root, timeout), reply `ok:true` 
 | `clickable` | bool | `isClickable OR isLongClickable OR isCheckable` |
 | `checked` | bool or null | `isChecked` if `isCheckable`, else **`null`** |
 | `bounds` | [int ×4] | `[left, top, right, bottom]` from `getBoundsInScreen`, device pixels |
+| `password` | bool, optional | `true` when `isPassword`; omitted otherwise |
+| `editable` | bool, optional | `true` when `isEditable`; omitted otherwise |
+
+`password` and `editable` are optional: servers that don't know them ignore them, and a missing field means `false`. The server uses `password` to keep the model from typing into password fields.
 
 The array order defines the element indices the model uses (`tap_element [3]`), so keep it stable for a given screen. The server taps the centre of `bounds`.
 
@@ -256,6 +260,7 @@ Params: `{"x1": 540, "y1": 1755, "x2": 540, "y2": 585, "duration_ms": 400}`. One
 
 ### 4.10 `type_text`
 Params: `{"text": "lofi hip hop"}`. Insert `text` into the **currently focused editable field** at the cursor, replacing any selected text. Do not wipe the field: adb `input text` types at the cursor, and the agent relies on that. When the field shows only its hint (`isShowingHintText`, API 26+), treat it as empty. Any Unicode text must work. Do not press Enter: the server sends `key ENTER` separately when it wants to submit. Error if no editable node has focus: `"No focused text field. Tap the field first."`
+Error if the focused field is a password field (`isPassword`), whatever the server asked: `"I don't type passwords. Please type it yourself."`
 
 ### 4.11 `key`
 Params: `{"name": "BACK"}`. Names are uppercase and come from `adb.KEYCODES`:
