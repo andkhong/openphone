@@ -110,16 +110,30 @@ class ApprovalActivity : Activity() {
         }
         prompt?.cancel()
         val cancel = CancellationSignal().also { prompt = it }
-        BiometricPrompt.Builder(this)
+        // The approval key only signs once this prompt is passed: that signature is what the server
+        // trusts, so nothing else on the phone (or holding its device key) can approve.
+        val signer = ApprovalKeys.signer()
+        val built = BiometricPrompt.Builder(this)
             .setTitle(getString(R.string.approval_prompt_title))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
             .setDescription(request.shownQuestion)
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
-            .authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+        val callback = object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                     if (prompt === cancel) prompt = null
-                    send(approved = true)
+                    val unlocked = result?.cryptoObject?.signature
+                    if (unlocked == null) {
+                        send(approved = true) // no approval key on this phone: the server treats it as an older app
+                        return
+                    }
+                    val now = System.currentTimeMillis() / 1000
+                    val signature = runCatching { ApprovalKeys.sign(unlocked, request.id, request.taskId, now) }.getOrNull()
+                    if (signature == null) {
+                        showStatus(getString(R.string.approval_not_confirmed))
+                        return
+                    }
+                    send(approved = true, signature = signature, timestamp = now)
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
@@ -127,11 +141,16 @@ class ApprovalActivity : Activity() {
                     if (!isDestroyed) showStatus(getString(R.string.approval_not_confirmed))
                 }
                 // onAuthenticationFailed (one wrong finger) needs nothing: the prompt stays up.
-            })
+            }
+        if (signer != null) {
+            built.authenticate(BiometricPrompt.CryptoObject(signer), cancel, mainExecutor, callback)
+        } else {
+            built.authenticate(cancel, mainExecutor, callback)
+        }
     }
 
-    private fun send(approved: Boolean) {
-        if (Approvals.answer(this, requestId, approved)) {
+    private fun send(approved: Boolean, signature: String? = null, timestamp: Long = 0) {
+        if (Approvals.answer(this, requestId, approved, signature, timestamp)) {
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,
             ).show()
