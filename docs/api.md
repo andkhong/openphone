@@ -1,214 +1,349 @@
-# OpenMob developer API (v1)
+# API reference
 
-Run tasks on your own phones from code: "open YouTube and play lo-fi", "check my last Uber receipt",
-"what's on the screen?". The API is served by any OpenMob server running in accounts mode
-(`openmob run --accounts`, or the hosted server), at `https://<server>/v1`.
+The REST API lives at `https://<server>/v1`. Requests and responses are JSON, times are Unix
+timestamps in seconds, and every request needs an API key. AI agents can use the same operations as
+MCP tools: see [MCP](mcp.md).
 
-Phase 1 covers **your own phones**: the ones paired to your account. Access to other people's
-phones (with their consent) comes later.
+```sh
+curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
+```
 
-AI agents (Claude Code, Cursor, Claude Desktop, the Claude and OpenAI APIs) can use the same API
-as MCP tools at `https://<server>/mcp`, with the same key and the same rules: see [mcp.md](mcp.md).
+| Method | Path | Scope | Does |
+|---|---|---|---|
+| `GET` | [`/v1/devices`](#get-v1devices) | `devices:read` | List your phones |
+| `POST` | [`/v1/devices/{device_id}/tasks`](#post-v1devicesdevice_idtasks) | `tasks:run` | Start a task |
+| `GET` | [`/v1/tasks`](#get-v1tasks) | `tasks:read` | List recent tasks |
+| `GET` | [`/v1/tasks/{task_id}`](#get-v1taskstask_id) | `tasks:read` | Get a task |
+| `GET` | [`/v1/tasks/{task_id}/events`](#get-v1taskstask_idevents) | `tasks:read` | Stream a task's events |
+| `POST` | [`/v1/tasks/{task_id}/answer`](#post-v1taskstask_idanswer) | `tasks:run` | Answer a question, or decline a risky action |
+| `POST` | [`/v1/tasks/{task_id}/cancel`](#post-v1taskstask_idcancel) | `tasks:run` | Cancel a task |
+| `GET` | [`/v1/devices/{device_id}/screenshot`](#get-v1devicesdevice_idscreenshot) | `screen:read` | The phone's screen now |
+| `GET` | [`/v1/memory`](#get-v1memory) | `memory:read` | List memory notes |
+| `POST` | [`/v1/memory`](#post-v1memory) | `memory:write` | Add a note |
+| `DELETE` | [`/v1/memory/{note_id}`](#delete-v1memorynote_id) | `memory:write` | Delete a note |
+| `GET` | [`/v1/history`](#get-v1history) | `history:read` | Your requests across the dashboard and the API |
 
 ## Authentication
 
-Create a key at **`/developer`** (Dashboard → account menu (bottom left) → Developer API & AI agents) or on the server with
-`openmob key create EMAIL`. Keys look like `om_live_<id>_<secret>`. A key is shown once and only
-its hash is stored, so copy it when you create it. Send it on every request:
+Send an API key on every request:
 
 ```
 Authorization: Bearer om_live_…
 ```
 
-Treat a key like a password: it can operate your phones. Keep it in an environment variable, not
-in code. Rotate or revoke it in `/developer`; a revoked key fails immediately and its running
-tasks are cancelled.
+Create keys in the developer console: click the account button (bottom left of the dashboard) →
+**Developer API & AI agents** → **API keys** → **Create key**. A server's admin can also create one
+with `openmob key create EMAIL`. Keys look like `om_live_<id>_<secret>`. A key is shown once and
+only its hash is stored, so copy it when you create it. You can have up to 20 keys.
 
-| Status | Meaning |
+A key acts as your account on your phones. Keep it in an environment variable, never in code. In
+**API keys** you can **rotate** a key (a new secret with the same name, scopes and settings; the
+old one stops working) or **revoke** it (it fails at once, and its unfinished tasks are cancelled).
+
+| Problem | Status |
 |---|---|
-| 401 | Missing, malformed, wrong or revoked key |
-| 403 | The key lacks the scope this route needs, or API access was switched off for the key or account. Also `{"code": "confirmation_requires_owner"}` when a key approves a risky action (see below). |
-| 404 | No such phone or task **for your account**. Other accounts' phones and tasks always look like this. |
-| 409 | The phone is offline, or the task isn't in a state for that action |
-| 429 | Rate limit, concurrent-task cap or daily quota reached; see `Retry-After` |
+| No key, a malformed header, or a wrong or revoked key | `401`, with `WWW-Authenticate: Bearer` |
+| The key or the account's API access was switched off by an admin | `403` |
+| The key lacks the scope the route needs | `403` with `"code": "insufficient_scope"` |
 
 ## Scopes
 
-| Scope | Allows |
-|---|---|
-| `devices:read` | `GET /v1/devices` |
-| `tasks:run` | Create, answer and cancel tasks |
-| `tasks:read` | Read tasks and their event streams |
-| `screen:read` | `GET /v1/devices/{id}/screenshot`. **Sensitive**: it sees everything on screen. Never a default. |
-| `history:read` | `GET /v1/history`: your chat history across the dashboard and the API |
-| `memory:read` | `GET /v1/memory`: the notes your agent remembers about you and your apps |
-| `memory:write` | `POST /v1/memory`, `DELETE /v1/memory/{id}`: add or delete notes |
+Each key carries a set of scopes. Choose them when you create the key; to change them, create a
+new key.
 
-New keys get `devices:read`, `tasks:run` and `tasks:read` unless you choose otherwise.
+| Scope | Allows | Default |
+|---|---|---|
+| `devices:read` | List your phones | Yes |
+| `tasks:run` | Start, answer and cancel tasks | Yes |
+| `tasks:read` | Read tasks and stream their events | Yes |
+| `screen:read` | Take screenshots. **Sensitive:** it sees everything on screen | No |
+| `history:read` | Read your chat history across the dashboard and the API | No |
+| `memory:read` | Read your memory notes | No |
+| `memory:write` | Add and delete memory notes | No |
 
-## Tiers and credits
+## The task object
 
-Every task runs at a tier. Higher tiers are smarter, slower and cost more per step.
-
-| Tier | Credits per step |
-|---|---|
-| `fast` | 1 |
-| `balanced` (default) | 3 |
-| `best` | 10 |
-
-A **step** is one action on the phone (a tap, a scroll, typing, opening an app). A task's credits
-are `steps × tier rate` and are known when it finishes. A task cancelled before it starts costs 0.
-(These are the defaults; a server operator can change them with `api_tiers` in config.yaml.)
-
-## Limits (per key, defaults)
-
-| Limit | Default |
-|---|---|
-| Requests per minute | 60 |
-| Unfinished tasks at once | 2 |
-| Tasks per UTC day | 200 |
-| Credits per UTC day | unlimited (`api_daily_credits` on the server; counts running tasks too) |
-| Steps per task | 40 (`max_steps` can lower it) |
-
-Every 429 carries a `code`: `too_many_tasks`, `daily_quota` or `credits_exhausted` (with
-`Retry-After` until the next UTC day), or none for the per-minute rate limit.
-
-A phone runs one task at a time. Further tasks wait in its queue with status `queued`.
-
-## Endpoints
-
-### `GET /v1/devices`, scope `devices:read`
-
-```json
-{"devices": [{"id": "app-3f2a…", "name": "Samsung SM-S928U", "platform": "android",
-              "online": true, "busy": false, "last_seen": 1790000000.0}]}
-```
-
-### `POST /v1/devices/{device_id}/tasks`, scope `tasks:run`
-
-```json
-{"instruction": "open YouTube and search for lo-fi", "tier": "balanced", "max_steps": 20, "memory": "on"}
-```
-
-Returns `201` with the task (below). `memory` is `on` (the default: use your notes, and save what
-you ask it to remember), `read_only` (use notes, save nothing) or `off` (incognito). API tasks never
-see or extend the dashboard chat's recent requests. `instruction` is 1–2000 characters. It's always run as a
-task: words like "stop" in it are never treated as commands to the phone.
-
-### `GET /v1/tasks/{task_id}`, scope `tasks:read`
+`POST /v1/devices/{device_id}/tasks`, `GET /v1/tasks/{task_id}`, the `done` event and webhooks all
+return a task in this shape:
 
 ```json
 {
-  "id": "9c1e0b7a2f44",
-  "device_id": "app-3f2a…",
+  "id": "bce01b5f5406",
+  "device_id": "app-3f2a9c",
   "status": "succeeded",
-  "tier": "balanced",
+  "tier": "fast",
   "instruction": "open YouTube and search for lo-fi",
-  "created": 1790000000.1, "started": 1790000000.2, "finished": 1790000012.9,
+  "created": 1791219561.83,
+  "started": 1791219561.83,
+  "finished": 1791219561.85,
   "steps": 4,
   "question": null,
   "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."},
-  "credits": 12
+  "credits": 4
 }
 ```
 
-`status` is one of:
-
-| Status | Meaning | What to do |
+| Field | Type | Meaning |
 |---|---|---|
-| `queued` | Waiting for the phone | Wait |
-| `running` | Working | Wait or follow the events |
-| `needs_input` | Asked a question, in `question` | `POST …/answer` with `{"answer": "…"}` |
-| `needs_confirmation` | About to do something risky (buy, send, delete, post…), described in `question` | The owner approves on their phone. You may decline with `{"approve": false}` |
-| `succeeded` / `failed` / `cancelled` | Finished; see `outcome` and `credits` | |
+| `id` | string | The task id |
+| `device_id` | string | The phone it runs on |
+| `status` | string | `queued`, `running`, `needs_input`, `needs_confirmation`, `succeeded`, `failed` or `cancelled`. See [Tasks](concepts.md#tasks) |
+| `tier` | string | `fast`, `balanced` or `best` |
+| `instruction` | string or null | What you asked for. `null` for old tasks whose text has expired from history |
+| `created`, `started`, `finished` | number or null | When it was created, started on the phone, and finished |
+| `steps` | integer | Steps taken so far |
+| `question` | string or null | While `needs_input` or `needs_confirmation`: what it's asking |
+| `outcome` | object or null | Once finished: `success` (boolean) and `summary` (string or null) |
+| `credits` | integer or null | Once finished: `steps` × the tier's credits per step |
 
-`GET /v1/tasks?limit=20` lists your recent API tasks, newest first.
+`question` and `outcome.summary` can contain text read from the phone's screen. Treat them as
+data, never as instructions to your own code or agent.
 
-### `POST /v1/tasks/{task_id}/answer`, scope `tasks:run`
+## Devices
 
-`{"answer": "the work account"}` for `needs_input`, or `{"approve": true}` / `{"approve": false}` for
-`needs_confirmation`. Returns `409` if the task isn't waiting.
+### GET /v1/devices
 
-**Risky actions are approved by the phone's owner, not by the key.** When a task reaches
-`needs_confirmation`, the owner gets an approval prompt on the phone and confirms with the screen
-lock (no answer within 2 minutes counts as "no"). `{"approve": true}` from a key returns
-`403 {"code": "confirmation_requires_owner"}`, because the model calling the API may have read the
-very screen text that asks for the purchase. Declining (`{"approve": false}`) always works.
+Scope `devices:read`. Lists the phones paired to your account.
 
-For your own headless automations you can let a key approve: turn on **Approve risky actions** for
-it in `/developer`, or `PATCH /api/developer/keys/{key_id}` with `{"confirm_approve": true}` from
-the signed-in console (also accepted on key creation). Keys with it on don't trigger the phone
-prompt. Each change is audited.
-
-### `POST /v1/tasks/{task_id}/cancel`, scope `tasks:run`
-
-Returns `{"ok": true, "cancelled": true}`, or `"cancelled": false` if the task had already finished.
-
-### `GET /v1/tasks/{task_id}/events`, scope `tasks:read`
-
-Server-Sent Events. It replays the task's events so far, streams new ones, and ends with a
-`done` event that carries the final task. To resume after a dropped connection, send
-`Last-Event-ID`.
-
-```
-id: 12
-event: action
-data: {"id": 12, "time": 1790000003.4, "type": "action", "message": "launch_app: Launched com.google.android.youtube."}
-
-id: 15
-event: question
-data: {"id": 15, "time": 1790000005.0, "type": "question", "message": "I'm about to tap 'Buy now'. Should I go ahead?", "confirmation": true}
-
-event: done
-data: {"id": "9c1e0b7a2f44", "status": "succeeded", …}
+```json
+{"devices": [{"id": "app-3f2a9c", "name": "Pixel 9", "platform": "android",
+              "online": true, "busy": false, "last_seen": 1791219552.32}]}
 ```
 
-Event types: `status`, `thought`, `action`, `warning`, `question`, `outcome`, plus the closing `done`.
+| Field | Meaning |
+|---|---|
+| `id` | Use it in the task and screenshot paths |
+| `name` | The phone's model name |
+| `online` | The OpenMob app is connected, so the phone can take tasks |
+| `busy` | It's running a task right now |
+| `last_seen` | When it last connected |
+
+## Tasks
+
+### POST /v1/devices/{device_id}/tasks
+
+Scope `tasks:run`. Starts a task on one of your phones.
+
+```sh
+curl -s -X POST https://<server>/v1/devices/app-3f2a9c/tasks \
+  -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
+  -d '{"instruction": "open YouTube and search for lo-fi", "tier": "fast"}'
+```
+
+| Field | Type | Default | Meaning |
+|---|---|---|---|
+| `instruction` | string, 1–2000 characters | required | The goal, in plain words |
+| `tier` | string | `balanced` | `fast`, `balanced` or `best`. See [Tiers and credits](concepts.md#tiers-and-credits) |
+| `max_steps` | integer ≥ 1 | 40 | Stop after this many steps. Values above the server's maximum are capped |
+| `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md#memory-modes-for-a-task) |
+
+Returns `201` with the new task, usually still `queued`:
+
+```json
+{"id": "bce01b5f5406", "device_id": "app-3f2a9c", "status": "queued", "tier": "fast",
+ "instruction": "open YouTube and search for lo-fi", "created": 1791219561.83, "started": null,
+ "finished": null, "steps": 0, "question": null, "outcome": null, "credits": null}
+```
+
+API tasks never see or extend the dashboard chat's recent requests: each one starts fresh.
+
+| Error | When |
+|---|---|
+| `400` | Unknown `tier` |
+| `404` | No such phone on your account |
+| `409` | The phone is offline |
+| `422` | `instruction` is empty or too long, `max_steps` is below 1, or `memory` isn't one of the three values |
+| `429` | Rate limit, the key's 2 unfinished tasks, or the daily quota. See [Errors & limits](errors.md#limits) |
+
+### GET /v1/tasks
+
+Scope `tasks:read`. Your account's API tasks, newest first. `?limit=` is 1–100 (default 20).
+
+```json
+{"tasks": [{"id": "bce01b5f5406", "device_id": "app-3f2a9c", "status": "succeeded", "tier": "fast", "steps": 4,
+            "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."}, "credits": 4, …}]}
+```
+
+### GET /v1/tasks/{task_id}
+
+Scope `tasks:read`. One task (see [the task object](#the-task-object)). `404` if it isn't one of
+your account's tasks.
+
+A task waiting for an answer:
+
+```json
+{"id": "6c22192303a9", "device_id": "app-3f2a9c", "status": "needs_input", "tier": "balanced",
+ "instruction": "find my last Uber receipt", "steps": 0,
+ "question": "Which account should I use, personal or work?", "outcome": null, "credits": null, …}
+```
+
+### GET /v1/tasks/{task_id}/events
+
+Scope `tasks:read`. A [Server-Sent Events](https://html.spec.whatwg.org/multipage/server-sent-events.html)
+stream: it replays the task's events so far, streams new ones as they happen, and ends with a
+`done` event carrying the final task. A comment line (`: keep-alive`) is sent every 15 seconds of
+silence.
 
 ```sh
 curl -N -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/tasks/$TASK/events
 ```
 
-### `GET /v1/devices/{device_id}/screenshot`, scope `screen:read`
+```
+id: 31
+event: status
+data: {"id": 31, "time": 1791219672.48, "type": "status", "message": "Working on: check out the headphones in my cart"}
 
-A JPEG of the phone's current screen. It goes straight from the phone to you: never stored, and
-sent with `Cache-Control: no-store`. Every call is written to the audit log.
+id: 32
+event: question
+data: {"id": 32, "time": 1791219672.49, "type": "question", "message": "I'm about to tap 'Buy now'. Should I go ahead?", "confirmation": true}
 
-### `GET /v1/history?limit=50`, scope `history:read`
+id: 34
+event: warning
+data: {"id": 34, "time": 1791219673.20, "type": "warning", "message": "tap: The user did not approve tapping 'Buy now' (they said 'no'). Don't do it. Pick another approach or call done."}
 
-Your latest requests across the dashboard and the API, newest first: `task_id`, `device_id`,
-`instruction`, `started`, `finished`, `steps`, `success`, `summary`.
+id: 36
+event: outcome
+data: {"id": 36, "time": 1791219673.20, "type": "outcome", "message": "Done.", "success": true}
 
-### Memory: `GET /v1/memory` (`memory:read`), `POST /v1/memory` and `DELETE /v1/memory/{id}` (`memory:write`)
-
-Short notes the agent reads before every task: about you (`app` null), or about one app (`app` is
-its package name, used when that app is in front). They're plain text owned by your account, so they
-work with whichever model runs the task.
-
-```json
-POST /v1/memory  {"text": "Use my second account in games"}
-→ 201 {"id": "8c541d3136ac", "text": "Use my second account in games", "app": null, "status": "active"}
-
-GET /v1/memory
-→ {"notes": [{"id": "…", "text": "…", "app": "com.netease.yysls", "status": "active", "created": 1790000000.0, "uses": 3}]}
+event: done
+data: {"id": "e111505afeb9", "status": "succeeded", "steps": 2, "credits": 6, …}
 ```
 
-`status: "proposed"` marks a note the agent suggested on its own, not yet approved by you on the
-"What I've learned" page (`/memory`). Proposed notes aren't used in tasks.
+| Event | Meaning | Extra fields |
+|---|---|---|
+| `status` | A progress note ("Working on: …", "Lost the connection to the phone…") | |
+| `thought` | What the agent is thinking | |
+| `action` | An action it took and its result, as `tool: result` | |
+| `warning` | Something went wrong in a step; the task usually carries on | |
+| `question` | It asked something (`needs_input`) or wants approval (`needs_confirmation`) | `confirmation`: true for an approval |
+| `memory` | It saved or proposed a memory note | |
+| `outcome` | The task's result | `success` |
+| `done` | The stream's last event; `data` is the final task | |
 
-## Orchestrations: one request across several phones
+Event ids increase but aren't consecutive. To resume after a dropped connection, reconnect with
+`Last-Event-ID: <last id you saw>`; most SSE clients do this for you.
 
-An orchestration runs up to 10 **steps**, each an ordinary task on one of your phones, in the
+### POST /v1/tasks/{task_id}/answer
+
+Scope `tasks:run`. Replies to a task that is waiting.
+
+For `needs_input`, send the answer (up to 500 characters):
+
+```sh
+curl -s -X POST https://<server>/v1/tasks/$TASK/answer \
+  -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
+  -d '{"answer": "work"}'
+```
+
+```json
+{"ok": true}
+```
+
+For `needs_confirmation`, send `{"approve": false}` to decline. Approving is for the phone's owner,
+on the phone: `{"approve": true}` from a key returns `403` unless the owner turned on **Approve
+risky actions** for that key. See [Safety & approvals](safety.md#risky-actions-need-the-owners-approval).
+
+```json
+{"detail": "Risky actions are approved by the phone's owner, who has been asked on their phone. Check the task again later, or send {\"approve\": false} to decline.",
+ "code": "confirmation_requires_owner"}
+```
+
+| Error | When |
+|---|---|
+| `400` | `needs_input` without an `answer`, or `needs_confirmation` without `approve` |
+| `403` `confirmation_requires_owner` | `{"approve": true}` from a key that may not approve |
+| `404` | Not your task |
+| `409` | The task isn't waiting for an answer |
+
+### POST /v1/tasks/{task_id}/cancel
+
+Scope `tasks:run`. Stops a queued or running task.
+
+```json
+{"ok": true, "cancelled": true}
+```
+
+`"cancelled": false` means it had already finished. Cancelling is safe to repeat. The task's status
+becomes `cancelled` shortly after.
+
+## Screenshots
+
+### GET /v1/devices/{device_id}/screenshot
+
+Scope `screen:read`. A JPEG of the phone's screen right now, sent straight from the phone with
+`Cache-Control: no-store`. It is never stored, and each call is written to your audit log.
+
+```sh
+curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" -o screen.jpg \
+  https://<server>/v1/devices/app-3f2a9c/screenshot
+```
+
+| Error | When |
+|---|---|
+| `403` `insufficient_scope` | The key doesn't have `screen:read` |
+| `404` | No such phone on your account |
+| `409` | The phone is offline |
+| `503` | The phone couldn't capture its screen right now; try again |
+
+## Memory
+
+Notes OpenMob reads before tasks. See [Memory](memory.md) for how they're used. If memory isn't
+enabled on the server, these routes return `501`.
+
+### GET /v1/memory
+
+Scope `memory:read`. All your notes, including proposals waiting for your approval.
+
+```json
+{"notes": [
+  {"id": "cdf1a8e1530a", "text": "Use my second account in games", "app": null, "status": "active", "created": 1791219552.32, "uses": 8},
+  {"id": "ba252e793f8d", "text": "Daily quests are under the scroll icon, top right", "app": "com.netease.yysls", "status": "active", "created": 1791219552.32, "uses": 0}
+]}
+```
+
+### POST /v1/memory
+
+Scope `memory:write`. Adds a note. `text` is 1–300 characters; `app` is an Android package name
+for a note about one app, or omitted for a note about you.
+
+```sh
+curl -s -X POST https://<server>/v1/memory \
+  -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
+  -d '{"text": "Use my work account for Uber receipts"}'
+```
+
+Returns `201`:
+
+```json
+{"id": "799fd944c960", "text": "Use my work account for Uber receipts", "app": null, "status": "active"}
+```
+
+Adding a note with the same text (and app) as an existing one returns the existing note. `400` if
+you already have 500 notes; `422` if `text` is empty or too long.
+
+### DELETE /v1/memory/{note_id}
+
+Scope `memory:write`. Deletes a note, or rejects a proposal.
+
+```json
+{"ok": true}
+```
+
+`404` if there's no such note on your account.
+
+## Orchestrations
+
+One request across several phones. An orchestration runs up to 10 **steps**, each an ordinary task on one of your phones, in the
 order their `depends_on` allows. Steps on different phones run at the same time; steps on the same
 phone wait for each other in that phone's queue. Every step is created like
-`POST /v1/devices/{id}/tasks`, so all the rules above apply to each one (scopes, sensitive apps,
+[`POST /v1/devices/{device_id}/tasks`](#post-v1devicesdevice_idtasks), so all the rules above apply to each one (scopes, sensitive apps,
 owner-approved risky actions, limits), and each step's task shows up in `/v1/tasks` too.
 
 Example: send the code shown on phone A to phone B.
 
 ```sh
 curl -s -X POST -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
-  $BASE/v1/orchestrations -d '{
+  https://<server>/v1/orchestrations -d '{
   "steps": [
     {"id": "read", "device_id": "app-phone-a", "instruction": "Open Messages and read the latest login code"},
     {"id": "type", "device_id": "app-phone-b", "depends_on": ["read"],
@@ -223,7 +358,9 @@ The summary was read off a screen, so it's cleaned, put on one line, quotes are 
 capped at 500 characters. Only steps the step depends on (directly or through others) may be
 referenced.
 
-### `POST /v1/orchestrations`, scope `tasks:run`
+### POST /v1/orchestrations
+
+Scope `tasks:run`.
 
 | Field | Meaning |
 |---|---|
@@ -257,88 +394,47 @@ Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate
 
 Steps are `pending`, `waiting_for_phone`, `running`, `succeeded`, `failed`, `cancelled` or `skipped`
 (with a `reason`, such as `dependency_failed`). A step whose task asks a question shows it in
-`question` and `task_status`; answer it with `POST /v1/tasks/{task_id}/answer` as usual.
+`question` and `task_status`; answer it with [`POST /v1/tasks/{task_id}/answer`](#post-v1taskstask_idanswer) as usual.
 
 Access is checked again before every step and continuously while steps run: revoking or disabling
 the key, switching off the account's API, or unpairing a step's phone stops the affected work at
 once. Runs aren't resumed after a server restart yet; they end as `failed` / `server_restarted`.
 
-### `GET /v1/orchestrations/{id}` and `GET /v1/orchestrations?limit=20`, scope `tasks:read`
+### GET /v1/orchestrations/{id} and GET /v1/orchestrations
+
+Scope `tasks:read`. `?limit=` 1–100, default 20.
 
 One orchestration, or your recent ones (newest first).
 
-### `POST /v1/orchestrations/{id}/cancel`, scope `tasks:run`
+### POST /v1/orchestrations/{id}/cancel
+
+Scope `tasks:run`.
 
 Cancels running steps and skips the rest: `{"ok": true, "cancelled": true}` (`false` if it had
 already ended).
 
-## Webhooks
+## History
 
-Set a URL in `/developer`. OpenMob then POSTs JSON when a task finishes or needs you:
+### GET /v1/history
+
+Scope `history:read`. Your latest requests across the dashboard, the phone and the API, newest
+first. `?limit=` is 1–200 (default 50).
 
 ```json
-{"type": "task.finished", "created": 1790000013.0, "task": { …same as GET /v1/tasks/{id}… }}
+{"turns": [{"task_id": "155d88f8913c", "device_id": "app-3f2a9c", "instruction": "open YouTube and search for lo-fi",
+            "started": 1791219696.83, "finished": 1791219696.84, "steps": 4, "success": true,
+            "summary": "Opened YouTube and searched for lo-fi."}]}
 ```
 
-Event types: `task.finished`, `task.needs_input`, `task.needs_confirmation`, and
-`orchestration.finished` (with `"orchestration": {…}` instead of `"task"`). Webhook URLs must be
-public `https://` addresses.
+`steps` and `success` are `null` when unknown (for example, a request cancelled before it started).
+History is kept for the server's retention period.
 
-Deliveries are durable: each event is stored before it's sent, and one that fails (a non-2xx answer
-or no answer within 5 s) is retried after 10 s, 30 s, 1, 2, 5 and 10 minutes, then every 15 minutes,
-for about an hour in all, even across server restarts. So the same event can arrive more than once:
-every attempt carries the same `X-OpenMob-Delivery: dlv_…` header, so drop ids you've already
-handled. Answer with any 2xx quickly and do the work afterwards. Retries go to the URL saved at the
-time; clearing the webhook drops what's still pending.
+## Errors
 
-Every request is signed with your webhook's signing secret, shown once when you save the URL:
+Errors are JSON with a `detail` message, plus a stable `code` where one applies:
 
-```
-X-OpenMob-Signature: t=1790000013,v1=5f2c…
+```json
+{"detail": "This API key lacks the screen:read scope.", "code": "insufficient_scope"}
 ```
 
-`v1` is the hex HMAC-SHA256 of `"{t}.{raw body}"`. Verify it, and reject `t` older than 5 minutes,
-which stops replays:
-
-```python
-import hashlib, hmac, time
-
-def verify(secret: str, header: str, body: bytes, tolerance: int = 300) -> bool:
-    parts = dict(p.split("=", 1) for p in header.split(","))
-    if abs(time.time() - int(parts["t"])) > tolerance:
-        return False
-    expected = hmac.new(secret.encode(), f"{parts['t']}.".encode() + body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, parts["v1"])
-```
-
-## Safety
-
-- **Risky actions need the owner's approval.** Taps that buy, send, delete, post and so on pause
-  the task in `needs_confirmation` until the owner approves on the phone (or anyone declines).
-- **A connection blip doesn't kill a task.** If the phone's connection drops mid-task, the task
-  waits up to 45 s for it to come back, then fails. Taps are never repeated.
-- **Sensitive apps are off-limits by default.** API tasks can't open banking, payment, wallet,
-  crypto or password-manager apps. A task that finds one in front stops. The phone's owner can
-  allow these in `/developer` → Safety.
-- **Everything is audited.** Each key creation, task, answer, cancel and screenshot is recorded in
-  an append-only log, with a hash of the instruction rather than its text. Admins can switch off a
-  key or a whole account's API access, which cancels its running tasks.
-
-## Quick start
-
-```sh
-export OPENMOB_API_KEY=om_live_…
-BASE=https://<server>
-
-DEVICE=$(curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" $BASE/v1/devices | jq -r '.devices[0].id')
-TASK=$(curl -s -X POST -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
-  -d '{"instruction": "open YouTube", "tier": "fast"}' $BASE/v1/devices/$DEVICE/tasks | jq -r .id)
-curl -N -H "Authorization: Bearer $OPENMOB_API_KEY" $BASE/v1/tasks/$TASK/events
-```
-
-## Data and privacy
-
-The text of tasks and their outcomes is saved in your chat history (visible in the dashboard),
-under the server's retention setting (`history_retention_days`). Screenshots are never stored.
-Phone screen content is processed by third-party AI providers to carry out tasks, and the
-privacy policy must say so.
+Every status code, `code` value and limit is in [Errors & limits](errors.md).

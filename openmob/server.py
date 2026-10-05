@@ -30,7 +30,8 @@ STATIC = Path(__file__).parent / "static"
 # Public developer docs served to the /developer console, by name. Only these files, nothing else
 # from docs/ (architecture notes and research stay out). Found next to the package (a source checkout)
 # or in the working directory (the Docker image copies docs/ to /app/docs).
-PUBLIC_DOCS = {"quickstart": "quickstart.md", "api": "api.md", "mcp": "mcp.md", "errors": "errors.md"}
+PUBLIC_DOCS = {"quickstart": "quickstart.md", "concepts": "concepts.md", "api": "api.md", "mcp": "mcp.md",
+               "memory": "memory.md", "webhooks": "webhooks.md", "safety": "safety.md", "errors": "errors.md"}
 DOCS_DIRS = [Path(os.environ["OPENMOB_DOCS_DIR"])] if os.environ.get("OPENMOB_DOCS_DIR") else []
 DOCS_DIRS += [Path(__file__).parent.parent / "docs", Path.cwd() / "docs"]
 PAGE = STATIC / "index.html"
