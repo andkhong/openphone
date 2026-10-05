@@ -10,6 +10,8 @@ ENV PYTHONUNBUFFERED=1 \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY openmob ./openmob
+# Public developer docs, served at /docs/{name} for the /developer console.
+COPY docs/quickstart.md docs/api.md docs/mcp.md docs/errors.md ./docs/
 RUN pip install ".[voice]"
 # Whisper for the dashboard's mic button, baked into the image so the first use doesn't download it.
 RUN python -c "from faster_whisper import WhisperModel; WhisperModel('base.en', device='cpu', compute_type='int8')"
