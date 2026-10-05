@@ -84,7 +84,8 @@ def test_console_endpoints_need_a_signed_in_owner(api):
 
 def test_docs_serve_only_the_allowlist(api):
     anonymous = httpx.Client(base_url=api.base)
-    for name in ("quickstart", "concepts", "api", "mcp", "memory", "webhooks", "safety", "errors", "api.md"):
+    for name in ("quickstart", "concepts", "phone-setup", "api", "mcp", "examples", "memory", "webhooks", "safety",
+                 "conventions", "errors", "testing", "self-hosting", "api.md"):
         r = anonymous.get(f"/docs/{name}")
         assert r.status_code == 200, name
         assert r.headers["content-type"].startswith("text/markdown") and r.text.startswith("# ")
@@ -101,10 +102,14 @@ def test_every_public_doc_is_in_the_console_and_links_only_to_public_docs():
 
     html = (Path(__file__).parent.parent / "openmob" / "static" / "developer.html").read_text()
     docs_map = re.search(r"const DOCS = \{(.*?)\};", html, re.S).group(1)
-    assert set(re.findall(r"(\w+):", docs_map)) == set(PUBLIC_DOCS)
+    assert set(re.findall(r"\"?([\w-]+)\"?:", docs_map)) == set(PUBLIC_DOCS)
     for name in PUBLIC_DOCS:
         assert f'data-route="docs/{name}"' in html, name
     docs = Path(__file__).parent.parent / "docs"
     for filename in PUBLIC_DOCS.values():
         for target in re.findall(r"\]\((?:\./)?([\w-]+)\.md", (docs / filename).read_text()):
             assert target in PUBLIC_DOCS, f"{filename} links to non-public {target}.md"
+    # The Docker image serves docs from its own copy: it must ship every public page.
+    dockerfile = (Path(__file__).parent.parent / "Dockerfile").read_text()
+    for filename in PUBLIC_DOCS.values():
+        assert f"docs/{filename}" in dockerfile, f"Dockerfile doesn't copy docs/{filename}"

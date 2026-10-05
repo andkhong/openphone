@@ -18,7 +18,8 @@ Today the API reaches only the phones paired to your own account.
 
 A **phone** is an Android device paired to your account through the **OpenMob app**. To pair one,
 click the account button (bottom left of the dashboard) → **Connect a phone**. Its id looks like
-`app-3f2a9c`; list your phones with [`GET /v1/devices`](api.md#get-v1devices).
+`app-3f2a9c`; list your phones with [`GET /v1/devices`](api.md#get-v1devices). See also
+[Set up a phone](phone-setup.md).
 
 The app is how OpenMob sees and operates the phone (through Android's accessibility service), so a
 phone can only run tasks while:
