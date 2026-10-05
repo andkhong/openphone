@@ -41,7 +41,7 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
     picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
     judge = None
-    if cfg.jev_api_key:
+    if cfg.jev_api_key and cfg.jev_enabled:
         judge = JevJudge(JevClient(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url))
     picker = chain_pickers(
         make_jev_picker(judge, cfg.jev_min_confidence) if judge else None,
@@ -233,6 +233,8 @@ def cmd_doctor(cfg: Config, args) -> None:
                 hint = " (set ANTHROPIC_WORKSPACE_ID, or use a workspace-scoped key)"
             check("Claude reachable", False, f"{getattr(exc, 'message', exc)}{hint}")
     optional("TYPESAFE_API_KEY (Jev classification)", bool(cfg.jev_api_key), "" if cfg.jev_api_key else "not set; Jev disabled")
+    if cfg.jev_api_key and not cfg.jev_enabled:
+        print("   (Jev is switched off by jev_enabled: false or OPENMOB_JEV=off)")
     if cfg.jev_api_key:
         from .jev import JevClient, JevError, JevJudge
 
@@ -411,6 +413,24 @@ def cmd_mcp(cfg: Config, args) -> None:
     stdio.main(args.server or os.environ.get("OPENMOB_SERVER"), args.key or os.environ.get("OPENMOB_API_KEY"))
 
 
+def cmd_timings(cfg: Config, args) -> None:
+    from . import history
+    from .timing_report import format_report, parse_since, summarize
+
+    try:
+        since = parse_since(args.since)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    rows = history.History(history.DEFAULT_PATH).step_timings(since, chat_id=args.chat, model=args.model)
+    print(format_report(summarize(rows)))
+
+
+def cmd_bench(cfg: Config, args) -> None:
+    from .bench import main as bench_main
+
+    bench_main(cfg, args)
+
+
 def _public_url(port: int) -> str | None:
     """The running tunnel's URL, if `openmob run --public` started one."""
     import json as _json
@@ -477,11 +497,23 @@ def main(argv: list[str] | None = None) -> None:
     p_mcp.add_argument("--server", help="the server, e.g. https://openmob.example.com (default: $OPENMOB_SERVER)")
     p_mcp.add_argument("--key", help="API key (default: $OPENMOB_API_KEY, which keeps it out of process lists)")
 
+    p_timings = sub.add_parser("timings", help="where agent steps spend their time (per phase, jev on/off, per model)")
+    p_timings.add_argument("--since", default="7d", help="e.g. 7d, 24h, 30m, or all (default: 7d)")
+    p_timings.add_argument("--chat", help="only this chat's steps")
+    p_timings.add_argument("--model", help="only steps decided by this model")
+
+    p_bench = sub.add_parser("bench", help="internal: run tasks with and without Jev and compare (docs/benchmarks.md)")
+    p_bench.add_argument("tasks", help="YAML file of task instructions")
+    p_bench.add_argument("--serial", help="adb serial of the phone (default: adb_serial or the only connected phone)")
+    p_bench.add_argument("--model", help="the model to run (default: the config's model)")
+    p_bench.add_argument("--only", choices=["both", "on", "off"], default="both", help="which modes to run")
+    p_bench.add_argument("--no-home", action="store_true", help="don't press HOME before each run")
+
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
     {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
-     "key": cmd_key, "mcp": cmd_mcp}[args.command](cfg, args)
+     "key": cmd_key, "mcp": cmd_mcp, "timings": cmd_timings, "bench": cmd_bench}[args.command](cfg, args)
 
 
 if __name__ == "__main__":
