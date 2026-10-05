@@ -159,6 +159,16 @@ class Coordinator:
                        data={"final": True, "success": False, "cancelled": True})
         return True
 
+    def record_step(self, step: dict) -> None:
+        """The agent's structured record of one tool call (redacted, no screenshot) → history."""
+        if self.history is None or self.chat_id is None or self.current_task is None:
+            return
+        try:
+            self.history.record_step(self.chat_id, self.current_task, step,
+                                     account_id=self.account_id, device_id=self.device_id)
+        except Exception as exc:  # history must never break the agent
+            print(format_event("error", f"Step not saved: {exc}"), flush=True)
+
     def answer(self, task_id: str, text: str) -> bool:
         """Answer the running task's pending question. False if that task isn't asking."""
         with self._lock:
@@ -298,9 +308,12 @@ class Coordinator:
                     data["cancelled"] = True
                 self.event("result" if result.success else "error", f"{result.summary} ({result.steps} steps)", data=data)
                 self.speaker.say(result.summary)
+                if not data.get("cancelled"):  # a stop is the user's call, not the model's result
+                    self._record_model_run(task_id, result.success, result.steps)
             except Exception as exc:  # keep the worker alive for the next command
                 self.event("error", f"{type(exc).__name__}: {exc}", data={"final": True, "success": False})
                 self.speaker.say("Sorry, something went wrong.")
+                self._record_model_run(task_id, False, None)
             finally:
                 # Count tokens even when a task fails or is stopped part-way.
                 usage = getattr(self.agent, "usage", None)
@@ -310,6 +323,16 @@ class Coordinator:
                 with self._lock:
                     self.current = None
                     self.current_task = None
+
+    def _record_model_run(self, task_id: str, success: bool, steps: int | None) -> None:
+        """Per-model success stats (History.model_stats): which model ran this task, and how it went."""
+        model = getattr(self.agent, "task_model", None)
+        if self.history is None or not model:
+            return
+        try:
+            self.history.record_model_run(self.account_id, task_id, model, success, steps)
+        except Exception as exc:
+            print(format_event("error", f"Model stats not saved: {exc}"), flush=True)
 
     def clear_log(self) -> None:
         """New chat: empty the conversation and the agent's memory of earlier requests.

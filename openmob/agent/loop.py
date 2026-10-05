@@ -26,6 +26,8 @@ OMITTED = "(earlier screen omitted)"
 LOADING_POLL_SECONDS = 2.0
 RECENT_REQUESTS = 5
 OCR_MIN_CONFIDENCE = 0.3
+REDACTED = "<redacted>"
+POINT_ARGS = {"tap": (("x", "y"),), "long_press": (("x", "y"),), "swipe": (("x1", "y1"), ("x2", "y2"))}
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
@@ -72,6 +74,7 @@ class _TaskState:
     memory: str = "on"  # on | read_only (use notes, save none) | off (incognito)
     notes_package: str | None = None  # the app whose notes were last shown
     used_notes: list[str] = field(default_factory=list)
+    step_index: int = 0  # tool calls executed so far (the steps table's idx)
 
 
 def is_yes(answer: str) -> bool:
@@ -381,10 +384,51 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        started = time.monotonic()
         try:
-            return self._dispatch(name, args, obs, state)
+            outcome = self._dispatch(name, args, obs, state)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
-            return Outcome(f"Error: {exc}", is_error=True)
+            outcome = Outcome(f"Error: {exc}", is_error=True)
+        state.step_index += 1
+        self._record_step(state.step_index, name, args, obs, outcome, time.monotonic() - started)
+        return outcome
+
+    def _record_step(self, index: int, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float) -> None:
+        """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
+        Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
+        record = getattr(self.io, "record_step", None)
+        if record is None:
+            return
+        try:
+            shot = obs.shot
+            safe = dict(args)
+            text = outcome.text
+            if name == "type_text":
+                safe["text"] = REDACTED
+                if not outcome.is_error:
+                    text = f"Typed {REDACTED}."
+            points: list[int] = []
+            anchor = None
+            if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
+                i = int(args["index"])
+                if 0 <= i < len(obs.elements):
+                    el = obs.elements[i]
+                    anchor = {"text": el.text, "desc": el.desc, "resource_id": el.resource_id, "class": el.cls,
+                              "bounds": list(el.bounds), "index": el.index}
+                    points = list(el.center)
+            for xk, yk in POINT_ARGS.get(name, ()):
+                if isinstance(args.get(xk), (int, float)) and isinstance(args.get(yk), (int, float)):
+                    points += shot.to_device(args[xk], args[yk])
+            # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
+            norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4) for i, v in enumerate(points)]
+            record({
+                "idx": index, "t": time.time(), "tool": name, "args": safe,
+                "norm_xy": norm or None, "package": obs.package,
+                "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
+                "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
+            })
+        except Exception as exc:  # the trajectory record must never break a task
+            self.io.event("error", f"Step not recorded: {exc}")
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         shot = obs.shot
