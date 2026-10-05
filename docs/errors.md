@@ -40,6 +40,15 @@ errors. See [MCP errors](mcp.md#errors).
 | `too_many_tasks` | `429` | The key already has its maximum of unfinished tasks | Wait for one to finish, or cancel one |
 | `daily_quota` | `429` | The key's tasks for today (UTC) are used up | Wait for `Retry-After` (midnight UTC) |
 | `credits_exhausted` | `429` | The key's credits for today (UTC) are used up (only when the server sets a daily credit cap) | Wait for `Retry-After` (midnight UTC) |
+| `too_many_orchestrations` | `429` | The key already has 3 orchestrations in progress, or the account 10 | Wait for one to end, or cancel one |
+| `idempotency_conflict` | `409` | This `Idempotency-Key` was already used (within 24 h) for a different request | Use a new key for a new request |
+| `idempotency_in_progress` | `409` | A request with this `Idempotency-Key` is still being handled | Retry in a moment to get its response |
+| `phone_offline` | `409` | The phone isn't connected | Open the OpenMob app on the phone |
+| `phone_locked` | `409` | The phone is locked or its screen is off | Unlock the phone, then retry |
+| `phone_unresponsive` | `409` | The phone is connected but didn't answer in time (often: asleep) | Wake the phone and open the OpenMob app |
+
+The two daily-limit `429`s (`daily_quota`, `credits_exhausted`) also carry `resets_at`: the Unix
+time of the next midnight UTC, when the limits reset.
 
 ## Task outcomes aren't errors
 

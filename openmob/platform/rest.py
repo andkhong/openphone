@@ -11,7 +11,7 @@ import json
 import time
 from typing import Callable, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
@@ -34,6 +34,7 @@ def service_error_response(request: Request, exc: ServiceError) -> JSONResponse:
     body = {"detail": exc.message}
     if exc.code:
         body["code"] = exc.code
+    body.update(exc.extra)
     return JSONResponse(body, status_code=exc.status, headers=exc.headers or None)
 
 
@@ -116,8 +117,19 @@ class DeveloperApi:
             return s.list_devices(p)
 
         @r.post("/devices/{device_id}/tasks", status_code=201)
-        def create_task(device_id: str, body: TaskIn, p: Principal = Depends(self.need("tasks:run"))) -> dict:
-            return s.create_task(p, device_id, body.instruction, body.tier, body.max_steps, body.memory)
+        def create_task(device_id: str, body: TaskIn, response: Response, p: Principal = Depends(self.need("tasks:run")),
+                        idempotency_key: str | None = Header(default=None)) -> dict:
+            request = {"device_id": device_id, **body.model_dump()}
+            task, replayed = s.idempotent(p, idempotency_key, request, lambda: s.create_task(
+                p, device_id, body.instruction, body.tier, body.max_steps, body.memory))
+            if replayed:  # a retry with the same Idempotency-Key and body: the original response, as 200
+                response.status_code = 200
+                response.headers["Idempotent-Replayed"] = "true"
+            return task
+
+        @r.get("/limits")
+        def limits(p: Principal = Depends(self.need("tasks:read"))) -> dict:
+            return s.limits(p)
 
         @r.get("/tasks")
         def list_tasks(limit: int = 20, p: Principal = Depends(self.need("tasks:read"))) -> dict:
@@ -253,7 +265,9 @@ class DeveloperApi:
                            "default": n == self.cfg.api_default_tier} for n, t in self.cfg.api_tiers.items()],
                 "limits": {"requests_per_minute": self.cfg.api_rate_per_minute,
                            "concurrent_tasks": self.cfg.api_max_concurrent_tasks,
-                           "tasks_per_day": self.cfg.api_daily_tasks, "max_steps": self.cfg.api_max_steps},
+                           "tasks_per_day": self.cfg.api_daily_tasks, "max_steps": self.cfg.api_max_steps,
+                           "credits_per_day": self.cfg.api_daily_credits or None,
+                           "resets_at": day_start(now) + 86400},  # daily limits reset at midnight UTC
                 "usage": {"today": self.ledger.usage(account_id, day_start(now)),
                           "last_30_days": self.ledger.usage(account_id, now - 30 * 86400)},
                 "settings": self.store.settings(account_id),

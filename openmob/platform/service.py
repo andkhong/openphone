@@ -26,7 +26,7 @@ from collections import OrderedDict, deque
 from urllib.parse import urlparse
 
 from ..ledger import day_start
-from ..phone.base import DeviceError
+from ..phone.base import DeviceError, PhoneTimeout
 from ..runner import FINAL_STATUSES
 from .errors import BadRequest, Conflict, Forbidden, NotEnabled, NotFound, RateLimited, Unavailable
 from .principal import Principal, resolve
@@ -57,6 +57,10 @@ GENERIC_ERROR = "The task hit an internal error."
 PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "error": "warning", "question": "question",
                 "memory": "memory"}
 OFFLINE = "That phone is offline. Open the OpenMob app on it."
+LOCKED = "That phone is locked or its screen is off. Unlock it to continue."
+UNRESPONSIVE = "That phone is connected but isn't answering. Open the OpenMob app on it."
+# Tasks that ended through OpenMob's own fault are charged 0 (the would-be amount is kept as credits_waived).
+SERVER_FAULTS = {"internal_error", "server_restarted"}
 NOT_WAITING = "This task isn't waiting for an answer."
 OWNER_APPROVES = ("Risky actions are approved by the phone's owner, who has been asked on their phone. "
                   'Check the task again later, or send {"approve": false} to decline.')
@@ -134,6 +138,9 @@ class V1Service:
         self.active: dict[str, set[str]] = {}  # key id → its unfinished task ids
         self.hits: dict[str, deque] = {}  # key id → request times in the last minute
         self._lock = threading.Lock()
+        self.waive: set[str] = set()  # tasks to charge 0 when they end (stopped by our own failure)
+        # Tasks a restart cut off: failed, charged nothing.
+        ledger.fail_interrupted_tasks(lambda tier: int(self.cfg.api_tiers.get(tier, {}).get("credits_per_step", 1)))
         self.webhooks = WebhookOutbox(ledger, store, self.webhook_url_ok, sign_webhook)
         self.webhooks.start()
         register_model_names([m["id"] for m in self.cfg.models] + [t["model"] for t in self.cfg.api_tiers.values()])
@@ -195,9 +202,10 @@ class V1Service:
                 "id": task_id, "device_id": meta["session_id"], "status": info["status"], "tier": meta["tier"],
                 "instruction": info["request"], "created": info["created"], "started": info["started"],
                 "finished": info["finished"], "steps": info["steps"], "question": clean_text(info["question"]),
-                "outcome": ({"success": info["success"], "summary": clean_text(info["summary"])}
+                "outcome": ({"success": info["success"], "summary": clean_text(info["summary"]),
+                             "reason": info.get("reason")}
                             if info["status"] in FINAL_STATUSES else None),
-                "credits": credits,
+                "credits": self.ledger_credits(account_id, task_id, credits),
             }
         row = self.ledger.task(account_id, task_id)
         if row is None:
@@ -210,9 +218,17 @@ class V1Service:
             "instruction": turn["request"] if turn else None, "created": row["created"],
             "started": turn["started"] if turn else None, "finished": row["finished"],
             "steps": row["steps"], "question": None,
-            "outcome": {"success": status == "succeeded", "summary": clean_text(turn["summary"]) if turn else None},
+            "outcome": {"success": status == "succeeded", "summary": clean_text(turn["summary"]) if turn else None,
+                        "reason": row.get("reason") or (None if row["status"] in FINAL_STATUSES else "server_restarted")},
             "credits": row["credits"],
         }
+
+    def ledger_credits(self, account_id: str, task_id: str, live: int | None) -> int | None:
+        """A finished task's charge as booked (0 when waived); None while it runs."""
+        if live is None:
+            return None
+        row = self.ledger.task(account_id, task_id)
+        return row["credits"] if row and row["finished"] else live
 
     def with_live_status(self, account_id: str, row: dict) -> dict:
         """A ledger row only changes when its task finishes; fill in where a live task is now."""
@@ -253,14 +269,22 @@ class V1Service:
         if data.get("final"):
             info = coordinator.task(task_id) or {"status": "failed", "steps": data.get("steps", 0)}
             credits = info["steps"] * meta["credits_per_step"]
+            reason = info.get("reason") or data.get("reason")
             with self._lock:
                 self.active.get(meta["key_id"], set()).discard(task_id)
-            self.ledger.finish_task(task_id, info["status"], info["steps"], credits)
+                waived = reason in SERVER_FAULTS or task_id in self.waive
+                self.waive.discard(task_id)
+            self.ledger.finish_task(task_id, info["status"], info["steps"], 0 if waived else credits, reason,
+                                    credits if waived else 0)
             self.ledger.audit("task.finished", meta["account_id"], meta["key_id"], meta["device_id"], task_id,
                               outcome=info["status"])
             self._send_webhook(meta["account_id"], "task.finished", task_id)
         elif entry["kind"] == "usage":
             self.ledger.set_internal_usage(task_id, data)  # for billing reconciliation; never shown
+        elif entry["kind"] in ("action", "error"):
+            info = coordinator.task(task_id)
+            if info:
+                self.ledger.set_steps(task_id, info["steps"])
         elif entry["kind"] == "question":
             self._send_webhook(meta["account_id"], "task.needs_confirmation" if data.get("confirm") else "task.needs_input",
                                task_id)
@@ -359,13 +383,33 @@ class V1Service:
             raise Conflict("None of your phones is online. Open the OpenMob app on one.")
         raise BadRequest(f"Several phones are online; pass device_id, one of: {', '.join(online)}")
 
+    @staticmethod
+    def phone_state(session) -> str | None:
+        """None if the phone looks usable; "phone_locked" (locked or screen off) or "phone_unresponsive"
+        (connected but not answering). Phones whose app can't tell are assumed usable."""
+        check = getattr(session.driver, "device_state", None)
+        if check is None:
+            return None
+        try:
+            state = check()
+        except PhoneTimeout:
+            return "phone_unresponsive"
+        except DeviceError:
+            return None  # disconnected meanwhile: the task waits or fails on its own
+        if state is None:
+            return None
+        return "phone_locked" if state["locked"] or not state["interactive"] else None
+
     def create_task(self, p: Principal, device_id: str, instruction: str, tier: str | None = None,
-                    max_steps: int | None = None, memory: str = "on") -> dict:
+                    max_steps: int | None = None, memory: str = "on", check_phone: bool = True,
+                    clean_start: bool = False) -> dict:
+        """`check_phone`: refuse a locked or unresponsive phone up front (orchestrations check it
+        themselves). `clean_start`: press Home before the task (orchestrated steps)."""
         self.require(p, "tasks:run")
         account_id, key_id = p.account_id, p.id
         _, session = self._owned_device(account_id, device_id)
         if session is None or not session.online:
-            raise Conflict(OFFLINE)
+            raise Conflict(OFFLINE, code="phone_offline")
         if not instruction or len(instruction) > MAX_INSTRUCTION:  # REST validates this before it gets here
             raise BadRequest(f"The instruction must be 1 to {MAX_INSTRUCTION} characters.")
         if memory not in ("on", "read_only", "off"):
@@ -378,11 +422,14 @@ class V1Service:
             if len(self.active.get(key_id, ())) >= self.cfg.api_max_concurrent_tasks:
                 raise RateLimited(f"This key already has {self.cfg.api_max_concurrent_tasks} unfinished "
                                   "tasks. Wait for one to finish or cancel it.", code="too_many_tasks")
-        reset = int(day_start() + 86400 - time.time())
+        resets_at = day_start() + 86400  # daily limits reset at midnight UTC
+        reset = {"retry_after": max(1, int(resets_at - time.time())), "extra": {"resets_at": resets_at}}
         if self.ledger.tasks_today(key_id) >= self.cfg.api_daily_tasks:
-            raise RateLimited("Daily task quota reached for this key.", retry_after=reset, code="daily_quota")
+            raise RateLimited("Daily task quota reached for this key.", code="daily_quota", **reset)
         if self.cfg.api_daily_credits and self.credits_today(key_id) >= self.cfg.api_daily_credits:
-            raise RateLimited("Daily credit limit reached for this key.", retry_after=reset, code="credits_exhausted")
+            raise RateLimited("Daily credit limit reached for this key.", code="credits_exhausted", **reset)
+        if check_phone and (problem := self.phone_state(session)):
+            raise Conflict(LOCKED if problem == "phone_locked" else UNRESPONSIVE, code=problem)
 
         coordinator = session.coordinator
         self._watch(coordinator)
@@ -401,10 +448,54 @@ class V1Service:
         self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction)
         # isolated: an API caller neither sees nor extends the phone chat's recent requests.
         options = {"model": tier_cfg["model"], "max_steps": max_steps, "memory": memory, "isolated": True}
+        if clean_start:
+            options["go_home"] = True
         if blocked := self._blocker(account_id):
             options["blocked"] = blocked
         coordinator.enqueue(instruction, "api", options, task_id=task_id)
         return self.public_task(account_id, task_id)
+
+    def idempotent(self, p: Principal, idem_key: str | None, request: dict, create) -> tuple[dict, bool]:
+        """Run `create()` once per Idempotency-Key (per API key, 24 h). Returns (response, replayed):
+        a retry with the same request gets the first response back; a different request under the
+        same key is a 409 idempotency_conflict."""
+        if not idem_key:
+            return create(), False
+        if len(idem_key) > 255:
+            raise BadRequest("Idempotency-Key is at most 255 characters.")
+        digest = hashlib.sha256(json.dumps(request, sort_keys=True).encode()).hexdigest()
+        earlier = self.ledger.idempotency_reserve(p.id, idem_key, digest)
+        if earlier is not None:
+            if earlier["request_hash"] != digest:
+                raise Conflict("This Idempotency-Key was already used for a different request.",
+                               code="idempotency_conflict")
+            if earlier["response"] is None:
+                raise Conflict("A request with this Idempotency-Key is still being handled. Retry shortly.",
+                               code="idempotency_in_progress")
+            return earlier["response"], True
+        try:
+            response = create()
+        except BaseException:
+            self.ledger.idempotency_release(p.id, idem_key)
+            raise
+        self.ledger.idempotency_store(p.id, idem_key, response)
+        return response, False
+
+    def limits(self, p: Principal) -> dict:
+        """This key's limits and today's use. Daily limits reset at midnight UTC (resets_at)."""
+        c = self.cfg
+        with self._lock:
+            running = len(self.active.get(p.id, ()))
+        return {
+            "requests_per_minute": c.api_rate_per_minute,
+            "concurrent_tasks": {"limit": c.api_max_concurrent_tasks, "used": running},
+            "tasks_per_day": {"limit": c.api_daily_tasks, "used": self.ledger.tasks_today(p.id)},
+            "credits_per_day": {"limit": c.api_daily_credits or None, "used": self.credits_today(p.id)},
+            "max_steps": c.api_max_steps,
+            "running_orchestrations": {"per_key": c.api_max_running_orchestrations,
+                                       "per_account": c.api_max_running_orchestrations_per_account},
+            "resets_at": day_start() + 86400,
+        }
 
     def list_tasks(self, p: Principal, limit: int = 20) -> dict:
         self.require(p, "tasks:read")

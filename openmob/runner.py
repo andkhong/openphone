@@ -11,6 +11,7 @@ import time
 from collections import OrderedDict, deque
 
 from .agent import Agent
+from .phone.base import DeviceError, PhoneTimeout
 from .usage import Usage
 from .voice.tts import Speaker
 
@@ -73,6 +74,8 @@ class Coordinator:
         self.current: str | None = None
         self.question: str | None = None
         self.question_kind: str | None = None  # "question" (ask_user) or "confirm" (risky action)
+        self.question_timeout = 300.0  # seconds a question may wait for an answer (0: forever)
+        self._unanswered: str | None = None  # the task stopped because nobody answered its question
         self.listeners: list = []
         self.entry_listeners: list = []  # callables(entry): every log entry, with its task id
         # Per-task records (status, steps, outcome, events) for the developer API, newest last.
@@ -135,7 +138,7 @@ class Coordinator:
             self.task_info[task_id] = {
                 "id": task_id, "status": "queued", "request": text, "source": source,
                 "created": time.time(), "started": None, "finished": None, "steps": 0,
-                "success": None, "summary": None, "question": None, "usage": None, "events": [],
+                "success": None, "summary": None, "reason": None, "question": None, "usage": None, "events": [],
             }
             while len(self.task_info) > KEEP_TASKS:
                 self.task_info.popitem(last=False)
@@ -233,12 +236,16 @@ class Coordinator:
             self.question_kind = kind
         self.event("question", question, data={"confirm": True} if kind == "confirm" else None)
         self.speaker.say(question)
+        deadline = time.monotonic() + self.question_timeout if self.question_timeout else None
         try:
             while not self.cancel.is_set():
                 try:
                     return self.answers.get(timeout=0.5)
                 except queue.Empty:
-                    continue
+                    if deadline is not None and time.monotonic() >= deadline:
+                        # Nobody answered: end the task rather than hold the phone (and a task slot) forever.
+                        self._unanswered = self.current_task
+                        self.cancel.set()
             return "no"
         finally:
             with self._lock:
@@ -293,6 +300,7 @@ class Coordinator:
                 info["steps"] = data.get("steps", info["steps"])
                 info["finished"] = entry["time"]
                 info["question"] = None
+                info["reason"] = data.get("reason")  # question_timeout, phone_unresponsive, internal_error…
             elif kind == "usage":
                 info["usage"] = data
             elif info["status"] in FINAL_STATUSES:
@@ -334,16 +342,28 @@ class Coordinator:
             self.speaker.say("On it.")
             try:
                 # The phone page is in the phone's browser, so get it out of the way first.
-                result = self.agent.run(text, self.cancel, go_home=(source == "phone"), **options)
+                # go_home: the phone page is in the phone's browser, so get it out of the way first;
+                # orchestrated steps ask for it too, so each starts from a clean screen.
+                go_home = options.pop("go_home", source == "phone")
+                result = self.agent.run(text, self.cancel, go_home=go_home, **options)
                 data = {"final": True, "success": result.success, "steps": result.steps}
-                if self.cancel.is_set() and not result.success:
+                summary = result.summary
+                if self._unanswered == task_id and not result.success:
+                    data["reason"] = "question_timeout"
+                    minutes = self.question_timeout / 60
+                    summary = (f"Stopped: nobody answered the question within "
+                               f"{f'{minutes:g} minutes' if minutes >= 1 else f'{self.question_timeout:g} s'}.")
+                elif self.cancel.is_set() and not result.success:
                     data["cancelled"] = True
-                self.event("result" if result.success else "error", f"{result.summary} ({result.steps} steps)", data=data)
+                self.event("result" if result.success else "error", f"{summary} ({result.steps} steps)", data=data)
                 self.speaker.say(result.summary)
                 if not data.get("cancelled"):  # a stop is the user's call, not the model's result
                     self._record_model_run(task_id, result.success, result.steps)
             except Exception as exc:  # keep the worker alive for the next command
-                self.event("error", f"{type(exc).__name__}: {exc}", data={"final": True, "success": False})
+                # Why, for callers and billing: the phone stopped answering, it failed, or we did.
+                reason = ("phone_unresponsive" if isinstance(exc, PhoneTimeout)
+                          else "phone_error" if isinstance(exc, DeviceError) else "internal_error")
+                self.event("error", f"{type(exc).__name__}: {exc}", data={"final": True, "success": False, "reason": reason})
                 self.speaker.say("Sorry, something went wrong.")
                 self._record_model_run(task_id, False, None)
             finally:
@@ -357,6 +377,7 @@ class Coordinator:
                 with self._lock:
                     self.current = None
                     self.current_task = None
+                    self._unanswered = None
 
     def _record_model_run(self, task_id: str, success: bool, steps: int | None) -> None:
         """Per-model success stats (History.model_stats): which model ran this task, and how it went."""

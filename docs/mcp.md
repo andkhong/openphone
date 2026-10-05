@@ -296,7 +296,7 @@ version), and the server's instructions to the model say the same.
 
 | Tool | What it does | Annotations |
 |---|---|---|
-| `start_orchestration` | Run up to 10 steps across your phones: `steps` (`{id, device_id, instruction, tier?, max_steps?, depends_on?}`), `on_failure` (`stop`/`continue`), `max_credits`, `wait_for_phone_seconds`, `wait_seconds` (0–45) | destructive, open-world |
+| `start_orchestration` | Run up to 10 steps across your phones: `steps` (`{id, device_id, instruction, tier?, max_steps?, depends_on?}`), `on_failure` (`stop`/`continue`), `max_credits`, `wait_for_phone_seconds`, `max_duration_seconds` (default 1800), `wait_seconds` (0–45), `idempotency_key`. Needs `tasks:run` and `tasks:read`, both checked before anything starts | destructive, open-world |
 | `get_orchestration` | Status of the run and of every step; `wait_seconds` waits for it to end or for a step to need an answer | read-only |
 | `cancel_orchestration` | Cancel running steps and skip the rest | destructive, idempotent |
 
@@ -315,8 +315,17 @@ The result carries every step's `status`, `task_id`, `question`, `outcome` and `
 `next` and `untrusted_content: true`. If a step asks a question, answer it with `answer_question`
 and that step's `task_id`. Like tasks, a dropped request never stops the run, only
 `cancel_orchestration` does. Access is checked again before every step and while steps run: a
-revoked key or unpaired phone stops the affected work at once. See
-[Orchestrations in the API reference](api.md#orchestrations) for every status and reason.
+revoked key or unpaired phone stops the affected work at once.
+
+- **Retries:** pass the same `idempotency_key` (with the same arguments) when retrying a
+  `start_orchestration` whose answer you didn't get: you get the first run back, not a second one.
+- **Locked phones:** a step whose phone is locked or has its screen off waits as
+  `waiting_for_phone` with reason `phone_locked`; tell the user to unlock it.
+- **Stops from the phone:** if the owner taps Stop, says "stop" or denies an approval on a phone
+  running a step, the whole run ends as `cancelled` / `stopped_on_phone`. Don't start it again
+  unless the user asks.
+
+See [Orchestrations in the API reference](api.md#orchestrations) for every status and reason.
 
 ## Errors
 

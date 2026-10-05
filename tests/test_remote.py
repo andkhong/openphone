@@ -36,6 +36,7 @@ class FakePhone:
         self.url = f"{url}/phone/ws?t={token}"
         self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
         self.approval_requests = []  # every approval_request received
+        self.approval_cancels = []  # ids of approval requests the server withdrew
         self.key = key
         self.platform = platform
         self.binary = binary  # answer binary screenshot requests like the current app (else: like an old one)
@@ -81,6 +82,8 @@ class FakePhone:
                         self.welcome.set()
                     elif msg["type"] == "event":
                         self.events.append((msg["kind"], msg["message"]))
+                    elif msg["type"] == "approval_cancel":
+                        self.approval_cancels.append(msg["id"])
                     elif msg["type"] == "approval_request":
                         self.approval_requests.append(msg)
                         if self.approve is not None:

@@ -76,6 +76,17 @@ CREATE TABLE IF NOT EXISTS orchestrations (
     data TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS orchestrations_by_account ON orchestrations (account_id, created DESC);
+
+-- Idempotency-Key: per API key, kept 24 h. The first request's response is replayed for retries
+-- with the same body; a different body under the same key is a conflict.
+CREATE TABLE IF NOT EXISTS idempotency (
+    key_id TEXT NOT NULL,
+    idem_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    created REAL NOT NULL,
+    response TEXT,                     -- NULL while the first request is still being handled
+    PRIMARY KEY (key_id, idem_key)
+);
 """
 
 
@@ -98,6 +109,11 @@ class Ledger:
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA journal_mode = WAL")
         self._db.executescript(SCHEMA)
+        for column in ("reason TEXT", "credits_waived INTEGER NOT NULL DEFAULT 0"):  # added after release
+            try:
+                self._db.execute(f"ALTER TABLE api_tasks ADD COLUMN {column}")
+            except sqlite3.OperationalError:
+                pass  # already there
         try:
             os.chmod(self.path, 0o600)
         except OSError:
@@ -135,9 +151,49 @@ class Ledger:
             (task_id, account_id, key_id, device_id, tier, instruction_hash(instruction), time.time(), "queued"),
         )
 
-    def finish_task(self, task_id: str, status: str, steps: int, credits: int) -> None:
-        self._q("UPDATE api_tasks SET status = ?, steps = ?, credits = ?, finished = ? WHERE id = ?",
-                (status, steps, credits, time.time(), task_id))
+    def finish_task(self, task_id: str, status: str, steps: int, credits: int, reason: str | None = None,
+                    credits_waived: int = 0) -> None:
+        """`credits_waived`: what a task that ended through our fault would have cost (it's charged 0)."""
+        self._q("UPDATE api_tasks SET status = ?, steps = ?, credits = ?, finished = ?, reason = ?, "
+                "credits_waived = ? WHERE id = ?", (status, steps, credits, time.time(), reason, credits_waived, task_id))
+
+    def set_steps(self, task_id: str, steps: int) -> None:
+        """Progress of a running task, so a restart knows what it had used (and can waive it)."""
+        self._q("UPDATE api_tasks SET steps = ? WHERE id = ? AND finished IS NULL", (steps, task_id))
+
+    def fail_interrupted_tasks(self, credits_per_step) -> int:
+        """At startup: tasks a restart cut off end failed / server_restarted, charged 0 (our fault);
+        what they had used is kept in credits_waived. `credits_per_step(tier)` prices the steps."""
+        rows = self._q("SELECT id, tier, steps FROM api_tasks WHERE finished IS NULL")
+        for row in rows:
+            self._q("UPDATE api_tasks SET status = 'failed', reason = 'server_restarted', credits = 0, "
+                    "credits_waived = ?, finished = ? WHERE id = ?",
+                    (row["steps"] * credits_per_step(row["tier"]), time.time(), row["id"]))
+        return len(rows)
+
+    # --- idempotency keys ----------------------------------------------------------------
+
+    def idempotency_reserve(self, key_id: str, idem_key: str, request_hash: str) -> dict | None:
+        """Claim an idempotency key. None if it's new (go ahead); else the earlier record
+        {request_hash, response (None while in progress)}."""
+        with self._lock:
+            self._db.execute("DELETE FROM idempotency WHERE created < ?", (time.time() - 86400,))
+            try:
+                self._db.execute("INSERT INTO idempotency (key_id, idem_key, request_hash, created) VALUES (?,?,?,?)",
+                                 (key_id, idem_key, request_hash, time.time()))
+                return None
+            except sqlite3.IntegrityError:
+                row = self._db.execute("SELECT request_hash, response FROM idempotency WHERE key_id = ? AND idem_key = ?",
+                                       (key_id, idem_key)).fetchone()
+        return {"request_hash": row["request_hash"], "response": json.loads(row["response"]) if row["response"] else None}
+
+    def idempotency_store(self, key_id: str, idem_key: str, response: dict) -> None:
+        self._q("UPDATE idempotency SET response = ? WHERE key_id = ? AND idem_key = ?",
+                (json.dumps(response), key_id, idem_key))
+
+    def idempotency_release(self, key_id: str, idem_key: str) -> None:
+        """The first request failed: forget the key so a retry can try again."""
+        self._q("DELETE FROM idempotency WHERE key_id = ? AND idem_key = ? AND response IS NULL", (key_id, idem_key))
 
     def set_internal_usage(self, task_id: str, usage: dict) -> None:
         self._q("UPDATE api_tasks SET internal_usage = ? WHERE id = ?", (json.dumps(usage), task_id))
@@ -220,7 +276,8 @@ class Ledger:
 
     def usage(self, account_id: str, since: float) -> dict:
         row = self._q(
-            "SELECT COUNT(*) AS tasks, COALESCE(SUM(steps), 0) AS steps, COALESCE(SUM(credits), 0) AS credits "
+            "SELECT COUNT(*) AS tasks, COALESCE(SUM(steps), 0) AS steps, COALESCE(SUM(credits), 0) AS credits, "
+            "COALESCE(SUM(credits_waived), 0) AS credits_waived "
             "FROM api_tasks WHERE account_id = ? AND created >= ?",
             (account_id, since),
         )[0]

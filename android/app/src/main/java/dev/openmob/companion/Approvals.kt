@@ -22,7 +22,13 @@ import org.json.JSONObject
  * Everything here runs on the main thread.
  */
 object Approvals {
-    data class Request(val id: String, val taskId: String, val question: String, val requester: String)
+    /** `deviceName`: the phone that would act, when the server says (it may be another of the owner's phones). */
+    data class Request(
+        val id: String, val taskId: String, val question: String, val requester: String, val deviceName: String = "",
+    ) {
+        /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
+        val shownQuestion: String get() = if (deviceName.isEmpty()) question else "On $deviceName: $question"
+    }
 
     const val EXTRA_ID = "dev.openmob.APPROVAL_ID"
     const val ACTION_DENY = "dev.openmob.APPROVAL_DENY"
@@ -49,11 +55,12 @@ object Approvals {
             taskId = message.optString("task_id"),
             question = message.optString("question").trim().ifEmpty { app.getString(R.string.approval_no_question) },
             requester = message.optString("requester").trim().ifEmpty { app.getString(R.string.approval_unknown_requester) },
+            deviceName = message.optString("device_name").trim(),
         )
         pending[id] = request
         main.postDelayed({ expire(app, id) }, id, EXPIRY_MS)
         notify(app, request)
-        AppState.addEvent("approval", app.getString(R.string.approval_event_asked, request.requester, request.question))
+        AppState.addEvent("approval", app.getString(R.string.approval_event_asked, request.requester, request.shownQuestion))
     }
 
     /**
@@ -70,6 +77,13 @@ object Approvals {
             app.getString(if (approved) R.string.approval_event_approved else R.string.approval_event_denied, request.question),
         )
         return true
+    }
+
+    /** The server withdrew a request (answered on another phone, or the task moved on): drop it unanswered. */
+    fun cancel(context: Context, id: String) {
+        if (pending[id] == null) return
+        finish(context, id)
+        AppState.notifyListeners()
     }
 
     /** The connection was closed by the owner: drop every pending request without answering. */
@@ -129,9 +143,9 @@ object Approvals {
             .build()
         val notification = Notification.Builder(context, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_dialog_alert)
-            .setContentTitle(context.getString(R.string.approval_notification_title, request.question))
+            .setContentTitle(context.getString(R.string.approval_notification_title, request.shownQuestion))
             .setContentText(text)
-            .setStyle(Notification.BigTextStyle().bigText("${request.question}\n\n$text"))
+            .setStyle(Notification.BigTextStyle().bigText("${request.shownQuestion}\n\n$text"))
             .setCategory(Notification.CATEGORY_REMINDER)
             .setVisibility(Notification.VISIBILITY_PRIVATE)
             .setPublicVersion(hidden)
