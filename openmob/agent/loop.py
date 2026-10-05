@@ -1,4 +1,4 @@
-"""The observe → decide → act loop that drives the phone with Claude."""
+"""The observe → decide → act loop that drives the phone with any model (see models.py)."""
 
 from __future__ import annotations
 
@@ -18,13 +18,16 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from .tools import TOOLS, system_prompt
+from .models import ModelRequest, ModelUnavailable, router_for
+from .tools import TOOL_SPECS, system_prompt
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
 LOADING_POLL_SECONDS = 2.0
 RECENT_REQUESTS = 5
 OCR_MIN_CONFIDENCE = 0.3
+REDACTED = "<redacted>"
+POINT_ARGS = {"tap": (("x", "y"),), "long_press": (("x", "y"),), "swipe": (("x1", "y1"), ("x2", "y2"))}
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
@@ -71,6 +74,7 @@ class _TaskState:
     memory: str = "on"  # on | read_only (use notes, save none) | off (incognito)
     notes_package: str | None = None  # the app whose notes were last shown
     used_notes: list[str] = field(default_factory=list)
+    step_index: int = 0  # tool calls executed so far (the steps table's idx)
 
 
 def is_yes(answer: str) -> bool:
@@ -78,20 +82,10 @@ def is_yes(answer: str) -> bool:
     return bool(words) and words[0] in YES_WORDS
 
 
-def _block_to_dict(block) -> dict:
-    if isinstance(block, dict):
-        return block
-    if block.type == "text":
-        return {"type": "text", "text": block.text}
-    if block.type == "tool_use":
-        return {"type": "tool_use", "id": block.id, "name": block.name, "input": block.input}
-    return block.model_dump(exclude_none=True)
-
-
 class Agent:
     def __init__(
         self,
-        client,
+        client,  # a models.ModelRouter, or one Anthropic-shaped client (serves every Claude model)
         driver,
         resolver: AppResolver,
         config: Config,
@@ -117,6 +111,10 @@ class Agent:
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
 
     # --- public ----------------------------------------------------------
+
+    def model_available(self, model: str) -> bool:
+        """Whether this agent can run `model`: its provider has a key here and it can operate a phone."""
+        return router_for(self.client, self.config).available(model)
 
     def run(
         self,
@@ -153,6 +151,10 @@ class Agent:
             self.driver.key("HOME")
             time.sleep(self.config.settle_delay)
 
+        try:
+            route = router_for(self.client, self.config).route(self.task_model)
+        except ModelUnavailable as exc:
+            return AgentResult(False, str(exc), 0)
         obs = self._observe_settled(state)
         messages: list[dict] = [{
             "role": "user",
@@ -167,26 +169,26 @@ class Agent:
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
+            self._apply_corrections(state, messages)
             self._trim_history(messages)
-            response = self.client.messages.create(
+            response = route.adapter.complete(ModelRequest(
                 model=self.task_model,
-                max_tokens=1024,
                 system=system,
-                tools=TOOLS,
+                tools=TOOL_SPECS,
                 messages=messages,
-            )
+                max_tokens=route.spec.max_tokens,
+            ))
             # Count under the model the API says served this call, which verifies the model choice.
-            self.usage.add_claude(getattr(response, "usage", None), getattr(response, "model", None) or self.task_model)
-            content = [_block_to_dict(b) for b in response.content]
-            messages.append({"role": "assistant", "content": content})
+            self.usage.add_model(response.usage, response.model or self.task_model)
+            messages.append({"role": "assistant", "content": response.content})
 
-            for block in content:
-                if block["type"] == "text" and block["text"].strip():
-                    self.io.event("thought", block["text"].strip())
+            for text in response.text:
+                if text.strip():
+                    self.io.event("thought", text.strip())
 
-            tool_uses = [b for b in content if b["type"] == "tool_use"]
+            tool_uses = response.tool_calls
             if not tool_uses:
-                text = " ".join(b["text"] for b in content if b["type"] == "text").strip()
+                text = " ".join(response.text).strip()
                 if nudged or response.stop_reason == "refusal":
                     return AgentResult(False, text or "I stopped without finishing.", step)
                 nudged = True
@@ -203,15 +205,15 @@ class Agent:
                 if finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
-                    outcome = self._execute(tool_use["name"], tool_use["input"], obs, state)
-                    self.io.event("error" if outcome.is_error else "action", f"{tool_use['name']}: {outcome.text}")
+                    outcome = self._execute(tool_use.name, tool_use.input, obs, state)
+                    self.io.event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}")
                     if outcome.settle is not None:
                         settle = outcome.settle
                     if outcome.done:
                         finished = outcome
                 results.append({
                     "type": "tool_result",
-                    "tool_use_id": tool_use["id"],
+                    "call_id": tool_use.id,
                     "content": [{"type": "text", "text": outcome.text}],
                     **({"is_error": True} if outcome.is_error else {}),
                 })
@@ -223,8 +225,8 @@ class Agent:
 
             self._sleep(settle, state.cancel)
             obs = self._observe_settled(state)
-            # The new screen goes after the tool results, not inside them: the API rejects
-            # images inside a tool_result marked is_error.
+            # The new screen goes after the tool results, not inside them: Anthropic rejects images
+            # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
             messages.append({"role": "user", "content": results + self._obs_blocks(obs, self._app_notes(state, obs))})
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
@@ -357,15 +359,26 @@ class Agent:
             body += "\n" + obs.assessment.summary()
         return [
             {"type": "text", "text": f"{header}\n{body}"},
-            {
-                "type": "image",
-                "source": {
-                    "type": "base64",
-                    "media_type": "image/jpeg",
-                    "data": base64.b64encode(obs.shot.jpeg).decode(),
-                },
-            },
+            {"type": "image", "media_type": "image/jpeg", "data": base64.b64encode(obs.shot.jpeg).decode()},
         ]
+
+    # --- mid-task corrections ("steer") ----------------------------------------
+
+    def _apply_corrections(self, state: _TaskState, messages: list[dict]) -> None:
+        """What the user said while the task ran (Coordinator.steer) joins the next user message.
+        It's the user's own words, so it also counts as part of the request (the risky-tap and
+        "remember" checks read it)."""
+        take = getattr(self.io, "take_corrections", None)
+        for text in take() if take else []:
+            line = f"User correction: {text}"
+            last = messages[-1]
+            if last["role"] != "user":
+                messages.append({"role": "user", "content": []})
+                last = messages[-1]
+            if isinstance(last["content"], str):
+                last["content"] = [{"type": "text", "text": last["content"]}]
+            last["content"].append({"type": "text", "text": line})
+            state.task = f"{state.task}\n{line}"
 
     def _trim_history(self, messages: list[dict]) -> None:
         """Keep only the most recent screenshots (and element lists) in the history."""
@@ -390,10 +403,51 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        started = time.monotonic()
         try:
-            return self._dispatch(name, args, obs, state)
+            outcome = self._dispatch(name, args, obs, state)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
-            return Outcome(f"Error: {exc}", is_error=True)
+            outcome = Outcome(f"Error: {exc}", is_error=True)
+        state.step_index += 1
+        self._record_step(state.step_index, name, args, obs, outcome, time.monotonic() - started)
+        return outcome
+
+    def _record_step(self, index: int, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float) -> None:
+        """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
+        Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
+        record = getattr(self.io, "record_step", None)
+        if record is None:
+            return
+        try:
+            shot = obs.shot
+            safe = dict(args)
+            text = outcome.text
+            if name == "type_text":
+                safe["text"] = REDACTED
+                if not outcome.is_error:
+                    text = f"Typed {REDACTED}."
+            points: list[int] = []
+            anchor = None
+            if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
+                i = int(args["index"])
+                if 0 <= i < len(obs.elements):
+                    el = obs.elements[i]
+                    anchor = {"text": el.text, "desc": el.desc, "resource_id": el.resource_id, "class": el.cls,
+                              "bounds": list(el.bounds), "index": el.index}
+                    points = list(el.center)
+            for xk, yk in POINT_ARGS.get(name, ()):
+                if isinstance(args.get(xk), (int, float)) and isinstance(args.get(yk), (int, float)):
+                    points += shot.to_device(args[xk], args[yk])
+            # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
+            norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4) for i, v in enumerate(points)]
+            record({
+                "idx": index, "t": time.time(), "tool": name, "args": safe,
+                "norm_xy": norm or None, "package": obs.package,
+                "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
+                "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
+            })
+        except Exception as exc:  # the trajectory record must never break a task
+            self.io.event("error", f"Step not recorded: {exc}")
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         shot = obs.shot

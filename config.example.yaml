@@ -1,15 +1,28 @@
 # Copy to config.yaml (or ~/.config/openmob/config.yaml) and edit.
-# Secrets come from the environment: ANTHROPIC_API_KEY, and optionally TYPESAFE_API_KEY for Jev.
+# Secrets come from the environment, never this file: ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# GEMINI_API_KEY (or GOOGLE_API_KEY), OPENAI_COMPATIBLE_API_KEY, and optionally TYPESAFE_API_KEY for Jev.
+# A model whose provider has no key is listed in the dashboard but can't be picked.
 
-# Claude model that looks at the screen and decides each action.
+# Model that looks at the screen and decides each action (any provider below).
 model: claude-sonnet-5-5          # claude-opus-5-5 is smarter but slower
 resolver_model: claude-haiku-4-5-20251001
 # Models the dashboard's "Model" dropdown offers per phone (an allowlist). The default above is always included.
+# provider: anthropic | openai | google | openai_compatible (inferred from claude-*, gpt-*, gemini-* names).
+# Other providers need their SDK: pip install -e '.[openai]' or '.[gemini]'.
 # models:
-#   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)"}
-#   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)"}
-#   - {id: claude-fable-5-1, label: "Fable 5.1"}
-#   - {id: claude-haiku-4-5-20251001, label: "Haiku 4.5 (fastest, cheapest)"}
+#   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)", provider: anthropic}
+#   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)", provider: anthropic}
+#   - {id: claude-haiku-4-5-20251001, label: "Haiku 4.5 (fastest, cheapest)", provider: anthropic}
+#   - {id: gpt-5.5, label: "GPT-5.5", provider: openai}
+#   - {id: gemini-3.5-flash, label: "Gemini 3.5 Flash", provider: google}
+#   # Local or open models on any OpenAI-compatible server. Say what it can do; it needs vision and tools.
+#   - {id: qwen3-vl-32b, label: "Qwen3-VL (local)", provider: openai_compatible,
+#      base_url: "http://localhost:11434/v1", vision: true, tools: true, context: 64000}
+#   # A hosted compatible endpoint whose key is in another environment variable:
+#   - {id: meta-llama/llama-4-maverick, label: "Llama 4", provider: openai_compatible,
+#      base_url: "https://openrouter.ai/api/v1", api_key_env: OPENROUTER_API_KEY}
+# Optional per model: max_tokens (default 1024; raise it for reasoning models, whose thinking counts).
+# openai_compatible_base_url: http://localhost:11434/v1   # default for compatible models without base_url
 max_steps: 40
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
@@ -45,8 +58,8 @@ speak: true
 server_port: 8765
 # server_token: pick-a-fixed-token   # otherwise a new one is generated each run
 
-# Developer API (/v1, accounts mode). Tiers map public names to the model that runs them;
-# API responses show only the tier name. Limits are per API key.
+# Developer API (/v1, accounts mode). Tiers map public names to the model that runs them (any provider;
+# add provider: when the name doesn't show it); API responses show only the tier name. Limits are per API key.
 # api_tiers:
 #   fast:     {model: claude-haiku-4-5-20251001, credits_per_step: 1}
 #   balanced: {model: claude-sonnet-5-5, credits_per_step: 3}

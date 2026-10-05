@@ -12,12 +12,14 @@ import socket
 import threading
 import weakref
 from pathlib import Path
+from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+from .agent.models import model_listing
 from .devices import DeviceManager, Session
 from .phone.base import DeviceError
 from .phone.protocol import PROTOCOL_VERSION, decode_message
@@ -36,6 +38,7 @@ HELLO_TIMEOUT = 10
 
 class CommandIn(BaseModel):
     text: str
+    mode: Literal["auto", "queue"] = "auto"  # auto: corrects a running task; queue: always a new task
 
 
 class Credentials(BaseModel):
@@ -317,7 +320,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     @app.post("/api/devices/{device_id}/command")
     def command(device_id: str, body: CommandIn, request: Request) -> dict:
         require_auth(request)
-        return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard")}
+        return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard", mode=body.mode)}
 
     @app.post("/api/devices/{device_id}/stop")
     def stop(device_id: str, request: Request) -> dict:
@@ -341,16 +344,18 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
 
     @app.get("/api/models", dependencies=[Depends(require_auth)])
     def models() -> dict:
-        return {"default": manager.cfg.model, "models": manager.cfg.models}
+        return model_listing(manager.cfg)
 
     @app.post("/api/devices/{device_id}/model")
     def set_model(device_id: str, body: ModelIn, request: Request) -> dict:
-        """Choose the Claude model for this phone's next tasks (allowlisted models only)."""
+        """Choose the model for this phone's next tasks (allowlisted models whose provider is set up)."""
         require_auth(request)
         session = owned_session(device_id, request)
         allowed = {m["id"] for m in manager.cfg.models}
         if body.model not in allowed:
             raise HTTPException(status_code=400, detail=f"Model not allowed. Choose one of: {', '.join(sorted(allowed))}")
+        if not session.coordinator.agent.model_available(body.model):
+            raise HTTPException(status_code=400, detail="That model isn't available on this server (no API key for its provider).")
         session.coordinator.agent.model = body.model
         running = session.coordinator.snapshot()["state"] != "idle"
         return {"model": body.model, "applies": "next task" if running else "now"}

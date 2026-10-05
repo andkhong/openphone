@@ -181,7 +181,7 @@ def test_stop_cancels_queued_tasks_in_their_own_turns():
     c.start()
     c.submit("first", "dashboard")
     assert c.agent.started.wait(2)
-    assert c.submit("second", "dashboard") == "queued"
+    assert c.submit("second", "dashboard", mode="queue") == "queued"  # not a correction of "first"
     queued = [e for e in c.snapshot()["log"] if e["message"].endswith("second")][0]["task"]
     assert c.submit("stop", "dashboard") == "stopped"
     wait_finals(c, 2)  # the cancelled queued task and the stopped running one
