@@ -558,6 +558,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         app.add_exception_handler(ServiceError, service_error_response)
         app.state.v1_service = service
         app.state.developer_api = developer_api
+
+        from .platform import mcp
+
+        app.state.mcp = mcp.mount(app, service)  # the remote MCP server at /mcp, same rules as /v1
         app.include_router(developer_api.router)
         app.include_router(developer_api.console)
         app.include_router(developer_api.admin)

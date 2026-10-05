@@ -20,6 +20,7 @@ dependencies = [
     "pyaxmlparser>=0.3.31",
     "websockets>=12",
     "certifi",
+    "mcp>=2.3",  # the remote MCP server at /mcp and `openmob mcp`
 ]
 
 [project.optional-dependencies]

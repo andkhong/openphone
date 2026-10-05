@@ -325,6 +325,20 @@ class V1Service:
             })
         return {"devices": out}
 
+    def only_device(self, p: Principal, scope: str = "tasks:run") -> str:
+        """The caller's phone when exactly one is online, so callers can leave device_id out."""
+        self.require(p, scope)
+        online = []
+        for d in self.store.list_devices(p.account_id):
+            session = self.manager.get(f"app-{d.id}")
+            if session is not None and session.account_id == p.account_id and session.online:
+                online.append(f"app-{d.id}")
+        if len(online) == 1:
+            return online[0]
+        if not online:
+            raise Conflict("None of your phones is online. Open the OpenMob app on one.")
+        raise BadRequest(f"Several phones are online; pass device_id, one of: {', '.join(online)}")
+
     def create_task(self, p: Principal, device_id: str, instruction: str, tier: str | None = None,
                     max_steps: int | None = None, memory: str = "on") -> dict:
         self.require(p, "tasks:run")
