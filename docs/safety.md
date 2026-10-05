@@ -25,6 +25,28 @@ it. And no task may operate the OpenMob app itself: if it's on screen, the agent
 and a task that ends up in it stops. So an agent that read malicious screen text can't open the app
 and approve its own purchase.
 
+**Approvals are signed by the phone's screen lock.** When a phone pairs, its app creates a key in
+Android's secure key store that can only be used right after the owner passes the screen lock
+(fingerprint, face or PIN), and gives the server its public half. Every "approve" must carry a fresh
+signature from that key, so even someone who steals a phone's connection key can't approve a
+purchase: they'd need the owner's screen lock too. Declining needs no signature. (Phones running an
+app older than this keep working as before until they update.)
+
+## Phones and their connections
+
+- **One live connection per phone.** If a second connection logs in as the same phone, the older
+  one is closed at once and nothing it sends is acted on. When the new connection comes from a
+  different network address, the owner's dashboard log notes it ("… reconnected from a new
+  connection") and it's written to the audit log; running tasks carry on, since a phone switching
+  from Wi-Fi to mobile data looks the same.
+- **Unpairing or pairing a phone again** closes every connection that used its old key, at once,
+  and the old key can't reconnect.
+- **Pairing links can't take over a phone.** Scanning the dashboard's QR code opens the OpenMob app,
+  which first asks "Connect to **\<server\>**?" and changes nothing until you tap Connect. Replacing
+  an existing pairing also needs your screen lock, and your current pairing stays until the new one
+  has fully worked. Links can't carry developer tokens, and the app only talks to `https://`
+  servers (plain `http://` only on your own network).
+
 A key can't approve on its own:
 
 ```sh
@@ -128,8 +150,8 @@ developer console still show every key's work. Rotating a key keeps it the same 
 
 ## Audit log
 
-Every key change, task, answer, approval, cancel, screenshot, memory change, webhook delivery and
-setting change is written to an append-only audit log. Your account's entries are under **Logs** in
+Every key change, task, answer, approval, cancel, screenshot, memory change, webhook delivery,
+setting change and phone connection replaced from a new address is written to an append-only audit log. Your account's entries are under **Logs** in
 the developer console, with the key that did each one. The log stores a hash of each instruction,
 never its text.
 

@@ -64,6 +64,7 @@ URL: `wss://<server>/phone/ws?t=<token>`
 |---|---|
 | Close code **4401** | Bad or missing token. **Do not retry.** Show "Invalid token", stop the service, and ask the user to re-pair. |
 | Close code **4400** | The first message wasn't a valid `hello`, or `protocol` isn't `1`. The server waits 10 s for `hello`. Fix the client; don't retry in a loop. |
+| Close code **4409** | Another connection with this phone's id and key replaced this one: the server keeps **exactly one live socket per phone**, and whatever an older socket sends is ignored. If this phone didn't just reconnect itself, someone else has its key: tell the owner to unpair it from the dashboard and pair it again. Don't reconnect in a loop. |
 | Any other close, network error or failed connect | Reconnect with **exponential backoff**: 1 s, 2 s, 4 s, 8 s, 16 s, 30 s, then 30 s for each further attempt (cap 30 s). Add ±20 % jitter. Reset to 1 s after a successful `welcome`. |
 | Network changes (Wi-Fi to cellular) | Reconnect right away. `ConnectivityManager.NetworkCallback` is a reasonable trigger. |
 | User taps the **kill switch** (§6) | Close with code 1000, cancel any in-flight gestures, **do not reconnect**. |
@@ -402,7 +403,8 @@ The user must enable the service in **Settings > Accessibility**. Detect when it
 | Requirement | Detail |
 |---|---|
 | Token storage | Store the server URL and token encrypted, with a key in the Android Keystore (for example Jetpack Security / an AES-GCM key from Keystore). Never log the token or put it in crash reports. Exclude it from backups (`android:allowBackup="false"` or backup rules). |
-| TLS only | Release builds refuse `ws://` and any `http` server URL. Use the default trust store, with no "trust all certificates" option. (Public servers run behind HTTPS, for example `openmob run --public`, which uses a cloudflared tunnel.) |
+| TLS only | `https://` for every server, except a developer's own server on this phone or the local network (loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `.local`, IPv6 loopback, link-local and unique-local), which may use `http://`. Check it when a link or the pair form is used **and** again before every connection, so a stored bad URL can't be used. Release builds also turn cleartext off (`usesCleartextTraffic="false"`). Use the default trust store, with no "trust all certificates" option. |
+| Pairing links | `openmob://connect?server=…&code=…` (from the dashboard's QR code) must **never change anything by itself**: any web page or message can open it. Show "Connect to **\<host\>**?" naming the server and what it can do, and do nothing until the owner taps Connect. If the phone is already paired, say which server it will leave and require the screen lock. Keep the current pairing (server, device key, session) until the new one has fully succeeded; cancel or failure leaves it as it was. Never accept a developer token (`t=`) from a link: tokens are typed in by hand, behind the same confirmation. |
 | Visible indicator | While connected, show the persistent notification. While a task runs, also show an always-visible "Agent active" indicator (an accessibility overlay `TYPE_ACCESSIBILITY_OVERLAY`, or a status chip). The user must always know the phone is being driven. |
 | Kill switch | One tap, reachable from the notification and the overlay. It cancels in-flight gestures, sends `command "stop"`, closes the socket (code 1000) and disables auto-reconnect until the user reconnects manually. |
 | Credentials | Never auto-fill passwords, PINs or OTP codes. Refuse `type_text` when the focused node `isPassword`: return an error asking the user to type it themselves. Never dismiss a secure keyguard. |
@@ -466,8 +468,29 @@ that would act. The request goes to **every** online phone of the owner, so it m
 phone; show it as "On Pixel 9: Send message to Mom?". The phone confirms with the screen lock and
 replies:
 ```json
-{"type": "approval", "id": "5d0c…", "approved": true}
+{"type": "approval", "id": "5d0c…", "approved": true, "timestamp": 1791219700,
+ "signature": "MEUCIQ…"}
 ```
+
+**Approvals are signed with a screen-lock-bound key.** So that a leaked device key (or anything
+else that reaches the phone's socket) can't approve purchases, the app keeps an **approval key**: an
+EC P-256 key pair in the Android Keystore, created with `setUserAuthenticationRequired(true)` and
+`setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG | AUTH_DEVICE_CREDENTIAL)`, so it can sign
+only right after the owner passes the screen lock.
+
+- **Registering it.** Send the public key as `approval_key` (base64 of the X.509
+  SubjectPublicKeyInfo, i.e. Java's `PublicKey.encoded`) in `POST /api/pair/redeem` when pairing.
+  Phones paired before this existed send it once in the `hello` (`"approval_key": "MFkw…"`); the
+  server keeps the first one and never lets a later hello replace it. Only pairing again does.
+- **Signing.** Approve through `BiometricPrompt` with a `CryptoObject` wrapping a
+  `SHA256withECDSA` `Signature` initialised with the private key. On success, sign the UTF-8 bytes
+  of `<approval id>|<task id>|true|<timestamp>` (the unix time in seconds, also sent as
+  `timestamp`) and send the base64 DER signature as `signature`.
+- **What the server accepts.** Once a phone has a registered key, a `true` without a valid
+  signature by **that phone's** key, over **this** approval id and task, made within the last 5
+  minutes, is ignored (the prompt stays open on the owner's other phones). A phone without a
+  registered key (an older app) is trusted as before, until it updates.
+- **Denials are never signed.** Anyone may say no: `{"type": "approval", "id": "5d0c…", "approved": false}`.
 | Rule | Server behaviour |
 |---|---|
 | `approved: true` | The task gets "yes" and goes ahead. Anything but the JSON value `true` counts as denied. |
