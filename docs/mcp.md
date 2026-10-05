@@ -176,6 +176,10 @@ pass.
 | `max_steps` | integer ≥ 1 | 40 | Stop after this many steps |
 | `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md) |
 | `wait_seconds` | integer 0–45 | 45 | How long to wait before returning |
+| `idempotency_key` | string, up to 255 characters | none | Retrying with the same key and arguments returns the first task instead of starting another. See [Idempotent retries](api.md#idempotent-retries) |
+
+Before starting, it checks both its scopes and that the phone is unlocked with its screen on
+(otherwise the tool error starts with `phone_locked`, `phone_unresponsive` or `phone_offline`).
 
 Returns the [task object](api.md#the-task-object) plus two fields, `next` and `untrusted_content`:
 
@@ -277,7 +281,8 @@ revoking the key stops it.
 
 - **Questions.** A task may ask something (`needs_input`), for example which account to use. The
   `next` hint tells the model to ask the user, or answer if it already knows, with
-  `answer_question`.
+  `answer_question`. Answer within the server's question timeout (5 minutes by default): after
+  that the task ends as `failed` with `outcome.reason: "question_timeout"`.
 - **Risky actions are approved on the phone.** Before buying, sending, deleting and the like, a task
   pauses in `needs_confirmation` and the owner is asked on their phone. Your agent can't approve:
   `answer_question` with `approve: true` fails with `confirmation_requires_owner`, so a model that
@@ -338,7 +343,9 @@ See [Orchestrations in the API reference](api.md#orchestrations) for every statu
 | Someone else's phone or task, or a typo | Tool error: `Unknown device …` or `Unknown task …` |
 | A key that may not approve sends `approve: true` | Tool error: `confirmation_requires_owner: …` |
 | No `device_id` and several phones online | Tool error listing the phone ids to choose from |
-| Phone offline, concurrent-task cap, daily quota | Tool error with the reason |
+| The phone is offline, locked or not answering | Tool error: `phone_offline: …`, `phone_locked: …` or `phone_unresponsive: …`. Ask the user to unlock or wake the phone |
+| An `idempotency_key` reused with different arguments | Tool error: `idempotency_conflict: …` |
+| Concurrent-task cap, daily quota or credits, run caps | Tool error: `too_many_tasks: …`, `daily_quota: …`, `credits_exhausted: …` or `too_many_orchestrations: …` |
 
 Tool errors come back as a result with `isError: true` and the message as text.
 

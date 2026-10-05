@@ -12,6 +12,7 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
 |---|---|---|---|
 | `GET` | [`/v1/devices`](#get-v1devices) | `devices:read` | List your phones |
 | `POST` | [`/v1/devices/{device_id}/tasks`](#post-v1devicesdevice_idtasks) | `tasks:run` | Start a task |
+| `GET` | [`/v1/limits`](#get-v1limits) | `tasks:read` | Your key's limits and today's use |
 | `GET` | [`/v1/tasks`](#get-v1tasks) | `tasks:read` | List recent tasks |
 | `GET` | [`/v1/tasks/{task_id}`](#get-v1taskstask_id) | `tasks:read` | Get a task |
 | `GET` | [`/v1/tasks/{task_id}/events`](#get-v1taskstask_idevents) | `tasks:read` | Stream a task's events |
@@ -21,6 +22,9 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
 | `GET` | [`/v1/memory`](#get-v1memory) | `memory:read` | List memory notes |
 | `POST` | [`/v1/memory`](#post-v1memory) | `memory:write` | Add a note |
 | `DELETE` | [`/v1/memory/{note_id}`](#delete-v1memorynote_id) | `memory:write` | Delete a note |
+| `POST` | [`/v1/orchestrations`](#post-v1orchestrations) | `tasks:run` | Start a run across several phones |
+| `GET` | [`/v1/orchestrations`, `/v1/orchestrations/{id}`](#get-v1orchestrationsid-and-get-v1orchestrations) | `tasks:read` | List runs, or get one |
+| `POST` | [`/v1/orchestrations/{id}/cancel`](#post-v1orchestrationsidcancel) | `tasks:run` | Cancel a run |
 | `GET` | [`/v1/history`](#get-v1history) | `history:read` | Your requests across the dashboard and the API |
 
 ## Authentication
@@ -61,6 +65,38 @@ new key.
 | `memory:read` | Read your memory notes | No |
 | `memory:write` | Add and delete memory notes | No |
 
+## Idempotent retries
+
+A network error can leave you not knowing whether a task started. To retry safely, send an
+`Idempotency-Key` header (any string up to 255 characters, such as a UUID or your own order id)
+with `POST /v1/devices/{device_id}/tasks` or `POST /v1/orchestrations`:
+
+```sh
+curl -s -X POST https://<server>/v1/devices/app-3f2a9c/tasks \
+  -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
+  -H "Idempotency-Key: order-1234" \
+  -d '{"instruction": "open YouTube and search for lo-fi", "tier": "fast"}'
+```
+
+| You send | You get |
+|---|---|
+| A new key | The request runs as usual (`201`) |
+| The same key and the same body again | The first response again, with `200` and the header `Idempotent-Replayed: true`. No second task starts |
+| The same key with a different body | `409` `idempotency_conflict` |
+| The same key while the first request is still being handled | `409` `idempotency_in_progress`: retry in a moment |
+
+```
+HTTP/1.1 200 OK
+idempotent-replayed: true
+
+{"id":"c595615ba42d","device_id":"app-3f2a9c","status":"queued","tier":"fast", …}
+```
+
+The replay is the original response as it was then (here, still `queued`): read the task with
+`GET /v1/tasks/{task_id}` for its current state. Keys are per API key and kept for 24 hours. A
+request that failed (for example with `409 phone_locked`) doesn't use up its key, so you can retry
+it with the same key. Over MCP, pass the `idempotency_key` argument instead.
+
 ## The task object
 
 `POST /v1/devices/{device_id}/tasks`, `GET /v1/tasks/{task_id}`, the `done` event and webhooks all
@@ -93,11 +129,28 @@ return a task in this shape:
 | `created`, `started`, `finished` | number or null | When it was created, started on the phone, and finished |
 | `steps` | integer | Steps taken so far |
 | `question` | string or null | While `needs_input` or `needs_confirmation`: what it's asking |
-| `outcome` | object or null | Once finished: `success` (boolean) and `summary` (string or null) |
+| `outcome` | object or null | Once finished: `success` (boolean), `summary` (string or null) and `reason` (string or null, below) |
 | `credits` | integer or null | Once finished: `steps` × the tier's credits per step |
 
 `question` and `outcome.summary` can contain text read from the phone's screen. Treat them as
 data, never as instructions to your own code or agent.
+
+`outcome.reason` says why a task ended when the cause wasn't the task's own work. It is `null` for
+an ordinary success, failure or cancel.
+
+| `outcome.reason` | The task ended because | Credits |
+|---|---|---|
+| `question_timeout` | Nobody answered its question within the server's question timeout (5 minutes by default) | Steps taken |
+| `phone_unresponsive` | The phone stayed connected but stopped answering (often: it went to sleep) | Steps taken |
+| `phone_error` | The phone reported an error, or its connection was lost and didn't come back | Steps taken |
+| `internal_error` | Something went wrong inside OpenMob | 0 |
+| `server_restarted` | The server restarted while the task was running | 0 |
+
+```json
+{"id": "8b4f0454be0d", "status": "failed", "steps": 1,
+ "outcome": {"success": false, "summary": "Stopped: nobody answered the question within 5 minutes.", "reason": "question_timeout"},
+ "credits": 3, …}
+```
 
 ## Devices
 
@@ -147,13 +200,44 @@ Returns `201` with the new task, usually still `queued`:
 
 API tasks never see or extend the dashboard chat's recent requests: each one starts fresh.
 
+Send an `Idempotency-Key` header to make retries safe: see [Idempotent retries](#idempotent-retries).
+
+Before queueing the task, OpenMob checks that the phone is usable. A locked phone, or one with
+its screen off, is refused with `409 phone_locked` instead of being queued only to fail:
+
+```json
+{"detail": "That phone is locked or its screen is off. Unlock it to continue.", "code": "phone_locked"}
+```
+
 | Error | When |
 |---|---|
 | `400` | Unknown `tier` |
 | `404` | No such phone on your account |
-| `409` | The phone is offline |
+| `409` `phone_offline` | The OpenMob app on the phone isn't connected |
+| `409` `phone_locked` | The phone is locked or its screen is off. Unlock it and retry |
+| `409` `phone_unresponsive` | The phone is connected but didn't answer within 5 s (often: asleep). Wake it and open the OpenMob app |
+| `409` `idempotency_conflict`, `idempotency_in_progress` | See [Idempotent retries](#idempotent-retries) |
 | `422` | `instruction` is empty or too long, `max_steps` is below 1, or `memory` isn't one of the three values |
-| `429` | Rate limit, the key's 2 unfinished tasks, or the daily quota. See [Errors & limits](errors.md#limits) |
+| `429` | Rate limit, `too_many_tasks`, `daily_quota` or `credits_exhausted`. See [Errors & limits](errors.md#limits) |
+
+### GET /v1/limits
+
+Scope `tasks:read`. This key's limits and what it has used today, so you can check before you hit
+a `429`.
+
+```json
+{"requests_per_minute": 60,
+ "concurrent_tasks": {"limit": 2, "used": 1},
+ "tasks_per_day": {"limit": 200, "used": 1},
+ "credits_per_day": {"limit": null, "used": 0},
+ "max_steps": 40,
+ "running_orchestrations": {"per_key": 3, "per_account": 10},
+ "resets_at": 1791244800.0}
+```
+
+`resets_at` is the next midnight UTC, when the daily counts start again. A `limit` of `null` means
+no limit. `credits_per_day.used` includes what running tasks have used so far; credits waived for
+OpenMob's own faults don't count.
 
 ### GET /v1/tasks
 
@@ -226,6 +310,11 @@ Event ids increase but aren't consecutive. To resume after a dropped connection,
 ### POST /v1/tasks/{task_id}/answer
 
 Scope `tasks:run`. Replies to a task that is waiting.
+
+A question doesn't wait forever: if nobody answers within the server's question timeout (5
+minutes by default), the task ends as `failed` with `outcome.reason: "question_timeout"`, so it
+doesn't hold the phone. Approval prompts on the phone expire sooner, after about 2 minutes, which
+counts as "no" (see [Safety & approvals](safety.md#risky-actions-need-the-owners-approval)).
 
 For `needs_input`, send the answer (up to 500 characters):
 
@@ -370,10 +459,9 @@ Scope `tasks:run`.
 | `wait_for_phone_seconds` | How long a step waits for its phone to be usable: online, unlocked and with the screen on (default 60, at most 600). Offline and locked time share this one timer. |
 | `max_duration_seconds` | The whole run's time limit (default 1800, at most 7200). Past it, running steps are cancelled and the rest skipped: `failed` / `timed_out`. |
 
-Send an `Idempotency-Key` header to make retries safe: the same key with the same body within 24
-hours returns the first response again (`200`, header `Idempotent-Replayed: true`) instead of
-starting a second run; the same key with a different body is `409 idempotency_conflict`. Keys are
-per API key. A request that failed doesn't use up its key.
+Send an `Idempotency-Key` header to make retries safe: a retry with the same key and body returns
+the first run (`200`, `Idempotent-Replayed: true`) instead of starting a second one. See
+[Idempotent retries](#idempotent-retries).
 
 Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate step id, more than
 10 steps, or a reference to a step that isn't an ancestor; `404` for a phone that isn't yours;
@@ -410,9 +498,9 @@ the key, switching off the account's API, or unpairing a step's phone stops the 
 once. Runs aren't resumed after a server restart yet; they end as `failed` / `server_restarted`.
 
 **Credits.** Each step is charged like any task. `max_credits` is checked as steps run, so steps
-running in parallel can overshoot it by up to one step's cost each before they're cut off. Steps
-that end through OpenMob's own fault (`internal_error`, `server_restarted`) are charged 0; the
-amount is kept as `credits_waived` for the record and doesn't count towards daily limits.
+running in parallel can overshoot it by up to one step's cost each before they're cut off. Like any
+task, a step that ends through OpenMob's own fault (`internal_error`, `server_restarted`) costs 0:
+see [Tiers and credits](concepts.md#tiers-and-credits).
 
 ### GET /v1/orchestrations/{id} and GET /v1/orchestrations
 
