@@ -21,6 +21,7 @@ dependencies = [
     "websockets>=12",
     "certifi",
     "mcp>=2.3",  # the remote MCP server at /mcp and `openmob mcp`
+    "cryptography>=42",  # verifying phones' screen-lock-signed approvals
 ]
 
 [project.optional-dependencies]

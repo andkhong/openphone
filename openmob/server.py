@@ -46,6 +46,7 @@ APK = Path(
     or Path(__file__).resolve().parent.parent / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 )
 HELLO_TIMEOUT = 10
+LINK_RECHECK = 5.0  # seconds between re-checks of a phone socket's pairing against the account store
 
 
 class CommandIn(BaseModel):
@@ -89,6 +90,7 @@ class RedeemIn(BaseModel):
     code: str
     device_id: str
     model: str = ""
+    approval_key: str | None = None  # the app's screen-lock-bound public key (see phone/approval_keys.py)
 
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speech
@@ -275,10 +277,16 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         acct = account(request)
         if acct is None:
             raise HTTPException(status_code=401, detail="Sign in on the phone first.")
+        from .phone.approval_keys import valid_public_key
+
+        if body.approval_key and not valid_public_key(body.approval_key):
+            raise HTTPException(status_code=400, detail="approval_key must be a base64 EC P-256 public key.")
         try:
-            key = store.redeem_pairing_code(body.code, acct, body.device_id, body.model)
+            key = store.redeem_pairing_code(body.code, acct, body.device_id, body.model, body.approval_key)
         except AuthError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
+        # A new key for this phone: any socket still using the old one is cut off now.
+        manager.close_links(f"app-{body.device_id}", 4401, "This phone was paired again. Reconnect with its new key.")
         return {"key": key, "server": public_base(request)}
 
     @app.post("/api/devices/{device_id}/revoke", dependencies=[Depends(require_auth)])
@@ -289,9 +297,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         raw_id = device_id.removeprefix("app-")
         if not store.revoke_device(account(request), raw_id):
             raise HTTPException(status_code=404, detail="Not your phone.")
-        s = manager.get(f"app-{raw_id}")
-        if s and s.link:
-            s.link.disconnect(4401, "This phone was unpaired from its account.")  # cut it off now
+        manager.close_links(f"app-{raw_id}", 4401, "This phone was unpaired from its account.")  # every socket, now
         manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
         return {"ok": True}
 
@@ -591,9 +597,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         raw_id = device_id.removeprefix("app-")
         if not store.admin_revoke_device(raw_id):
             raise HTTPException(status_code=404, detail=f"Unknown device {device_id}")
-        s = manager.get(f"app-{raw_id}")
-        if s and s.link:
-            s.link.disconnect(4401, "This phone was unpaired by an administrator.")  # cut it off now
+        manager.close_links(f"app-{raw_id}", 4401, "This phone was unpaired by an administrator.")  # every socket
         manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
         return {"ok": True}
 
@@ -640,6 +644,47 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
 
     # --- phone connection ------------------------------------------------
 
+    def pairing_still_valid(raw_id: str, account_id: str | None, key_hash: str | None) -> bool:
+        """The phone is still paired to this account, with the key this socket used."""
+        auth = store.device_auth(raw_id)
+        return bool(auth and not auth["revoked"] and auth["account_id"] == account_id and auth["key_hash"] == key_hash)
+
+    def register_approval_key(raw_id: str, key_hash: str, public_key, device: dict) -> None:
+        """Phones paired before approval keys existed register theirs on first connect (once)."""
+        from .phone.approval_keys import valid_public_key
+
+        if isinstance(public_key, str) and valid_public_key(public_key):
+            if store.register_approval_key(raw_id, key_hash, public_key):
+                print(f"🔐 Approval key registered for {device.get('model') or raw_id}.", flush=True)
+
+    def verify_phone_approval(session, approval_id: str, record: dict, message: dict) -> bool:
+        """A yes counts only if the answering phone signed it with its screen-lock key. Phones whose
+        app predates approval keys (none registered) are trusted as before, until they update."""
+        if store is None:
+            return True
+        from .phone.approval_keys import verify_approval
+
+        auth = store.device_auth(session.info.id.removeprefix("app-"))
+        if not auth or auth["revoked"] or auth["account_id"] != session.account_id:
+            return False
+        if not auth["approval_key"]:
+            return True
+        return verify_approval(auth["approval_key"], str(approval_id), record["task_id"], True,
+                               message.get("timestamp"), message.get("signature"))
+
+    if hasattr(manager, "replaced_listeners"):  # (test doubles may not have these)
+        manager.approval_verifier = verify_phone_approval
+
+    def phone_reconnected_elsewhere(session, old, new) -> None:
+        service = getattr(app.state, "v1_service", None)
+        if service is not None:
+            service.ledger.audit("device.connection_replaced", session.account_id,
+                                 device_id=session.info.id.removeprefix("app-"),
+                                 outcome=f"{getattr(old, 'peer', None)} → {getattr(new, 'peer', None)}")
+
+    if hasattr(manager, "replaced_listeners"):
+        manager.replaced_listeners.append(phone_reconnected_elsewhere)
+
     @app.websocket("/phone/ws")
     async def phone_socket(ws: WebSocket) -> None:
         """Phones (OpenMob app or `openmob bridge`) connect here. See openmob/phone/protocol.py."""
@@ -657,31 +702,45 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             return
 
         account_id = None
+        device = hello.get("device") or {}
+        raw_id = str(device.get("id") or "")
+        key_hash = None
         if store is not None:
             from .accounts import AuthError
 
-            device = hello.get("device") or {}
             try:
-                account_id = await run_in_threadpool(
-                    store.verify_device, device.get("id") or "", hello.get("key") or ""
-                )
+                account_id = await run_in_threadpool(store.verify_device, raw_id, hello.get("key") or "")
             except AuthError as exc:
                 await ws.close(code=4401, reason=str(exc))
                 return
+            key_hash = store.key_fingerprint(hello.get("key") or "")
+            await run_in_threadpool(register_approval_key, raw_id, key_hash, hello.get("approval_key"), device)
 
         link = PhoneLink(ws, asyncio.get_running_loop())
+        link.peer = ws.client.host if ws.client else None  # to tell the owner about a connection from elsewhere
+        link.key_hash = key_hash  # the device key this socket proved; a re-pair makes it stale
         # Creating a session builds an agent (API clients etc.), so keep it off the event loop.
         session = await run_in_threadpool(manager.attach_remote, hello.get("device") or {}, link, account_id)
         await link.send({"type": "welcome", "session": session.info.id})
         session.coordinator.event("status", f"{session.info.model} connected over the OpenMob app protocol.")
         await run_in_threadpool(manager.resume, session)  # pending approvals, "who is using it"
         close_code = None
+        checked = time.monotonic()
         try:
             while True:
                 raw = await ws.receive()
                 if raw["type"] == "websocket.disconnect":
                     close_code = raw.get("code")  # 1000: the user disconnected on purpose
                     break
+                # A replaced, unpaired or re-paired socket can't act: drop what it sends and cut it off.
+                if not manager.is_live(session, link):
+                    link.disconnect(4409, "Replaced by a newer connection from this phone.")
+                    break
+                if store is not None and time.monotonic() - checked > LINK_RECHECK:
+                    checked = time.monotonic()
+                    if not await run_in_threadpool(pairing_still_valid, raw_id, account_id, key_hash):
+                        manager.close_links(session.info.id, 4401, "This phone's pairing changed. Pair it again.")
+                        break
                 message = decode_message(raw.get("text"), raw.get("bytes"))  # binary: a screenshot result
                 kind = message.get("type")
                 if kind == "result":
@@ -692,13 +751,13 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                     session.driver.video_available = bool(message.get("available"))
                 elif kind == "approval":  # the owner approved or denied a risky action, with screen lock
                     await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
-                                            message.get("approved") is True)
+                                            message.get("approved") is True, message)
                 elif kind == "command" and str(message.get("text", "")).strip():
                     targets = manager.phone_stop_targets(session)
                     result = await run_in_threadpool(session.coordinator.submit, message["text"], "phone")
                     if result == "stopped":  # "stop" said or typed on the phone: the owner's call
                         await run_in_threadpool(manager.phone_stopped, session, targets, "stop")
-        except (WebSocketDisconnect, ValueError):
+        except (WebSocketDisconnect, ValueError, RuntimeError):  # RuntimeError: we closed it ourselves
             pass
         finally:
             # Decide about the reconnect wait first, then fail the calls still in flight.

@@ -14,7 +14,13 @@
     <string name="ui_token_hint">Pairing token</string>
     <string name="ui_save">Save</string>
     <string name="ui_cancel">Cancel</string>
-    <string name="ui_invalid_server">Server address must start with https:// or http://</string>
+    <string name="ui_invalid_server">Use an https:// address (plain http:// only for a server on this phone or your local network)</string>
+    <string name="ui_connect_title">Connect to %1$s?</string>
+    <string name="ui_connect_body">%1$s will be able to control this phone: see its screen, and tap, type, swipe and open apps for you. Only continue if you set this server up or trust it.</string>
+    <string name="ui_connect_replaces">This disconnects the phone from %1$s, which it\'s paired with now. You\'ll confirm with your screen lock.</string>
+    <string name="ui_token_link_refused">This link uses a developer token, which links can\'t set. Pair by scanning the QR code from your dashboard, or enter the token in the app.</string>
+    <string name="ui_replace_title">Replace this phone\'s pairing</string>
+    <string name="ui_approve_replace">This replaces the pairing with %1$s. The agent on %2$s will be able to see your screen and tap, type, swipe and open apps for you. Confirm it\'s you.</string>
     <string name="ui_missing_token">Enter the pairing token from your dashboard</string>
     <string name="ui_paired_with">Paired with %1$s</string>
     <string name="ui_bad_link">That pairing link is not valid. Scan the QR code again.</string>

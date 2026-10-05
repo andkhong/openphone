@@ -67,9 +67,9 @@ object Approvals {
      * Sends the owner's answer, once. False if the request is gone (answered or expired) or the
      * phone is offline; in the offline case it stays pending so the owner can try again.
      */
-    fun answer(context: Context, id: String, approved: Boolean): Boolean {
+    fun answer(context: Context, id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0): Boolean {
         val request = pending[id] ?: return false
-        if (!ConnectionService.sendApproval(id, approved)) return false
+        if (!ConnectionService.sendApproval(id, approved, signature, timestamp)) return false
         finish(context, id)
         val app = context.applicationContext
         AppState.addEvent(

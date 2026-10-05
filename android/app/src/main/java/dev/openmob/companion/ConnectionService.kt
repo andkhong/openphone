@@ -69,9 +69,12 @@ class ConnectionService : Service() {
         val isRunning: Boolean get() = running != null
 
         /** The owner's answer to an approval request (see Approvals). False if not connected. */
-        fun sendApproval(id: String, approved: Boolean): Boolean = AppState.connected && running?.send(
-            JSONObject().put("type", "approval").put("id", id).put("approved", approved)
-        ) ?: false
+        fun sendApproval(id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0): Boolean =
+            AppState.connected && running?.send(
+                JSONObject().put("type", "approval").put("id", id).put("approved", approved).apply {
+                    if (signature != null) put("signature", signature).put("timestamp", timestamp)
+                }
+            ) ?: false
 
         /** Send a spoken or typed request to the agent. False if not connected. */
         fun sendCommand(text: String): Boolean = running?.send(
@@ -174,6 +177,11 @@ class ConnectionService : Service() {
 
     private fun connect() {
         if (stopped) return
+        // Checked again here, so a stored address the app wouldn't accept today is never used.
+        if (!ServerPolicy.isAllowed(settings.server)) {
+            shutDown("This server address isn't allowed: use https:// (plain http only on your own network). Pair again.")
+            return
+        }
         // Accounts mode authenticates with the device key in the hello; never leak the old token.
         val url = socketUrl(settings.server, if (settings.deviceKey.isNotEmpty()) "" else settings.token)
         AppState.setConnection("Connecting to ${Uri.parse(settings.server).host ?: settings.server}…", false)
@@ -232,6 +240,8 @@ class ConnectionService : Service() {
         .put("type", "hello")
         .put("protocol", PROTOCOL_VERSION)
         .apply { settings.deviceKey.takeIf { it.isNotEmpty() }?.let { put("key", it) } }
+        // The screen-lock-bound key approvals are signed with (kept by the server the first time).
+        .apply { if (settings.deviceKey.isNotEmpty()) ApprovalKeys.publicKey()?.let { put("approval_key", it) } }
         .put(
             "device", JSONObject()
                 .put("id", settings.deviceId)

@@ -22,6 +22,33 @@ from openmob.voice.tts import Speaker
 TOKEN = "secret"
 
 
+def new_signer():
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+def public_key_b64(private_key) -> str:
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+
+    return base64.b64encode(private_key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).decode()
+
+
+def sign_approval(private_key, approval_id, task_id, approved, timestamp) -> str:
+    import base64
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from openmob.phone.approval_keys import approval_message
+
+    return base64.b64encode(private_key.sign(approval_message(approval_id, task_id, approved, timestamp),
+                                             ec.ECDSA(hashes.SHA256()))).decode()
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -32,9 +59,13 @@ class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
     def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False,
-                 video=False, approve=None):
+                 video=False, approve=None, signer=None, approval_key=None):
         self.url = f"{url}/phone/ws?t={token}"
         self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
+        # signer: an EC private key standing in for the phone's screen-lock-bound Keystore key; its
+        # public half goes in the hello (approval_key) and approvals are signed with it.
+        self.signer = signer
+        self.approval_key = approval_key or (public_key_b64(signer) if signer else None)
         self.approval_requests = []  # every approval_request received
         self.approval_cancels = []  # ids of approval requests the server withdrew
         self.key = key
@@ -71,6 +102,8 @@ class FakePhone:
                     "id": self.device_id, "model": "Pixel 9", "manufacturer": "google"}}
                 if self.key:
                     hello["key"] = self.key
+                if self.approval_key:
+                    hello["approval_key"] = self.approval_key
                 if self.platform:
                     hello["device"]["platform"] = self.platform
                 if self.video:
@@ -87,7 +120,7 @@ class FakePhone:
                     elif msg["type"] == "approval_request":
                         self.approval_requests.append(msg)
                         if self.approve is not None:
-                            await ws.send(json.dumps({"type": "approval", "id": msg["id"], "approved": self.approve}))
+                            await ws.send(json.dumps(self.approval(msg["id"], msg["task_id"], self.approve)))
                     elif msg["type"] == "call":
                         self.calls.append((msg["method"], msg["params"]))
                         if self.video and msg["method"].startswith("stream_"):
@@ -135,6 +168,14 @@ class FakePhone:
             self.streaming.cancel()
             self.streaming = None
         return None
+
+    def approval(self, approval_id, task_id, approved, timestamp=None):
+        """An approval message, signed when this phone has a signer and says yes."""
+        message = {"type": "approval", "id": approval_id, "approved": approved}
+        if self.signer is not None and approved:
+            timestamp = int(time.time()) if timestamp is None else timestamp
+            message.update(timestamp=timestamp, signature=sign_approval(self.signer, approval_id, task_id, True, timestamp))
+        return message
 
     def send(self, message):
         asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps(message)), self.loop).result(5)

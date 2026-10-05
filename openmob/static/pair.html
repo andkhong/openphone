@@ -57,9 +57,12 @@ const server = encodeURIComponent(location.origin);
 if (code) {
   document.getElementById("open").href = `openmob://connect?server=${server}&code=${encodeURIComponent(code)}`;
   document.querySelector("#open").closest(".step").querySelector("p").textContent =
-    "Opens the app with this server and your one-time code. You'll sign in and confirm with your screen lock.";
+    `Opens the app with your one-time code. It asks you to confirm the server (${location.host}), then you sign in and confirm with your screen lock.`;
 } else if (token) {
-  document.getElementById("open").href = `openmob://connect?server=${server}&t=${encodeURIComponent(token)}`;
+  // Links can't set a developer token (a web page could hijack the phone that way): type it in the app.
+  document.getElementById("open").hidden = true;
+  document.querySelector("#open").closest(".step").querySelector("p").textContent =
+    `In the app, tap "Pair with your agent server" and enter the server ${location.origin} and the token from \`openmob run\`.`;
 } else {
   document.getElementById("open").hidden = true;
   err("This pairing link is incomplete. Scan the QR code on your dashboard's Connect page again.");
