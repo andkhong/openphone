@@ -18,7 +18,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
 import android.service.quicksettings.TileService
-import android.speech.tts.TextToSpeech
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -106,7 +105,6 @@ class ConnectionService : Service() {
     private var stopped = false
     private var backoffSeconds = 1.0
     private var wakeLock: PowerManager.WakeLock? = null
-    private var tts: TextToSpeech? = null
     private var statusLine = "" // the notification's current text, kept when the title changes
     @Volatile private var streamer: ScreenStreamer? = null
     private lateinit var settings: Settings
@@ -118,7 +116,6 @@ class ConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
-        tts = TextToSpeech(this) {}
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -171,7 +168,6 @@ class ConnectionService : Service() {
 
     override fun onDestroy() {
         shutDown(null)
-        tts?.shutdown()
         calls.shutdownNow()
         super.onDestroy()
     }
@@ -310,9 +306,6 @@ class ConnectionService : Service() {
             return
         }
         AppState.addEvent(kind, text)
-        if (kind == "question" || kind == "result") {
-            tts?.speak(text.replace(Regex("""\(\d+ steps\)$"""), ""), TextToSpeech.QUEUE_FLUSH, null, kind)
-        }
         if (kind == "status" && text.startsWith("Working on:")) updateNotification(text)
         if (kind == "result" || kind == "error") updateNotification("Agent connected · ready")
     }

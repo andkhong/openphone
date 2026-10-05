@@ -19,7 +19,7 @@ Source of truth in the repo: `openmob/phone/protocol.py` (message types, `METHOD
 * The **phone connects out** to the server, so it works behind NAT and on mobile data. The server never connects to the phone.
 * Transport: one WebSocket. Every frame is a **UTF-8 JSON text frame** holding exactly one object with a `"type"` field. Binary data (screenshots) is base64 inside JSON. The one exception: a `screenshot` call with `"binary": true` may be answered with a binary frame (§4.1).
 * The server is the **RPC client**: it sends `call`s, and the phone replies with exactly one `result` per call.
-* The phone is also the **user's microphone/keyboard**: it sends `command` messages and shows or speaks `event`s.
+* The phone is also the **user's microphone/keyboard**: it sends `command` messages and shows `event`s.
 
 ### Conventions
 
