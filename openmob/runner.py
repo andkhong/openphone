@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import queue
 import re
@@ -11,11 +12,17 @@ import time
 from collections import OrderedDict, deque
 
 from .agent import Agent
+from .agent.loop import is_yes
 from .phone.base import DeviceError, PhoneTimeout
 from .usage import Usage
 from .voice.tts import Speaker
 
 _CURRENT = object()  # event(): tag with whichever task is running
+
+# The OpenMob companion app itself: no task may operate it (it's where approvals and the kill switch
+# live), so a prompt-injected agent can't approve its own purchase from inside the app.
+OWN_PACKAGES = {"dev.openmob.companion"}
+APPROVE_ON_PROMPT = "Approve this on the approval prompt, with your screen lock. A typed or spoken \"yes\" can't approve it."
 
 STOP_PHRASES = {"stop", "cancel", "abort", "stop it", "never mind", "nevermind", "stop stop"}
 
@@ -75,7 +82,11 @@ class Coordinator:
         self.question: str | None = None
         self.question_kind: str | None = None  # "question" (ask_user) or "confirm" (risky action)
         self.question_timeout = 300.0  # seconds a question may wait for an answer (0: forever)
+        # Whether a risky action may be approved by typing or saying "yes" (submit). False for app
+        # phones, which approve only through the screen-lock prompt (DeviceManager.resolve_approval).
+        self.text_approvals = True
         self._unanswered: str | None = None  # the task stopped because nobody answered its question
+        self._stop_reason: str | None = None  # why stop() cancelled the running task, if it said
         self.listeners: list = []
         self.entry_listeners: list = []  # callables(entry): every log entry, with its task id
         # Per-task records (status, steps, outcome, events) for the developer API, newest last.
@@ -98,6 +109,10 @@ class Coordinator:
             running = self.current_task
             if self.question is not None:
                 kind = "stop" if is_stop(text) else "answer"
+                if kind == "answer" and self.question_kind == "confirm" and not self.text_approvals:
+                    # Never approved by text: anyone (or the agent itself, typing into the app) could
+                    # send "yes". A "no" still declines; approving takes the screen-lock prompt.
+                    kind = "approval_required" if is_yes(text) else "decline"
             elif is_stop(text):
                 kind = "stop" if (self.current is not None or not self.tasks.empty()) else "ignore"
             elif running is not None and mode == "auto":
@@ -112,10 +127,16 @@ class Coordinator:
                 return "steered"
             self.enqueue(text, source)  # the task finished in the meantime: it's a new request
             return "queued"
+        if kind == "approval_required":  # not an answer: the pending approval prompt stays open
+            self.event("status", APPROVE_ON_PROMPT, task=running)
+            return "approval_required"
         # Answers and stops belong to the running task's turn.
         self.event("heard", f"[{source}] {text}", task=running)
         if kind == "answer":
             self.answers.put(text)
+            return "answered"
+        if kind == "decline":
+            self.answers.put("no")
             return "answered"
         if kind == "stop":
             self.stop()
@@ -212,7 +233,10 @@ class Coordinator:
         self.answers.put(text)
         return True
 
-    def stop(self) -> None:
+    def stop(self, reason: str | None = None) -> None:
+        """Cancel the running task and everything queued. `reason` is recorded on each (e.g.
+        device_revoked when the phone is unpaired)."""
+        final = {"final": True, "success": False, "cancelled": True, **({"reason": reason} if reason else {})}
         while not self.tasks.empty():
             try:
                 _, _, task_id, _ = self.tasks.get_nowait()
@@ -222,9 +246,9 @@ class Coordinator:
                 if task_id in self._skip:  # already cancelled on its own
                     self._skip.discard(task_id)
                     continue
-            self.event("error", "Cancelled before it started.", task=task_id,
-                       data={"final": True, "success": False, "cancelled": True})
+            self.event("error", "Cancelled before it started.", task=task_id, data=final)
         if self.current is not None:
+            self._stop_reason = reason
             self.cancel.set()
             self.event("status", "Stopping…")
 
@@ -344,7 +368,8 @@ class Coordinator:
                 # The phone page is in the phone's browser, so get it out of the way first.
                 # go_home: the phone page is in the phone's browser, so get it out of the way first;
                 # orchestrated steps ask for it too, so each starts from a clean screen.
-                go_home = options.pop("go_home", source == "phone")
+                go_home = options.pop("go_home", source == "phone") or self._own_app_in_front()
+                self._block_own_app(options)
                 result = self.agent.run(text, self.cancel, go_home=go_home, **options)
                 data = {"final": True, "success": result.success, "steps": result.steps}
                 summary = result.summary
@@ -355,6 +380,8 @@ class Coordinator:
                                f"{f'{minutes:g} minutes' if minutes >= 1 else f'{self.question_timeout:g} s'}.")
                 elif self.cancel.is_set() and not result.success:
                     data["cancelled"] = True
+                    if self._stop_reason:
+                        data["reason"] = self._stop_reason
                 self.event("result" if result.success else "error", f"{summary} ({result.steps} steps)", data=data)
                 self.speaker.say(result.summary)
                 if not data.get("cancelled"):  # a stop is the user's call, not the model's result
@@ -378,6 +405,26 @@ class Coordinator:
                     self.current = None
                     self.current_task = None
                     self._unanswered = None
+                    self._stop_reason = None
+
+    def _own_app_in_front(self) -> bool:
+        """The OpenMob app is on screen (often: the user just spoke to it): start from Home instead."""
+        try:
+            return self.agent.driver.current_app() in OWN_PACKAGES
+        except Exception:
+            return False
+
+    def _block_own_app(self, options: dict) -> None:
+        """Every task, from any source: the agent may not open or operate the OpenMob app (the task
+        stops if it ends up there), on top of whatever the task already blocks (sensitive apps)."""
+        try:
+            accepts = "blocked" in inspect.signature(self.agent.run).parameters
+        except (TypeError, ValueError):
+            accepts = False
+        if not accepts:
+            return
+        other = options.get("blocked")
+        options["blocked"] = lambda package, other=other: package in OWN_PACKAGES or bool(other and other(package))
 
     def _record_model_run(self, task_id: str, success: bool, steps: int | None) -> None:
         """Per-model success stats (History.model_stats): which model ran this task, and how it went."""

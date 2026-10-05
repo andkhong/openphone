@@ -9,12 +9,12 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Callable, Literal
+from typing import Annotated, Callable, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse, Response, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import AfterValidator, BaseModel, Field
 
 from ..accounts import SCOPES, AuthError
 from ..ledger import day_start
@@ -38,8 +38,17 @@ def service_error_response(request: Request, exc: ServiceError) -> JSONResponse:
     return JSONResponse(body, status_code=exc.status, headers=exc.headers or None)
 
 
+def _not_blank(value: str) -> str:
+    if not value.strip():
+        raise ValueError("must contain more than whitespace")
+    return value
+
+
+NonBlank = Annotated[str, AfterValidator(_not_blank)]  # whitespace-only is a 422, like an empty string
+
+
 class TaskIn(BaseModel):
-    instruction: str = Field(min_length=1, max_length=MAX_INSTRUCTION)
+    instruction: NonBlank = Field(min_length=1, max_length=MAX_INSTRUCTION)
     tier: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
     memory: Literal["on", "read_only", "off"] = "on"  # use and/or add to the owner's pinned notes
@@ -132,8 +141,8 @@ class DeveloperApi:
             return s.limits(p)
 
         @r.get("/tasks")
-        def list_tasks(limit: int = 20, p: Principal = Depends(self.need("tasks:read"))) -> dict:
-            return s.list_tasks(p, limit)
+        def list_tasks(limit: int = 20, cursor: str | None = None, p: Principal = Depends(self.need("tasks:read"))) -> dict:
+            return s.list_tasks(p, limit, cursor)
 
         @r.get("/tasks/{task_id}")
         def get_task(task_id: str, p: Principal = Depends(self.need("tasks:read"))) -> dict:
@@ -150,7 +159,7 @@ class DeveloperApi:
         @r.get("/tasks/{task_id}/events")
         async def events(task_id: str, request: Request, p: Principal = Depends(self.need("tasks:read"))):
             account_id = p.account_id
-            await run_in_threadpool(s.public_task, account_id, task_id)  # 404 if it isn't theirs
+            await run_in_threadpool(s.check_task, p, task_id)  # 404 unless this key created it
             try:
                 after = int(request.headers.get("last-event-id") or 0)
             except ValueError:
@@ -198,8 +207,8 @@ class DeveloperApi:
             return s.delete_memory(p, note_id)
 
         @r.get("/history")
-        def history(limit: int = 50, p: Principal = Depends(self.need("history:read"))) -> dict:
-            return s.history(p, limit)
+        def history(limit: int = 50, cursor: str | None = None, p: Principal = Depends(self.need("history:read"))) -> dict:
+            return s.history(p, limit, cursor)
 
         return r
 
@@ -252,7 +261,7 @@ class DeveloperApi:
             new = self.store.rotate_api_key(account_id, key_id)
             if new is None:
                 raise HTTPException(404, "Unknown key.")
-            self.ledger.audit("key.rotate", account_id, new[0], outcome=f"replaces {key_id}")
+            self.ledger.audit("key.rotate", account_id, key_id, outcome="new secret; same key, limits and tasks")
             created = next(k for k in self.store.list_api_keys(account_id) if k["id"] == new[0])
             return {**created, "key": new[1]}
 
@@ -267,7 +276,9 @@ class DeveloperApi:
                            "concurrent_tasks": self.cfg.api_max_concurrent_tasks,
                            "tasks_per_day": self.cfg.api_daily_tasks, "max_steps": self.cfg.api_max_steps,
                            "credits_per_day": self.cfg.api_daily_credits or None,
-                           "resets_at": day_start(now) + 86400},  # daily limits reset at midnight UTC
+                           "resets_at": day_start(now) + 86400,  # daily limits reset at midnight UTC
+                           "account_tasks_per_day": self.cfg.api_account_daily_tasks,  # all keys together
+                           "account_credits_per_day": self.cfg.api_account_daily_credits or None},
                 "usage": {"today": self.ledger.usage(account_id, day_start(now)),
                           "last_30_days": self.ledger.usage(account_id, now - 30 * 86400)},
                 "settings": self.store.settings(account_id),

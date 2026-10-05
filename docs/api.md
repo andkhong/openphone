@@ -25,7 +25,7 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
 | `POST` | [`/v1/orchestrations`](#post-v1orchestrations) | `tasks:run` | Start a run across several phones |
 | `GET` | [`/v1/orchestrations`, `/v1/orchestrations/{id}`](#get-v1orchestrationsid-and-get-v1orchestrations) | `tasks:read` | List runs, or get one |
 | `POST` | [`/v1/orchestrations/{id}/cancel`](#post-v1orchestrationsidcancel) | `tasks:run` | Cancel a run |
-| `GET` | [`/v1/history`](#get-v1history) | `history:read` | Your requests across the dashboard and the API |
+| `GET` | [`/v1/history`](#get-v1history) | `history:read` | This key's tasks, with their instructions and outcomes |
 
 ## Authentication
 
@@ -41,8 +41,19 @@ with `openmob key create EMAIL`. Keys look like `om_live_<id>_<secret>`. A key i
 only its hash is stored, so copy it when you create it. You can have up to 20 keys.
 
 A key acts as your account on your phones. Keep it in an environment variable, never in code. In
-**API keys** you can **rotate** a key (a new secret with the same name, scopes and settings; the
-old one stops working) or **revoke** it (it fails at once, and its unfinished tasks are cancelled).
+**API keys** you can **rotate** a key or **revoke** it:
+
+- **Rotate** gives the key a new secret; the old secret stops working at once. It stays the **same
+  key** (same id, name, scopes and settings), so its daily quota and credits carry on (they don't
+  reset), its tasks and runs are still its own, and anything running keeps running. Rotation isn't
+  revocation.
+- **Revoke** makes the key fail at once and cancels its unfinished tasks.
+
+**A key sees only its own work.** Tasks and [orchestrations](#orchestrations) are visible only to
+the key that started them: getting, listing, the event stream, answering, cancelling and
+`GET /v1/history`. Another key's task, even on your own account, answers `404` exactly like an id
+that doesn't exist. Your phones and memory notes are shared by all your keys, and the dashboard and
+developer console show every key's work.
 
 | Problem | Status |
 |---|---|
@@ -61,7 +72,7 @@ new key.
 | `tasks:run` | Start, answer and cancel tasks | Yes |
 | `tasks:read` | Read tasks and stream their events | Yes |
 | `screen:read` | Take screenshots. **Sensitive:** it sees everything on screen | No |
-| `history:read` | Read your chat history across the dashboard and the API | No |
+| `history:read` | Read this key's past tasks with their instructions and outcomes (`GET /v1/history`) | No |
 | `memory:read` | Read your memory notes | No |
 | `memory:write` | Add and delete memory notes | No |
 
@@ -114,7 +125,7 @@ return a task in this shape:
   "finished": 1791219561.85,
   "steps": 4,
   "question": null,
-  "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."},
+  "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi.", "reason": null},
   "credits": 4
 }
 ```
@@ -145,6 +156,7 @@ an ordinary success, failure or cancel.
 | `phone_error` | The phone reported an error, or its connection was lost and didn't come back | Steps taken |
 | `internal_error` | Something went wrong inside OpenMob | 0 |
 | `server_restarted` | The server restarted while the task was running | 0 |
+| `device_revoked` | The phone was unpaired while the task was running or queued (status `cancelled`) | Steps taken |
 
 ```json
 {"id": "8b4f0454be0d", "status": "failed", "steps": 1,
@@ -202,11 +214,13 @@ API tasks never see or extend the dashboard chat's recent requests: each one sta
 
 Send an `Idempotency-Key` header to make retries safe: see [Idempotent retries](#idempotent-retries).
 
-Before queueing the task, OpenMob checks that the phone is usable. A locked phone, or one with
-its screen off, is refused with `409 phone_locked` instead of being queued only to fail:
+Before queueing the task, OpenMob checks that the phone is usable. A screen that's off is woken
+and a swipe-only lock screen is swiped away. A phone locked with a PIN, pattern, password or
+biometric (or a swipe lock that didn't go away) is refused with `409 phone_locked` instead of being
+queued only to fail; OpenMob never enters a PIN:
 
 ```json
-{"detail": "That phone is locked or its screen is off. Unlock it to continue.", "code": "phone_locked"}
+{"detail": "That phone is locked with a PIN, pattern or password. Unlock it to continue.", "code": "phone_locked"}
 ```
 
 | Error | When |
@@ -214,22 +228,24 @@ its screen off, is refused with `409 phone_locked` instead of being queued only 
 | `400` | Unknown `tier` |
 | `404` | No such phone on your account |
 | `409` `phone_offline` | The OpenMob app on the phone isn't connected |
-| `409` `phone_locked` | The phone is locked or its screen is off. Unlock it and retry |
+| `409` `phone_locked` | The phone has a secure lock (PIN, pattern, password, biometric) showing. Unlock it and retry |
 | `409` `phone_unresponsive` | The phone is connected but didn't answer within 5 s (often: asleep). Wake it and open the OpenMob app |
 | `409` `idempotency_conflict`, `idempotency_in_progress` | See [Idempotent retries](#idempotent-retries) |
-| `422` | `instruction` is empty or too long, `max_steps` is below 1, or `memory` isn't one of the three values |
-| `429` | Rate limit, `too_many_tasks`, `daily_quota` or `credits_exhausted`. See [Errors & limits](errors.md#limits) |
+| `422` | `instruction` is empty, only whitespace or too long, `max_steps` is below 1, or `memory` isn't one of the three values |
+| `429` | Rate limit, `too_many_tasks`, `daily_quota`, `credits_exhausted`, `account_daily_quota` or `account_credits_exhausted`. See [Errors & limits](errors.md#limits) |
 
 ### GET /v1/limits
 
-Scope `tasks:read`. This key's limits and what it has used today, so you can check before you hit
-a `429`.
+Scope `tasks:read`. This key's limits and what it has used today, plus the account-wide daily
+limits shared by all of the account's keys, so you can check before you hit a `429`.
 
 ```json
 {"requests_per_minute": 60,
  "concurrent_tasks": {"limit": 2, "used": 1},
  "tasks_per_day": {"limit": 200, "used": 1},
  "credits_per_day": {"limit": null, "used": 0},
+ "account": {"tasks_per_day": {"limit": 1000, "used": 7},
+             "credits_per_day": {"limit": null, "used": 21}},
  "max_steps": 40,
  "running_orchestrations": {"per_key": 3, "per_account": 10},
  "resets_at": 1791244800.0}
@@ -241,17 +257,29 @@ OpenMob's own faults don't count.
 
 ### GET /v1/tasks
 
-Scope `tasks:read`. Your account's API tasks, newest first. `?limit=` is 1–100 (default 20).
+Scope `tasks:read`. This key's tasks, newest first. `?limit=` is 1–100 (default 20). Paginated:
+see [Pagination](#pagination).
 
 ```json
 {"tasks": [{"id": "bce01b5f5406", "device_id": "app-3f2a9c", "status": "succeeded", "tier": "fast", "steps": 4,
-            "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi."}, "credits": 4, …}]}
+            "outcome": {"success": true, "summary": "Opened YouTube and searched for lo-fi.", "reason": null}, "credits": 4, …}],
+ "next_cursor": "MTc5MTIxOTU2MS44M3xiY2UwMWI1ZjU0MDY"}
+```
+
+#### Pagination
+
+`GET /v1/tasks`, `GET /v1/orchestrations` and `GET /v1/history` return a page and a `next_cursor`.
+Pass it back as `?cursor=` to get the next (older) page; `next_cursor` is `null` on the last page.
+Cursors are opaque: don't build or change them (a bad one is `400 invalid_cursor`).
+
+```sh
+curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" "https://<server>/v1/tasks?limit=50&cursor=$NEXT"
 ```
 
 ### GET /v1/tasks/{task_id}
 
-Scope `tasks:read`. One task (see [the task object](#the-task-object)). `404` if it isn't one of
-your account's tasks.
+Scope `tasks:read`. One task (see [the task object](#the-task-object)). `404` unless this key
+started it.
 
 A task waiting for an answer:
 
@@ -306,6 +334,10 @@ data: {"id": "e111505afeb9", "status": "succeeded", "steps": 2, "credits": 6, �
 
 Event ids increase but aren't consecutive. To resume after a dropped connection, reconnect with
 `Last-Event-ID: <last id you saw>`; most SSE clients do this for you.
+
+The replay comes from the server's memory: the last 500 events of each task, for the last 200
+tasks on each phone. After that, or after a server restart, the stream sends only the `done` event
+(the task itself is still readable with `GET /v1/tasks/{task_id}`).
 
 ### POST /v1/tasks/{task_id}/answer
 
@@ -438,7 +470,7 @@ curl -s -X POST -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: ap
     {"id": "type", "device_id": "app-phone-b", "depends_on": ["read"],
      "instruction": "In the Acme app, enter the login code from this result: {{steps.read.summary}}"}
   ],
-  "on_failure": "stop", "max_credits": 60, "wait_for_phone_seconds": 60}'
+  "on_failure": "stop", "max_credits": 60, "wait_for_phone_seconds": 60, "max_duration_seconds": 600}'
 ```
 
 **Hand-off.** `{{steps.<id>.summary}}` is replaced, when the step starts, with that earlier step's
@@ -456,7 +488,7 @@ Scope `tasks:run`.
 | `steps` | 1–10 of `{id, device_id, instruction, tier?, max_steps?, depends_on?}`. Ids are letters, digits, `-` and `_`. |
 | `on_failure` | `stop` (default): a failed step cancels the running ones and skips the rest. `continue`: only steps depending on it are skipped. |
 | `max_credits` | Budget for the whole run (optional). A running step is cancelled once the run has spent it. |
-| `wait_for_phone_seconds` | How long a step waits for its phone to be usable: online, unlocked and with the screen on (default 60, at most 600). Offline and locked time share this one timer. |
+| `wait_for_phone_seconds` | How long a step waits for its phone to be usable: online, and not behind a secure lock (a screen that's off or a swipe lock is handled automatically) (default 60, at most 600). Offline and locked time share this one timer. |
 | `max_duration_seconds` | The whole run's time limit (default 1800, at most 7200). Past it, running steps are cancelled and the rest skipped: `failed` / `timed_out`. |
 
 Send an `Idempotency-Key` header to make retries safe: a retry with the same key and body returns
@@ -469,7 +501,8 @@ Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate
 
 ```json
 {"id": "orc_5f2a9c0e1b7d4a36", "status": "running", "reason": null, "on_failure": "stop",
- "max_credits": 60, "wait_for_phone_seconds": 60, "created": 1790000000.0, "finished": null,
+ "max_credits": 60, "wait_for_phone_seconds": 60, "max_duration_seconds": 600,
+ "created": 1790000000.0, "finished": null,
  "duration": 4.2, "credits": 3,
  "steps": [
   {"id": "read", "device_id": "app-phone-a", "status": "succeeded", "reason": null, "task_id": "9c1e0b7a2f44",
@@ -483,9 +516,9 @@ Returns `201` with the orchestration. `400` for a cycle, an unknown or duplicate
 |---|---|
 | `running` | |
 | `succeeded` | |
-| `failed` | the first failure: `task_failed`, `phone_offline` (didn't come online in time), `phone_locked` (stayed locked or with the screen off), `phone_unresponsive` (connected but not answering), `phone_disconnected` (lost mid-step past the 45 s grace), `question_timeout` (nobody answered a step's question within 5 minutes), `device_revoked`, `access_revoked` (key revoked or disabled, account API off, or `tasks:run` removed), `task_cancelled`, `timed_out` (past `max_duration_seconds`), `internal_error`, `server_restarted` |
+| `failed` | the first failure: `task_failed`, `phone_offline` (didn't come online in time), `phone_locked` (stayed behind a secure lock), `phone_unresponsive` (connected but not answering), `phone_disconnected` (lost mid-step past the 45 s grace), `question_timeout` (nobody answered a step's question within 5 minutes), `device_revoked` (the phone was unpaired), `access_revoked` (key revoked or disabled, account API off, or `tasks:run` removed), `task_cancelled` (a step's task was cancelled some other way, e.g. by the kill switch), `timed_out` (past `max_duration_seconds`), `internal_error`, `server_restarted`, `start_failed` (a step's task couldn't be created for another reason), `step_failed` (a step ended without a more specific reason). A step whose task couldn't be created passes that error's `code` through as the reason, e.g. `phone_offline` |
 | `cancelled` | `cancelled` (you cancelled it) or `stopped_on_phone` (the owner tapped Stop, said "stop", or denied an approval on a phone running a step: the whole run ends, whatever `on_failure` says) |
-| `budget_exhausted` | `max_credits`, `credits_exhausted` (the key's daily credits) or `quota_exhausted` (its daily tasks) |
+| `budget_exhausted` | `max_credits`, `credits_exhausted` (the key's daily credits), `quota_exhausted` (its daily tasks), `account_credits_exhausted` or `account_daily_quota` (the account's, across all keys) |
 
 Steps are `pending`, `waiting_for_phone`, `running`, `succeeded`, `failed`, `cancelled` or `skipped`
 (with a `reason`, such as `dependency_failed`). A step `waiting_for_phone` says why in `reason`:
@@ -504,9 +537,9 @@ see [Tiers and credits](concepts.md#tiers-and-credits).
 
 ### GET /v1/orchestrations/{id} and GET /v1/orchestrations
 
-Scope `tasks:read`. `?limit=` 1–100, default 20.
+Scope `tasks:read`. `?limit=` 1–100, default 20, with `next_cursor` (see [Pagination](#pagination)).
 
-One orchestration, or your recent ones (newest first).
+One orchestration, or this key's recent ones (newest first). Another key's run is `404`.
 
 ### POST /v1/orchestrations/{id}/cancel
 
@@ -519,17 +552,27 @@ already ended).
 
 ### GET /v1/history
 
-Scope `history:read`. Your latest requests across the dashboard, the phone and the API, newest
-first. `?limit=` is 1–200 (default 50).
+Scope `history:read`. **This key's** tasks with their instructions and outcome summaries, newest
+first. `?limit=` is 1–200 (default 50), with `next_cursor` (see [Pagination](#pagination)).
 
 ```json
 {"turns": [{"task_id": "155d88f8913c", "device_id": "app-3f2a9c", "instruction": "open YouTube and search for lo-fi",
             "started": 1791219696.83, "finished": 1791219696.84, "steps": 4, "success": true,
-            "summary": "Opened YouTube and searched for lo-fi."}]}
+            "summary": "Opened YouTube and searched for lo-fi."}],
+ "next_cursor": null}
 ```
 
-`steps` and `success` are `null` when unknown (for example, a request cancelled before it started).
-History is kept for the server's retention period.
+Requests the owner made from the dashboard or the phone, and other keys' tasks, are **not**
+included: they're the owner's own conversation, and a key reads only what it did itself (the owner
+sees everything in the dashboard). `success` is `null` while a task runs. Instructions and summaries
+are kept for the server's retention period (30 days by default); after that they're `null`.
+
+## Unpairing a phone mid-task
+
+If the owner unpairs (revokes) a phone, its running task and every task queued on it end at once as
+`cancelled`, with `outcome.reason: "device_revoked"`. Each one fires `task.finished` to your
+webhook. A multi-phone run with a step on that phone fails with reason `device_revoked` (under
+`on_failure: "continue"` only that step's dependents are skipped). The phone is then `404`.
 
 ## Errors
 

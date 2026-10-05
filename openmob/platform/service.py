@@ -14,6 +14,7 @@ internal event kinds and per-provider token counts never appear, and upstream er
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import ipaddress
@@ -57,13 +58,28 @@ GENERIC_ERROR = "The task hit an internal error."
 PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "error": "warning", "question": "question",
                 "memory": "memory"}
 OFFLINE = "That phone is offline. Open the OpenMob app on it."
-LOCKED = "That phone is locked or its screen is off. Unlock it to continue."
+LOCKED = "That phone is locked with a PIN, pattern or password. Unlock it to continue."
 UNRESPONSIVE = "That phone is connected but isn't answering. Open the OpenMob app on it."
 # Tasks that ended through OpenMob's own fault are charged 0 (the would-be amount is kept as credits_waived).
 SERVER_FAULTS = {"internal_error", "server_restarted"}
 NOT_WAITING = "This task isn't waiting for an answer."
 OWNER_APPROVES = ("Risky actions are approved by the phone's owner, who has been asked on their phone. "
                   'Check the task again later, or send {"approve": false} to decline.')
+
+
+def encode_cursor(row: dict) -> str:
+    """An opaque page cursor: where the previous page ended (created time and id)."""
+    return base64.urlsafe_b64encode(f"{row['created']!r}|{row['id']}".encode()).decode().rstrip("=")
+
+
+def decode_cursor(cursor: str | None) -> tuple[float, str] | None:
+    if not cursor:
+        return None
+    try:
+        created, _, row_id = base64.urlsafe_b64decode(cursor + "=" * (-len(cursor) % 4)).decode().partition("|")
+        return float(created), row_id
+    except (ValueError, UnicodeDecodeError):
+        raise BadRequest("Invalid cursor. Use next_cursor from the previous page.", code="invalid_cursor") from None
 
 
 def clean_text(message: str | None) -> str | None:
@@ -120,10 +136,12 @@ def webhook_url_ok(url: str, allow_private: bool = False) -> bool:
     return parsed.scheme == "https" and is_public_address(parsed.hostname)
 
 
-def sign_webhook(secret: str, body: bytes, timestamp: int) -> str:
-    """X-OpenMob-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>">."""
-    mac = hmac.new(secret.encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest()
-    return f"t={timestamp},v1={mac}"
+def sign_webhook(secrets: str | list[str], body: bytes, timestamp: int) -> str:
+    """X-OpenMob-Signature: t=<unix time>,v1=<hex HMAC-SHA256 of "<t>.<body>"> — one v1= per secret
+    (newest first: after the owner replaces the secret, the previous one also signs for 24 h)."""
+    secrets = [secrets] if isinstance(secrets, str) else secrets
+    macs = [hmac.new(s.encode(), f"{timestamp}.".encode() + body, hashlib.sha256).hexdigest() for s in secrets]
+    return ",".join([f"t={timestamp}"] + [f"v1={m}" for m in macs])
 
 
 class V1Service:
@@ -192,6 +210,19 @@ class V1Service:
         session = self.manager.get(meta["session_id"])
         info = session.coordinator.task(task_id) if session and session.account_id == account_id else None
         return meta, info
+
+    def check_task(self, p: Principal, task_id: str) -> None:
+        """NotFound unless this key created the task. Other keys' tasks (even on the same account)
+        look exactly like other accounts' tasks; the owner's dashboard and console still see all."""
+        with self._lock:
+            meta = self.registry.get(task_id)
+        if meta is not None:
+            owner = meta["key_id"] if meta["account_id"] == p.account_id else None
+        else:
+            row = self.ledger.task(p.account_id, task_id)
+            owner = row["key_id"] if row else None
+        if owner != p.id:
+            raise NotFound(f"Unknown task {task_id}")
 
     def public_task(self, account_id: str, task_id: str) -> dict:
         live = self._live(account_id, task_id)
@@ -330,6 +361,13 @@ class V1Service:
             running = [(t, self.registry[t]["account_id"]) for t in self.active.get(key_id, ()) if t in self.registry]
         return self.ledger.credits_today(key_id) + sum(self.task_credits(a, t) for t, a in running)
 
+    def account_credits_today(self, account_id: str) -> int:
+        """The whole account's credits today, every key, running tasks included."""
+        with self._lock:
+            running = [t for keys in self.active.values() for t in keys
+                       if t in self.registry and self.registry[t]["account_id"] == account_id]
+        return self.ledger.credits_today_account(account_id) + sum(self.task_credits(account_id, t) for t in running)
+
     def stop_task(self, account_id: str, task_id: str) -> bool:
         """Cancel an API task of this account on the platform's own authority (kill switches, orchestrations)."""
         live = self._live(account_id, task_id)
@@ -380,25 +418,35 @@ class V1Service:
         if len(online) == 1:
             return online[0]
         if not online:
-            raise Conflict("None of your phones is online. Open the OpenMob app on one.")
-        raise BadRequest(f"Several phones are online; pass device_id, one of: {', '.join(online)}")
+            raise Conflict("None of your phones is online. Open the OpenMob app on one.", code="no_device_online")
+        raise BadRequest(f"Several phones are online; pass device_id, one of: {', '.join(online)}",
+                         code="device_required")
 
     @staticmethod
     def phone_state(session) -> str | None:
-        """None if the phone looks usable; "phone_locked" (locked or screen off) or "phone_unresponsive"
-        (connected but not answering). Phones whose app can't tell are assumed usable."""
+        """None if the phone is usable; "phone_locked" (a secure lock: PIN, pattern, password or
+        biometric) or "phone_unresponsive" (connected but not answering). A screen that's just off, or
+        a swipe-only lock screen, is woken and dismissed here (wake_unlock); only if that doesn't work
+        is it phone_locked. No credential is ever entered. Phones whose app can't tell are assumed usable."""
         check = getattr(session.driver, "device_state", None)
         if check is None:
             return None
         try:
             state = check()
+            if state is None:
+                return None
+            if state["locked"] and state["secure"]:
+                return "phone_locked"  # only the owner can unlock it
+            if state["locked"] or not state["interactive"]:
+                session.driver.wake_unlock()  # wake the screen, swipe away a non-secure lock screen
+                state = check() or state
+                if state["locked"]:
+                    return "phone_locked"  # the swipe didn't take
         except PhoneTimeout:
             return "phone_unresponsive"
         except DeviceError:
             return None  # disconnected meanwhile: the task waits or fails on its own
-        if state is None:
-            return None
-        return "phone_locked" if state["locked"] or not state["interactive"] else None
+        return None
 
     def create_task(self, p: Principal, device_id: str, instruction: str, tier: str | None = None,
                     max_steps: int | None = None, memory: str = "on", check_phone: bool = True,
@@ -428,6 +476,13 @@ class V1Service:
             raise RateLimited("Daily task quota reached for this key.", code="daily_quota", **reset)
         if self.cfg.api_daily_credits and self.credits_today(key_id) >= self.cfg.api_daily_credits:
             raise RateLimited("Daily credit limit reached for this key.", code="credits_exhausted", **reset)
+        # Account-wide too, so creating more keys doesn't multiply the allowance.
+        if self.ledger.tasks_today_account(account_id) >= self.cfg.api_account_daily_tasks:
+            raise RateLimited("Daily task quota reached for this account.", code="account_daily_quota", **reset)
+        if (self.cfg.api_account_daily_credits
+                and self.account_credits_today(account_id) >= self.cfg.api_account_daily_credits):
+            raise RateLimited("Daily credit limit reached for this account.", code="account_credits_exhausted",
+                              **reset)
         if check_phone and (problem := self.phone_state(session)):
             raise Conflict(LOCKED if problem == "phone_locked" else UNRESPONSIVE, code=problem)
 
@@ -491,30 +546,45 @@ class V1Service:
             "concurrent_tasks": {"limit": c.api_max_concurrent_tasks, "used": running},
             "tasks_per_day": {"limit": c.api_daily_tasks, "used": self.ledger.tasks_today(p.id)},
             "credits_per_day": {"limit": c.api_daily_credits or None, "used": self.credits_today(p.id)},
+            "account": {  # shared by all of the account's keys
+                "tasks_per_day": {"limit": c.api_account_daily_tasks,
+                                  "used": self.ledger.tasks_today_account(p.account_id)},
+                "credits_per_day": {"limit": c.api_account_daily_credits or None,
+                                    "used": self.account_credits_today(p.account_id)},
+            },
             "max_steps": c.api_max_steps,
             "running_orchestrations": {"per_key": c.api_max_running_orchestrations,
                                        "per_account": c.api_max_running_orchestrations_per_account},
             "resets_at": day_start() + 86400,
         }
 
-    def list_tasks(self, p: Principal, limit: int = 20) -> dict:
+    def _page(self, p: Principal, limit: int, cursor: str | None, maximum: int) -> list[dict]:
+        """This key's API task rows, newest first, after `cursor` (from an earlier page)."""
+        return self.ledger.recent_tasks(p.account_id, max(1, min(limit, maximum)), key_id=p.id,
+                                        before=decode_cursor(cursor))
+
+    def list_tasks(self, p: Principal, limit: int = 20, cursor: str | None = None) -> dict:
+        """This key's tasks, newest first. `next_cursor` fetches the next page (None: no more)."""
         self.require(p, "tasks:read")
-        rows = self.ledger.recent_tasks(p.account_id, max(1, min(limit, 100)))
-        return {"tasks": [self.public_task(p.account_id, row["id"]) for row in rows]}
+        limit = max(1, min(limit, 100))
+        rows = self._page(p, limit, cursor, 100)
+        return {"tasks": [self.public_task(p.account_id, row["id"]) for row in rows],
+                "next_cursor": encode_cursor(rows[-1]) if len(rows) == limit else None}
 
     def get_task(self, p: Principal, task_id: str) -> dict:
         self.require(p, "tasks:read")
+        self.check_task(p, task_id)
         return self.public_task(p.account_id, task_id)
 
     def answer(self, p: Principal, task_id: str, answer: str | None = None, approve: bool | None = None) -> dict:
         self.require(p, "tasks:run")
+        self.check_task(p, task_id)
         live = self._live(p.account_id, task_id)
         if not live:
-            self.public_task(p.account_id, task_id)  # NotFound if it isn't theirs
-            raise Conflict(NOT_WAITING)
+            raise Conflict(NOT_WAITING, code="not_waiting")
         meta, info = live
         if not info or info["status"] not in ("needs_input", "needs_confirmation"):
-            raise Conflict(NOT_WAITING)
+            raise Conflict(NOT_WAITING, code="not_waiting")
         if info["status"] == "needs_confirmation":
             if approve is None:
                 raise BadRequest('This task needs a confirmation: send {"approve": true} or {"approve": false}.')
@@ -529,13 +599,14 @@ class V1Service:
                 raise BadRequest('Send {"answer": "..."}.')
         session = self.manager.get(meta["session_id"])
         if not session or not session.coordinator.answer(task_id, text):
-            raise Conflict(NOT_WAITING)
+            raise Conflict(NOT_WAITING, code="not_waiting")
         self.ledger.audit("task.answer", p.account_id, p.id, meta["device_id"], task_id, outcome=info["status"])
         return {"ok": True}
 
     def cancel(self, p: Principal, task_id: str) -> dict:
         self.require(p, "tasks:run")
-        task = self.public_task(p.account_id, task_id)  # NotFound if it isn't theirs
+        self.check_task(p, task_id)  # NotFound unless this key created it
+        task = self.public_task(p.account_id, task_id)
         live = self._live(p.account_id, task_id)
         session = self.manager.get(live[0]["session_id"]) if live else None
         cancelled = bool(session and session.coordinator.cancel_task(task_id))
@@ -548,7 +619,7 @@ class V1Service:
         self.require(p, "screen:read")
         device, session = self._owned_device(p.account_id, device_id)
         if session is None or not session.online:
-            raise Conflict(OFFLINE)
+            raise Conflict(OFFLINE, code="phone_offline")
         try:
             jpeg = session.driver.screenshot(max_age=1.0).jpeg
         except DeviceError:
@@ -585,13 +656,22 @@ class V1Service:
         self.ledger.audit("memory.delete", p.account_id, p.id)
         return {"ok": True}
 
-    def history(self, p: Principal, limit: int = 50) -> dict:
+    def history(self, p: Principal, limit: int = 50, cursor: str | None = None) -> dict:
+        """This key's own API tasks as history turns (instruction and outcome text from the chat
+        history). The owner's dashboard and phone requests aren't included: a key reads only what it
+        did. Text past the retention period is gone (instruction and summary are then null)."""
         self.require(p, "history:read")
-        if self.manager.history is None:
-            return {"turns": []}
-        turns = self.manager.history.recent_turns(p.account_id, max(1, min(limit, 200)))
-        return {"turns": [{
-            "task_id": t["id"], "device_id": t["device_id"], "instruction": t["request"],
-            "started": t["started"], "finished": t["finished"], "steps": t["steps"],
-            "success": None if t["success"] is None else bool(t["success"]), "summary": clean_text(t["summary"]),
-        } for t in turns]}
+        limit = max(1, min(limit, 200))
+        rows = self._page(p, limit, cursor, 200)
+        history = self.manager.history
+        turns = []
+        for row in rows:
+            t = history.turn(p.account_id, row["id"]) if history else None
+            turns.append({
+                "task_id": row["id"], "device_id": f"app-{row['device_id']}",
+                "instruction": t["request"] if t else None,
+                "started": t["started"] if t else row["created"], "finished": row["finished"],
+                "steps": row["steps"], "success": None if row["finished"] is None else row["status"] == "succeeded",
+                "summary": clean_text(t["summary"]) if t else None,
+            })
+        return {"turns": turns, "next_cursor": encode_cursor(rows[-1]) if len(rows) == limit else None}

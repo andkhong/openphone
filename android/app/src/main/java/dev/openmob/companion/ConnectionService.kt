@@ -278,10 +278,16 @@ class ConnectionService : Service() {
         }
     }
 
-    /** Screen on and keyguard state, so the server can say "unlock to continue" instead of timing out. */
-    private fun deviceState(): JSONObject = JSONObject()
-        .put("interactive", getSystemService(PowerManager::class.java).isInteractive)
-        .put("locked", getSystemService(KeyguardManager::class.java).isKeyguardLocked)
+    /** Screen on and keyguard state, so the server can say "unlock to continue" instead of timing out.
+     *  `secure`: a PIN, pattern, password or biometric lock, which only the owner can open. A non-secure
+     *  (swipe) lock is dismissed by wake_unlock. */
+    private fun deviceState(): JSONObject {
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        return JSONObject()
+            .put("interactive", getSystemService(PowerManager::class.java).isInteractive)
+            .put("locked", keyguard.isKeyguardLocked)
+            .put("secure", keyguard.isKeyguardSecure)
+    }
 
     /** Live-view video calls (see ScreenStreamer). */
     private fun handleStream(method: String, params: JSONObject): JSONObject? {

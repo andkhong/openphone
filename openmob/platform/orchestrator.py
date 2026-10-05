@@ -33,7 +33,8 @@ from pydantic import BaseModel, Field
 from ..runner import FINAL_STATUSES
 from .errors import BadRequest, Conflict, NotFound, RateLimited, ServiceError
 from .principal import Principal
-from .service import MAX_INSTRUCTION, V1Service, clean_text
+from .rest import NonBlank
+from .service import MAX_INSTRUCTION, V1Service, clean_text, decode_cursor, encode_cursor
 
 MAX_STEPS = 10
 STEP_ID = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -58,7 +59,7 @@ STEP_FAILED = {"failed", "cancelled", "skipped"}
 class StepIn(BaseModel):
     id: str = Field(pattern=STEP_ID.pattern)
     device_id: str = Field(min_length=1, max_length=100)
-    instruction: str = Field(min_length=1, max_length=MAX_INSTRUCTION)
+    instruction: NonBlank = Field(min_length=1, max_length=MAX_INSTRUCTION)
     tier: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
     depends_on: list[str] = Field(default_factory=list)
@@ -206,18 +207,31 @@ class Orchestrator:
         threading.Thread(target=self._run, args=(row["id"],), name="openmob-orchestration", daemon=True).start()
         return self.public(p.account_id, row["id"])
 
+    def _check(self, p: Principal, orchestration_id: str) -> None:
+        """NotFound unless this key started the run (other keys' runs look like other accounts')."""
+        with self._lock:
+            row = self.runs.get(orchestration_id)
+        if row is None:
+            row = self.ledger.orchestration(p.account_id, orchestration_id)
+        if row is None or row["account_id"] != p.account_id or row["key_id"] != p.id:
+            raise NotFound(f"Unknown orchestration {orchestration_id}")
+
     def get(self, p: Principal, orchestration_id: str) -> dict:
         self.service.require(p, "tasks:read")
+        self._check(p, orchestration_id)
         return self.public(p.account_id, orchestration_id)
 
-    def list(self, p: Principal, limit: int = 20) -> dict:
+    def list(self, p: Principal, limit: int = 20, cursor: str | None = None) -> dict:
+        """This key's runs, newest first; `next_cursor` fetches the next page."""
         self.service.require(p, "tasks:read")
-        rows = self.ledger.recent_orchestrations(p.account_id, max(1, min(limit, 100)))
-        return {"orchestrations": [self.public(p.account_id, r["id"]) for r in rows]}
+        limit = max(1, min(limit, 100))
+        rows = self.ledger.recent_orchestrations(p.account_id, limit, key_id=p.id, before=decode_cursor(cursor))
+        return {"orchestrations": [self.public(p.account_id, r["id"]) for r in rows],
+                "next_cursor": encode_cursor(rows[-1]) if len(rows) == limit else None}
 
     def cancel(self, p: Principal, orchestration_id: str) -> dict:
         self.service.require(p, "tasks:run")
-        self.public(p.account_id, orchestration_id)  # NotFound if it isn't theirs
+        self._check(p, orchestration_id)  # NotFound unless this key started it
         live = self._request_end(orchestration_id, "cancelled")
         self.ledger.audit("orchestration.cancel", p.account_id, p.id, task_id=orchestration_id,
                           outcome="cancelling" if live else "already finished")
@@ -444,8 +458,8 @@ class Orchestrator:
         except RateLimited as exc:
             if exc.code == "too_many_tasks":
                 return False  # this key's other tasks are still running: try again next tick
-            self._end(row, "budget_exhausted", "credits_exhausted" if exc.code == "credits_exhausted"
-                      else "quota_exhausted")
+            # The key's or the account's daily limits: daily_quota reads quota_exhausted, the rest as is.
+            self._end(row, "budget_exhausted", "quota_exhausted" if exc.code == "daily_quota" else exc.code)
             return True
         except Conflict:  # went offline between the check and the start
             return self._wait_for_phone(row, s, "phone_offline")
@@ -513,8 +527,9 @@ def routes(orchestrator: Orchestrator, need) -> APIRouter:
         return orchestration
 
     @r.get("")
-    def list_orchestrations(limit: int = 20, p: Principal = Depends(need("tasks:read"))) -> dict:
-        return o.list(p, limit)
+    def list_orchestrations(limit: int = 20, cursor: str | None = None,
+                            p: Principal = Depends(need("tasks:read"))) -> dict:
+        return o.list(p, limit, cursor)
 
     @r.get("/{orchestration_id}")
     def get(orchestration_id: str, p: Principal = Depends(need("tasks:read"))) -> dict:

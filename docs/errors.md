@@ -14,13 +14,13 @@ errors. See [MCP errors](mcp.md#errors).
 
 | Status | Meaning | What to do |
 |---|---|---|
-| `400` | The request can't be carried out as asked: an unknown tier, an answer the task can't take (`answer` for a confirmation, or `approve` missing), or too many memory notes | Fix the request |
+| `400` | The request can't be carried out as asked: an unknown tier, an answer the task can't take (`answer` for a confirmation, or `approve` missing), too many memory notes, or a bad pagination cursor | Fix the request |
 | `401` | Missing, malformed, wrong or revoked API key. Comes with `WWW-Authenticate: Bearer` | Send `Authorization: Bearer om_live_…` with a live key |
 | `403` | See the `code` below. Without a `code`: an admin switched off API access for this key or account | Ask the server's admin |
 | `404` | No such phone, task or note **on your account**. Other accounts' phones and tasks look exactly the same | Check the id |
 | `409` | The phone isn't usable (`phone_offline`, `phone_locked`, `phone_unresponsive`), an `Idempotency-Key` clash, or the task isn't in a state for that action (for example, answering a task that isn't waiting) | See the `code` below, or check the task's `status` |
 | `422` | The body failed validation: an empty or too long `instruction`, `max_steps` below 1, an unknown `memory` mode, a note over 300 characters | Fix the field named in `detail` |
-| `429` | Rate limit, unfinished-task cap or daily quota reached | Wait. See `Retry-After` and [Limits](#limits) |
+| `429` | Rate limit, unfinished-task cap, or a daily quota (the key's or the account's) reached | Wait. See `Retry-After` and [Limits](#limits) |
 | `501` | Memory isn't enabled on this server | Use the other endpoints |
 | `503` | The phone couldn't capture a screenshot right now | Try again |
 
@@ -44,11 +44,18 @@ errors. See [MCP errors](mcp.md#errors).
 | `idempotency_conflict` | `409` | This `Idempotency-Key` was already used (within 24 h) for a different request | Use a new key for a new request |
 | `idempotency_in_progress` | `409` | A request with this `Idempotency-Key` is still being handled | Retry in a moment to get its response |
 | `phone_offline` | `409` | The phone isn't connected | Open the OpenMob app on the phone |
-| `phone_locked` | `409` | The phone is locked or its screen is off | Unlock the phone, then retry |
+| `phone_locked` | `409` | The phone shows a secure lock (PIN, pattern, password, biometric), or a swipe lock that couldn't be dismissed. A screen that's just off is woken automatically | Unlock the phone, then retry |
 | `phone_unresponsive` | `409` | The phone is connected but didn't answer in time (often: asleep) | Wake the phone and open the OpenMob app |
+| `no_device_online` | `409` | No `device_id` was given (MCP) and none of your phones is online | Open the OpenMob app on a phone |
+| `not_waiting` | `409` | You answered a task that isn't waiting for an answer | Check the task's `status` |
+| `device_required` | `400` | No `device_id` was given (MCP) and several phones are online; `detail` lists them | Pass `device_id` |
+| `invalid_cursor` | `400` | A pagination `cursor` that didn't come from `next_cursor` | Use the `next_cursor` of the previous page |
+| `account_daily_quota` | `429` | The account's tasks for today (UTC), across all its keys, are used up | Wait for `Retry-After` (midnight UTC) |
+| `account_credits_exhausted` | `429` | The account's credits for today (UTC), across all its keys, are used up (only when the server sets an account credit cap) | Wait for `Retry-After` (midnight UTC) |
 
-The two daily-limit `429`s (`daily_quota`, `credits_exhausted`) also carry `resets_at`: the Unix
-time of the next midnight UTC, when the limits reset.
+The four daily-limit `429`s (`daily_quota`, `credits_exhausted`, `account_daily_quota`,
+`account_credits_exhausted`) also carry `resets_at`: the Unix time of the next midnight UTC, when
+the limits reset.
 
 ```json
 {"detail": "Daily task quota reached for this key.", "code": "daily_quota", "resets_at": 1791244800.0}
@@ -64,7 +71,9 @@ it, `outcome.reason` says what: `question_timeout`, `phone_unresponsive`, `phone
 
 ## Limits
 
-Each API key has these limits, shared between REST and MCP:
+Each API key has these limits, shared between REST and MCP (rotating a key doesn't reset them: it's
+still the same key). The account-wide daily limits add up every key, so more keys don't mean more
+quota. `GET /v1/limits` shows them all with today's use:
 
 | Limit | Default | When you hit it |
 |---|---|---|
@@ -73,6 +82,8 @@ Each API key has these limits, shared between REST and MCP:
 | Tasks per day (UTC) | 200 | `429` `daily_quota`, with `Retry-After` and `resets_at` (midnight UTC) |
 | Credits per day (UTC) | Unlimited unless the server sets one | `429` `credits_exhausted`, with `Retry-After` and `resets_at`. Running tasks count; waived credits don't |
 | Orchestrations in progress | 3 per key, 10 per account | `429` `too_many_orchestrations` |
+| Tasks per day (UTC), whole account | 1000, across all the account's keys | `429` `account_daily_quota`, with `Retry-After` and `resets_at` |
+| Credits per day (UTC), whole account | Unlimited unless the server sets one | `429` `account_credits_exhausted`, with `Retry-After` and `resets_at` |
 | Steps per orchestration | 10 | `400` |
 | Steps per task | 40 | Larger `max_steps` values are capped. A task that runs out of steps fails |
 | API keys per account | 20 | `400` when creating another. Revoke one first |

@@ -203,13 +203,30 @@ class Ledger:
         rows = self._q("SELECT * FROM api_tasks WHERE id = ? AND account_id = ?", (task_id, account_id))
         return dict(rows[0]) if rows else None
 
-    def recent_tasks(self, account_id: str, limit: int = 50) -> list[dict]:
+    def recent_tasks(self, account_id: str, limit: int = 50, key_id: str | None = None,
+                     before: tuple[float, str] | None = None) -> list[dict]:
+        """Newest first. `key_id`: only that key's tasks. `before`: (created, id) where the previous page ended."""
+        where, args = ["account_id = ?"], [account_id]
+        if key_id is not None:
+            where.append("key_id = ?")
+            args.append(key_id)
+        if before is not None:
+            where.append("(created < ? OR (created = ? AND id < ?))")
+            args += [before[0], before[0], before[1]]
         rows = self._q(
             "SELECT id, key_id, device_id, tier, created, finished, status, steps, credits "
-            "FROM api_tasks WHERE account_id = ? ORDER BY created DESC LIMIT ?",
-            (account_id, limit),
+            f"FROM api_tasks WHERE {' AND '.join(where)} ORDER BY created DESC, id DESC LIMIT ?",
+            (*args, limit),
         )
         return [dict(r) for r in rows]
+
+    def tasks_today_account(self, account_id: str) -> int:
+        return self._q("SELECT COUNT(*) FROM api_tasks WHERE account_id = ? AND created >= ?",
+                       (account_id, day_start()))[0][0]
+
+    def credits_today_account(self, account_id: str) -> int:
+        return self._q("SELECT COALESCE(SUM(credits), 0) FROM api_tasks WHERE account_id = ? AND created >= ?",
+                       (account_id, day_start()))[0][0]
 
     def credits_today(self, key_id: str) -> int:
         """Credits of this key's tasks finished today (running tasks are added by the caller)."""
@@ -228,10 +245,49 @@ class Ledger:
         rows = self._q("SELECT data FROM orchestrations WHERE id = ? AND account_id = ?", (orchestration_id, account_id))
         return json.loads(rows[0]["data"]) if rows else None
 
-    def recent_orchestrations(self, account_id: str, limit: int = 20) -> list[dict]:
-        rows = self._q("SELECT data FROM orchestrations WHERE account_id = ? ORDER BY created DESC LIMIT ?",
-                       (account_id, limit))
+    def recent_orchestrations(self, account_id: str, limit: int = 20, key_id: str | None = None,
+                              before: tuple[float, str] | None = None) -> list[dict]:
+        where, args = ["account_id = ?"], [account_id]
+        if key_id is not None:
+            where.append("key_id = ?")
+            args.append(key_id)
+        if before is not None:
+            where.append("(created < ? OR (created = ? AND id < ?))")
+            args += [before[0], before[0], before[1]]
+        rows = self._q(f"SELECT data FROM orchestrations WHERE {' AND '.join(where)} "
+                       "ORDER BY created DESC, id DESC LIMIT ?", (*args, limit))
         return [json.loads(r["data"]) for r in rows]
+
+    # --- retention -----------------------------------------------------------------------
+
+    def purge_text(self, older_than_days: float) -> dict:
+        """Retention for the ledger's copies of task text: orchestration plans and results, webhook
+        bodies (delivered or dead), and idempotency replays. Billing rows (api_tasks: steps, credits,
+        an instruction *hash*) and the hashed audit log are kept. 0: keep forever."""
+        if older_than_days <= 0:
+            return {}
+        cutoff = time.time() - older_than_days * 86400
+        out = {}
+        with self._lock:
+            out["webhooks"] = self._db.execute(
+                "DELETE FROM webhook_outbox WHERE created < ? AND status NOT IN ('pending', 'sending')",
+                (cutoff,)).rowcount
+            out["idempotency"] = self._db.execute("DELETE FROM idempotency WHERE created < ?",
+                                                  (time.time() - 86400,)).rowcount
+            rows = self._db.execute("SELECT id, data FROM orchestrations WHERE created < ? AND status != 'running'",
+                                    (cutoff,)).fetchall()
+        redacted = 0
+        for row in rows:
+            data = json.loads(row["data"])
+            if data.get("redacted"):
+                continue
+            for step in data["steps"]:  # keep ids, statuses, reasons and timing; drop the words
+                step["instruction"], step["summary"] = None, None
+            data["redacted"] = True
+            self._q("UPDATE orchestrations SET data = ? WHERE id = ?", (json.dumps(data), row["id"]))
+            redacted += 1
+        out["orchestrations"] = redacted
+        return out
 
     def unfinished_orchestrations(self) -> list[dict]:
         return [json.loads(r["data"]) for r in self._q("SELECT data FROM orchestrations WHERE status = 'running'")]

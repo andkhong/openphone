@@ -143,27 +143,63 @@ def test_running_orchestration_caps(orc):
 # --- 4. locked and unresponsive phones ------------------------------------------------------
 
 
-def lock(user, device, locked=True, interactive=True):
-    user.drivers[device].device_state = lambda: {"interactive": interactive, "locked": locked}
+class Screen:
+    """A phone's screen for device_state: wake_unlock turns it on and swipes away a non-secure lock
+    (unless `swipe_fails`); a secure lock stays until the owner unlocks it."""
+
+    def __init__(self, driver, locked=True, secure=True, interactive=True, swipe_fails=False):
+        self.locked, self.secure, self.interactive, self.swipe_fails = locked, secure, interactive, swipe_fails
+        self.wakes = 0
+        driver.device_state = lambda: {"interactive": self.interactive, "locked": self.locked, "secure": self.secure}
+        driver.wake_unlock = self.wake_unlock
+
+    def wake_unlock(self):
+        self.wakes += 1
+        self.interactive = True
+        if self.locked and not self.secure and not self.swipe_fails:
+            self.locked = False
 
 
-def test_locked_phone_refuses_a_standalone_task(orc):
-    lock(orc.alice, "alice-phone")
+def lock(user, device, locked=True, interactive=True, secure=True, swipe_fails=False):
+    return Screen(user.drivers[device], locked=locked, secure=secure, interactive=interactive, swipe_fails=swipe_fails)
+
+
+def test_secure_lock_refuses_a_standalone_task(orc):
+    screen = lock(orc.alice, "alice-phone")  # PIN, pattern, password or biometric
     r = new_task(orc.alice, A, "open maps")
     assert r.status_code == 409 and r.json()["code"] == "phone_locked" and "Unlock" in r.json()["detail"]
-    lock(orc.alice, "alice-phone", locked=False, interactive=False)  # screen off counts too
-    assert new_task(orc.alice, A, "open maps").json()["code"] == "phone_locked"
-    lock(orc.alice, "alice-phone", locked=False)
-    assert new_task(orc.alice, A, "open maps").status_code == 201
+    assert screen.wakes == 0  # never touched: only the owner unlocks a secure phone
     assert ("device_state", {}) in orc.alice.phones["alice-phone"].calls
 
 
+def test_screen_off_or_swipe_lock_is_woken_and_dismissed(orc):
+    orc.cfg.api_max_concurrent_tasks = 10
+    screen = lock(orc.alice, "alice-phone", locked=False, interactive=False)  # screen off, no lock
+    assert new_task(orc.alice, A, "open maps").status_code == 201 and screen.wakes >= 1  # (the task wakes it too)
+    screen = lock(orc.alice, "alice-phone", secure=False)  # swipe to unlock
+    assert new_task(orc.alice, A, "open maps").status_code == 201 and not screen.locked
+    lock(orc.alice, "alice-phone", secure=False, swipe_fails=True)  # the swipe didn't take
+    r = new_task(orc.alice, A, "open maps")
+    assert r.status_code == 409 and r.json()["code"] == "phone_locked"
+
+
+def test_older_app_without_secure_flag_counts_a_lock_as_secure(orc):
+    orc.alice.drivers["alice-phone"].device_state = lambda: {"interactive": True, "locked": True}
+    assert new_task(orc.alice, A, "open maps").json()["code"] == "phone_locked"
+
+
+def test_swipe_lock_step_runs(orc):
+    screen = lock(orc.alice, "alice-tablet", secure=False)
+    o = start(orc.alice, [{"id": "b", "device_id": B, "instruction": "open maps"}])
+    assert wait_status(orc.alice, o["id"], "succeeded")["status"] == "succeeded" and not screen.locked
+
+
 def test_locked_phone_step_waits_then_runs_once_unlocked(orc):
-    lock(orc.alice, "alice-tablet")
+    screen = lock(orc.alice, "alice-tablet")
     o = start(orc.alice, [{"id": "b", "device_id": B, "instruction": "open maps"}], wait_for_phone_seconds=30)
     assert wait_for(lambda: step(get(orc.alice, o["id"]), "b")["reason"] == "phone_locked")
     assert step(get(orc.alice, o["id"]), "b")["status"] == "waiting_for_phone"
-    lock(orc.alice, "alice-tablet", locked=False)
+    screen.locked = False  # the owner unlocks it
     assert wait_status(orc.alice, o["id"], "succeeded")["status"] == "succeeded"
 
 

@@ -481,6 +481,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                 val x = size.x / 2f
                 gesture(Path().apply { moveTo(x, size.y * 0.85f); lineTo(x, size.y * 0.25f) }, 250)
             }
+            // Give the lock screen a moment to go; the server checks device_state afterwards and
+            // reports phone_locked if it's still there. A secure keyguard is never touched.
+            val deadline = SystemClock.uptimeMillis() + 1_500
+            while (keyguard.isKeyguardLocked && SystemClock.uptimeMillis() < deadline) SystemClock.sleep(100)
         }
         return null
     }

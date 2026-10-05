@@ -108,13 +108,17 @@ class Config:
     api_daily_tasks: int = 200  # tasks per key per UTC day
     api_daily_credits: int = 0  # credits per key per UTC day, counting running tasks (0: unlimited)
     api_max_running_orchestrations: int = 3  # multi-phone runs in progress per key
+    # Account-wide daily caps (UTC), across all of an account's keys, so more keys don't mean more quota.
+    api_account_daily_tasks: int = 1000
+    api_account_daily_credits: int = 0  # 0: unlimited
     api_max_running_orchestrations_per_account: int = 10
     # A task whose question nobody answers ends (failed, question_timeout) after this long. 0: never.
     question_timeout_seconds: int = 300
     api_max_steps: int = 40  # the most steps a developer may ask for
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
-    # Delete chats (and their turns) older than this many days; 0 keeps them forever.
-    history_retention_days: int = 0
+    # Retention: task text (chats, orchestration plans and results, webhook bodies) older than this
+    # many days is deleted; billing totals and the hashed audit log stay. 0 keeps everything forever.
+    history_retention_days: int = 30
 
     # TypeSafe Jev (text-only classifier). Enabled when TYPESAFE_API_KEY is set.
     jev_model: str = "jev-latest"

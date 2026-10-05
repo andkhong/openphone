@@ -601,13 +601,14 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         def developer_page() -> str:
             return (STATIC / "developer.html").read_text()  # all data comes from /api/developer
 
-    if history is not None and manager.cfg.history_retention_days > 0:
+    v1_ledger = getattr(getattr(app.state, "v1_service", None), "ledger", None)
+    if (history is not None or v1_ledger is not None) and manager.cfg.history_retention_days > 0:
         def purge_forever() -> None:
             while True:
                 try:
-                    history.purge(manager.cfg.history_retention_days)
+                    purge_task_text(manager.cfg.history_retention_days, history, v1_ledger)
                 except Exception as exc:  # retention must never take the server down
-                    print(f"⚠️  History retention failed: {exc}", flush=True)
+                    print(f"⚠️  Retention failed: {exc}", flush=True)
                 threading.Event().wait(6 * 3600)
 
         threading.Thread(target=purge_forever, name="openmob-retention", daemon=True).start()
@@ -681,6 +682,18 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             session.coordinator.event("status", f"{session.info.model} disconnected.")
 
     return app
+
+
+def purge_task_text(days: float, history=None, ledger=None) -> dict:
+    """The one retention job: every stored copy of task text and screen summaries older than `days`
+    goes (chats with their turns, events and steps; orchestration plans and results; delivered or
+    dead webhook bodies; idempotency replays). Billing totals and the hashed audit log stay. 0: keep all."""
+    out = {}
+    if history is not None:
+        out["chats"] = history.purge(days)
+    if ledger is not None:
+        out.update(ledger.purge_text(days))
+    return out
 
 
 def serve_in_background(app: FastAPI, host: str, port: int):

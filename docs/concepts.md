@@ -26,10 +26,13 @@ phone can only run tasks while:
 
 - **It is online.** The OpenMob app is running and connected (`"online": true`). Creating a task
   for an offline phone fails with `409 phone_offline`.
-- **It is unlocked, with the screen on.** Before starting a task OpenMob asks the phone whether
-  it's usable. A locked phone, or one with its screen off, is refused with `409 phone_locked`
-  ("Unlock it to continue"); a phone that doesn't answer within 5 seconds (often: asleep) gets
-  `409 phone_unresponsive`. OpenMob never enters a PIN, pattern, password or fingerprint.
+- **It isn't behind a secure lock.** Before starting a task OpenMob asks the phone whether it's
+  usable. A screen that's off is woken, and a swipe-only lock screen is swiped away, then the task
+  runs. A phone locked with a PIN, pattern, password or biometric is refused with `409 phone_locked`
+  ("Unlock it to continue"), as is a swipe lock that didn't go away. A phone that doesn't answer
+  within 5 seconds (often: asleep) gets `409 phone_unresponsive`. OpenMob never enters a PIN,
+  pattern, password or fingerprint. Steps of a multi-phone run behave the same way (they wait for
+  the owner to unlock, up to `wait_for_phone_seconds`).
 
 A phone runs **one task at a time**. Tasks you start while it's busy (from the API or from the
 dashboard) wait in its queue with status `queued`. `"busy": true` means it's working right now.

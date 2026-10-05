@@ -410,7 +410,7 @@
           <div class="field"><span class="label">Scopes</span><div class="scopes" id="scopes" role="group" aria-label="Scopes for the new key"></div></div>
           <div class="approve-opt" id="approveOpt">
             <label class="check"><input type="checkbox" id="keyConfirmApprove"> <span><b style="color:var(--fg)">Approve risky actions</b>: this key may say yes when a task asks before buying, sending or deleting.</span></label>
-            <span class="warn-text">Off by default, and only you can approve those steps (on your phone or dashboard). An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.</span>
+            <span class="warn-text">Off by default, and only you can approve those steps, on your phone with its screen lock. An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.</span>
           </div>
           <div class="row"><button class="btn btn-primary" type="submit">Create key</button><span class="error" id="keyError" role="alert"></span></div>
         </form>
@@ -475,8 +475,9 @@
             <dt><code class="inline">task.finished</code></dt><dd>succeeded, failed or cancelled</dd>
             <dt><code class="inline">task.needs_input</code></dt><dd>asked a question</dd>
             <dt><code class="inline">task.needs_confirmation</code></dt><dd>waiting for approval</dd>
+            <dt><code class="inline">orchestration.finished</code></dt><dd>a multi-phone run ended</dd>
           </dl>
-          <p class="muted small" style="margin:14px 0 0">The body is <code class="inline">{"type", "created", "task"}</code>, where <code class="inline">task</code> is the same object as <code class="inline">GET /v1/tasks/{id}</code>. Failed deliveries are retried for about an hour with the same <code class="inline">X-OpenMob-Delivery</code> id, so drop ids you've seen. Answer 2xx fast, then do the work.</p>
+          <p class="muted small" style="margin:14px 0 0">The body is <code class="inline">{"type", "created", "task"}</code>, where <code class="inline">task</code> is the same object as <code class="inline">GET /v1/tasks/{id}</code>; for <code class="inline">orchestration.finished</code> it has <code class="inline">orchestration</code> (as <code class="inline">GET /v1/orchestrations/{id}</code>) instead of <code class="inline">task</code>, so check <code class="inline">type</code> first. Failed deliveries are retried for about an hour with the same <code class="inline">X-OpenMob-Delivery</code> id, so drop ids you've seen. Answer 2xx fast, then do the work.</p>
         </section>
         <section class="card" aria-labelledby="sigTitle">
           <div class="card-head"><h2 id="sigTitle">Verify the signature</h2></div>
@@ -495,6 +496,7 @@
         <select class="select" id="logAction" aria-label="Filter by action">
           <option value="">All actions</option><option value="task">Tasks</option><option value="key">Keys</option><option value="screen">Screenshots</option>
           <option value="memory">Memory</option><option value="webhook">Webhooks</option><option value="settings">Settings</option>
+          <option value="orchestration">Orchestrations</option><option value="admin">Admin</option>
         </select>
         <input class="input" type="search" id="logSearch" placeholder="Filter by key, phone, task or outcome" aria-label="Filter logs">
       </div>
@@ -894,7 +896,9 @@ function renderOverview() {
   const fact = (dt, dd) => [el("dt", { textContent: dt }), el("dd", { textContent: dd })];
   $("limitsList").replaceChildren(
     ...fact("Requests per minute", num(l.requests_per_minute)), ...fact("Tasks at once", num(l.concurrent_tasks)),
-    ...fact("Tasks per day", num(l.tasks_per_day)), ...fact("Steps per task", `up to ${num(l.max_steps)}`));
+    ...fact("Tasks per day", num(l.tasks_per_day)), ...fact("Steps per task", `up to ${num(l.max_steps)}`),
+    ...fact("Tasks per day, all keys", num(l.account_tasks_per_day)),
+    ...fact("Credits per day, all keys", l.account_credits_per_day ? num(l.account_credits_per_day) : "unlimited"));
   $("tiersList").replaceChildren(...o.tiers.flatMap((t) => fact(`${t.name}${t.default ? " (default)" : ""}`, `${t.credits_per_step} / step`)));
 }
 let phones = {};  // device id → name, from sessions
