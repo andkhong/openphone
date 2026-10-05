@@ -25,18 +25,15 @@ import time
 from collections import OrderedDict, deque
 from urllib.parse import urlparse
 
-import httpx
-
 from ..ledger import day_start
 from ..phone.base import DeviceError
 from ..runner import FINAL_STATUSES
 from .errors import BadRequest, Conflict, Forbidden, NotEnabled, NotFound, RateLimited, Unavailable
 from .principal import Principal, resolve
+from .webhooks import WebhookOutbox
 
 MAX_INSTRUCTION = 2000
 KEEP_REGISTRY = 10_000  # live task → owner lookups kept in memory (older ones come from the ledger)
-WEBHOOK_TIMEOUT = 5.0
-WEBHOOK_RETRIES = (1.0, 4.0)  # waits before the 2nd and 3rd attempts
 
 # Internal names that must never reach a developer: model families, providers, classifiers.
 INTERNAL_NAMES = re.compile(
@@ -137,6 +134,8 @@ class V1Service:
         self.active: dict[str, set[str]] = {}  # key id → its unfinished task ids
         self.hits: dict[str, deque] = {}  # key id → request times in the last minute
         self._lock = threading.Lock()
+        self.webhooks = WebhookOutbox(ledger, store, self.webhook_url_ok, sign_webhook)
+        self.webhooks.start()
         register_model_names([m["id"] for m in self.cfg.models] + [t["model"] for t in self.cfg.api_tiers.values()])
         manager.task_requesters.append(self.requester)  # the phone shows who started a task
         manager.approval_listeners.append(self._on_phone_approval)
@@ -274,29 +273,8 @@ class V1Service:
             task = self.public_task(account_id, task_id)
         except NotFound:
             return
-        threading.Thread(target=self._deliver, args=(account_id, hook, event, task), daemon=True).start()
-
-    def _deliver(self, account_id: str, hook: tuple[str, str], event: str, task: dict) -> None:
-        url, secret = hook
-        body = json.dumps({"type": event, "created": time.time(), "task": task}).encode()
-        outcome = "failed"
-        for attempt, wait in enumerate((0.0, *WEBHOOK_RETRIES)):
-            time.sleep(wait)
-            if not self.webhook_url_ok(url):  # checked at send time too (DNS can change)
-                outcome = "blocked"
-                break
-            ts = int(time.time())
-            try:
-                r = httpx.post(url, content=body, timeout=WEBHOOK_TIMEOUT, follow_redirects=False, headers={
-                    "Content-Type": "application/json", "User-Agent": "OpenMob-Webhooks/1",
-                    "X-OpenMob-Event": event, "X-OpenMob-Signature": sign_webhook(secret, body, ts),
-                })
-                if 200 <= r.status_code < 300:
-                    outcome = "delivered"
-                    break
-            except httpx.HTTPError:
-                pass
-        self.ledger.audit("webhook." + outcome, account_id, task_id=task["id"], outcome=event)
+        # The task as it was at this event, frozen into the outbox; the worker sends and retries it.
+        self.webhooks.enqueue(account_id, event, task_id, json.dumps({"type": event, "created": time.time(), "task": task}))
 
     def requester(self, task_id: str) -> dict | None:
         """Who started an API task, for the phone: {"name", "human"} (human: only the owner may

@@ -48,6 +48,22 @@ CREATE TABLE IF NOT EXISTS audit (
     outcome TEXT
 );
 CREATE INDEX IF NOT EXISTS audit_by_time ON audit (time DESC);
+
+-- Webhook outbox: a delivery is written here first, then sent (and retried) by a worker, so a
+-- restart never loses one. The id doubles as the X-OpenMob-Delivery header (receivers dedupe on it).
+CREATE TABLE IF NOT EXISTS webhook_outbox (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    event TEXT NOT NULL,
+    task_id TEXT,
+    body TEXT NOT NULL,                -- the exact JSON sent on every attempt
+    created REAL NOT NULL,
+    next_attempt REAL NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,              -- pending | sending | delivered | failed | blocked | dropped
+    last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS webhook_outbox_due ON webhook_outbox (status, next_attempt);
 """
 
 
@@ -129,6 +145,41 @@ class Ledger:
 
     def tasks_today(self, key_id: str) -> int:
         return self._q("SELECT COUNT(*) FROM api_tasks WHERE key_id = ? AND created >= ?", (key_id, day_start()))[0][0]
+
+    # --- webhook outbox -------------------------------------------------------------
+
+    def add_webhook(self, delivery_id: str, account_id: str, event: str, task_id: str | None, body: str) -> None:
+        now = time.time()
+        self._q("INSERT INTO webhook_outbox (id, account_id, event, task_id, body, created, next_attempt, status) "
+                "VALUES (?,?,?,?,?,?,?, 'pending')", (delivery_id, account_id, event, task_id, body, now, now))
+
+    def claim_webhooks(self, limit: int = 20) -> list[dict]:
+        """Due deliveries, marked `sending` so no other pass picks them up."""
+        with self._lock:
+            rows = self._db.execute(
+                "SELECT * FROM webhook_outbox WHERE status = 'pending' AND next_attempt <= ? "
+                "ORDER BY next_attempt LIMIT ?", (time.time(), limit)).fetchall()
+            for row in rows:
+                self._db.execute("UPDATE webhook_outbox SET status = 'sending' WHERE id = ?", (row["id"],))
+        return [dict(r) for r in rows]
+
+    def next_webhook_due(self) -> float | None:
+        return self._q("SELECT MIN(next_attempt) FROM webhook_outbox WHERE status = 'pending'")[0][0]
+
+    def webhook_attempted(self, delivery_id: str, status: str, error: str | None = None,
+                          next_attempt: float | None = None) -> None:
+        """Record one attempt: `pending` again (with `next_attempt`) or a final status."""
+        self._q("UPDATE webhook_outbox SET status = ?, attempts = attempts + 1, last_error = ?, "
+                "next_attempt = COALESCE(?, next_attempt) WHERE id = ?", (status, error, next_attempt, delivery_id))
+
+    def requeue_interrupted_webhooks(self) -> int:
+        """At startup: deliveries that were mid-send when the server stopped go out again."""
+        with self._lock:
+            return self._db.execute("UPDATE webhook_outbox SET status = 'pending' WHERE status = 'sending'").rowcount
+
+    def webhook(self, delivery_id: str) -> dict | None:
+        rows = self._q("SELECT * FROM webhook_outbox WHERE id = ?", (delivery_id,))
+        return dict(rows[0]) if rows else None
 
     def usage(self, account_id: str, since: float) -> dict:
         row = self._q(
