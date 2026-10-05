@@ -13,14 +13,14 @@
    openmob doctor             # every line should be ✓
    openmob run --public       # prints Dashboard (localhost) and Public (HTTPS) links
    ```
-3. **Open the dashboard** in Chrome using the `localhost` link. Allow the microphone when asked. Check that the live screen is moving.
+3. **Open the dashboard** in Chrome using the `localhost` link. Check that the live screen is moving.
 4. **Optional:** open the **Public (HTTPS)** link on a second device (tablet or laptop) to show it's hosted.
 
 ## Script (about 5 minutes)
 
 | # | Say / do | What the audience sees |
 |---|---|---|
-| 1 | Hold **🎙 Hold to talk**: *"Open Where Winds Meet and open the menu."* | The game opens. Jev classifies each screen (loading, pop-up, menu). Claude taps through to the menu. |
+| 1 | In the phone app's **Ask your agent**, tap 🎙 and say *"Open Where Winds Meet and open the menu."* (or type it on the dashboard) | The game opens. Jev classifies each screen (loading, pop-up, menu). Claude taps through to the menu. |
 | 2 | *"Close the menu."* | A follow-up that uses memory of the earlier request. |
 | 3 | Click the example chip **Open YouTube and search for lofi music**. | A different app, done in 2 steps with a deep link. |
 | 4 | Type *"Open the Play Store and search for Spotify, don't install anything."* | Typing, searching, and staying within instructions. |
@@ -38,7 +38,7 @@
 |---|---|
 | Live screen frozen, or "screen unavailable" | Check the USB cable, then run `adb devices`. Click ↻ in the dashboard. |
 | Agent says the phone is locked | Unlock the phone. OpenMob will never type your PIN. |
-| Voice button does nothing | Use the `localhost` or HTTPS link (browsers block mics on plain http), or just type. |
+| Phone app's 🎙 does nothing | Check the phone's speech recognition is available (Google app), or type the request. |
 | A task wanders | Press **Stop** and rephrase more specifically. |
 | Public link fails | Use the localhost dashboard. The tunnel is only needed for other devices. |
 

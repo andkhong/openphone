@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import threading
 from dataclasses import dataclass
@@ -13,7 +14,7 @@ from rapidfuzz import fuzz
 
 from .adb import PhoneDriver
 
-DEFAULT_LABEL_CACHE = Path.home() / ".cache" / "openmob" / "labels.json"
+DEFAULT_LABEL_CACHE = Path(os.environ.get("OPENMOB_DATA_DIR") or Path.home() / ".cache" / "openmob") / "labels.json"
 
 # Package-name segments that say nothing about which app it is.
 GENERIC_TOKENS = {

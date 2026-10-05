@@ -241,3 +241,45 @@ def test_confirm_policies(tmp_path):
     agent, _, driver = make_agent(steps(), io=io, tmp_path=tmp_path, confirm_actions="never")
     agent.run("open my email")
     assert io.questions == [] and ("tap", 20, 20) in driver.actions
+
+
+def test_agent_counts_claude_tokens_per_task(tmp_path):
+    from types import SimpleNamespace
+
+    agent, client, _ = make_agent([
+        [tool_use("wait", "a", seconds=0.5)],
+        [tool_use("done", "b", summary="ok", success=True)],
+        [tool_use("done", "c", summary="ok", success=True)],
+    ], tmp_path=tmp_path)
+    original = client.create
+
+    def with_usage(**kwargs):
+        response = original(**kwargs)
+        response.usage = SimpleNamespace(input_tokens=1000, output_tokens=50, cache_read_input_tokens=0)
+        return response
+
+    client.create = with_usage
+    result = agent.run("wait then finish")
+    assert (result.usage.claude_calls, result.usage.claude_input, result.usage.claude_output) == (2, 2000, 100)
+    second = agent.run("again")  # each task starts counting from zero
+    assert (second.usage.claude_calls, second.usage.claude_input) == (1, 1000)
+
+
+def test_model_switch_applies_from_the_next_task(tmp_path):
+    agent, client, _ = make_agent([
+        [tool_use("wait", "a", seconds=0.5)],
+        [tool_use("done", "b", summary="ok", success=True)],
+        [tool_use("done", "c", summary="ok", success=True)],
+    ], tmp_path=tmp_path)
+    original = client.create
+
+    def switch_mid_task(**kwargs):
+        response = original(**kwargs)
+        agent.model = "claude-opus-5-5"  # the user picks a new model while the task runs
+        return response
+
+    client.create = switch_mid_task
+    agent.run("first task")
+    agent.run("second task")
+    models = [r["model"] for r in client.requests]
+    assert models == ["claude-sonnet-5-5", "claude-sonnet-5-5", "claude-opus-5-5"]

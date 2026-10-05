@@ -8,140 +8,213 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg: #f4f4f1; --panel: #ffffff; --fg: #17181a; --muted: #6c6f75; --line: #e4e4df;
-    --accent: #3b5bfd; --accent-ink: #fff; --ok: #1f9d55; --warn: #c97a00; --bad: #d6383b;
-    --chip: #eef0ff; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 8px 24px rgba(0,0,0,.06);
+    --bg: #f7f7f5; --panel: #ffffff; --raised: #ffffff; --fg: #17181a; --muted: #6c6f75; --faint: #9a9da3; --line: #e6e6e1;
+    --accent: #3b5bfd; --accent-ink: #fff; --user: #eceef6; --ok: #1f9d55; --warn: #c97a00; --bad: #d6383b;
+    --shadow: 0 1px 2px rgba(0,0,0,.04), 0 8px 24px rgba(0,0,0,.06);
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #0f1012; --panel: #17191c; --fg: #ecedef; --muted: #9a9ea6; --line: #26292e;
-      --accent: #6f86ff; --chip: #1f2440; --shadow: none;
+      --bg: #141414; --panel: #1b1b1b; --raised: #232323; --fg: #ececec; --muted: #a1a1a1; --faint: #6f6f6f; --line: #2c2c2c;
+      --accent: #6f86ff; --user: #2a2a2e; --ok: #3ccf7f; --warn: #e3a12f; --bad: #ff5a52; --shadow: none;
     }
   }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 Inter, system-ui, sans-serif; }
-  header { display: flex; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: var(--panel); }
-  .logo { font-weight: 700; font-size: 18px; letter-spacing: -.01em; }
-  .logo span { color: var(--accent); }
-  .tag { font-size: 12px; color: var(--muted); }
-  header .spacer { flex: 1; }
-  select, button, input { font: inherit; }
-  select { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); max-width: 60vw; }
-  .icon-btn { padding: 7px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer; }
-  main { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 20px; padding: 20px; max-width: 1200px; margin: 0 auto; }
-  @media (max-width: 820px) { main { grid-template-columns: 1fr; padding: 16px; } }
-  .phone { background: #000; border-radius: 28px; padding: 10px; box-shadow: var(--shadow); position: relative; }
-  .phone img { width: 100%; display: block; border-radius: 20px; min-height: 200px; background: #111; }
-  .phone .badge { position: absolute; top: 18px; left: 18px; font-size: 12px; padding: 3px 8px; border-radius: 99px; background: rgba(0,0,0,.6); color: #fff; }
-  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 16px; box-shadow: var(--shadow); }
-  .stack { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
-  .status { display: flex; align-items: center; gap: 10px; font-weight: 600; }
-  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); flex: none; }
-  .dot.running { background: var(--accent); animation: pulse 1.2s infinite; }
-  .dot.asking { background: var(--warn); }
-  .dot.idle { background: var(--ok); }
-  @keyframes pulse { 50% { opacity: .35; } }
-  .status small { font-weight: 400; color: var(--muted); display: block; overflow-wrap: anywhere; }
-  form { display: flex; gap: 8px; margin-top: 12px; }
-  form input { flex: 1; min-width: 0; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
-  .primary { padding: 12px 16px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); font-weight: 600; cursor: pointer; }
-  .row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
-  .mic { flex: 1; padding: 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--chip); color: var(--fg); font-weight: 600; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: none; }
-  .mic.rec { background: var(--bad); color: #fff; border-color: transparent; }
-  .stop { padding: 14px 18px; border-radius: 10px; border: 0; background: var(--bad); color: #fff; font-weight: 600; cursor: pointer; }
-  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-  .examples button { border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 99px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
-  .ask-card { border-color: var(--warn); display: none; }
-  .ask-card p { margin: 0 0 10px; font-weight: 600; }
-  .ask-card .yes { background: var(--ok); }
-  .ask-card .no { background: var(--bad); }
-  .feed { list-style: none; margin: 0; padding: 0; max-height: 52vh; overflow: auto; }
-  .feed li { display: grid; grid-template-columns: 74px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
-  .feed li:last-child { border-bottom: 0; }
-  .kind { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; padding: 2px 6px; border-radius: 6px; height: fit-content; text-align: center; background: var(--chip); color: var(--accent); }
-  .kind.jev { background: #efe6ff; color: #6b3fd4; }
-  .kind.error { background: #fde8e8; color: var(--bad); }
-  .kind.result { background: #e3f6ea; color: var(--ok); }
-  .kind.question { background: #fff3dc; color: var(--warn); }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) .kind.jev { background: #2a2140; color: #b9a2ff; }
-    :root:not([data-theme="light"]) .kind.error { background: #3a1d1e; }
-    :root:not([data-theme="light"]) .kind.result { background: #173322; }
-    :root:not([data-theme="light"]) .kind.question { background: #3a2c12; }
+  :root[data-theme="dark"] {
+    --bg: #141414; --panel: #1b1b1b; --raised: #232323; --fg: #ececec; --muted: #a1a1a1; --faint: #6f6f6f; --line: #2c2c2c;
+    --accent: #6f86ff; --user: #2a2a2e; --ok: #3ccf7f; --warn: #e3a12f; --bad: #ff5a52; --shadow: none;
   }
-  .msg { overflow-wrap: anywhere; }
-  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 8px; }
-  .toggle { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
-  .empty { color: var(--muted); font-size: 14px; }
-  .feed li.empty { display: block; }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 Inter, system-ui, sans-serif; display: flex; flex-direction: column; }
+  button, select, textarea { font: inherit; color: inherit; }
+
+  /* Header */
+  header { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); flex: none; }
+  .logo { font-weight: 700; font-size: 17px; letter-spacing: -.01em; margin-right: 6px; }
+  .logo span { color: var(--accent); }
+  header select { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); max-width: 42vw; }
+  .spacer { flex: 1; }
+  .ghost { padding: 6px 10px; border-radius: 8px; border: 1px solid var(--line); background: transparent; cursor: pointer; text-decoration: none; color: var(--fg); white-space: nowrap; font-size: 14px; }
+  .ghost:hover { background: var(--user); }
+  .menu { position: relative; }
+  .menu summary { list-style: none; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu-items { position: absolute; right: 0; top: 40px; min-width: 220px; background: var(--raised); border: 1px solid var(--line); border-radius: 12px; padding: 6px; box-shadow: var(--shadow); z-index: 20; }
+  .menu-items button, .menu-items a { display: block; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--fg); text-decoration: none; font-size: 14px; }
+  .menu-items button:hover, .menu-items a:hover { background: var(--user); }
+  .menu-items .who { padding: 8px 10px; color: var(--muted); font-size: 13px; border-bottom: 1px solid var(--line); margin-bottom: 4px; overflow-wrap: anywhere; }
+
+  /* Layout */
+  .layout { flex: 1; display: flex; min-height: 0; }
+  .chat { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  .thread { flex: 1; overflow-y: auto; padding: 24px 16px 8px; }
+  .column { max-width: 760px; margin: 0 auto; }
+
+  /* Messages */
+  .note { text-align: center; color: var(--faint); font-size: 12px; margin: 10px 0; }
+  .turn { margin: 0 0 28px; }
+  .user { display: flex; justify-content: flex-end; margin: 0 0 14px; }
+  .user div { background: var(--user); padding: 10px 14px; border-radius: 18px; max-width: 80%; overflow-wrap: anywhere; white-space: pre-wrap; }
+  .user.reply div { font-size: 14px; padding: 6px 12px; }
+  .agent { display: grid; grid-template-columns: 28px 1fr; gap: 12px; align-items: start; margin-bottom: 12px; }
+  .mark { width: 26px; height: 26px; color: var(--accent); }
+  .mark.spin { animation: spin 2.4s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .body { min-width: 0; }
+  .text { overflow-wrap: anywhere; white-space: pre-wrap; padding-top: 2px; }
+  .text.error { color: var(--bad); }
+  .text.ask { font-weight: 600; }
+  .live { color: var(--muted); font-size: 14px; padding-top: 3px; overflow-wrap: anywhere; }
+  .live .dots::after { content: "…"; animation: blink 1.2s steps(3) infinite; }
+  @keyframes blink { 50% { opacity: .3; } }
+  details.steps { margin: 2px 0 8px; }
+  details.steps summary { cursor: pointer; color: var(--muted); font-size: 13px; list-style: none; display: inline-flex; gap: 6px; align-items: center; user-select: none; }
+  details.steps summary::-webkit-details-marker { display: none; }
+  details.steps summary::before { content: "▸"; font-size: 11px; transition: transform .15s; }
+  details.steps[open] summary::before { transform: rotate(90deg); }
+  .step-list { margin: 8px 0 4px; padding: 4px 0 4px 14px; border-left: 2px solid var(--line); display: flex; flex-direction: column; gap: 4px; }
+  .step { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .step b { font-weight: 600; color: var(--fg); margin-right: 4px; }
+  .step.err { color: var(--bad); }
+  .answers { display: flex; gap: 8px; margin-top: 10px; }
+  .answers button { padding: 7px 18px; border-radius: 99px; border: 1px solid var(--line); background: var(--raised); cursor: pointer; font-weight: 600; }
+  .answers .yes { background: var(--ok); color: #fff; border-color: transparent; }
+  .foot { display: flex; align-items: center; gap: 4px; margin-top: 6px; color: var(--faint); font-size: 12px; }
+  .foot button { border: 0; background: transparent; color: var(--faint); cursor: pointer; padding: 3px 6px; border-radius: 6px; font-size: 13px; }
+  .foot button:hover { background: var(--user); color: var(--fg); }
+  .foot .tokens { margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+  /* Empty state */
+  .empty { max-width: 640px; margin: 14vh auto 0; text-align: center; padding: 0 8px; }
+  .empty h1 { font-size: 26px; font-weight: 600; letter-spacing: -.02em; margin: 0 0 6px; }
+  .empty p { color: var(--muted); margin: 0 0 22px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .chips button { border: 1px solid var(--line); background: var(--panel); border-radius: 99px; padding: 8px 14px; cursor: pointer; color: var(--muted); font-size: 14px; }
+  .chips button:hover { color: var(--fg); border-color: var(--faint); }
+
+  /* Composer */
+  .composer-wrap { padding: 8px 16px 14px; flex: none; }
+  .composer { max-width: 760px; margin: 0 auto; background: var(--raised); border: 1px solid var(--line); border-radius: 22px; padding: 12px 12px 10px 16px; box-shadow: var(--shadow); }
+  .composer textarea { width: 100%; border: 0; outline: 0; background: transparent; resize: none; min-height: 26px; max-height: 200px; padding: 2px 0; line-height: 1.5; }
+  .composer textarea::placeholder { color: var(--faint); }
+  .bar { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  .bar .hint { color: var(--faint); font-size: 12px; flex: 1; overflow-wrap: anywhere; }
+  .model { appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--muted); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 14px; max-width: 46vw; text-overflow: ellipsis; }
+  .model:hover { background: var(--user); color: var(--fg); }
+  .send { width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: none; }
+  .send:disabled { opacity: .35; cursor: default; }
+  .send.stop { background: var(--fg); color: var(--bg); font-size: 12px; }
+  .disclaimer { text-align: center; color: var(--faint); font-size: 12px; margin-top: 8px; }
+
+  /* Phone panel */
+  .panel { width: 330px; flex: none; border-left: 1px solid var(--line); background: var(--panel); padding: 16px; overflow-y: auto; }
+  .panel.hidden { display: none; }
+  .phone { background: #000; border-radius: 26px; padding: 8px; }
+  .phone img { width: 100%; display: block; border-radius: 19px; min-height: 160px; background: #111; }
+  .status { display: flex; align-items: center; gap: 8px; margin: 12px 2px 4px; font-weight: 600; font-size: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.idle { background: var(--ok); }
+  .dot.running { background: var(--accent); animation: blink 1.2s infinite; }
+  .dot.asking { background: var(--warn); }
+  .dot.offline { background: var(--bad); }
+  .panel small { display: block; color: var(--muted); margin: 2px 2px; font-size: 12px; overflow-wrap: anywhere; }
+  @media (max-width: 640px) {
+    header { gap: 6px; padding: 10px 12px; }
+    header .label { display: none; }
+    header select { max-width: 46vw; }
+  }
+  @media (max-width: 900px) {
+    .panel { position: fixed; right: 0; top: 53px; bottom: 0; z-index: 15; box-shadow: var(--shadow); width: min(330px, 90vw); }
+  }
 </style>
 </head>
 <body>
 <header>
   <div class="logo">Open<span>Mob</span></div>
-  <div class="tag">voice agent for Android</div>
-  <div class="spacer"></div>
-  <span class="tag" id="who" hidden></span>
-  <button class="icon-btn" id="signout" hidden>Sign out</button>
-  <a class="icon-btn" id="connectPhone" href="/connect" style="text-decoration:none">＋ Connect a phone</a>
   <select id="device" aria-label="Phone"></select>
-  <button class="icon-btn" id="rescan" title="Find phones">↻</button>
+  <div class="spacer"></div>
+  <button class="ghost" id="newChat" title="Clear this phone's conversation" aria-label="New chat">＋<span class="label"> New chat</span></button>
+  <button class="ghost" id="panelToggle" title="Show or hide the phone screen" aria-label="Phone screen">📱<span class="label"> Screen</span></button>
+  <details class="menu" id="menu">
+    <summary class="ghost" aria-label="More">⋯</summary>
+    <div class="menu-items">
+      <div class="who" id="who" hidden></div>
+      <a id="connectPhone" href="/connect">＋ Connect a phone</a>
+      <a id="adminLink" href="/admin" hidden>🛡 Admin</a>
+      <button id="speakToggle">🔈 Speak replies: off</button>
+      <button id="rescan">↻ Find phones</button>
+      <button id="signout" hidden>Sign out</button>
+    </div>
+  </details>
 </header>
 
-<main>
-  <div>
-    <div class="phone">
-      <span class="badge" id="badge">connecting…</span>
-      <img id="screen" alt="">
-    </div>
-  </div>
-
-  <div class="stack">
-    <div class="card">
-      <div class="status"><span class="dot" id="dot"></span><div><span id="state">Connecting…</span><small id="current"></small></div></div>
-      <form id="form">
-        <input id="text" placeholder="Tell your phone what to do…" autocomplete="off">
-        <button class="primary">Send</button>
+<div class="layout">
+  <section class="chat">
+    <div class="thread" id="thread"><div class="column" id="column"></div></div>
+    <div class="composer-wrap">
+      <form class="composer" id="composer">
+        <textarea id="text" rows="1" placeholder="Tell your phone what to do…" aria-label="Request"></textarea>
+        <div class="bar">
+          <span class="hint" id="hint"></span>
+          <select class="model" id="model" aria-label="Claude model for this phone" title="Model for this phone's next task"></select>
+          <button class="send" id="send" type="submit" aria-label="Send">↑</button>
+        </div>
       </form>
-      <div class="row">
-        <button class="mic" id="mic">🎙 Hold to talk</button>
-        <button class="stop" id="stop">Stop</button>
-      </div>
-      <div class="examples" id="examples"></div>
+      <div class="disclaimer">OpenMob can make mistakes. Watch your phone, and press ■ to stop.</div>
     </div>
+  </section>
 
-    <div class="card ask-card" id="question">
-      <p id="qtext"></p>
-      <div class="row">
-        <button class="primary yes" data-answer="yes">Yes</button>
-        <button class="primary no" data-answer="no">No</button>
-      </div>
-    </div>
-
-    <div class="card">
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <h2>Activity</h2>
-        <label class="toggle"><input type="checkbox" id="speak"> Speak replies</label>
-      </div>
-      <ul class="feed" id="feed"><li class="empty">No activity yet.</li></ul>
-    </div>
-  </div>
-</main>
+  <aside class="panel" id="panel">
+    <div class="phone"><img id="screen" alt=""></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="state">Connecting…</span></div>
+    <small id="deviceLine"></small>
+    <small id="sessionTokens"></small>
+  </aside>
+</div>
 
 <script>
 const token = new URLSearchParams(location.search).get("t") || "";
 const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => {  // all dynamic text goes in as textContent, never HTML
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = text;
+  return node;
+};
 const EXAMPLES = [
   "Open Where Winds Meet and open the menu",
   "Open YouTube and search for lofi music",
   "Open Settings and turn on dark mode",
   "Open Chrome and go to wikipedia.org",
 ];
-let deviceId = null;
-$("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
-let accounts = false;
+const MARK = '<svg class="mark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6M4.9 4.9l4.3 4.3M14.8 14.8l4.3 4.3M4.9 19.1l4.3-4.3M14.8 9.2l4.3-4.3"/></svg>';
 
-// Account mode: the session cookie authenticates every request, so links carry no secret.
+let accounts = false;
+let deviceId = null;
+let last = null;            // latest status snapshot
+let lastSignature = "";     // re-render only when something changed
+let modelLabels = {};
+let openSteps = new Set();  // task ids whose step list the user expanded
+let screenError = "";
+let speak = false;
+let lastSpokenSeq = 0;
+try { speak = localStorage.getItem("openmob.speak") === "1"; } catch {}
+
+// ---------- server ----------
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { ...opts, headers: { "X-OpenMob-Token": token, ...(opts.headers || {}) } });
+  if (res.status === 401) {
+    if (accounts) location.href = "/login?next=" + encodeURIComponent(location.pathname);
+    throw new Error(accounts ? "Signed out." : "Bad token: open the link printed by `openmob run`.");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { detail = (await res.json()).detail || detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.headers.get("content-type")?.includes("json") ? res.json() : res;
+}
+
 async function checkAccount() {
   try {
     const me = await (await fetch("/api/auth/me")).json();
@@ -153,55 +226,351 @@ async function checkAccount() {
     if (accounts) {
       $("who").textContent = me.email;
       $("who").hidden = $("signout").hidden = false;
+      $("adminLink").hidden = !me.admin;
       $("connectPhone").href = "/connect";
+    } else {
+      $("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
     }
   } catch {}
   return true;
 }
-$("signout").onclick = async () => {
-  await fetch("/api/auth/logout", { method: "POST" });
-  location.href = "/login";
-};
-let lastSpoken = Date.now() / 1000;
-let screenError = "";
 
-async function api(path, opts = {}) {
-  const res = await fetch(path, { ...opts, headers: { "X-OpenMob-Token": token, ...(opts.headers || {}) } });
-  if (res.status === 401) {
-    if (accounts) location.href = "/login?next=" + encodeURIComponent(location.pathname);
-    throw new Error(accounts ? "Signed out." : "Bad token: open the link printed by `openmob run`.");
-  }
-  if (!res.ok) throw new Error((await res.text()) || res.statusText);
-  return res.headers.get("content-type")?.includes("json") ? res.json() : res;
+const shortModel = (label) => label.replace(/\s*\(.*\)$/, "");
+async function loadModels() {
+  try {
+    const m = await api("/api/models");
+    modelLabels = Object.fromEntries(m.models.map((x) => [x.id, x.label]));
+    $("model").replaceChildren(...m.models.map((x) => {
+      const o = el("option", "", shortModel(x.label));
+      o.value = x.id;
+      return o;
+    }));
+    $("model").value = m.default;
+  } catch {}
 }
 
 async function loadDevices(rescan = false) {
   try {
     const devices = await api(`/api/devices${rescan ? "?rescan=true" : ""}`);
-    const select = $("device");
-    select.replaceChildren(...devices.map((d) => {
-      const o = document.createElement("option");
+    $("device").replaceChildren(...devices.map((d) => {
+      const o = el("option", "", `${d.model}${d.online ? "" : " · offline"}`);
       o.value = d.id;
-      o.textContent = `${d.model} · ${d.connection}${d.online ? "" : " · offline"}`;
       return o;
     }));
-    if (!devices.length) { $("state").textContent = "No phone connected"; $("badge").textContent = "no phone"; return; }
+    $("device").hidden = !devices.length;
+    if (!devices.length) { deviceId = null; render(null); return; }
     if (!devices.some((d) => d.id === deviceId)) deviceId = (devices.find((d) => d.online) || devices[0]).id;
-    select.value = deviceId;
+    $("device").value = deviceId;
   } catch (e) { $("state").textContent = e.message; }
 }
 
 async function send(text) {
   text = text.trim();
   if (!text || !deviceId) return;
-  try { await api(`/api/devices/${deviceId}/command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) }); }
-  catch (e) { $("state").textContent = e.message; }
+  try {
+    await api(`/api/devices/${deviceId}/command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+    stickToBottom = true;
+    pollNow();
+  } catch (e) { $("hint").textContent = e.message; }
 }
 
-// Live screen: fetch frames back to back, roughly 1–2 per second over Wi-Fi.
-async function screenLoop() {
+const stopTask = () => deviceId && api(`/api/devices/${deviceId}/stop`, { method: "POST" }).catch(() => {});
+
+// ---------- conversation ----------
+
+// Group the flat event log into turns: one per task, plus loose system notes.
+function buildTurns(log) {
+  const items = [];
+  const byTask = new Map();
+  for (const e of log) {
+    if (e.task === null || e.task === undefined) {
+      if (e.kind === "status") items.push({ note: e.message });
+      continue;
+    }
+    if (!byTask.has(e.task)) {
+      const turn = { id: e.task, events: [] };
+      byTask.set(e.task, turn);
+      items.push(turn);
+    }
+    byTask.get(e.task).events.push(e);
+  }
+  return items;
+}
+
+const stripSource = (m) => m.replace(/^\[[^\]]+\]\s*/, "");
+const stripSteps = (m) => m.replace(/\s*\(\d+ steps?\)$/, "");
+const STEP_KINDS = new Set(["action", "thought", "status", "error"]);
+
+function renderTurn(turn, s) {
+  const wrap = el("div", "turn");
+  const events = turn.events;
+  const heard = events.filter((e) => e.kind === "heard");
+  const final = events.find((e) => e.data && e.data.final);
+  const usage = events.find((e) => e.kind === "usage");
+  const active = s && s.task_id === turn.id;
+
+  if (heard[0]) {
+    const u = el("div", "user");
+    u.append(el("div", "", stripSource(heard[0].message)));
+    wrap.append(u);
+  }
+
+  const agent = el("div", "agent");
+  const markHolder = el("div");
+  markHolder.innerHTML = MARK;  // static SVG constant, not user content
+  if (active && !final) markHolder.firstChild.classList.add("spin");
+  const body = el("div", "body");
+  agent.append(markHolder, body);
+
+  // Steps: everything except the request, questions, answers, the outcome and tokens.
+  const steps = events.filter((e) => STEP_KINDS.has(e.kind) && e !== final && !(e.kind === "status" && e.message.startsWith("Working on:")));
+  if (steps.length) {
+    const details = el("details", "steps");
+    details.open = openSteps.has(turn.id);
+    details.addEventListener("toggle", () => { details.open ? openSteps.add(turn.id) : openSteps.delete(turn.id); });
+    const secs = Math.max(0, Math.round((final || events[events.length - 1]).time - events[0].time));
+    const n = final && final.data.steps !== undefined ? final.data.steps : steps.filter((e) => e.kind === "action").length;
+    details.append(el("summary", "", `${n ? `${n} step${n === 1 ? "" : "s"}` : "Details"} · ${secs}s`));
+    const list = el("div", "step-list");
+    for (const e of steps) {
+      const row = el("div", `step${e.kind === "error" ? " err" : ""}`);
+      const m = e.message.match(/^(\w+): ([\s\S]*)$/);
+      if (e.kind === "action" && m) {
+        row.append(el("b", "", m[1].replace(/_/g, " ")));
+        row.append(document.createTextNode(m[2]));
+      } else {
+        row.textContent = e.message;
+      }
+      list.append(row);
+    }
+    details.append(list);
+    body.append(details);
+  }
+
+  // Questions and the user's answers, in order.
+  const extras = events.filter((e) => e.kind === "question" || (e.kind === "heard" && e !== heard[0]));
+  extras.forEach((e, i) => {
+    if (e.kind === "question") {
+      body.append(el("div", "text ask", e.message));
+      const later = extras.slice(i + 1);
+      const pending = !later.some((x) => x.kind === "question" || x.kind === "heard");
+      if (active && s.state === "asking" && pending) {
+        const row = el("div", "answers");
+        const yes = el("button", "yes", "Yes");
+        const no = el("button", "", "No");
+        yes.onclick = () => send("yes");
+        no.onclick = () => send("no");
+        row.append(yes, no);
+        body.append(row);
+      }
+    } else {
+      const u = el("div", "user reply");
+      u.append(el("div", "", stripSource(e.message)));
+      body.append(u);
+    }
+  });
+
+  if (final) {
+    body.append(el("div", `text${final.data.success ? "" : " error"}`, stripSteps(final.message)));
+    const foot = el("div", "foot");
+    const copy = el("button", "", "⧉");
+    copy.title = "Copy reply";
+    copy.onclick = () => navigator.clipboard?.writeText(stripSteps(final.message));
+    const retry = el("button", "", "↻");
+    retry.title = "Run this request again";
+    retry.onclick = () => heard[0] && send(stripSource(heard[0].message));
+    foot.append(copy, retry);
+    if (usage && usage.data) foot.append(el("span", "tokens", tokenText(usage.data)));
+    body.append(foot);
+  } else if (active && s.state !== "asking") {
+    const latest = [...steps].reverse().find((e) => e.kind !== "error");
+    const live = el("div", "live", latest ? latest.message.replace(/^\w+: /, "") : "Working");
+    live.append(el("span", "dots"));
+    body.append(live);
+  } else if (!active && !steps.length && !extras.length) {
+    body.append(el("div", "live", "Queued…"));
+  }
+
+  wrap.append(agent);
+  return wrap;
+}
+
+const fmt = (n) => (n || 0) >= 10000 ? `${(n / 1000).toFixed(1)}k` : (n || 0).toLocaleString();
+const tokenText = (u) => `${fmt(u.claude_input + u.claude_output)} Claude tokens${u.jev_input ? ` · ${fmt(u.jev_input)} Jev` : ""}`;
+
+function renderEmpty() {
+  const box = el("div", "empty");
+  box.append(el("h1", "", deviceId ? "What should your phone do?" : "No phone connected yet"));
+  box.append(el("p", "", deviceId
+    ? "Ask in plain words. The agent works on your phone step by step, and you can watch it live."
+    : "Open ⋯ → Connect a phone to pair one with a QR code."));
+  if (deviceId) {
+    const chips = el("div", "chips");
+    for (const t of EXAMPLES) {
+      const b = el("button", "", t);
+      b.onclick = () => send(t);
+      chips.append(b);
+    }
+    box.append(chips);
+  }
+  return box;
+}
+
+let stickToBottom = true;
+$("thread").addEventListener("scroll", () => {
+  const t = $("thread");
+  stickToBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 80;
+});
+
+function render(s) {
+  last = s;
+  const state = !s ? "offline" : (s.device && s.device.online === false ? "offline" : s.state);
+  $("dot").className = `dot ${state}`;
+  $("state").textContent = { idle: "Ready", running: "Working", asking: "Waiting for your answer", offline: deviceId ? "Phone offline" : "No phone" }[state] || state;
+  $("deviceLine").textContent = s && s.device ? `${s.device.model} · ${s.device.connection}${screenError ? " · " + screenError : ""}` : "";
+  const sess = s && s.usage && s.usage.session;
+  $("sessionTokens").textContent = sess && sess.claude_calls + sess.jev_calls ? `This session: ${tokenText(sess)}` : "";
+  if (s && s.model && document.activeElement !== $("model")) $("model").value = s.model;
+  updateComposer();
+
+  // Rebuild the thread only when the conversation changed.
+  const log = s ? s.log : [];
+  const signature = `${deviceId}|${log.length ? log[log.length - 1].seq : 0}|${log.length}|${s && s.state}|${s && s.task_id}`;
+  if (signature === lastSignature) return;
+  lastSignature = signature;
+  const items = buildTurns(log);
+  const column = $("column");
+  if (!items.some((x) => x.events)) {
+    column.replaceChildren(renderEmpty());
+  } else {
+    column.replaceChildren(...items.map((x) => x.note ? el("div", "note", x.note) : renderTurn(x, s)));
+  }
+  if (stickToBottom) $("thread").scrollTop = $("thread").scrollHeight;
+  speakNew(log);
+}
+
+function speakNew(log) {
+  const newest = log.length ? log[log.length - 1].seq : 0;
+  if (speak && "speechSynthesis" in window) {
+    for (const e of log) {
+      if (e.seq > lastSpokenSeq && (e.kind === "question" || (e.data && e.data.final))) {
+        speechSynthesis.speak(new SpeechSynthesisUtterance(stripSteps(e.message)));
+      }
+    }
+  }
+  lastSpokenSeq = Math.max(lastSpokenSeq, newest);
+}
+
+// ---------- composer ----------
+
+function updateComposer() {
+  const hasText = !!$("text").value.trim();
+  const busy = !!(last && last.state === "running" && !hasText);  // empty box while working: the button stops
+  const btn = $("send");
+  btn.classList.toggle("stop", busy);
+  btn.textContent = busy ? "■" : "↑";
+  btn.setAttribute("aria-label", busy ? "Stop" : "Send");
+  btn.disabled = !deviceId || (!busy && !hasText);
+  const offline = !last || (last.device && last.device.online === false);
+  $("hint").textContent = !deviceId ? "" : offline ? "Phone is offline." :
+    last.state === "asking" ? "Answer the question above, or say stop." :
+    last.state === "running" ? "Working… type to queue another request." : $("hint").dataset.note || "";
+}
+
+$("text").addEventListener("input", () => {
+  const t = $("text");
+  t.style.height = "auto";
+  t.style.height = Math.min(t.scrollHeight, 200) + "px";
+  updateComposer();
+});
+$("text").addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey && !e.isComposing) {
+    e.preventDefault();
+    $("composer").requestSubmit();
+  }
+});
+$("composer").addEventListener("submit", (e) => {
+  e.preventDefault();
+  if ($("send").classList.contains("stop")) { stopTask(); return; }
+  const text = $("text").value;
+  $("text").value = "";
+  $("text").style.height = "auto";
+  send(text);
+  updateComposer();
+});
+$("model").onchange = async (e) => {
+  if (!deviceId) return;
+  try {
+    const r = await api(`/api/devices/${deviceId}/model`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: e.target.value }),
+    });
+    const name = shortModel(modelLabels[r.model] || r.model);
+    $("hint").dataset.note = r.applies === "now" ? `Using ${name}.` : `${name} applies from the next task.`;
+    updateComposer();
+  } catch (err) { $("hint").textContent = err.message; }
+};
+
+// ---------- header ----------
+
+$("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); pollNow(); };
+$("newChat").onclick = async () => {
+  if (!deviceId) return;
+  try { await api(`/api/devices/${deviceId}/log/clear`, { method: "POST" }); } catch {}
+  openSteps.clear();
+  lastSignature = "";
+  pollNow();
+};
+const narrow = () => window.matchMedia("(max-width: 900px)").matches;
+let panelHidden = narrow();
+try {
+  const saved = localStorage.getItem("openmob.panel");
+  if (saved !== null && !narrow()) panelHidden = saved === "hidden";
+} catch {}
+const applyPanel = () => $("panel").classList.toggle("hidden", panelHidden);
+applyPanel();
+$("panelToggle").onclick = () => {
+  panelHidden = !panelHidden;
+  applyPanel();
+  try { if (!narrow()) localStorage.setItem("openmob.panel", panelHidden ? "hidden" : "shown"); } catch {}
+};
+const speakLabel = () => { $("speakToggle").textContent = `🔈 Speak replies: ${speak ? "on" : "off"}`; };
+speakLabel();
+$("speakToggle").onclick = () => {
+  speak = !speak;
+  speakLabel();
+  try { localStorage.setItem("openmob.speak", speak ? "1" : "0"); } catch {}
+};
+$("rescan").onclick = () => { $("menu").open = false; loadDevices(true); };
+$("signout").onclick = async () => {
+  await fetch("/api/auth/logout", { method: "POST" });
+  location.href = "/login";
+};
+document.addEventListener("click", (e) => { if (!$("menu").contains(e.target)) $("menu").open = false; });
+
+// ---------- live updates ----------
+
+let wake = null;
+const pollNow = () => wake && wake();
+const pause = (ms) => new Promise((r) => {
+  const t = setTimeout(r, ms);
+  wake = () => { clearTimeout(t); r(); };
+});
+
+async function statusLoop() {
   while (true) {
     if (deviceId) {
+      try { render(await api(`/api/devices/${deviceId}/status`)); } catch (e) { $("state").textContent = e.message; }
+    } else {
+      render(null);
+    }
+    await pause(700);
+  }
+}
+
+// Live screen: fetch frames back to back while the panel is visible.
+async function screenLoop() {
+  while (true) {
+    if (deviceId && !panelHidden) {
       try {
         const res = await api(`/api/devices/${deviceId}/screen.jpg?ts=${Date.now()}`);
         const url = URL.createObjectURL(await res.blob());
@@ -210,102 +579,16 @@ async function screenLoop() {
         img.src = url;
         if (old.startsWith("blob:")) URL.revokeObjectURL(old);
         screenError = "";
-      } catch (e) { screenError = "screen unavailable"; await new Promise((r) => setTimeout(r, 2000)); }
-    }
-    await new Promise((r) => setTimeout(r, document.hidden ? 2000 : 400));  // slower when the tab isn't visible
-  }
-}
-
-const LABELS = { thought: "think", action: "act", jev: "jev", heard: "heard", status: "info", error: "error", question: "ask", result: "done" };
-
-function render(s) {
-  const label = { idle: "Ready", running: "Working", asking: "Needs your answer" }[s.state] || s.state;
-  $("state").textContent = label + (s.queued ? ` · ${s.queued} queued` : "");
-  $("current").textContent = s.current || "";
-  $("dot").className = `dot ${s.state}`;
-  $("badge").textContent = `${s.device.model} · ${s.device.connection}${screenError ? " · " + screenError : ""}`;
-  $("question").style.display = s.question ? "block" : "none";
-  $("qtext").textContent = s.question || "";
-  const items = s.log.slice().reverse();
-  $("feed").replaceChildren(...(items.length ? items.map((e) => {
-    const li = document.createElement("li");
-    const k = document.createElement("span");
-    k.className = `kind ${e.kind}`;
-    k.textContent = LABELS[e.kind] || e.kind;
-    const m = document.createElement("span");
-    m.className = "msg";
-    m.textContent = e.message;
-    li.append(k, m);
-    return li;
-  }) : [Object.assign(document.createElement("li"), { className: "empty", textContent: "No activity yet." })]));
-  if ($("speak").checked && "speechSynthesis" in window) {
-    for (const e of s.log) {
-      if (e.time > lastSpoken && (e.kind === "result" || e.kind === "question" || e.kind === "error")) {
-        speechSynthesis.speak(new SpeechSynthesisUtterance(e.message.replace(/\(\d+ steps\)$/, "")));
+      } catch (e) {
+        screenError = "screen unavailable";
+        await new Promise((r) => setTimeout(r, 2000));
       }
     }
-  }
-  if (s.log.length) lastSpoken = Math.max(lastSpoken, s.log[s.log.length - 1].time);
-}
-
-async function statusLoop() {
-  while (true) {
-    if (deviceId) {
-      try { render(await api(`/api/devices/${deviceId}/status`)); } catch (e) { $("state").textContent = e.message; }
-    }
-    await new Promise((r) => setTimeout(r, 700));
+    await new Promise((r) => setTimeout(r, document.hidden || panelHidden ? 2000 : 400));
   }
 }
 
-// Hold-to-talk: record in the browser, transcribe on the server.
-let recorder = null, chunks = [];
-async function startRec() {
-  if (recorder) return;
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recorder = new MediaRecorder(stream);
-    chunks = [];
-    recorder.ondataavailable = (e) => chunks.push(e.data);
-    recorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      const blob = new Blob(chunks, { type: recorder.mimeType });
-      recorder = null;
-      $("mic").classList.remove("rec");
-      $("mic").textContent = "⏳ Transcribing…";
-      const form = new FormData();
-      form.append("file", blob, "voice.webm");
-      try {
-        const r = await api(`/api/devices/${deviceId}/audio`, { method: "POST", body: form });
-        $("current").textContent = r.text ? `Heard: “${r.text}”` : "Didn't catch that.";
-      } catch (e) { $("state").textContent = e.message; }
-      $("mic").textContent = "🎙 Hold to talk";
-    };
-    recorder.start();
-    $("mic").classList.add("rec");
-    $("mic").textContent = "● Listening… release to send";
-  } catch (e) {
-    $("state").textContent = window.isSecureContext ? `Microphone blocked: ${e.message}` : "Voice needs HTTPS or localhost. Use the public link.";
-  }
-}
-function stopRec() { if (recorder && recorder.state === "recording") recorder.stop(); }
-
-$("mic").addEventListener("pointerdown", (e) => { e.preventDefault(); startRec(); });
-["pointerup", "pointerleave", "pointercancel"].forEach((ev) => $("mic").addEventListener(ev, stopRec));
-$("form").addEventListener("submit", (e) => { e.preventDefault(); send($("text").value); $("text").value = ""; });
-$("stop").onclick = () => deviceId && api(`/api/devices/${deviceId}/stop`, { method: "POST" });
-$("rescan").onclick = () => loadDevices(true);
-$("device").onchange = (e) => { deviceId = e.target.value; };
-document.querySelectorAll("[data-answer]").forEach((b) => (b.onclick = () => send(b.dataset.answer)));
-$("examples").replaceChildren(...EXAMPLES.map((t) => {
-  const b = document.createElement("button");
-  b.textContent = t;
-  b.onclick = () => send(t);
-  return b;
-}));
-try { $("speak").checked = localStorage.getItem("openmob.speak") === "1"; } catch {}
-$("speak").onchange = (e) => { try { localStorage.setItem("openmob.speak", e.target.checked ? "1" : "0"); } catch {} };
-
-checkAccount().then((ok) => ok && loadDevices().then(() => { screenLoop(); statusLoop(); }));
+checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { statusLoop(); screenLoop(); }));
 setInterval(() => loadDevices(false), 10000);
 </script>
 </body>

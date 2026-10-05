@@ -15,7 +15,6 @@ DEVICE_ROUTES = [
     ("GET", "/api/devices/{id}/screen.jpg", None),
     ("POST", "/api/devices/{id}/command", {"json": {"text": "open my email"}}),
     ("POST", "/api/devices/{id}/stop", None),
-    ("POST", "/api/devices/{id}/audio", {"files": {"file": ("a.webm", b"x")}}),
     ("POST", "/api/devices/{id}/revoke", None),
 ]
 
@@ -130,3 +129,26 @@ def test_revoked_phone_history_is_not_inherited(two_users):
     assert not any("private request" in e["message"] for e in log)  # fresh session, no leaked history
     assert u["alice"].get("/api/devices/app-alice-phone/status").status_code == 404
     phone.disconnect()
+
+
+def test_only_owner_can_clear_activity_log(two_users):
+    u = two_users
+    assert u["bob"].post("/api/devices/app-alice-phone/log/clear").status_code == 404
+    assert u["alice"].post("/api/devices/app-alice-phone/log/clear").json() == {"ok": True}
+    assert u["alice"].get("/api/devices/app-alice-phone/status").json()["log"] == []
+
+
+def test_model_choice_is_owner_only_and_allowlisted(two_users):
+    u = two_users
+    listing = u["alice"].get("/api/models").json()
+    ids = [m["id"] for m in listing["models"]]
+    assert listing["default"] in ids and "claude-opus-5-5" in ids
+    assert httpx.get(f"{u['base']}/api/models").status_code == 401
+
+    assert u["bob"].post("/api/devices/app-alice-phone/model", json={"model": "claude-opus-5-5"}).status_code == 404
+    r = u["alice"].post("/api/devices/app-alice-phone/model", json={"model": "some-unapproved-model"})
+    assert r.status_code == 400 and "not allowed" in r.json()["detail"]
+    r = u["alice"].post("/api/devices/app-alice-phone/model", json={"model": "claude-opus-5-5"})
+    assert r.json() == {"model": "claude-opus-5-5", "applies": "now"}
+    assert u["alice"].get("/api/devices/app-alice-phone/status").json()["model"] == "claude-opus-5-5"
+    assert u["bob"].get("/api/devices/app-bob-phone/status").json()["model"] == listing["default"]  # untouched

@@ -14,6 +14,15 @@ DEFAULT_CONFIRM_KEYWORDS = [
     "transfer", "place order", "confirm order",
 ]
 
+DEFAULT_MODELS = [
+    {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)"},
+    {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)"},
+    {"id": "claude-fable-5-1", "label": "Fable 5.1"},
+    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5 (fastest, cheapest)"},
+]
+
+REMOVED_KEYS = {"hotkey", "whisper_model"}  # Mac push-to-talk with Whisper was removed
+
 CONFIG_LOCATIONS = [
     Path("config.yaml"),
     Path.home() / ".config" / "openmob" / "config.yaml",
@@ -25,6 +34,8 @@ class Config:
     # Agent
     model: str = "claude-sonnet-5-5"
     resolver_model: str = "claude-haiku-4-5-20251001"
+    # Models the dashboard may switch a phone to (an allowlist; anything else is refused).
+    models: list[dict] = field(default_factory=lambda: [dict(m) for m in DEFAULT_MODELS])
     max_steps: int = 40
     keep_screenshots: int = 2
     settle_delay: float = 0.8
@@ -48,9 +59,7 @@ class Config:
     screenshot_max_side: int = 1280
     aliases: dict[str, str] = field(default_factory=dict)
 
-    # Voice
-    hotkey: str = "alt_r"
-    whisper_model: str = "base.en"
+    # Spoken replies on the Mac (macOS `say`)
     speak: bool = True
     voice: str | None = None
 
@@ -79,6 +88,8 @@ def load_config(path: str | Path | None = None) -> Config:
         if path:
             raise FileNotFoundError(f"Config file not found: {path}")
 
+    for removed in REMOVED_KEYS:  # settings of features that no longer exist: ignore, don't fail
+        data.pop(removed, None)
     known = {f.name for f in fields(Config)} - {"api_key", "workspace_id", "jev_api_key", "source"}
     unknown = set(data) - known
     if unknown:
@@ -92,6 +103,12 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     cfg.adb_serial = os.environ.get("ANDROID_SERIAL", cfg.adb_serial)
     cfg.source = source
+    cfg.models = [
+        {"id": str(m["id"]), "label": str(m.get("label") or m["id"])} if isinstance(m, dict) else {"id": str(m), "label": str(m)}
+        for m in cfg.models or []
+    ]
+    if cfg.model not in {m["id"] for m in cfg.models}:  # the default is always selectable
+        cfg.models.insert(0, {"id": cfg.model, "label": cfg.model})
     if cfg.confirm_actions not in {"unrequested", "always", "never"}:
         raise ValueError("confirm_actions must be one of: unrequested, always, never")
     if cfg.ui_tree not in {"auto", "always", "never"}:

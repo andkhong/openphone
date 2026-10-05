@@ -7,11 +7,12 @@ from __future__ import annotations
 
 import asyncio
 import io
+import os
 import socket
 import threading
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from pydantic import BaseModel
@@ -24,7 +25,10 @@ from .phone.remote import PhoneLink
 STATIC = Path(__file__).parent / "static"
 PAGE = STATIC / "index.html"
 # Debug build of the companion app (built from android/ in this repo).
-APK = Path(__file__).resolve().parent.parent / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+APK = Path(
+    os.environ.get("OPENMOB_APK")
+    or Path(__file__).resolve().parent.parent / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
+)
 HELLO_TIMEOUT = 10
 SCREEN_MAX_AGE = 1.0  # the live view reuses the agent's frames when they're this fresh
 
@@ -38,24 +42,25 @@ class Credentials(BaseModel):
     password: str
 
 
+class ModelIn(BaseModel):
+    model: str
+
+
 class RedeemIn(BaseModel):
     code: str
     device_id: str
     model: str = ""
 
 
-def create_app(manager: DeviceManager, transcriber=None, token: str | None = None, store=None) -> FastAPI:
+def create_app(manager: DeviceManager, token: str | None = None, store=None) -> FastAPI:
     """Two modes. Without `store`: one shared token guards everything (local/demo).
     With an AccountStore: users sign in, phones carry their own key, and everyone sees only
     their own phones — a pairing code works only for the account that made it."""
     app = FastAPI(title="OpenMob", docs_url=None, redoc_url=None)
 
     def session_token(request: Request) -> str | None:
-        return (
-            request.cookies.get("openmob_session")
-            or request.headers.get("x-openmob-session")
-            or request.query_params.get("s")
-        )
+        # Cookie (browsers) or header (phone app, bridge). Never the URL: links get copied and logged.
+        return request.cookies.get("openmob_session") or request.headers.get("x-openmob-session")
 
     def account(request: Request) -> str | None:
         """Logged-in account, or None in token mode."""
@@ -87,7 +92,10 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
     # --- pages -----------------------------------------------------------
 
     @app.get("/", response_class=HTMLResponse)
-    def index() -> str:
+    def index(request: Request) -> str:
+        # Signed-out visitors in account mode get the landing page; everyone else the dashboard.
+        if store is not None and account(request) is None:
+            return (STATIC / "landing.html").read_text()
         return PAGE.read_text()  # re-read so page tweaks show up without a restart
 
     @app.get("/connect", response_class=HTMLResponse)
@@ -100,8 +108,10 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
 
     @app.get("/login", response_class=HTMLResponse)
     def login_page() -> str:
+        # A dedicated sign-in page can be dropped in as static/login.html; until then the landing
+        # page explains how to sign in with a one-time link.
         path = STATIC / "login.html"
-        return path.read_text() if path.exists() else "<h1>Accounts are disabled on this server.</h1>"
+        return (path if path.exists() else STATIC / "landing.html").read_text()
 
     @app.api_route("/download/openmob.apk", methods=["GET", "HEAD"])  # HEAD: /pair checks it exists
     def download_apk() -> FileResponse:
@@ -167,7 +177,11 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
         if store is None:
             return {"accounts": False}
         acct = account(request)
-        return {"accounts": True, "email": store.account_email(acct) if acct else None}
+        return {
+            "accounts": True,
+            "email": store.account_email(acct) if acct else None,
+            "admin": bool(acct and store.is_admin(acct)),
+        }
 
     @app.post("/api/pair/redeem")
     def redeem(body: RedeemIn, request: Request) -> dict:
@@ -249,29 +263,84 @@ def create_app(manager: DeviceManager, transcriber=None, token: str | None = Non
         require_auth(request)
         return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard")}
 
-    @app.post("/api/devices/{device_id}/audio")
-    async def audio(device_id: str, request: Request, file: UploadFile) -> dict:
-        require_auth(request)
-        s = owned_session(device_id, request)
-        if transcriber is None:
-            raise HTTPException(status_code=501, detail="Voice extra not installed: pip install -e '.[voice]'")
-        data = await file.read()
-        text = await run_in_threadpool(transcriber.transcribe, io.BytesIO(data))
-        if not text:
-            return {"text": "", "result": "ignored"}
-        return {"text": text, "result": s.coordinator.submit(text, "dashboard")}
-
     @app.post("/api/devices/{device_id}/stop")
     def stop(device_id: str, request: Request) -> dict:
         require_auth(request)
         owned_session(device_id, request).coordinator.stop()
         return {"result": "stopped"}
 
+    @app.get("/api/models", dependencies=[Depends(require_auth)])
+    def models() -> dict:
+        return {"default": manager.cfg.model, "models": manager.cfg.models}
+
+    @app.post("/api/devices/{device_id}/model")
+    def set_model(device_id: str, body: ModelIn, request: Request) -> dict:
+        """Choose the Claude model for this phone's next tasks (allowlisted models only)."""
+        require_auth(request)
+        session = owned_session(device_id, request)
+        allowed = {m["id"] for m in manager.cfg.models}
+        if body.model not in allowed:
+            raise HTTPException(status_code=400, detail=f"Model not allowed. Choose one of: {', '.join(sorted(allowed))}")
+        session.coordinator.agent.model = body.model
+        running = session.coordinator.snapshot()["state"] != "idle"
+        return {"model": body.model, "applies": "next task" if running else "now"}
+
+    @app.post("/api/devices/{device_id}/log/clear")
+    def clear_log(device_id: str, request: Request) -> dict:
+        require_auth(request)
+        owned_session(device_id, request).coordinator.clear_log()
+        return {"ok": True}
+
     @app.get("/api/devices/{device_id}/status")
     def status(device_id: str, request: Request) -> dict:
         require_auth(request)
         s = owned_session(device_id, request)
         return {**s.coordinator.snapshot(), "device": s.describe()}
+
+    # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
+
+    def require_admin(request: Request) -> None:
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        acct = account(request)
+        if acct is None:
+            raise HTTPException(status_code=401, detail="Sign in to OpenMob first.")
+        if not store.is_admin(acct):
+            raise HTTPException(status_code=403, detail="You're not an admin.")
+
+    @app.get("/admin", response_class=HTMLResponse)
+    def admin_page() -> str:
+        return (STATIC / "admin.html").read_text()  # all data comes from the guarded API below
+
+    @app.get("/api/admin/users", dependencies=[Depends(require_admin)])
+    def admin_users() -> list[dict]:
+        return store.admin_list_accounts()
+
+    @app.get("/api/admin/devices", dependencies=[Depends(require_admin)])
+    def admin_devices() -> list[dict]:
+        rows = []
+        for d in store.admin_list_devices():
+            s = manager.get(f"app-{d['id']}")
+            snap = s.coordinator.snapshot() if s else {}
+            rows.append({
+                **d,
+                "session_id": f"app-{d['id']}",
+                "online": bool(s and s.online and not d["revoked"]),
+                "state": snap.get("state"),
+                "current": snap.get("current"),
+            })
+        rows.sort(key=lambda r: (r["revoked"], not r["online"], -(r["last_seen"] or 0)))
+        return rows
+
+    @app.post("/api/admin/devices/{device_id}/revoke", dependencies=[Depends(require_admin)])
+    def admin_revoke(device_id: str) -> dict:
+        raw_id = device_id.removeprefix("app-")
+        if not store.admin_revoke_device(raw_id):
+            raise HTTPException(status_code=404, detail=f"Unknown device {device_id}")
+        s = manager.get(f"app-{raw_id}")
+        if s and s.link:
+            s.link.disconnect(4401, "This phone was unpaired by an administrator.")  # cut it off now
+        return {"ok": True}
 
     # --- phone connection ------------------------------------------------
 

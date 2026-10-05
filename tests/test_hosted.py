@@ -59,7 +59,7 @@ def test_dashboard_requires_sign_in(hosted):
     base, _, _ = hosted
     assert httpx.get(f"{base}/api/devices").status_code == 401
     assert httpx.get(f"{base}/api/pairing").status_code == 401
-    assert httpx.get(f"{base}/api/auth/me").json() == {"accounts": True, "email": None}
+    assert httpx.get(f"{base}/api/auth/me").json() == {"accounts": True, "email": None, "admin": False}
     client, _ = signup(base, "owner@example.com")
     assert client.get("/api/auth/me").json()["email"] == "owner@example.com"  # cookie session
     client.post("/api/auth/logout")
@@ -158,3 +158,12 @@ def test_server_sees_accounts_added_by_another_process(hosted, tmp_path):
     AccountStore(store.path).create_account("late@example.com", "password123")  # e.g. the CLI
     r = httpx.post(f"{base}/api/auth/login", json={"email": "late@example.com", "password": "password123"})
     assert r.status_code == 200
+
+
+def test_signed_out_visitors_get_the_landing_page(hosted):
+    base, _, store = hosted
+    for page in ("/", "/login", "/login?next=/connect"):
+        body = httpx.get(f"{base}{page}").text
+        assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
+    client, _ = signup(base, "owner@example.com")
+    assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard

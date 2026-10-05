@@ -5,3 +5,5 @@ __pycache__/
 config.yaml
 *.jpg
 *.png
+deploy/OpenMob.apk
+!deploy/config.yaml

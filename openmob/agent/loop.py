@@ -15,6 +15,7 @@ from ..jev import JevError, JevJudge, ScreenAssessment, describe_screen
 from ..phone.adb import Screenshot, UIElement, format_elements
 from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
+from ..usage import Usage
 from ..vision import ocr
 from .tools import SYSTEM_PROMPT, TOOLS
 
@@ -36,6 +37,7 @@ class AgentResult:
     success: bool
     summary: str
     steps: int
+    usage: Usage = field(default_factory=Usage)
 
 
 @dataclass
@@ -98,11 +100,19 @@ class Agent:
         self.judge = judge
         self.use_ocr = (config.ocr and ocr.available()) if use_ocr is None else use_ocr
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
+        self.usage = Usage()  # tokens for the task in progress (or the last one)
+        self.model = config.model  # chosen per phone from the dashboard
+        self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
+        if judge is not None and hasattr(judge, "client"):
+            judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
 
     # --- public ----------------------------------------------------------
 
     def run(self, task: str, cancel: threading.Event | None = None, go_home: bool = False) -> AgentResult:
+        self.usage = Usage()
+        self.task_model = self.model
         result = self._run(task, cancel, go_home)
+        result.usage = self.usage
         self.recent.append((task, result.summary))
         return result
 
@@ -126,12 +136,13 @@ class Agent:
 
             self._trim_history(messages)
             response = self.client.messages.create(
-                model=self.config.model,
+                model=self.task_model,
                 max_tokens=1024,
                 system=SYSTEM_PROMPT,
                 tools=TOOLS,
                 messages=messages,
             )
+            self.usage.add_claude(getattr(response, "usage", None))
             content = [_block_to_dict(b) for b in response.content]
             messages.append({"role": "assistant", "content": content})
 
@@ -209,7 +220,6 @@ class Agent:
         if self.judge:
             try:
                 obs.assessment = self.judge.assess_screen(state.task, self._describe(obs))
-                self.io.event("jev", obs.assessment.summary())
             except JevError as exc:
                 self.io.event("error", str(exc))
         return obs
@@ -220,7 +230,7 @@ class Agent:
         while self._is_loading(obs) and state.auto_waited < self.config.jev_auto_wait_seconds:
             if state.cancel.is_set():
                 break
-            self.io.event("status", f"Loading screen (Jev p={obs.assessment.probability:.2f}); waiting…")
+            self.io.event("status", "Loading screen; waiting…")
             state.cancel.wait(LOADING_POLL_SECONDS)
             state.auto_waited += LOADING_POLL_SECONDS
             obs = self._observe(state)

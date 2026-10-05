@@ -80,30 +80,6 @@ def cmd_run(cfg: Config, args) -> None:
             print("No phone online.")
         return session
 
-    transcriber = None
-    if importlib.util.find_spec("faster_whisper"):
-        from .voice.stt import Transcriber
-
-        transcriber = Transcriber(cfg.whisper_model)
-        threading.Thread(target=transcriber._load, daemon=True).start()  # warm up the model
-
-    if not args.no_mic:
-        if transcriber is None:
-            print("Mic disabled: install the voice extra with  pip install -e '.[voice]'")
-        else:
-            from .voice.stt import PushToTalk
-
-            def on_text(text: str) -> None:
-                if session := active():
-                    session.coordinator.submit(text, "mic")
-
-            def on_cancel() -> None:
-                for session in manager.sessions.values():
-                    session.coordinator.stop()
-
-            PushToTalk(transcriber, on_text, on_cancel, hotkey=cfg.hotkey, on_listen=speaker.chime).start()
-            print(f"🎙  Hold [{cfg.hotkey}] and speak. Press Esc to stop.")
-
     from .server import create_app, lan_ip, serve_in_background
 
     store = None
@@ -113,7 +89,7 @@ def cmd_run(cfg: Config, args) -> None:
         store = AccountStore()
         print(f"🔐 Accounts on: users sign in, and each phone pairs only to its owner's account ({store.path}).")
     token = cfg.server_token or secrets.token_urlsafe(8)
-    serve_in_background(create_app(manager, transcriber, token, store=store), cfg.server_host, cfg.server_port)
+    serve_in_background(create_app(manager, token, store=store), cfg.server_host, cfg.server_port)
     # With accounts the dashboard uses a sign-in session, so links carry no secret.
     suffix = "/login" if store else f"/?t={token}"
     print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")
@@ -244,8 +220,6 @@ def cmd_doctor(cfg: Config, args) -> None:
     from .vision import ocr
 
     optional("Apple Vision OCR", ocr.available(), "" if ocr.available() else "pip install -e '.[mac]'")
-    for module, extra in [("faster_whisper", "voice"), ("sounddevice", "voice"), ("pynput", "voice")]:
-        optional(f"{module}", importlib.util.find_spec(module) is not None, f"pip install -e '.[{extra}]'")
     sys.exit(0 if ok else 1)
 
 
@@ -310,7 +284,8 @@ def cmd_account(cfg: Config, args) -> None:
 
     store = AccountStore()
     if args.action == "list":
-        print("\n".join(store.list_accounts()) or "No accounts yet.")
+        accounts = store.admin_list_accounts()
+        print("\n".join(a["email"] + ("  (admin)" if a["is_admin"] else "") for a in accounts) or "No accounts yet.")
         return
     if not args.email:
         sys.exit(f"openmob account {args.action} needs an EMAIL.")
@@ -332,6 +307,16 @@ def cmd_account(cfg: Config, args) -> None:
         except AuthError as exc:
             sys.exit(f"✗ {exc}")
         print(f"✓ Created {args.email}.")
+        return
+
+    if args.action in ("admin", "unadmin"):
+        # The only way to grant admin: shell access to the server, never a web request.
+        if not store.set_admin(args.email, args.action == "admin"):
+            sys.exit(f"✗ No account {args.email}. Create it: openmob account add {args.email}")
+        if args.action == "admin":
+            print(f"✓ {args.email} is now an admin. Sign in and open /admin.")
+        else:
+            print(f"✓ {args.email} is no longer an admin.")
         return
 
     if args.action == "link":
@@ -362,7 +347,6 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_run = sub.add_parser("run", help="listen for commands from the Mac mic, the phone page, and the terminal")
-    p_run.add_argument("--no-mic", action="store_true")
     p_run.add_argument("--public", action="store_true", help="also publish the dashboard over HTTPS (cloudflared)")
     p_run.add_argument("--no-adb", action="store_true", help="hosted mode: don't use phones attached to this computer")
     p_run.add_argument("--accounts", action="store_true",
@@ -391,8 +375,8 @@ def main(argv: list[str] | None = None) -> None:
     p_bridge.add_argument("--email", help="account mode: pair this phone to your account (prompts for the password)")
     p_bridge.add_argument("--password-file", help="read the account password from this file instead of prompting")
 
-    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, sign-in link)")
-    p_account.add_argument("action", choices=["add", "list", "link"])
+    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, sign-in link, admin)")
+    p_account.add_argument("action", choices=["add", "list", "link", "admin", "unadmin"])
     p_account.add_argument("email", nargs="?")
     p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
     p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")

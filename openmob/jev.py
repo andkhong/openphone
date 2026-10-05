@@ -72,6 +72,7 @@ class JevClient:
     ):
         self.model = model
         self.max_retries = max_retries
+        self.on_usage = None  # callable(input_tokens), e.g. an agent's Usage.add_jev
         self._http = http or httpx.Client(
             base_url=base_url,
             timeout=timeout,
@@ -93,7 +94,10 @@ class JevClient:
                     continue
                 if response.status_code != 200:
                     raise JevError(f"Jev returned {response.status_code}: {response.text[:300]}")
-                return response.json()["answers"]
+                data = response.json()
+                if self.on_usage:
+                    self.on_usage(int((data.get("usage") or {}).get("input_tokens", 0)))
+                return data["answers"]
             time.sleep(0.5 * 2**attempt)
         raise JevError("Jev request failed")
 

@@ -137,3 +137,48 @@ def test_cannot_register_a_phone_that_belongs_to_another_account(tmp_path):
     bob_key = s.redeem_pairing_code(s.create_pairing_code(bob)[0], bob, "phone-1", "Galaxy")
     assert s.verify_device("phone-1", bob_key) == bob
     assert [d.id for d in s.list_devices(alice)] == []
+
+
+def test_admin_role_defaults_off_and_is_set_by_email(tmp_path):
+    s = store(tmp_path)
+    account = s.create_account("me@example.com", "password123")
+    assert not s.is_admin(account) and not s.is_admin(None) and not s.is_admin("nope")
+    assert s.set_admin("ME@example.com", True) and s.is_admin(account)
+    assert AccountStore(s.path).is_admin(account)  # persisted
+    assert s.set_admin("me@example.com", False) and not s.is_admin(account)
+    assert not s.set_admin("nobody@example.com", True)
+
+
+def test_old_store_without_admin_flag(tmp_path):
+    import json
+
+    s = store(tmp_path)
+    account = s.create_account("me@example.com", "password123")
+    data = json.loads(s.path.read_text())
+    data["accounts"][account].pop("is_admin", None)
+    s.path.write_text(json.dumps(data))
+    s2 = store(tmp_path)
+    assert not s2.is_admin(account)
+    assert s2.admin_list_accounts()[0]["is_admin"] is False
+
+
+def test_admin_listings_and_revoke(tmp_path):
+    s = store(tmp_path)
+    alice = s.create_account("alice@example.com", "password123")
+    bob = s.create_account("bob@example.com", "password123")
+    code, _ = s.create_pairing_code(bob)
+    key = s.redeem_pairing_code(code, bob, "bob-phone", "Pixel")
+
+    accounts = {a["email"]: a for a in s.admin_list_accounts()}
+    assert set(accounts["bob@example.com"]) == {"id", "email", "created", "is_admin", "device_count"}
+    assert accounts["bob@example.com"]["device_count"] == 1 and accounts["alice@example.com"]["id"] == alice
+
+    [device] = s.admin_list_devices()
+    assert set(device) == {"id", "account_id", "email", "model", "created", "last_seen", "revoked"}
+    assert device["id"] == "bob-phone" and device["email"] == "bob@example.com" and not device["revoked"]
+
+    assert not s.admin_revoke_device("nope")
+    assert s.admin_revoke_device("bob-phone")  # regardless of owner
+    assert s.admin_list_devices()[0]["revoked"] and s.admin_list_accounts()[1]["device_count"] == 0
+    with pytest.raises(AuthError):
+        s.verify_device("bob-phone", key)

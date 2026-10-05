@@ -5,8 +5,8 @@ Speak a request and an AI agent carries it out on your Android phone.
 > "Open Where Winds Meet, and open the menu."
 
 ```
- Mac mic (hold right ⌥) ─┐
- Phone web page ─────────┼─> text ─> Agent loop ──────────────> PhoneDriver (adb) ─> Android phone
+ OpenMob phone app ──────┐
+ Web dashboard ──────────┼─> text ─> Agent loop ──────────────> PhoneDriver (adb) ─> Android phone
  Terminal ───────────────┘            │  Claude: sees the screenshot, picks the next action
                                       │  Jev:    classifies the screen from its text (state, risk, app)
                                       └─< screenshot + UI tree + OCR text <─┘
@@ -49,12 +49,11 @@ Jev is optional. Without `TYPESAFE_API_KEY`, OpenMob still runs using only Claud
 2. Install OpenMob:
    ```sh
    python3 -m venv .venv && source .venv/bin/activate
-   pip install -e '.[voice,mac]'        # voice = Whisper + mic + hotkey; mac = Apple Vision OCR
+   pip install -e '.[mac]'               # mac = Apple Vision OCR (optional)
    cp config.example.yaml config.yaml
    export ANTHROPIC_API_KEY=...
    export TYPESAFE_API_KEY=...          # optional, enables Jev
    ```
-3. On macOS, give your terminal app **Microphone**, **Input Monitoring**, and **Accessibility** permissions. These are needed for the push-to-talk hotkey.
 4. Check the setup with `openmob doctor`.
 
 ## Dashboard (demo / hosted mode)
@@ -65,7 +64,7 @@ openmob run --public
 
 This prints a `localhost` link and a public **HTTPS** link, both protected by a token. The dashboard shows:
 - The live screen of every connected phone, with a device picker.
-- Typed commands, or **hold-to-talk** voice (recorded in the browser and transcribed on the server).
+- Typed commands (voice is in the phone app).
 - The agent's thoughts and actions, plus Jev's screen classifications.
 - **Yes/No** buttons when the agent asks for confirmation, and **Stop**.
 
@@ -88,6 +87,17 @@ The phone appears in the dashboard as `connection: app`. Commands can come from 
 
 Code: `openmob/phone/protocol.py` (messages), `openmob/phone/remote.py` (server side: `PhoneLink`, `RemoteDriver`), `openmob/bridge.py` (phone side), `openmob/phone/base.py` (the `Device` interface both drivers implement).
 
+## Admin dashboard
+
+With `--accounts`, an admin can see every account and every paired phone (live status, current task, last seen) and revoke any phone, which disconnects it immediately. Admin is granted **only from the server's command line**; no web request can grant it:
+
+```sh
+openmob account admin you@example.com    # grant (openmob account unadmin … removes it)
+openmob account list                     # admins are marked "(admin)"
+```
+
+Then sign in and open `https://<server>/admin`. Non-admins get "You're not an admin." (the API returns 403), and signed-out visitors are sent to sign in. Listings never include password, session or key hashes.
+
 ## Use
 
 ```sh
@@ -97,8 +107,8 @@ openmob run                                            # hands-free mode
 
 `openmob run` accepts commands from three places, one task at a time:
 
-- **Mac mic.** Hold **right ⌥**, speak, and release. Press **Esc** to stop the current task.
-- **Phone.** Open the printed `http://<mac-ip>:8765/?t=<token>` link on your phone, then dictate with the keyboard's mic key and press Send. Alternatively, use 🎙 Record to upload a voice clip. The agent presses HOME first, so the browser isn't in the way.
+- **Phone app.** Type or speak in **Ask your agent**; speech is recognized on the phone. The agent presses HOME first, so the app isn't in the way.
+- **Dashboard.** Type a request and press Send. **Stop** cancels the current task.
 - **Terminal.** Type a line and press Enter.
 
 Saying or typing "stop" cancels the task. When the agent asks a question (for example "About to tap 'Buy'. Go ahead?"), your next utterance from any input is taken as the answer.
@@ -151,7 +161,7 @@ Layout:
 | `openmob/agent/` | Tool definitions and loop |
 | `openmob/jev.py` | Jev client and questions |
 | `openmob/vision/ocr.py` | Apple Vision OCR |
-| `openmob/voice/` | Whisper and `say` |
+| `openmob/voice/` | Spoken replies (`say`) |
 | `openmob/runner.py` | Task queue and routing |
 | `openmob/server.py` | Phone web page |
 | `openmob/main.py` | CLI |

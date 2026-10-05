@@ -14,6 +14,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import threading
 import time
@@ -24,7 +25,9 @@ PBKDF2_ROUNDS = 200_000
 SESSION_TTL = 30 * 24 * 3600  # dashboard login lasts 30 days
 PAIRING_TTL = 10 * 60  # a pairing code is valid for 10 minutes, once
 LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works once, for 10 minutes
-DEFAULT_STORE = Path.home() / ".config" / "openmob" / "accounts.json"
+# OPENMOB_DATA_DIR points at persistent storage when hosted (e.g. a Fly volume at /data).
+DATA_DIR = Path(os.environ.get("OPENMOB_DATA_DIR") or Path.home() / ".config" / "openmob")
+DEFAULT_STORE = DATA_DIR / "accounts.json"
 
 
 class AuthError(RuntimeError):
@@ -266,6 +269,65 @@ class AccountStore:
             self._refresh()
             device = self._data["devices"].get(device_id)
             if not device or device["account_id"] != account_id:
+                return False
+            device["revoked"] = True
+            self._save()
+            return True
+
+    # --- admin (granted only from the server's command line) --------------
+
+    def set_admin(self, email: str, on: bool) -> bool:
+        """Grant or remove the admin role. False if there's no such account."""
+        email = normalize_email(email)
+        with self._lock:
+            self._refresh()
+            account = next((a for a in self._data["accounts"].values() if a["email"] == email), None)
+            if account is None:
+                return False
+            account["is_admin"] = bool(on)
+            self._save()
+            return True
+
+    def is_admin(self, account_id: str | None) -> bool:
+        if not account_id:
+            return False
+        with self._lock:
+            self._refresh()
+            return bool(self._data["accounts"].get(account_id, {}).get("is_admin", False))
+
+    def admin_list_accounts(self) -> list[dict]:
+        """Every account, without any secret (no salt or password hash)."""
+        with self._lock:
+            self._refresh()
+            counts: dict[str, int] = {}
+            for d in self._data["devices"].values():
+                if not d["revoked"]:
+                    counts[d["account_id"]] = counts.get(d["account_id"], 0) + 1
+            accounts = [
+                {"id": account_id, "email": a["email"], "created": a.get("created"),
+                 "is_admin": bool(a.get("is_admin", False)), "device_count": counts.get(account_id, 0)}
+                for account_id, a in self._data["accounts"].items()
+            ]
+        return sorted(accounts, key=lambda a: a["email"])
+
+    def admin_list_devices(self) -> list[dict]:
+        """Every paired phone (revoked ones included), without key hashes."""
+        with self._lock:
+            self._refresh()
+            accounts = self._data["accounts"]
+            return [
+                {"id": device_id, "account_id": d["account_id"],
+                 "email": accounts.get(d["account_id"], {}).get("email"),
+                 **{k: d[k] for k in ("model", "created", "last_seen", "revoked")}}
+                for device_id, d in self._data["devices"].items()
+            ]
+
+    def admin_revoke_device(self, device_id: str) -> bool:
+        """Unpair a phone regardless of owner. False if unknown."""
+        with self._lock:
+            self._refresh()
+            device = self._data["devices"].get(device_id)
+            if not device:
                 return False
             device["revoked"] = True
             self._save()

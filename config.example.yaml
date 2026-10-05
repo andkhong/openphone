@@ -4,6 +4,12 @@
 # Claude model that looks at the screen and decides each action.
 model: claude-sonnet-5-5          # claude-opus-5-5 is smarter but slower
 resolver_model: claude-haiku-4-5-20251001
+# Models the dashboard's "Model" dropdown offers per phone (an allowlist). The default above is always included.
+# models:
+#   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)"}
+#   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)"}
+#   - {id: claude-fable-5-1, label: "Fable 5.1"}
+#   - {id: claude-haiku-4-5-20251001, label: "Haiku 4.5 (fastest, cheapest)"}
 max_steps: 40
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
@@ -31,9 +37,7 @@ jev_auto_wait_seconds: 30          # longest time to wait on screens Jev calls "
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,
                    send, post, publish, delete, remove, uninstall, transfer, place order, confirm order]
 
-# Voice
-hotkey: alt_r                      # hold to talk (right Option). Any pynput Key name or a single character.
-whisper_model: base.en             # tiny.en | base.en | small.en | medium.en
+# Spoken replies on the Mac
 speak: true
 # voice: Samantha
 

@@ -1,0 +1,28 @@
+app = "openmob"
+primary_region = "sjc"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[mounts]
+  source = "openmob_data"
+  destination = "/data"   # accounts, phone registrations, app-name caches
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Phones hold a live WebSocket to this machine, and sessions live in memory: never auto-stop.
+  auto_stop_machines = "off"
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    grace_period = "40s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/auth/me"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "1gb"

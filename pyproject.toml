@@ -23,13 +23,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-voice = [
-    "faster-whisper>=1.0",
-    "av<19",  # faster-whisper 1.2 passes metadata_errors, which PyAV 19 removed
-    "sounddevice>=0.4",
-    "numpy>=1.26",
-    "pynput>=1.7",
-]
 mac = [
     "pyobjc-framework-Vision>=10; sys_platform == 'darwin'",
 ]

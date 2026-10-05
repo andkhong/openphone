@@ -63,7 +63,8 @@ def open_tunnel(port: int, timeout: float = 30) -> str | None:
     log_path = STATE_DIR / f"tunnel-{port}.log"
     with open(log_path, "w") as log:
         proc = subprocess.Popen(
-            [binary, "tunnel", "--no-autoupdate", "--url", f"http://localhost:{port}"],
+            # http2 (TCP) rather than the default QUIC: steadier on home networks that drop idle UDP.
+            [binary, "tunnel", "--no-autoupdate", "--protocol", "http2", "--url", f"http://localhost:{port}"],
             stdin=subprocess.DEVNULL,
             stdout=log,
             stderr=log,
