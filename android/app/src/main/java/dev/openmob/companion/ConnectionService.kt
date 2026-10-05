@@ -5,6 +5,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -15,6 +16,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.service.quicksettings.TileService
 import android.speech.tts.TextToSpeech
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -32,7 +34,9 @@ import kotlin.random.Random
 /**
  * Foreground service holding the WebSocket to the OpenMob server (protocol v1, see
  * docs/phone-protocol.md). Runs calls through PhoneActions, reconnects with backoff, and keeps
- * a notification visible the whole time the agent can act, with a Disconnect button.
+ * a notification visible the whole time the agent can act, with a Disconnect button. While a
+ * controller event names who is driving the phone, the notification says so ("Claude is using your
+ * phone") and the button reads Stop. Approval requests go to [Approvals].
  *
  * If the owner allowed screen streaming when connecting, it also holds a [ScreenStreamer] so the
  * web dashboard can show the screen as smooth video (the agent keeps using screenshots).
@@ -63,6 +67,11 @@ class ConnectionService : Service() {
         )
 
         val isRunning: Boolean get() = running != null
+
+        /** The owner's answer to an approval request (see Approvals). False if not connected. */
+        fun sendApproval(id: String, approved: Boolean): Boolean = AppState.connected && running?.send(
+            JSONObject().put("type", "approval").put("id", id).put("approved", approved)
+        ) ?: false
 
         /** Send a spoken or typed request to the agent. False if not connected. */
         fun sendCommand(text: String): Boolean = running?.send(
@@ -97,6 +106,7 @@ class ConnectionService : Service() {
     private var backoffSeconds = 1.0
     private var wakeLock: PowerManager.WakeLock? = null
     private var tts: TextToSpeech? = null
+    private var statusLine = "" // the notification's current text, kept when the title changes
     @Volatile private var streamer: ScreenStreamer? = null
     private lateinit var settings: Settings
     private val actions: PhoneActions?
@@ -177,6 +187,7 @@ class ConnectionService : Service() {
         if (stopped) return
         val delay = backoffSeconds * (0.8 + Random.nextDouble() * 0.4)
         AppState.setConnection("$reason. Retrying in ${delay.toInt().coerceAtLeast(1)} s…", false)
+        setController("") // the server says again who is driving once we're back
         updateNotification("Reconnecting to your agent…")
         main.postDelayed({ connect() }, (delay * 1000).toLong())
         backoffSeconds = (backoffSeconds * 2).coerceAtMost(30.0)
@@ -191,6 +202,8 @@ class ConnectionService : Service() {
         streamer = null
         wakeLock?.takeIf { it.isHeld }?.release()
         running = null
+        Approvals.clear(this)
+        setController("")
         status?.let { AppState.setConnection(it, false) }
         stopForeground(STOP_FOREGROUND_REMOVE)
         stopSelf()
@@ -275,6 +288,10 @@ class ConnectionService : Service() {
     }
 
     private fun handleEvent(kind: String, text: String) {
+        if (kind == "controller") {
+            main.post { setController(text.trim()) }
+            return
+        }
         AppState.addEvent(kind, text)
         if (kind == "question" || kind == "result") {
             tts?.speak(text.replace(Regex("""\(\d+ steps\)$"""), ""), TextToSpeech.QUEUE_FLUSH, null, kind)
@@ -298,6 +315,9 @@ class ConnectionService : Service() {
                 }
                 "call" -> handleCall(message)
                 "event" -> handleEvent(message.optString("kind"), message.optString("message"))
+                "approval_request" -> main.post {
+                    if (running === this@ConnectionService) Approvals.request(this@ConnectionService, message)
+                }
             }
         }
 
@@ -320,7 +340,22 @@ class ConnectionService : Service() {
         }
     }
 
+    /** Who is using the phone right now ("" for nobody): shown in the notification, app and tile. */
+    private fun setController(who: String) {
+        val previous = AppState.controller
+        if (who == previous) return
+        AppState.setController(who)
+        if (who.isNotEmpty()) {
+            AppState.addEvent("controller", getString(R.string.controller_using, who))
+        } else if (running === this) {
+            AppState.addEvent("controller", getString(R.string.controller_stopped, previous))
+        }
+        updateNotification(statusLine)
+        TileService.requestListeningState(this, ComponentName(this, OpenMobTileService::class.java))
+    }
+
     private fun notification(text: String): Notification {
+        statusLine = text
         val manager = getSystemService(NotificationManager::class.java)
         if (manager.getNotificationChannel(CHANNEL) == null) {
             manager.createNotificationChannel(
@@ -333,13 +368,18 @@ class ConnectionService : Service() {
         val disconnect = PendingIntent.getService(
             this, 1, Intent(this, ConnectionService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
         )
+        val who = AppState.controller
         return Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle("OpenMob agent can control this phone")
+            .setContentTitle(if (who.isEmpty()) getString(R.string.notif_title) else getString(R.string.controller_using, who))
             .setContentText(text)
             .setOngoing(true)
             .setContentIntent(open)
-            .addAction(Notification.Action.Builder(null, "Disconnect", disconnect).build())
+            .addAction(
+                Notification.Action.Builder(
+                    null, getString(if (who.isEmpty()) R.string.notif_disconnect else R.string.notif_stop), disconnect,
+                ).build()
+            )
             .build()
     }
 

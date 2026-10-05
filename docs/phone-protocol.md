@@ -147,6 +147,40 @@ Do speech-to-text on the phone (`SpeechRecognizer` or similar) and send only tex
 
 Treat `kind` as an open set: show unknown kinds as plain log lines.
 
+### 3.3 Approvals and "who's using my phone" (optional)
+
+Both are optional. An app that doesn't know them ignores them (unknown `type`s and `kind`s are skipped), and `PROTOCOL_VERSION` stays `1`. The server must then treat a missing approval as a **no**.
+
+**`approval_request`** (server to phone): a risky action (a purchase, a send, a delete) waits for the person holding the phone. The calling AI model can never answer it.
+```json
+{"type": "approval_request", "id": "a1b2c3", "task_id": "t-42",
+ "question": "Buy 'USB-C cable' for $12.99 on Amazon?", "requester": "Claude"}
+```
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | Opaque. Echo it back in the `approval`. |
+| `task_id` | string | The task that asked. Informational. |
+| `question` | string | One plain sentence saying what will happen. Shown as is. |
+| `requester` | string | Who is asking (the client or model name). Shown as "Asked by …". |
+
+**`approval`** (phone to server): the person's answer, sent **at most once per `id`**.
+```json
+{"type": "approval", "id": "a1b2c3", "approved": true}
+```
+
+How the Android app handles it:
+* It shows a high-priority (heads-up) notification, `Approve? <question>`, naming the requester, with **Deny** and **Review** actions. The question is hidden on the lock screen. Pending requests also appear at the top of the app's main screen, which is the only place they show when notifications are off.
+* **Deny** sends `approved: false` straight away, with no authentication.
+* **Review** opens a screen with the question and requester. **Approve** there requires the phone's screen lock (`BiometricPrompt`, strong biometric or device credential), and only then sends `approved: true`. The screen is `FLAG_SECURE`, so it never appears in screenshots or the live view.
+* After **2 minutes** with no answer, the request expires: the notification is dismissed and **nothing is sent**. The server should time out on its own (about 2 minutes) and treat it as denied.
+* A repeated `approval_request` with an `id` already pending, answered or expired is ignored. An answer is only sent while connected. If sending fails, the request stays pending so the person can try again. When the person disconnects, pending requests are dropped unanswered.
+
+**`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
+```json
+{"type": "event", "kind": "controller", "message": "Claude"}
+```
+`message` is a short display name. The app then shows "Claude is using your phone" as the connection notification's title (its Disconnect action reads **Stop**, and still disconnects), on the main screen and on the Quick Settings tile. An empty `message` means nobody: the normal text comes back. The app also clears it when the connection drops, so send it again after a reconnect if someone is still driving. Send it when control starts and ends, not with every step.
+
 ---
 
 ## 4. Methods
