@@ -225,6 +225,12 @@
   .phone-screen.blank { aspect-ratio: 9 / 19; }
   .phone img, .phone canvas { width: 100%; display: block; max-height: calc(100vh - 170px); object-fit: contain; background: #14161b; }
   .phone-screen.blank img, .phone-screen.blank canvas { display: none; }
+  /* What the live view is showing (video or snapshots, its size and rate) and the quality choice. */
+  .screen-meta { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 300px; margin: -4px auto 0; min-height: 28px; }
+  .screen-info { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .screen-info b { font-weight: 600; color: var(--fg); }
+  .screen-info.jpeg b { color: var(--warn); }
+  .screen-meta .select { width: auto; min-height: 28px; padding: 2px 8px; font-size: 12px; border-radius: 8px; flex: none; }
   .screen-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; text-align: center; color: #c9ced8; font-size: 13px; }
   .screen-overlay svg { width: 30px; height: 30px; opacity: .6; }
   .screen-overlay.banner { inset: auto 8px 8px 8px; padding: 8px 10px; border-radius: 12px; background: rgba(10, 11, 13, .82); flex-direction: row; justify-content: flex-start; gap: 8px; text-align: left; }
@@ -370,6 +376,14 @@
           <span id="screenMsg">Connecting…</span>
         </div>
       </div>
+    </div>
+    <div class="screen-meta">
+      <span class="screen-info" id="screenInfo" role="note"></span>
+      <select class="select" id="screenQuality" aria-label="Live screen quality" title="Live screen quality">
+        <option value="sharp">Sharp</option>
+        <option value="balanced">Balanced</option>
+        <option value="saver">Data saver</option>
+      </select>
     </div>
     <span class="sr-only" id="state" role="status" aria-live="polite">Connecting…</span>
     <div class="panel-info">
@@ -1405,13 +1419,16 @@ function resetScreen() {
   screenMode = "";
   screenError = "";
   frameTime = 0;
+  Object.assign(liveStats, { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0 });
   renderScreenState();
+  renderScreenInfo();
 }
 
 // Exactly one live-view surface is visible: JPEG frames in the <img>, decoded video on the <canvas>.
 function showSurface(id) {
   for (const el of ["screen", "screenVideo"]) $(el).hidden = el !== id;
-  screenMode = id === "screenVideo" ? "video" : "jpeg";
+  const mode = id === "screenVideo" ? "video" : "jpeg";
+  if (mode !== screenMode) { screenMode = mode; renderScreenInfo(); }
   if (!hasFrame) { hasFrame = true; renderScreenState(); }
 }
 
@@ -1422,7 +1439,62 @@ async function showFrame(blob) {
   img.src = URL.createObjectURL(blob);
   try { await img.decode(); } catch {}
   if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+  liveStats.width = img.naturalWidth;
+  liveStats.height = img.naturalHeight;
+  liveStats.frames++;
 }
+
+// Quality of the live view, and the size it is shown at. The server sizes the stream (or the
+// snapshots) for the panel's long side in device pixels: a 300 px wide panel on a 2x display needs
+// about 600 x 1300 real pixels, and anything smaller gets blown up and looks soft.
+const SCREEN_QUALITIES = { sharp: "Sharp", balanced: "Balanced", saver: "Data saver" };
+let screenQuality = "balanced";
+try { const q = localStorage.getItem("openmob.screenQuality"); if (q in SCREEN_QUALITIES) screenQuality = q; } catch {}
+$("screenQuality").value = screenQuality;
+
+function screenView() {
+  const box = $("phoneScreen").getBoundingClientRect();
+  return { side: Math.round(Math.max(box.width, box.height) * (window.devicePixelRatio || 1)), quality: screenQuality };
+}
+
+// What's on screen and how well it's arriving, for the line under the phone (and for debugging:
+// window.openmobLive in the console).
+const liveStats = window.openmobLive = { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0, decodeMs: 0, lastPts: 0, lastPaint: 0 };
+let statsAt = performance.now();
+setInterval(() => {
+  const now = performance.now(), secs = (now - statsAt) / 1000;
+  statsAt = now;
+  liveStats.fps = liveStats.frames / secs;
+  liveStats.kbps = Math.round(liveStats.bytes * 8 / 1000 / secs);
+  liveStats.frames = liveStats.bytes = 0;
+  renderScreenInfo();
+}, 1000);
+
+function renderScreenInfo() {
+  const info = $("screenInfo");
+  const video = screenMode === "video";
+  info.className = `screen-info ${screenMode}`;
+  info.replaceChildren();
+  if (!hasFrame || !screenMode) { info.title = ""; return; }
+  const parts = [];
+  if (liveStats.width) parts.push(`${Math.max(liveStats.width, liveStats.height)}p`);  // long side, like "1280p"
+  parts.push(`${liveStats.fps < 3 ? liveStats.fps.toFixed(1) : Math.round(liveStats.fps)} fps`);
+  if (video && liveStats.kbps) parts.push(liveStats.kbps >= 1000 ? `${(liveStats.kbps / 1000).toFixed(1)} Mbps` : `${liveStats.kbps} kbps`);
+  info.append(el("b", "", video ? "Video" : "Screenshots"), ` · ${parts.join(" · ")}`);
+  info.title = video
+    ? `Live H.264 video from the phone, ${liveStats.width}×${liveStats.height}, sized for this panel.`
+    : "Snapshots, a few a second. For smooth, sharp video, allow screen sharing when you connect the OpenMob app (update the app if it doesn't ask).";
+}
+
+$("screenQuality").onchange = (e) => {
+  screenQuality = e.target.value;
+  try { localStorage.setItem("openmob.screenQuality", screenQuality); } catch {}
+  sendView();
+};
+let sendView = () => {};  // set while a screen socket is open
+let viewTimer = 0;
+new ResizeObserver(() => { clearTimeout(viewTimer); viewTimer = setTimeout(() => sendView(), 400); }).observe($("phoneScreen"));
+matchMedia("(min-resolution: 2dppx)").addEventListener("change", () => sendView());  // moved to another display
 
 // Smooth live view: H.264 from the phone, decoded with WebCodecs onto the canvas. Phones whose owner
 // didn't allow screen streaming (or older apps) send JPEG frames instead, shown in the <img>.
@@ -1439,12 +1511,34 @@ function avcCodec(data) {  // "avc1.PPCCLL" from the SPS in a keyframe (Annex B)
 
 function videoPlayer(askKeyframe) {
   const canvas = $("screenVideo");
-  const ctx = canvas.getContext("2d");
+  const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });  // low-latency canvas
+  const sent = new Map();  // chunk timestamp → when it went to the decoder (decode time stat)
   let decoder = null, needKey = true;
   const reset = () => {
     if (decoder && decoder.state !== "closed") decoder.close();
     decoder = null;
     needKey = true;
+    sent.clear();
+  };
+  // Each frame is drawn the moment it's decoded (no waiting for the next animation frame). The
+  // canvas holds as many pixels as it shows on this display, and a bigger frame is scaled down
+  // into it with high-quality smoothing: sharper text than letting CSS shrink a large canvas.
+  const paint = (frame) => {
+    const vw = frame.displayWidth, vh = frame.displayHeight;
+    const shown = (canvas.clientWidth || vw) * (window.devicePixelRatio || 1);
+    const fit = Math.min(1, shown / vw);
+    const w = Math.round(vw * fit), h = Math.round(vh * fit);
+    if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; }
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(frame, 0, 0, w, h);
+    const at = sent.get(frame.timestamp);
+    if (at !== undefined) { liveStats.decodeMs = Math.round(performance.now() - at); sent.delete(frame.timestamp); }
+    if (sent.size > 64) sent.clear();
+    Object.assign(liveStats, { width: vw, height: vh, lastPts: frame.timestamp, lastPaint: performance.timeOrigin + performance.now() });
+    liveStats.frames++;
+    frame.close();
+    showSurface("screenVideo");
   };
   return {
     packet(buf) {  // b"V", flags (bit 0: keyframe), 8-byte timestamp (µs), Annex B H.264
@@ -1456,23 +1550,14 @@ function videoPlayer(askKeyframe) {
       if (!decoder) {
         const codec = avcCodec(data);
         if (!codec) return;
-        decoder = new VideoDecoder({
-          output: (frame) => {
-            if (canvas.width !== frame.displayWidth || canvas.height !== frame.displayHeight) {
-              canvas.width = frame.displayWidth;
-              canvas.height = frame.displayHeight;
-            }
-            ctx.drawImage(frame, 0, 0);
-            frame.close();
-            showSurface("screenVideo");
-          },
-          error: () => { reset(); askKeyframe(); },
-        });
-        decoder.configure({ codec, optimizeForLatency: true });
+        decoder = new VideoDecoder({ output: paint, error: () => { reset(); askKeyframe(); } });
+        decoder.configure({ codec, optimizeForLatency: true, hardwareAcceleration: "no-preference" });
       }
       needKey = false;
+      const timestamp = Number(view.getBigInt64(2));
+      sent.set(timestamp, performance.now());
       try {
-        decoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp: Number(view.getBigInt64(2)), data }));
+        decoder.decode(new EncodedVideoChunk({ type: key ? "key" : "delta", timestamp, data }));
       } catch { reset(); askKeyframe(); }
     },
     close: reset,
@@ -1483,9 +1568,17 @@ function videoPlayer(askKeyframe) {
 function streamScreen(id) {
   return new Promise((resolve) => {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    const query = token ? `?t=${encodeURIComponent(token)}` : "";  // accounts mode: the session cookie
-    const ws = new WebSocket(`${proto}//${location.host}/api/devices/${encodeURIComponent(id)}/screen/ws${query}`);
+    let view = screenView();
+    const params = new URLSearchParams({ side: view.side, quality: view.quality });
+    if (token) params.set("t", token);  // accounts mode: the session cookie
+    const ws = new WebSocket(`${proto}//${location.host}/api/devices/${encodeURIComponent(id)}/screen/ws?${params}`);
     ws.binaryType = "arraybuffer";
+    sendView = () => {  // the panel was resized, moved to another display, or the quality changed
+      const now = screenView();
+      if (ws.readyState !== 1 || !now.side || (now.side === view.side && now.quality === view.quality)) return;
+      view = now;
+      ws.send(JSON.stringify({ view }));
+    };
     let heard = false, stopped = false, latest = null, drawing = false, unsupported = false;
     const video = "VideoDecoder" in window ? videoPlayer(() => ws.readyState === 1 && ws.send("keyframe")) : null;
     const draw = async () => {  // newest frame wins: frames that arrive while one decodes are skipped
@@ -1507,6 +1600,7 @@ function streamScreen(id) {
         return;
       }
       if (screenError) { screenError = ""; renderScreenState(); }
+      liveStats.bytes += e.data.byteLength;
       if (new Uint8Array(e.data, 0, 1)[0] === 0x56) {  // "V": a video packet
         if (video) video.packet(e.data);
         return;
@@ -1516,6 +1610,7 @@ function streamScreen(id) {
     };
     ws.onclose = () => {
       clearInterval(watch);
+      sendView = () => {};
       if (video) video.close();
       resolve(!unsupported && (heard || stopped));
     };
@@ -1532,7 +1627,8 @@ async function screenLoop() {
     }
     if (deviceId && !panelHidden) {
       try {
-        const res = await api(`/api/devices/${deviceId}/screen.jpg?after=${frameTime}`);
+        const { side, quality } = screenView();
+        const res = await api(`/api/devices/${deviceId}/screen.jpg?after=${frameTime}&side=${side}&quality=${quality}`);
         frameTime = res.headers.get("X-Frame-Time") || 0;
         await showFrame(await res.blob());
         if (screenError) { screenError = ""; renderScreenState(); }
