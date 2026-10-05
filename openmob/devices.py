@@ -76,6 +76,14 @@ class DeviceManager:
         self.phone_stop_listeners: list = []
         # open approval id → {session (the acting phone), task_id, question, who, sent (phones asked)}
         self.approvals: dict[str, dict] = {}
+        # Every open socket per phone (session id → links). Exactly one is live (session.link); any
+        # other is closed as soon as a newer one attaches, and unpair / re-pair close them all.
+        self.links: dict[str, set[PhoneLink]] = {}
+        # callables(session, old link, new link): a live socket was replaced by one from another address
+        self.replaced_listeners: list = []
+        # (answering session, approval record, approved, message) -> bool: is this approval genuine
+        # (signed with the phone's screen-lock key)? None: no check (local mode).
+        self.approval_verifier = None
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -129,6 +137,8 @@ class DeviceManager:
         )
         stale = resumed = None
         with self._lock:
+            replaced = [old for old in self.links.get(info.id, set()) if old is not link]
+            self.links[info.id] = {link}
             session = self.sessions.get(info.id)
             if session and session.account_id != account_id:
                 # Same device id, different owner: never hand over the old session or its history.
@@ -155,15 +165,39 @@ class DeviceManager:
             session.driver.video_available = bool(device.get("video"))
         if stale:
             self._stop(stale)
+        for old in replaced:  # one live socket per phone: the older one can't act any more
+            old.disconnect(4409, "Replaced by a newer connection from this phone.")
+            if getattr(old, "peer", None) != getattr(link, "peer", None):
+                session.coordinator.event("status", f"{info.model} reconnected from a new connection.", task=None)
+                for listener in self.replaced_listeners:
+                    try:
+                        listener(session, old, link)
+                    except Exception:
+                        pass
         if resumed:
             resumed.coordinator.event("status", "The phone is back. Carrying on.")
         return session
+
+    def is_live(self, session: Session, link: PhoneLink) -> bool:
+        """This socket is still the phone's one live connection (else whatever it sends is ignored)."""
+        return not link.closed and session.link is link and self.sessions.get(session.info.id) is session
+
+    def close_links(self, session_id: str, code: int, reason: str) -> int:
+        """Close every socket of a phone (unpaired, paired again, or its key replaced)."""
+        with self._lock:
+            links = self.links.pop(session_id, set())
+        for link in links:
+            link.disconnect(code, reason)
+        return len(links)
 
     def detach_remote(self, session: Session, link: PhoneLink, close_code: int | None = None) -> None:
         """The phone's socket closed. Mid-task, wait `reconnect_grace` seconds for it to come back
         before failing the task; nothing is replayed. A normal close (1000: the user tapped Stop or
         disconnected on purpose) stops the work right away, as does a drop with nothing running."""
         with self._lock:
+            open_links = self.links.get(session.info.id)
+            if open_links is not None:
+                open_links.discard(link)
             if session.link is not link:  # ignore a stale socket closing after a reconnect
                 return
             session.online = False
@@ -289,14 +323,22 @@ class DeviceManager:
         if session.link:
             session.link.post(message)
 
-    def resolve_approval(self, session: Session, approval_id: str, approved: bool) -> bool:
+    def resolve_approval(self, session: Session, approval_id: str, approved: bool, message: dict | None = None) -> bool:
         """The owner answered an approval_request on one of their phones (after its screen-lock
-        check). Ignored (False) unless that request is still open and its task still waiting."""
+        check). Ignored (False) unless that request is still open and its task still waiting, and,
+        for a yes, the phone proved the screen lock (approval_verifier). A no needs no proof."""
         with self._approvals_lock:
             record = self.approvals.get(str(approval_id or ""))
             if record is None or record["session"].account_id != session.account_id:
                 return False
-            del self.approvals[approval_id]
+        if approved and self.approval_verifier is not None and not self.approval_verifier(
+                session, approval_id, record, message or {}):
+            session.coordinator.event("status", "An approval wasn't signed with this phone's screen lock, "
+                                                "so it was ignored.", task=None)
+            return False
+        with self._approvals_lock:
+            if self.approvals.pop(str(approval_id), None) is None:
+                return False  # answered meanwhile (first answer wins)
         acting, task_id = record["session"], record["task_id"]
         self._dismiss(approval_id, record, except_id=session.info.id)
         info = acting.coordinator.task(task_id)

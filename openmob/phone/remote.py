@@ -27,6 +27,8 @@ class PhoneLink:
         self.websocket = websocket
         self.loop = loop
         self.closed = False
+        self.peer: str | None = None  # the client address it connected from
+        self.key_hash: str | None = None  # the device key it proved at connect (None: token mode)
         self._pending: dict[str, asyncio.Future] = {}
         self._send_lock = asyncio.Lock()
         self.video_listeners: set = set()  # callables(packet dict), run on the event loop

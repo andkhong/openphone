@@ -220,7 +220,8 @@ class AccountStore:
             self._save()
         return code, expires
 
-    def redeem_pairing_code(self, code: str, account_id: str, device_id: str, model: str) -> str:
+    def redeem_pairing_code(self, code: str, account_id: str, device_id: str, model: str,
+                            approval_key: str | None = None) -> str:
         """Bind a phone to the account and return its own device key.
 
         Enforces the rule: the request must be authenticated as the SAME account that made the
@@ -249,6 +250,9 @@ class AccountStore:
                 "created": (existing or {}).get("created", time.time()),
                 "last_seen": time.time(),
                 "revoked": False,
+                # The phone's screen-lock-bound public key: its approvals must be signed with it.
+                # Pairing again replaces it (or clears it, for an app too old to send one).
+                "approval_key": approval_key or None,
             }
             self._save()
             return key
@@ -267,6 +271,33 @@ class AccountStore:
             device["last_seen"] = time.time()
             self._save()
             return device["account_id"]
+
+    @staticmethod
+    def key_fingerprint(key: str) -> str:
+        """What a phone's key is stored as; a socket remembers it to notice a re-pair."""
+        return _hash_token(key or "")
+
+    def device_auth(self, device_id: str) -> dict | None:
+        """A phone's pairing as it stands now: {account_id, revoked, key_hash, approval_key}."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            if d is None:
+                return None
+            return {"account_id": d["account_id"], "revoked": bool(d["revoked"]), "key_hash": d["key_hash"],
+                    "approval_key": d.get("approval_key")}
+
+    def register_approval_key(self, device_id: str, key_hash: str, public_key: str) -> bool:
+        """First connect of an already-paired phone whose app now has an approval key: keep it, once.
+        Never replaces a registered key (only pairing again does) and only for the current device key."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            if not d or d["revoked"] or d.get("approval_key") or d["key_hash"] != key_hash or not public_key:
+                return False
+            d["approval_key"] = public_key
+            self._save()
+            return True
 
     def list_devices(self, account_id: str) -> list[Device]:
         with self._lock:
