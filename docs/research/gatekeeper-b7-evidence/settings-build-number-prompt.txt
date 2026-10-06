@@ -1,0 +1,1 @@
+{"deny": [316, 1851], "approve": [763, 1851], "always": true, "texts": ["(always offered: True)"]}

@@ -535,9 +535,13 @@ That catches drift on the fixtures and the fuzzed space; it can't prove the two 
 adversarial suite (`test_gatekeeper_adversarial.py`) puts a fake compromised server in front of a simulated
 gatekeeper phone running the reference engine over raw protocol messages; every attack is also a fixture the
 Kotlin engine runs. The pure Android pieces (tree reading, live-view gating, keep-awake) have JVM tests. §8's
-emulator suite is written (`tests/adversarial/evil_server.py`, docs/testing.md) but not yet run: no emulator
-image on the build machine, and its stand-in bank and shop apps are still to be written. That is a release
-gate. There are no captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
+emulator suite (`tests/adversarial/evil_server.py`, stand-in apps in `tests/adversarial/standins`,
+docs/testing.md) passed 61 of 61 checks on Android 15 after four fixes (release gate B7, results in
+docs/research/gatekeeper-b7-results.md). It found the launch race below (a tap judged on a window list that
+hadn't caught up landed in a starting blocked app) and that token-paired phones couldn't approve. On Android
+14+ the permission controller (runtime dialogs, Safety Center, default apps) is hidden from OpenMob's service,
+so those taps fail closed and the permission-dialog rules only apply on older or OEM builds. There are no
+captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
 
 **Where it differs from the text above:**
 - **Settings, unrecognized pages:** only *changing* taps ask (a switch or checkbox, or a change word such as
@@ -564,7 +568,10 @@ gate. There are no captured OEM Settings dumps yet (the Settings fixtures are ha
   since a re-sent call can't reproduce the crop.
 - **Reverify:** for risky or payment-context decisions it needs the same fingerprint and a quiet screen
   (waiting up to 1 s); for other allowed actions it re-judges the current target and refuses only if that is
-  now risky or refused (fewer spurious refusals from animations).
+  now risky or refused (fewer spurious refusals from animations). Before that, every admitted tap, long press
+  and swipe waits (within the same second) for the window list to settle: 250 ms with no change, and some
+  listed window having focus (an app's launch screen isn't listed at all). If nothing has focus by then it's
+  refused, `gate_screen_unstable` (B7).
 - **`never` and the always-ask class** also covers typing into OTP and card fields, and an unlabeled tap in
   payment context counts as money.
 - **Denials that suspend** are the owner's denials of prompts (not the gate's refusals); a notification offers

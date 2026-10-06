@@ -1,0 +1,13 @@
+com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.ManagePermissionsActivity
+com.google.android.permissioncontroller	''	'Location permission'	com.android.permissioncontroller:id/collapsing_toolbar	[0,0][1080,598]
+com.google.android.permissioncontroller	''	'Navigate up'		[0,128][147,275]
+com.google.android.permissioncontroller	'Example Login'	''	com.android.permissioncontroller:id/entity_header_title	[367,808][713,879]
+com.google.android.permissioncontroller	'Location access for this app'	''	com.android.permissioncontroller:id/permission_message	[63,1067][1038,1118]
+com.google.android.permissioncontroller	'Allow all the time'	''	com.android.permissioncontroller:id/allow_always_radio_button	[63,1181][613,1307]
+com.google.android.permissioncontroller	'Allow only while using the app'	''	com.android.permissioncontroller:id/allow_foreground_only_radio_button	[63,1349][917,1475]
+com.google.android.permissioncontroller	'Ask every time'	''	com.android.permissioncontroller:id/ask_radio_button	[63,1517][554,1643]
+com.google.android.permissioncontroller	'Don’t allow'	''	com.android.permissioncontroller:id/deny_radio_button	[63,1685][468,1811]
+com.google.android.permissioncontroller	'Use precise location'	''		[63,1874][539,1945]
+com.google.android.permissioncontroller	'When precise location is off, apps can access your approximate location'	''		[63,1945][808,2039]
+com.google.android.permissioncontroller	'See all Example Login permissions'	''	com.android.permissioncontroller:id/footer_link_1	[0,2111][675,2246]
+com.google.android.permissioncontroller	'See all apps with this permission'	''	com.android.permissioncontroller:id/footer_link_2	[0,2246][643,2337]
