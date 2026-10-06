@@ -65,7 +65,7 @@ def test_pairing_code_is_single_use_and_expires(tmp_path):
         s.redeem_pairing_code(code, owner, "dev-2", "Galaxy")
 
     code2, _ = s.create_pairing_code(owner)
-    s._data["pairings"][code2]["expires"] = 0  # force-expire
+    s._data["pairings"][code2[:8]]["expires"] = 0  # force-expire
     with pytest.raises(AuthError, match="invalid or has expired"):
         s.redeem_pairing_code(code2, owner, "dev-3", "Galaxy")
 

@@ -413,12 +413,14 @@ class V1Service:
             session = self.manager.get(f"app-{d.id}")
             live = session is not None and session.account_id == p.account_id
             snap = session.coordinator.snapshot() if live else {}
+            # Every paired phone, online or not, so a pairing you don't recognise can't hide.
             out.append({
-                "id": f"app-{d.id}", "name": d.model,
+                "id": f"app-{d.id}", "name": d.model, "model": d.model,
                 "platform": session.info.platform if live else "android",
                 "online": bool(live and session.online),
                 "busy": bool(live and snap.get("state") != "idle"),
                 "last_seen": d.last_seen,
+                "paired_at": d.paired_at,
             })
         return {"devices": out}
 

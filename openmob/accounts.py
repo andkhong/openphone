@@ -1,9 +1,11 @@
 """Accounts, device keys, and one-time pairing codes.
 
-The security rule lives here: a pairing code can only be redeemed by a request authenticated
-as the same account that created it, and each paired phone gets its own revocable key. So a QR
-code is useless to anyone not signed into the owner's account, and one phone can be revoked
-without touching the others.
+Pairing: the signed-in dashboard (or `openmob phone add`, with a `devices:add` API key) mints a
+pairing code. The code itself is the credential: single use, valid for 2 minutes, bound to the
+account that made it, 128 bits of secret, and stored only as a hash. The phone redeems it (after
+its owner confirms with the screen lock) for its own revocable device key, and never holds a
+dashboard session. Wrong guesses void a code after a few tries, and the server rate-limits
+redemption per client address and per account. One phone can be revoked without touching the others.
 
 Developer API keys live here too: `om_live_<id>_<secret>`, shown once, stored as a hash, each
 with its own scopes. An admin can switch off one key or a whole account's API access.
@@ -27,11 +29,16 @@ from pathlib import Path
 
 PBKDF2_ROUNDS = 200_000
 SESSION_TTL = 30 * 24 * 3600  # dashboard login lasts 30 days
-PAIRING_TTL = 10 * 60  # a pairing code is valid for 10 minutes, once
+PAIRING_TTL = 2 * 60  # a pairing code is valid for 2 minutes, once
+PAIRING_ID_LEN = 8  # a code is <8 hex id><secret>: the id finds the record, the secret is checked as a hash
+PAIRING_MAX_FAILURES = 5  # wrong secrets for one code before it's voided
+PAIRING_MINTS_PER_HOUR = 30  # codes one account may make in an hour
 LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works once, for 10 minutes
 KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 # What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
-SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write")
+# devices:add (enroll phones with `openmob phone add`) is sensitive too, so it's never a default either.
+SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write",
+          "devices:add")
 DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
 LAST_USED_EVERY = 60  # seconds between saves of a key's last-used time
 WEBHOOK_SECRET_OVERLAP = 24 * 3600  # a replaced webhook secret still signs deliveries this long
@@ -48,6 +55,23 @@ class AccessDisabled(AuthError):
     """A valid API key whose key or account has been switched off by an admin."""
 
 
+class AccountExists(AuthError):
+    """Sign-up with an email that already has an account (the server never tells the client)."""
+
+
+class PairingRefused(AuthError):
+    """A pairing code was wrong, expired, used or voided. `account_id` is the account the code's id
+    belongs to, when the id matched one (so the server can rate-limit guesses per account)."""
+
+    def __init__(self, message: str, account_id: str | None = None):
+        super().__init__(message)
+        self.account_id = account_id
+
+
+class PairingLimit(AuthError):
+    """Too many pairing codes made by one account in the last hour."""
+
+
 @dataclass
 class Device:
     id: str
@@ -56,6 +80,7 @@ class Device:
     created: float
     last_seen: float
     revoked: bool
+    paired_at: float = 0.0  # the latest pairing (a re-pair moves it; `created` stays the first)
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -112,7 +137,8 @@ class AccountStore:
         with self._lock:
             self._refresh()
             if any(a["email"] == email for a in self._data["accounts"].values()):
-                raise AuthError("An account with that email already exists.")
+                _hash_password(password, secrets.token_hex(16))  # same work as a new account: no timing tell
+                raise AccountExists("An account with that email already exists.")
             account_id = secrets.token_hex(8)
             salt = secrets.token_hex(16)
             self._data["accounts"][account_id] = {
@@ -206,49 +232,102 @@ class AccountStore:
 
     # --- pairing ---------------------------------------------------------
 
-    def create_pairing_code(self, account_id: str) -> tuple[str, float]:
-        """A short, single-use code bound to this account. Returns (code, expiry)."""
-        code = secrets.token_urlsafe(9)
-        expires = time.time() + PAIRING_TTL
+    def create_pairing_code(self, account_id: str, purpose: str = "dashboard") -> tuple[str, float]:
+        """A single-use code bound to this account, valid for PAIRING_TTL. Returns (code, expiry).
+        Only the code's id and a hash of its secret are stored. `purpose`: "dashboard" or "cli"."""
+        code_id = secrets.token_hex(PAIRING_ID_LEN // 2)
+        secret = secrets.token_urlsafe(16)  # 128 bits
+        now = time.time()
+        expires = now + PAIRING_TTL
         with self._lock:
             self._refresh()
-            # One active code per account at a time: making a new one voids the old.
+            account = self._data["accounts"].get(account_id)
+            if account is None:
+                raise AuthError("Unknown account.")
+            mints = [t for t in account.get("pairing_mints", []) if now - t < 3600]
+            if len(mints) >= PAIRING_MINTS_PER_HOUR:
+                raise PairingLimit("Too many pairing codes in the last hour. Try again later.")
+            account["pairing_mints"] = mints + [now]
+            # One live code per account: a new one voids the old. Spent and stale records go too (a
+            # redeemed one is kept for a day, so `openmob phone add` can see which phone took it).
             self._data["pairings"] = {
-                c: p for c, p in self._data["pairings"].items() if p["account_id"] != account_id
+                i: p for i, p in self._data["pairings"].items()
+                if "secret_hash" in p and (p["account_id"] != account_id or p.get("device_id"))
+                and now - p["expires"] < 86400
             }
-            self._data["pairings"][code] = {"account_id": account_id, "expires": expires, "used": False}
+            self._data["pairings"][code_id] = {
+                "account_id": account_id, "secret_hash": _hash_token(secret), "expires": expires,
+                "used": False, "failures": 0, "purpose": purpose, "device_id": None,
+            }
             self._save()
-        return code, expires
+        return code_id + secret, expires
 
-    def redeem_pairing_code(self, code: str, account_id: str, device_id: str, model: str,
-                            approval_key: str | None = None) -> str:
-        """Bind a phone to the account and return its own device key.
+    def _live_pairing(self, code: str) -> tuple[str, dict]:
+        """(code id, record) for a valid, unused, unexpired code; the lock is held by the caller. A
+        wrong secret for a known id counts against that code, voided after PAIRING_MAX_FAILURES."""
+        code = (code or "").strip()
+        code_id, secret = code[:PAIRING_ID_LEN], code[PAIRING_ID_LEN:]
+        pairing = self._data["pairings"].get(code_id) if secret else None
+        if pairing is not None and "secret_hash" not in pairing:
+            pairing = None  # a record from before codes were hashed
+        # Always compare a hash, even for unknown ids, so timing doesn't reveal which ids exist.
+        expected = pairing["secret_hash"] if pairing else _hash_token(secrets.token_hex(8))
+        good = hmac.compare_digest(expected, _hash_token(secret))
+        invalid = "This pairing code is invalid or has expired. Make a new one on your dashboard."
+        if pairing is None:
+            raise PairingRefused(invalid)
+        if not good:
+            pairing["failures"] = pairing.get("failures", 0) + 1
+            if pairing["failures"] >= PAIRING_MAX_FAILURES:
+                pairing["used"] = True  # voided: too many wrong guesses
+            self._save()
+            raise PairingRefused(invalid, pairing["account_id"])
+        if pairing["used"] or pairing["expires"] < time.time():
+            raise PairingRefused(invalid, pairing["account_id"])
+        return code_id, pairing
 
-        Enforces the rule: the request must be authenticated as the SAME account that made the
-        code. A different account (or none) is refused even with a valid code.
-        """
+    def check_pairing_code(self, code: str) -> dict:
+        """What a phone shows before its owner confirms: {account_id, email, expires}. Doesn't use the code."""
         with self._lock:
             self._refresh()
-            pairing = self._data["pairings"].get(code)
-            if not pairing or pairing["expires"] < time.time() or pairing["used"]:
-                raise AuthError("This pairing code is invalid or has expired. Generate a new one.")
-            if pairing["account_id"] != account_id:
-                raise AuthError("This pairing code belongs to a different account.")
+            _, pairing = self._live_pairing(code)
+            account = self._data["accounts"].get(pairing["account_id"], {})
+            return {"account_id": pairing["account_id"], "email": account.get("email"), "expires": pairing["expires"]}
+
+    def redeem_pairing_code(self, code: str, account_id: str | None, device_id: str, model: str,
+                            approval_key: str | None = None) -> str:
+        """Bind a phone to the code's account and return its own device key.
+
+        The code is the credential. `account_id`, when given (the older signed-in route), must be
+        the code's own account: a different account is refused even with a valid code.
+        """
+        device_id = (device_id or "").strip()
+        if not device_id or len(device_id) > 128:
+            raise AuthError("A device id is required.")
+        with self._lock:
+            self._refresh()
+            _, pairing = self._live_pairing(code)
+            owner = pairing["account_id"]
+            if account_id is not None and owner != account_id:
+                raise PairingRefused("This pairing code belongs to a different account.", owner)
             existing = self._data["devices"].get(device_id)
             # A phone registered to someone else stays theirs until they revoke it.
-            if existing and not existing["revoked"] and existing["account_id"] != account_id:
+            if existing and not existing["revoked"] and existing["account_id"] != owner:
                 raise AuthError("This phone is registered to another account. Its owner must remove it first.")
-            if existing and existing["account_id"] != account_id:
+            if existing and existing["account_id"] != owner:
                 existing = None  # previously revoked by another account: start a fresh record
             pairing["used"] = True
+            pairing["device_id"] = device_id
 
-            key = secrets.token_urlsafe(24)
+            key = secrets.token_urlsafe(32)
+            now = time.time()
             self._data["devices"][device_id] = {
-                "account_id": account_id,
-                "model": model or (existing or {}).get("model", "Android phone"),
+                "account_id": owner,
+                "model": " ".join((model or "").split())[:80] or (existing or {}).get("model", "Android phone"),
                 "key_hash": _hash_token(key),
-                "created": (existing or {}).get("created", time.time()),
-                "last_seen": time.time(),
+                "created": (existing or {}).get("created", now),
+                "paired_at": now,
+                "last_seen": now,
                 "revoked": False,
                 # The phone's screen-lock-bound public key: its approvals must be signed with it.
                 # Pairing again replaces it (or clears it, for an app too old to send one).
@@ -256,6 +335,26 @@ class AccountStore:
             }
             self._save()
             return key
+
+    def pairing_status(self, account_id: str, code_id: str) -> dict | None:
+        """For `openmob phone add`: {status: pending|paired|expired, device_id}. None if not this account's."""
+        with self._lock:
+            self._refresh()
+            p = self._data["pairings"].get((code_id or "")[:PAIRING_ID_LEN])
+            if not p or p["account_id"] != account_id:
+                return None
+            if p.get("device_id"):
+                return {"status": "paired", "device_id": p["device_id"]}
+            if p["used"] or p["expires"] < time.time():
+                return {"status": "expired", "device_id": None}
+            return {"status": "pending", "device_id": None}
+
+    def is_paired(self, account_id: str, device_id: str) -> bool:
+        """This phone is paired (and not revoked) to this account."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id or "")
+            return bool(d and not d["revoked"] and d["account_id"] == account_id)
 
     # --- device auth -----------------------------------------------------
 
@@ -300,10 +399,12 @@ class AccountStore:
             return True
 
     def list_devices(self, account_id: str) -> list[Device]:
+        """Every phone paired to this account, online or not (revoked ones are left out)."""
         with self._lock:
             self._refresh()
             return [
-                Device(id=device_id, **{k: d[k] for k in ("account_id", "model", "created", "last_seen", "revoked")})
+                Device(id=device_id, paired_at=d.get("paired_at") or d["created"],
+                       **{k: d[k] for k in ("account_id", "model", "created", "last_seen", "revoked")})
                 for device_id, d in self._data["devices"].items()
                 if d["account_id"] == account_id and not d["revoked"]
             ]
@@ -318,6 +419,14 @@ class AccountStore:
             device["revoked"] = True
             self._save()
             return True
+
+    def unpair_by_key(self, device_id: str, key: str) -> str:
+        """The phone unpairs itself, proving it with its own device key. Returns its account, or raises."""
+        with self._lock:
+            account_id = self.verify_device(device_id, key)
+            self._data["devices"][device_id]["revoked"] = True
+            self._save()
+            return account_id
 
     # --- admin (granted only from the server's command line) --------------
 
