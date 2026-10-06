@@ -206,7 +206,8 @@ def button(dialog: Dialog, answer: str, grant: str | None = None, asked: bool = 
     if answer != "allow":
         order = ("deny", "deny_forever")
     elif dialog.kind == "photos":
-        order = ("limited", "one_time")  # some photos, never "Allow all"
+        # Some photos, never "Allow all" (nor a plain "Allow"): limited access, else the setting's grant.
+        order = ("limited", "foreground", "one_time") if grant == "while_using" and not asked else ("limited", "one_time")
     elif dialog.kind == "notifications":
         order = ("allow",)
     elif grant == "once" and not asked:
