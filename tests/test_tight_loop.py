@@ -224,7 +224,13 @@ def test_defaults_per_type_and_never_allow_all_the_time():
     nearby = [el(0, "Allow Chess.com to find, connect to, and determine the relative position of nearby devices?",
                  PC + "permission_message", "TextView"),
               el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
-    assert answer(nearby) == "Allow"  # no one-time option offered: the narrowest there is
+    # Only a lasting grant offered for a dangerous kind: the owner is asked.
+    d = pd.detect(CONTROLLER, nearby)
+    assert pd.decide(d, mode="auto", prompts=prompts, task_app_label="Chess", task_package="com.chess").answer == "ask"
+    assert pd.decide(d, mode="never", prompts=prompts, task_app_label="Chess").answer == "deny"
+    loose = {**prompts, "persistent_grants": "allow"}  # the owner relaxed it
+    plan = pd.decide(d, mode="auto", prompts=loose, task_app_label="Chess")
+    assert plan.answer == "allow" and pd.button(d, "allow", plan.grant).text == "Allow"
     photos = [el(0, "Allow Chess.com to access photos and videos on this device?", PC + "permission_message", "TextView"),
               el(1, "Allow limited access", PC + "permission_allow_selected_button"),
               el(2, "Allow all", PC + "permission_allow_all_button"),
@@ -241,19 +247,43 @@ def test_defaults_per_type_and_never_allow_all_the_time():
              el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
     d = pd.detect(CONTROLLER, other)
     assert pd.decide(d, mode="auto", prompts=prompts, task_app_label="Chess", task_package="com.chess").answer == "ask"
+    # Before the task has an app, every request is another app's: it asks.
+    d = pd.detect(CONTROLLER, notification_dialog())
+    assert pd.decide(d, mode="auto", prompts=prompts, task_app_label=None).answer == "ask"
 
 
 def test_only_the_systems_dialogs_count():
-    fake = [el(0, "Allow Chess.com to send you notifications?", "com.evil:id/permission_message", "TextView"),
-            el(1, "Allow"), el(2, "Don't allow")]
-    assert pd.detect("com.evil", fake) is None  # an app's look-alike: its ids carry its package
+    controller_ids = [el(0, "Allow Chess.com to send you notifications?", PC + "permission_message", "TextView"),
+                      el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
+    assert pd.detect(CONTROLLER, controller_ids) is not None
+    # A web page in Chrome (HTML ids pass through) or an app setting controller-looking ids: never a dialog.
+    assert pd.detect("com.android.chrome", controller_ids) is None
+    assert pd.detect("com.evil", controller_ids) is None
     ocr = [el(0, "Allow Chess.com to send you notifications?", "ocr_permission_message", "OCRText"),
            el(1, "Allow", cls="OCRText"), el(2, "Don't allow", cls="OCRText"),
            el(3, "Play Bots", covered=True)]
-    found = pd.detect("com.chess", ocr)  # the gatekeeper app's OCR of a hidden dialog over Chess
-    assert found is not None and found.kind == "notifications" and found.buttons["allow"].text == "Allow"
+    # The gatekeeper app's OCR of a hidden dialog: its package is missing or the controller.
+    for package in (None, "com.android.permissioncontroller"):
+        found = pd.detect(package, ocr, gatekeeper=True)
+        assert found is not None and found.kind == "notifications" and found.buttons["allow"].text == "Allow"
+    assert pd.detect("com.chess", ocr, gatekeeper=True) is None  # an app in front: its own screen
+    as_app = [el(0, "Allow Chess.com to send you notifications?", "ocr_permission_message", "TextView"),
+              el(1, "Allow"), el(2, "Don't allow")]
+    assert pd.detect(None, as_app, gatekeeper=True) is None  # the id without the phone's OCR class
+    assert pd.detect("com.evil", ocr, gatekeeper=True) is None
+    assert pd.detect(None, [ocr[0], ocr[1], ocr[2]], gatekeeper=False) is not None  # (the server's own OCR, below)
     assert pd.detect(None, [el(0, "Allow Chess.com to send you notifications?", cls="OCRText"),
                             el(1, "Allow", cls="OCRText"), el(2, "Don't allow", cls="OCRText")]) is not None
+
+
+def test_a_fake_dialog_on_a_web_page_is_not_auto_tapped(tmp_path):
+    page = [el(0, "Allow Chess.com to send you notifications?", PC + "permission_message", "TextView"),
+            el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
+    for package in ("com.android.chrome", "com.evil.app"):
+        phone = FlowPhone({"page": (package, page)}, "page", {})
+        agent, client, io_ = make(phone, [[tool_use("done", "a", summary="ok", success=True)]], tmp_path)
+        agent.run("read the news")
+        assert phone.tapped == [] and all("source" not in s for s in io_.steps) and len(client.requests) == 1
 
 
 def test_a_request_about_permissions_is_left_to_the_model(tmp_path):
@@ -414,3 +444,36 @@ def test_the_agents_wait_until_uses_the_still_exit(tmp_path):
     agent.run("play 5 moves against a bot")
     step = io_.steps[0]
     assert step["wait_met"] is False and step["waited_ms"] < 4500 and "still" in step["outcome"]
+
+
+def test_a_lasting_contacts_grant_asks_the_owner_with_no_model_call(tmp_path):
+    contacts = [el(0, "Allow Chess.com to access your contacts?", PC + "permission_message", "TextView"),
+                el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
+    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "dialog": (CONTROLLER, contacts),
+                       "bots": ("com.chess", BOTS_SCREEN)}, "app",
+                      {("app", "Play as Guest"): "dialog", ("dialog", "Allow"): "bots", ("dialog", "Don't allow"): "bots"})
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0)],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], tmp_path, task_io=RecordingIO(answers=["no"]))
+    agent.run("invite a friend to chess")
+    assert io_.questions and "contacts" in io_.questions[0]  # the owner was asked, not the model
+    assert phone.tapped == ["Play as Guest", "Don't allow"] and len(client.requests) == 2
+
+
+# --- Play Store installs ------------------------------------------------------------------------------
+
+STORE_PAGE = [el(0, "Chess - Play and Learn", cls="TextView"), el(1, "Install")]
+
+
+def test_an_unrequested_install_asks_and_a_requested_one_does_not(tmp_path):
+    for task, answers, asked in (("look at the chess app's reviews", ["no"], True),
+                                 ("install chess and play 5 moves against a bot", [], False)):
+        phone = FlowPhone({"store": ("com.android.vending", STORE_PAGE)}, "store", {})
+        agent, client, io_ = make(phone, [
+            [tool_use("tap_element", "a", index=1, target="Install")],
+            [tool_use("done", "b", summary="ok", success=True)],
+        ], tmp_path, task_io=RecordingIO(answers=answers), install_wait_seconds=0)
+        agent.run(task)
+        assert bool(io_.questions) is asked
+        assert phone.tapped == ([] if asked else ["Install"])
