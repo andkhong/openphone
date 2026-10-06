@@ -223,32 +223,72 @@ def test_fast_path_needs_the_classifier_and_the_setting(tmp_path):
 
 
 class Shifty(Phone):
-    """A phone whose list is quick to read (like the app) and whose screen moves before the tap."""
+    """A phone whose list is quick to read (like the app) and whose screen moves before the tap: the
+    first read is what the agent decided on, then each later read returns the next list in `later`."""
 
     fast_ui_tree = True
 
-    def __init__(self, elements, later):
+    def __init__(self, elements, *later):
         super().__init__(elements)
-        self.later = later
+        self.later = list(later) or [elements]
         self.reads = 0
 
     def ui_elements(self):
         self.reads += 1
-        return list(self.elements if self.reads == 1 else self.later)
+        if self.reads == 1:
+            return list(self.elements)
+        return list(self.later[min(self.reads - 2, len(self.later) - 1)])
 
 
-def test_a_target_that_moved_is_not_tapped(tmp_path):
-    later = [el(0, "Promo banner"), el(1, "Network & internet"), el(2, "Display"), el(3, "Sound")]
-    driver = Shifty(SETTINGS, later)
+def tap_display(driver, tmp_path):
     agent, _, steps = make([[tool_use("tap_element", "a", index=1, target="Display")], DONE], driver, None, tmp_path)
     agent.run("open display settings")
-    assert not any(a[0] == "tap" for a in driver.actions)
-    assert steps[0]["is_error"] and "no longer where it was" in steps[0]["outcome"]
+    return [a for a in driver.actions if a[0] == "tap"], steps
 
+
+def test_a_target_still_in_place_is_tapped_after_the_recheck(tmp_path):
     same = Shifty(SETTINGS, SETTINGS)
-    agent, _, _ = make([[tool_use("tap_element", "a", index=1, target="Display")], DONE], same, None, tmp_path)
-    agent.run("open display settings")
-    assert ("tap", 500, 140) in same.actions and same.reads >= 2  # re-checked, then tapped
+    taps, _ = tap_display(same, tmp_path)
+    assert taps == [("tap", 500, 140)] and same.reads >= 2  # re-checked, then tapped
+
+
+def test_the_same_element_that_settled_somewhere_else_is_tapped_there(tmp_path):
+    # Settings' list still settling after it opened: "Display" moved down one row and stayed there.
+    moved = [el(0, "Promo banner"), el(1, "Network & internet"), el(2, "Display"), el(3, "Sound")]
+    driver = Shifty(SETTINGS, moved, moved)
+    taps, steps = tap_display(driver, tmp_path)
+    display = next(e for e in moved if e.text == "Display")
+    assert taps == [("tap", *display.center)] and not steps[0]["is_error"]
+
+
+def test_a_moved_target_is_refused_when_gone_ambiguous_moving_or_covered(tmp_path):
+    cases = {
+        "gone": ([el(0, "Network & internet"), el(1, "Sound")],) * 2,
+        "ambiguous": ([el(0, "Display"), el(1, "Network & internet"), el(2, "Display")],) * 2,
+        "still moving": ([el(0, "Promo"), el(1, "Network"), el(2, "Display")],
+                         [el(0, "Promo"), el(1, "Network"), el(2, "Sound"), el(3, "Display")]),
+        "covered": ([el(0, "Promo"), el(1, "Network"), el(2, "Display", covered=True)],) * 2,
+    }
+    for name, later in cases.items():
+        taps, steps = tap_display(Shifty(SETTINGS, *later), tmp_path)
+        assert taps == [], name
+        assert steps[0]["is_error"] and "no longer where it was" in steps[0]["outcome"], name
+
+
+def test_a_moved_target_waits_for_the_screen_to_go_quiet_before_trusting_it(tmp_path):
+    class QuietShifty(Shifty):
+        def __init__(self, *a):
+            super().__init__(*a)
+            self.quiet = []
+
+        def wait_idle(self, quiet_ms, max_ms):
+            self.quiet.append((quiet_ms, max_ms))
+            return {"waited_ms": quiet_ms, "idle": True}
+
+    moved = [el(0, "Promo banner"), el(1, "Network & internet"), el(2, "Display")]
+    driver = QuietShifty(SETTINGS, moved, moved)
+    taps, _ = tap_display(driver, tmp_path)
+    assert taps and (200, 800) in driver.quiet
 
 
 def test_covered_elements_are_not_tapped(tmp_path):

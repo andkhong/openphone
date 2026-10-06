@@ -34,6 +34,8 @@ REDACTED = "<redacted>"
 POINT_ARGS = {"tap": (("x", "y"),), "long_press": (("x", "y"),), "swipe": (("x1", "y1"), ("x2", "y2"))}
 FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
+RECHECK_QUIET_MS = 200  # a tap target that moved (a list settling): wait this quiet before trusting its new place
+RECHECK_MAX_MS = 800
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 # vision_brief: replies are mostly the tool call, so the step ends sooner (the thought still reaches
@@ -806,9 +808,10 @@ class Agent:
             same = str(args.get("target", "")).strip() in ("", element.label)
             if blocked := self._guard(f"{args.get('target', '')} {element.label}", state, obs, element if same else None):
                 return blocked
-            if moved := self._target_moved(element):
-                return moved
-            self.driver.tap(*element.center)
+            target = self._recheck_target(element)
+            if isinstance(target, Outcome):
+                return target
+            self.driver.tap(*target.center)
             return Outcome(f"Tapped [{index}] {element.label!r}.")
 
         if name == "tap":
@@ -930,21 +933,43 @@ class Agent:
             settle=0,
         )
 
-    def _target_moved(self, element: UIElement) -> Outcome | None:
-        """Just before a tap_element: re-read the elements and refuse if the target is no longer at the
-        same place (the screen changed since it was read). Only on phones whose element list is quick
-        to read (the OpenMob app); adb and iOS dumps take a second or more."""
+    def _recheck_target(self, element: UIElement) -> UIElement | Outcome:
+        """Just before a tap_element: re-read the elements and return where to tap, or refuse.
+
+        Still in place: tap it. Moved, but the very same element (same text, description, id and
+        class, and only one such element) is on screen, e.g. a list still settling after an app
+        opened: wait for the screen to go quiet, confirm it stayed put, and tap it there; the guard
+        already judged that element. Anything else (gone, ambiguous, covered, still moving) is
+        refused. Only on phones whose element list is quick to read (the OpenMob app); adb and iOS
+        dumps take a second or more."""
         if not self.config.verify_taps or element.cls == fast.OCR_CLASS or not getattr(self.driver, "fast_ui_tree", False):
-            return None
+            return element
         with self.timer.phase("observe"):
             fresh = self.driver.ui_elements()
         if not fresh:
-            return None  # nothing to compare with (a tree that's briefly empty): tap as decided
-        same = (element.text, element.desc, element.resource_id, element.cls, element.bounds)
-        if any((el.text, el.desc, el.resource_id, el.cls, el.bounds) == same for el in fresh):
-            return None
-        return Outcome(f"Didn't tap [{element.index}] {element.label!r}: the screen changed and it is no longer "
-                       "where it was. Look at the new screen.", is_error=True, settle=0)
+            return element  # nothing to compare with (a tree that's briefly empty): tap as decided
+        identity = (element.text, element.desc, element.resource_id, element.cls)
+        if any((el.text, el.desc, el.resource_id, el.cls, el.bounds) == identity + (element.bounds,) for el in fresh):
+            return element
+        refused = Outcome(f"Didn't tap [{element.index}] {element.label!r}: the screen changed and it is no longer "
+                          "where it was. Look at the new screen.", is_error=True, settle=0)
+        if not (element.text or element.desc or element.resource_id):
+            return refused  # nothing to recognise it by
+        matches = [el for el in fresh if (el.text, el.desc, el.resource_id, el.cls) == identity]
+        if len(matches) != 1:
+            return refused
+        wait_idle = getattr(self.driver, "wait_idle", None)
+        if callable(wait_idle):
+            with self.timer.phase("settle"):
+                try:
+                    wait_idle(RECHECK_QUIET_MS, RECHECK_MAX_MS)
+                except Exception:  # an old phone without wait_idle: compare the two reads as they are
+                    pass
+        with self.timer.phase("observe"):
+            again = [el for el in self.driver.ui_elements() if (el.text, el.desc, el.resource_id, el.cls) == identity]
+        if len(again) != 1 or again[0].bounds != matches[0].bounds or getattr(again[0], "covered", False):
+            return refused  # still moving, gone, duplicated or now covered
+        return again[0]
 
     @staticmethod
     def _sleep(seconds: float, cancel: threading.Event) -> None:

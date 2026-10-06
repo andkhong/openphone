@@ -9,7 +9,8 @@ tasks:
   #    the vision step is mostly the DONE confirmation.
   - name: settings-display
     instruction: Open Settings and go to Display
-    reset: Go to the home screen
+    # Samsung's Settings reopens on its last page: return to the top first, or later runs are trivial.
+    reset: Open Settings and go back to the main Settings screen, then go to the home screen
     max_steps: 12
 
   # 2. Vision-heavy: the stopwatch's start / pause controls are icon-only on Pixel (and plain buttons on
@@ -20,7 +21,14 @@ tasks:
     reset: Open the Clock app's Stopwatch, reset it to zero if it isn't already, then go to the home screen
     max_steps: 15
 
-  # 3. A game (no accessibility tree: every step is a vision step). Fill in a game installed on the
+  # 3. Deep in-app navigation, read-only: four levels into Settings and back with an answer read off
+  #    the screen. Viewing app info and notification settings changes nothing.
+  - name: settings-deep-chrome-notifications
+    instruction: Open Settings, go to Apps, open Chrome, open its Notifications settings, and tell me whether notifications are allowed
+    reset: Open Settings and go back to the main Settings screen, then go to the home screen
+    max_steps: 20
+
+  # 4. A game (no accessibility tree: every step is a vision step). Fill in a game installed on the
   #    test phone, then uncomment. Keep it to opening and closing menus: no purchases, no matches.
   # - name: game-menu
   #   instruction: Open <game> and open its main menu
