@@ -20,8 +20,10 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
 import java.net.URLEncoder
+import java.nio.ByteBuffer
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import kotlin.random.Random
@@ -168,6 +170,14 @@ class ConnectionService : Service() {
 
     private fun send(message: JSONObject): Boolean = socket?.send(message.toString()) ?: false
 
+    /** A result with raw bytes (a live-view screenshot) as one binary message: a 4-byte big-endian
+     *  header length, the JSON [header], then [payload]. Saves base64's extra third and its encode time. */
+    private fun sendBinaryResult(header: JSONObject, payload: ByteArray): Boolean {
+        val head = header.toString().toByteArray(Charsets.UTF_8)
+        val frame = ByteBuffer.allocate(4 + head.size + payload.size).putInt(head.size).put(head).put(payload)
+        return socket?.send(frame.array().toByteString()) ?: false
+    }
+
     private fun hello() = JSONObject()
         .put("type", "hello")
         .put("protocol", PROTOCOL_VERSION)
@@ -190,7 +200,12 @@ class ConnectionService : Service() {
             try {
                 val handler = actions
                     ?: error("Accessibility is off. Turn on OpenMob in Settings › Accessibility.")
-                reply.put("ok", true).put("result", handler.handle(method, params) ?: JSONObject.NULL)
+                val result = handler.handle(method, params)
+                if (result is PhoneActions.Frame) {
+                    sendBinaryResult(reply.put("ok", true).put("result", result.meta()), result.jpeg)
+                    return@execute
+                }
+                reply.put("ok", true).put("result", result ?: JSONObject.NULL)
             } catch (e: Throwable) {
                 reply.put("ok", false).put("error", "${e.javaClass.simpleName}: ${e.message}")
             }

@@ -8,6 +8,7 @@ Phone -> server
     {"type": "hello", "protocol": 1, "device": {"id", "model", "manufacturer", "android"}}   first message
     {"type": "result", "id": "<call id>", "ok": true, "result": <value>}
     {"type": "result", "id": "<call id>", "ok": false, "error": "<message>"}
+    binary frame: a screenshot result asked for with "binary": true (see encode_binary_result)
     {"type": "command", "text": "open youtube"}        user spoke/typed a request on the phone
 Server -> phone
     {"type": "welcome", "session": "<device id>"}       reply to hello
@@ -23,6 +24,8 @@ See docs/phone-protocol.md for the full spec, and METHODS below for every call.
 from __future__ import annotations
 
 import base64
+import json
+import struct
 
 from .adb import Screenshot, UIElement
 
@@ -30,7 +33,13 @@ PROTOCOL_VERSION = 1
 
 # method -> (parameters, result, timeout in seconds)
 METHODS: dict[str, tuple[dict[str, str], str, float]] = {
-    "screenshot": ({}, "Screenshot object (see encode_screenshot)", 30),
+    # All screenshot params are optional and only the live view sends them; an app that ignores
+    # them answers with its normal full-size JSON frame, which the server accepts too.
+    "screenshot": (
+        {"max_side": "int, optional", "quality": "int 1-100, optional", "binary": "bool, optional"},
+        "Screenshot object (see encode_screenshot), or a binary frame if binary was true",
+        30,
+    ),
     "ui_elements": ({}, "list of UIElement objects (see encode_element); [] if unavailable", 15),
     "current_app": ({}, "foreground package name or null", 10),
     "launchable_packages": ({}, "list of package names with a launcher activity", 30),
@@ -57,13 +66,39 @@ def encode_screenshot(shot: Screenshot) -> dict:
 
 
 def decode_screenshot(data: dict) -> Screenshot:
+    jpeg = data["jpeg"]
     return Screenshot(
-        jpeg=base64.b64decode(data["jpeg"]),
+        jpeg=jpeg if isinstance(jpeg, bytes) else base64.b64decode(jpeg),
         width=int(data["width"]),
         height=int(data["height"]),
         device_width=int(data["device_width"]),
         device_height=int(data["device_height"]),
     )
+
+
+def encode_binary_result(call_id: str, shot: Screenshot) -> bytes:
+    """A screenshot result without base64: a 4-byte big-endian header length, the UTF-8 JSON
+    "result" message (its result lacks "jpeg"), then the raw JPEG bytes."""
+    result = {
+        "width": shot.width, "height": shot.height,
+        "device_width": shot.device_width, "device_height": shot.device_height,
+    }
+    header = json.dumps({"type": "result", "id": call_id, "ok": True, "result": result}).encode()
+    return struct.pack(">I", len(header)) + header + shot.jpeg
+
+
+def decode_message(text: str | None, data: bytes | None) -> dict:
+    """One phone->server message from a text or binary WebSocket frame. Raises ValueError if malformed."""
+    if text is not None:
+        return json.loads(text)
+    if not data or len(data) < 4:
+        raise ValueError("Empty binary message")
+    (size,) = struct.unpack(">I", data[:4])
+    message = json.loads(data[4 : 4 + size])
+    if not isinstance(message.get("result"), dict):
+        raise ValueError("Binary message without a result object")
+    message["result"]["jpeg"] = data[4 + size :]
+    return message
 
 
 def encode_element(el: UIElement) -> dict:

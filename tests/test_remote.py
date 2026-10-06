@@ -31,13 +31,15 @@ def free_port() -> int:
 class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
-    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None):
+    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False):
         self.url = f"{url}/phone/ws?t={token}"
         self.key = key
         self.platform = platform
+        self.binary = binary  # answer binary screenshot requests like the current app (else: like an old one)
         self.driver = driver
         self.device_id = device_id
         self.events = []
+        self.calls = []  # (method, params) of every call received
         self.close_code = None
         self.welcome = threading.Event()
         self.loop = asyncio.new_event_loop()
@@ -72,6 +74,10 @@ class FakePhone:
                     elif msg["type"] == "event":
                         self.events.append((msg["kind"], msg["message"]))
                     elif msg["type"] == "call":
+                        self.calls.append((msg["method"], msg["params"]))
+                        if self.binary and msg["method"] == "screenshot" and msg["params"].get("binary"):
+                            await ws.send(protocol.encode_binary_result(msg["id"], self.driver.screenshot()))
+                            continue
                         try:
                             reply = {"ok": True, "result": self.handle(msg["method"], msg["params"])}
                         except Exception as exc:
@@ -193,3 +199,91 @@ def test_iphone_hello_sets_platform(server):
     assert android_session.describe()["platform"] == "android" and android_session.coordinator.agent.platform == "android"
     iphone.disconnect()
     android.disconnect()
+
+
+# --- live screen: preview frames, binary results, the viewer socket ----------------------------
+
+def watch(url, frames=2, headers=None, timeout=5.0):
+    """Open a viewer socket and read `frames` messages. Returns (messages, close code or None)."""
+    async def run():
+        received, code = [], None
+        try:
+            async with websockets.connect(url, additional_headers=headers or {}) as ws:
+                while len(received) < frames:
+                    received.append(await asyncio.wait_for(ws.recv(), timeout))
+        except websockets.ConnectionClosed as exc:
+            code = exc.rcvd.code if exc.rcvd else None
+        return received, code
+
+    return asyncio.run(run())
+
+
+def screenshot_params(phone):
+    return [params for method, params in phone.calls if method == "screenshot"]
+
+
+def test_binary_result_round_trips():
+    shot = FakeDriver().screenshot()
+    message = protocol.decode_message(None, protocol.encode_binary_result("c1", shot))
+    assert message["type"] == "result" and message["id"] == "c1" and message["ok"]
+    assert protocol.decode_screenshot(message["result"]) == shot
+    assert protocol.decode_screenshot(protocol.encode_screenshot(shot)) == shot  # JSON path unchanged
+
+
+def test_viewer_socket_pushes_preview_frames(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    frames, code = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=3)
+    assert code is None and len(frames) == 3
+    assert all(isinstance(f, bytes) and f[:2] == b"\xff\xd8" for f in frames)
+    # The live view asked the phone for small binary frames...
+    assert screenshot_params(phone)[0] == {"max_side": 720, "quality": 55, "binary": True}
+    # ...and the feed stops once nobody is watching.
+    time.sleep(0.5)
+    asked = len(phone.calls)
+    time.sleep(0.5)
+    assert len(phone.calls) == asked
+
+    # The agent's own screenshot is a fresh full-quality call: preview frames are never reused for it.
+    manager.get("app-xyz").driver.screenshot(max_age=60)
+    assert screenshot_params(phone)[-1] == {}
+    phone.disconnect()
+
+
+def test_viewer_socket_works_with_an_app_that_ignores_preview_params(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver())  # answers every screenshot with a full JSON frame
+    assert phone.welcome.wait(5)
+    frames, code = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=2)
+    assert code is None and all(f[:2] == b"\xff\xd8" for f in frames)
+    phone.disconnect()
+
+
+def test_viewer_socket_reports_errors_and_refuses_bad_tokens(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    assert watch(f"{url}/api/devices/app-xyz/screen/ws?t=wrong") == ([], 4401)
+    assert watch(f"{url}/api/devices/app-xyz/screen/ws") == ([], 4401)
+    assert watch(f"{url}/api/devices/app-nope/screen/ws?t={TOKEN}") == ([], 4404)
+    phone.disconnect()
+    assert wait_for(lambda: not manager.get("app-xyz").online)
+    (message,), _ = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=1)
+    assert "disconnected" in json.loads(message)["error"]
+
+
+def test_polling_route_sends_newer_preview_frames(server):
+    import httpx
+
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    base = url.replace("ws://", "http://")
+    first = httpx.get(f"{base}/api/devices/app-xyz/screen.jpg?t={TOKEN}")
+    assert first.status_code == 200 and first.content[:2] == b"\xff\xd8"
+    taken = first.headers["x-frame-time"]
+    again = httpx.get(f"{base}/api/devices/app-xyz/screen.jpg?t={TOKEN}&after={taken}")
+    assert float(again.headers["x-frame-time"]) > float(taken)  # a new frame, not the one already shown
+    assert screenshot_params(phone) == [{"max_side": 720, "quality": 55, "binary": True}] * 2
+    phone.disconnect()

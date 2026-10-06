@@ -105,12 +105,17 @@ class RemoteDriver(CachedScreenshots):
         """Swap in a new connection after the phone reconnects."""
         self.link = link
         self._last_shot = None
+        self._last_preview = None
 
     def _call(self, method: str, **params):
         return self.link.call(method, params)
 
     def _capture(self) -> Screenshot:
         return decode_screenshot(self._call("screenshot"))
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        # Older apps ignore these params and send a full JSON frame; that decodes the same way.
+        return decode_screenshot(self._call("screenshot", max_side=max_side, quality=quality, binary=True))
 
     def ui_elements(self) -> list[UIElement]:
         return [decode_element(i, data) for i, data in enumerate(self._call("ui_elements") or [])]

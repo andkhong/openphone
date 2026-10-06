@@ -198,6 +198,7 @@ class PhoneDriver(CachedScreenshots):
         state = self.__dict__.copy()
         state["_shot_lock"] = None
         state["_last_shot"] = None
+        state["_last_preview"] = None
         return state
 
     # --- low level -------------------------------------------------------
@@ -228,7 +229,7 @@ class PhoneDriver(CachedScreenshots):
 
     # --- observation -----------------------------------------------------
 
-    def _capture(self) -> Screenshot:
+    def _capture(self, max_side: int | None = None, quality: int | None = None) -> Screenshot:
         raw = self._exec(["exec-out", "screencap", "-p"], timeout=30)
         try:
             img = Image.open(io.BytesIO(raw))
@@ -236,12 +237,15 @@ class PhoneDriver(CachedScreenshots):
         except Exception as exc:
             raise AdbError(f"Could not decode screenshot ({len(raw)} bytes): {exc}") from None
         dw, dh = img.size
-        ratio = min(1.0, self.max_side / max(dw, dh))
+        ratio = min(1.0, (max_side or self.max_side) / max(dw, dh))
         if ratio < 1.0:
             img = img.resize((round(dw * ratio), round(dh * ratio)), Image.LANCZOS)
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, "JPEG", quality=self.jpeg_quality)
+        img.convert("RGB").save(buf, "JPEG", quality=quality or self.jpeg_quality)
         return Screenshot(buf.getvalue(), img.width, img.height, dw, dh)
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        return self._capture(min(max_side, self.max_side), quality)
 
     def ui_elements(self, timeout: float = 10) -> list[UIElement]:
         """Accessibility tree of the current screen. Empty for most games."""

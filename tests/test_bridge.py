@@ -8,7 +8,7 @@ from websockets.asyncio.server import serve
 
 from openmob.bridge import BridgeAuthError, PhoneBridge, device_info_from_adb, ws_url
 from openmob.phone.adb import UIElement
-from openmob.phone.protocol import PROTOCOL_VERSION, decode_element, decode_screenshot
+from openmob.phone.protocol import PROTOCOL_VERSION, decode_element, decode_message, decode_screenshot
 
 from conftest import FakeDriver
 
@@ -64,6 +64,40 @@ def test_ws_url_rejects_other_schemes():
 def test_device_info_from_adb():
     driver = SimpleNamespace(serial=None, shell=lambda cmd: "R5CT\nPixel 8\nGoogle\n15\n")
     assert device_info_from_adb(driver) == DEVICE | {"id": "R5CT"}
+
+
+def test_bridge_sends_small_binary_preview_frames():
+    class PreviewDriver(FakeDriver):
+        def capture_preview(self, max_side, quality):
+            self.actions.append(("preview", max_side, quality))
+            return self.screenshot()
+
+    driver = PreviewDriver()
+    seen = {}
+
+    async def handler(ws):
+        await ws.recv()  # hello
+        await ws.send(json.dumps({"type": "welcome", "session": "abc123"}))
+        await call(ws, "1", "screenshot", max_side=720, quality=55, binary=True)
+        seen["raw"] = await ws.recv()
+
+    async def main():
+        async with serve(handler, "127.0.0.1", 0, max_size=None) as server:
+            port = server.sockets[0].getsockname()[1]
+            bridge = PhoneBridge(driver, f"http://127.0.0.1:{port}/", TOKEN, DEVICE, on_event=lambda k, m: None)
+            task = asyncio.create_task(bridge.run())
+            for _ in range(300):
+                if "raw" in seen:
+                    break
+                await asyncio.sleep(0.01)
+            await bridge.stop()
+            await asyncio.wait_for(task, 3)
+
+    asyncio.run(asyncio.wait_for(main(), 5))
+    assert isinstance(seen["raw"], bytes)
+    message = decode_message(None, seen["raw"])
+    assert message["id"] == "1" and decode_screenshot(message["result"]).jpeg[:2] == b"\xff\xd8"
+    assert driver.actions == [("preview", 720, 55)]
 
 
 def test_bridge_serves_calls_events_and_commands():

@@ -17,7 +17,7 @@ Source of truth in the repo: `openmob/phone/protocol.py` (message types, `METHOD
 ```
 
 * The **phone connects out** to the server, so it works behind NAT and on mobile data. The server never connects to the phone.
-* Transport: one WebSocket. Every frame is a **UTF-8 JSON text frame** holding exactly one object with a `"type"` field. Binary data (screenshots) is base64 inside JSON.
+* Transport: one WebSocket. Every frame is a **UTF-8 JSON text frame** holding exactly one object with a `"type"` field. Binary data (screenshots) is base64 inside JSON. The one exception: a `screenshot` call with `"binary": true` may be answered with a binary frame (§4.1).
 * The server is the **RPC client**: it sends `call`s, and the phone replies with exactly one `result` per call.
 * The phone is also the **user's microphone/keyboard**: it sends `command` messages and shows or speaks `event`s.
 
@@ -155,7 +155,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 
 | Method | Params | Result | Timeout |
 |---|---|---|---|
-| `screenshot` | none | Screenshot object | 30 s |
+| `screenshot` | optional `max_side`, `quality: int`, `binary: bool` | Screenshot object (or a binary frame) | 30 s |
 | `ui_elements` | none | array of elements (`[]` if unavailable) | 15 s |
 | `current_app` | none | string or `null` | 10 s |
 | `launchable_packages` | none | array of strings | 30 s |
@@ -182,6 +182,20 @@ Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keepi
 
 The server maps model coordinates with `device_x = round(x * device_width / width)`, so both sizes must be exact and in the same orientation. Use the captured bitmap's own size for `device_*`.
 Errors: if capture fails, reply with an error. The server retries once. If the app blocks capture (`FLAG_SECURE`), send an **all-black image** of the normal size rather than an error. The agent recognises black frames as "this app blocks screen capture".
+
+**Live-view params (optional).** The agent's calls carry no params and always get the frame above. The dashboard's live view asks for smaller frames, typically `{"max_side": 720, "quality": 55, "binary": true}`:
+
+| Param | Meaning |
+|---|---|
+| `max_side` | Use this long-side limit instead of 1280 (never more than 1280). |
+| `quality` | JPEG quality 1-100 instead of ~80. |
+| `binary` | You may answer with one **binary** WebSocket frame instead of a JSON `result`: a 4-byte big-endian length `N`, then `N` bytes of the UTF-8 JSON `result` message whose `result` object has every field except `jpeg`, then the raw JPEG bytes. |
+
+```
+00 00 00 6c  {"type":"result","id":"9b2f…","ok":true,"result":{"width":324,"height":720,"device_width":1080,"device_height":2400}}  FF D8 FF E0 …
+```
+
+All three are optional to implement: an app that ignores them and sends its usual full JSON frame still works (the live view is then just slower). Errors are always JSON `result`s. `PROTOCOL_VERSION` stays `1`, because nothing changes unless the server asks.
 
 ### 4.2 `ui_elements`
 Flatten the accessibility tree of the current screen into a list. Walk the tree **depth-first, pre-order** (parent before children, children in index order, like `uiautomator dump`). Include a node only if it meets all of these:

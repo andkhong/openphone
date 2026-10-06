@@ -10,6 +10,7 @@ import io
 import os
 import socket
 import threading
+import weakref
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
@@ -19,8 +20,9 @@ from pydantic import BaseModel
 
 from .devices import DeviceManager, Session
 from .phone.base import DeviceError
-from .phone.protocol import PROTOCOL_VERSION
+from .phone.protocol import PROTOCOL_VERSION, decode_message
 from .phone.remote import PhoneLink
+from .screencast import ScreenFeed, live_frame
 
 STATIC = Path(__file__).parent / "static"
 PAGE = STATIC / "index.html"
@@ -30,7 +32,6 @@ APK = Path(
     or Path(__file__).resolve().parent.parent / "android" / "app" / "build" / "outputs" / "apk" / "debug" / "app-debug.apk"
 )
 HELLO_TIMEOUT = 10
-SCREEN_MAX_AGE = 1.0  # the live view reuses the agent's frames when they're this fresh
 
 
 class CommandIn(BaseModel):
@@ -267,13 +268,39 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         return [s.describe() for s in manager.sessions_for(account(request))]
 
     @app.get("/api/devices/{device_id}/screen.jpg")
-    def screen(device_id: str, request: Request) -> Response:
+    def screen(device_id: str, request: Request, after: float = 0.0) -> Response:
+        """One live-view frame (polling fallback for screen/ws). `after`: the X-Frame-Time already shown."""
         require_auth(request)
         try:
-            jpeg = owned_session(device_id, request).driver.screenshot(max_age=SCREEN_MAX_AGE).jpeg
+            taken, shot = live_frame(owned_session(device_id, request).driver, newer_than=after)
         except DeviceError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from None
-        return Response(jpeg, media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store", "X-Frame-Time": repr(taken)}
+        return Response(shot.jpeg, media_type="image/jpeg", headers=headers)
+
+    screen_feeds: weakref.WeakKeyDictionary[Session, ScreenFeed] = weakref.WeakKeyDictionary()
+
+    @app.websocket("/api/devices/{device_id}/screen/ws")
+    async def screen_socket(ws: WebSocket, device_id: str) -> None:
+        """Live view, pushed: binary JPEG preview frames (and {"error"} texts) while the viewer is open.
+        Same auth as screen.jpg: cookie or header session, or ?t= in token mode."""
+        await ws.accept()  # accept first: a close before accepting reaches clients as a bare HTTP 403
+        try:
+            require_auth(ws)
+            session = owned_session(device_id, ws)
+        except HTTPException as exc:
+            await ws.close(code=4000 + exc.status_code, reason=str(exc.detail)[:100])  # 4401 or 4404, nothing sent
+            return
+
+        def allowed() -> bool:
+            try:
+                require_auth(ws)
+                return owned_session(device_id, ws) is session
+            except HTTPException:
+                return False
+
+        feed = screen_feeds.get(session) or screen_feeds.setdefault(session, ScreenFeed(session.driver))
+        await feed.serve(ws, allowed)
 
     @app.post("/api/devices/{device_id}/command")
     def command(device_id: str, body: CommandIn, request: Request) -> dict:
@@ -485,7 +512,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         session.coordinator.event("status", f"{session.info.model} connected over the OpenMob app protocol.")
         try:
             while True:
-                message = await ws.receive_json()
+                raw = await ws.receive()
+                if raw["type"] == "websocket.disconnect":
+                    break
+                message = decode_message(raw.get("text"), raw.get("bytes"))  # binary: a screenshot result
                 kind = message.get("type")
                 if kind == "result":
                     link.resolve(message)

@@ -779,25 +779,72 @@ async function statusLoop() {
   }
 }
 
-// Live screen: fetch frames back to back while the panel is visible.
+// Live screen: the server pushes frames over a WebSocket while the panel is visible; if the socket
+// can't be used (e.g. a proxy without WebSocket support) we poll instead, back to back.
+// Show why a frame is missing (e.g. "Accessibility is off…"), minus the exception class name.
+const screenReason = (message) => (message || "screen unavailable").replace(/^\w+(Exception|Error): /, "");
+let frameTime = 0;          // X-Frame-Time of the polled frame on screen; the server sends a newer one
+let screenSocketAfter = 0;  // after a failed socket, poll until this time, then try the socket again
+
+async function showFrame(blob) {
+  const img = $("screen");
+  const old = img.src;
+  img.src = URL.createObjectURL(blob);
+  try { await img.decode(); } catch {}
+  if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+}
+
+// Resolves when the socket closes: true if it worked (or we closed it), false if it failed outright.
+function streamScreen(id) {
+  return new Promise((resolve) => {
+    const proto = location.protocol === "https:" ? "wss:" : "ws:";
+    const query = token ? `?t=${encodeURIComponent(token)}` : "";  // accounts mode: the session cookie
+    const ws = new WebSocket(`${proto}//${location.host}/api/devices/${encodeURIComponent(id)}/screen/ws${query}`);
+    ws.binaryType = "blob";
+    let heard = false, stopped = false, latest = null, drawing = false;
+    const draw = async () => {  // newest frame wins: frames that arrive while one decodes are skipped
+      drawing = true;
+      while (latest) { const blob = latest; latest = null; await showFrame(blob); }
+      drawing = false;
+    };
+    const watch = setInterval(() => {
+      if (id !== deviceId || panelHidden || document.hidden) { stopped = true; ws.close(); }
+    }, 250);
+    ws.onmessage = (e) => {
+      heard = true;
+      if (typeof e.data === "string") {
+        try { screenError = screenReason(JSON.parse(e.data).error); } catch {}
+        return;
+      }
+      screenError = "";
+      latest = e.data;
+      if (!drawing) draw();
+    };
+    ws.onclose = () => { clearInterval(watch); resolve(heard || stopped); };
+  });
+}
+
 async function screenLoop() {
   while (true) {
+    const visible = deviceId && !panelHidden && !document.hidden;
+    if (visible && Date.now() >= screenSocketAfter) {
+      if (!(await streamScreen(deviceId))) screenSocketAfter = Date.now() + 30000;
+      else await new Promise((r) => setTimeout(r, 300));  // brief pause before reconnecting
+      continue;
+    }
     if (deviceId && !panelHidden) {
       try {
-        const res = await api(`/api/devices/${deviceId}/screen.jpg?ts=${Date.now()}`);
-        const url = URL.createObjectURL(await res.blob());
-        const img = $("screen");
-        const old = img.src;
-        img.src = url;
-        if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+        const res = await api(`/api/devices/${deviceId}/screen.jpg?after=${frameTime}`);
+        frameTime = res.headers.get("X-Frame-Time") || 0;
+        await showFrame(await res.blob());
         screenError = "";
       } catch (e) {
-        // Show why (e.g. "Accessibility is off…"), minus the exception class name.
-        screenError = (e.message || "screen unavailable").replace(/^\w+(Exception|Error): /, "");
+        screenError = screenReason(e.message);
         await new Promise((r) => setTimeout(r, 2000));
       }
     }
-    await new Promise((r) => setTimeout(r, document.hidden || panelHidden ? 2000 : 400));
+    // Visible: next frame right away (the server waits for a newer one). Hidden: every 2 s.
+    if (!visible) await new Promise((r) => setTimeout(r, deviceId ? 2000 : 400));
   }
 }
 
