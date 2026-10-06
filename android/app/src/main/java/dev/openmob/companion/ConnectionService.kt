@@ -48,6 +48,7 @@ class ConnectionService : Service() {
         private const val ACTION_STOP = "dev.openmob.STOP"
         private const val CHANNEL = "agent"
         private const val NOTIFICATION_ID = 1
+        private const val OFFER_ID = 3 // "Share your screen for the live view?"
         private const val PROTOCOL_VERSION = 1
         private const val CLOSE_BAD_TOKEN = 4401
         private const val CLOSE_BAD_HELLO = 4400
@@ -162,12 +163,43 @@ class ConnectionService : Service() {
                 main.post {
                     streamer = null
                     send(JSONObject().put("type", "video_state").put("available", false).put("reason", "Screen sharing stopped"))
+                    setScreenSharing(false)
                 }
             }
         } catch (e: Exception) {
             null // e.g. the approval was already used; the dashboard falls back to screenshots
         }
         streamer?.let { send(JSONObject().put("type", "video_state").put("available", true)) }
+        setScreenSharing(streamer != null)
+    }
+
+    private fun setScreenSharing(on: Boolean) {
+        AppState.screenSharing = on
+        if (on) getSystemService(NotificationManager::class.java).cancel(OFFER_ID)
+        AppState.notifyListeners()
+    }
+
+    /**
+     * Screen sharing isn't asked for at setup or on Connect. The first time someone opens this phone's
+     * live view without it, offer it once: a notification that opens the app's "Share screen" step.
+     */
+    private fun offerScreenSharing() {
+        if (streamer?.alive == true || !settings.smoothLiveView || running !== this) return
+        AppState.liveViewRequested = true
+        AppState.notifyListeners()
+        val open = PendingIntent.getActivity(
+            this, 2, Intent(this, MainActivity::class.java).setAction(Shortcuts.SHARE_SCREEN), PendingIntent.FLAG_IMMUTABLE,
+        )
+        getSystemService(NotificationManager::class.java).notify(
+            OFFER_ID,
+            Notification.Builder(this, CHANNEL)
+                .setSmallIcon(android.R.drawable.ic_menu_view)
+                .setContentTitle(getString(R.string.live_view_offer_title))
+                .setContentText(getString(R.string.live_view_offer_text))
+                .setContentIntent(open)
+                .setAutoCancel(true)
+                .build(),
+        )
     }
 
     override fun onDestroy() {
@@ -206,6 +238,8 @@ class ConnectionService : Service() {
         socket = null
         streamer?.release()
         streamer = null
+        setScreenSharing(false)
+        getSystemService(NotificationManager::class.java).cancel(OFFER_ID)
         wakeLock?.takeIf { it.isHeld }?.release()
         running = null
         Approvals.clear(this)
@@ -316,6 +350,10 @@ class ConnectionService : Service() {
     private fun handleEvent(kind: String, text: String) {
         if (kind == "controller") {
             main.post { setController(text.trim()) }
+            return
+        }
+        if (kind == "live_view") { // the dashboard opened the live view and this connection has no screen sharing
+            main.post { offerScreenSharing() }
             return
         }
         AppState.addEvent(kind, text)

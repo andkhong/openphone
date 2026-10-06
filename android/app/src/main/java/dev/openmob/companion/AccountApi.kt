@@ -9,54 +9,70 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 /**
- * Blocking HTTP calls to the OpenMob server's account and pairing endpoints. Call only from a
- * background thread. Failures throw [ApiError] with a message fit to show the user.
+ * Blocking HTTP calls to the OpenMob server's pairing endpoints. Call only from a background
+ * thread. Failures throw [ApiError] with a message fit to show the user.
+ *
+ * Pairing never leaves a dashboard session on the phone: a pairing code is the credential
+ * ([check], then [claim] after the owner confirms), and the phone keeps only its own device key.
+ * The sign-in fallback ([signIn] → [mintCode]) uses a session for a few seconds, in memory, and
+ * signs it out again ([logout]) before the owner is even asked to confirm.
  */
 class AccountApi(server: String) {
     class ApiError(message: String, val status: Int = 0) : Exception(message)
 
-    data class Me(val accounts: Boolean, val email: String?)
-    data class SignedIn(val email: String, val session: String)
+    /** Who a pairing code would pair this phone with, shown in the screen-lock prompt. */
+    data class CodeInfo(val email: String)
+    data class Claimed(val key: String, val email: String)
 
     private val base = server.trim().trimEnd('/')
 
-    fun login(email: String, password: String): SignedIn = signIn("/api/auth/login", email, password)
-
-    fun signup(email: String, password: String): SignedIn = signIn("/api/auth/signup", email, password)
-
-    fun me(session: String): Me {
-        val body = call(Request.Builder().url("$base/api/auth/me").header(SESSION_HEADER, session).get().build())
-        val email = if (body.isNull("email")) null else body.optString("email").ifBlank { null }
-        return Me(body.optBoolean("accounts", false), email)
+    fun check(code: String): CodeInfo {
+        val body = call(post("/api/pair/check", JSONObject().put("code", code)))
+        return CodeInfo(body.optString("email").ifBlank { throw ApiError("The server didn't say which account this is.") })
     }
 
-    /** Returns this phone's device key. */
-    fun redeem(session: String, code: String, deviceId: String, model: String, approvalKey: String? = null): String {
+    /** Redeem the code for this phone's own device key. No session: the code is the credential. */
+    fun claim(code: String, deviceId: String, model: String, approvalKey: String?): Claimed {
         val json = JSONObject().put("code", code).put("device_id", deviceId).put("model", model)
             .apply { if (approvalKey != null) put("approval_key", approvalKey) }
-        val body = call(
-            Request.Builder().url("$base/api/pair/redeem").header(SESSION_HEADER, session).post(json.toBody()).build()
-        )
-        return body.optString("key").ifBlank { throw ApiError("The server did not return a device key.") }
+        val body = call(post("/api/pair/claim", json))
+        val key = body.optString("key").ifBlank { throw ApiError("The server did not return a device key.") }
+        return Claimed(key, body.optString("email"))
     }
 
-    /** Best effort: revoke this phone's key and end the session. Errors are ignored. */
-    fun unpair(session: String, deviceId: String) {
-        val empty = JSONObject().toBody()
-        listOf("$base/api/devices/$deviceId/revoke", "$base/api/auth/logout").forEach { url ->
-            try {
-                client.newCall(Request.Builder().url(url).header(SESSION_HEADER, session).post(empty).build())
-                    .execute().close()
-            } catch (_: Exception) {
-            }
+    /** Fallback without a laptop: sign in, returning a session that the caller keeps in memory only. */
+    fun signIn(email: String, password: String, create: Boolean): String {
+        val creds = JSONObject().put("email", email).put("password", password)
+        if (create) call(post("/api/auth/signup", creds)) // same reply whether or not the email was new
+        val body = call(post("/api/auth/login", creds))
+        return body.optString("session").ifBlank { throw ApiError("The server did not return a session.") }
+    }
+
+    /** A pairing code for this account, made with a just-signed-in session. */
+    fun mintCode(session: String): String {
+        val body = call(post("/api/pairing", JSONObject(), session))
+        if (!body.optBoolean("accounts", false)) throw ApiError("This server doesn't use accounts.")
+        return body.optString("code").ifBlank { throw ApiError("The server did not return a pairing code.") }
+    }
+
+    /** Best effort: end a session on the server. */
+    fun logout(session: String) = quietly(post("/api/auth/logout", JSONObject(), session))
+
+    /** Best effort: revoke this phone's pairing, proven with its own device key. */
+    fun unpair(deviceId: String, deviceKey: String) = quietly(
+        Request.Builder().url("$base/api/phone/unpair").header(DEVICE_KEY_HEADER, deviceKey)
+            .post(JSONObject().put("device_id", deviceId).toBody()).build()
+    )
+
+    private fun post(path: String, json: JSONObject, session: String? = null): Request =
+        Request.Builder().url(base + path).post(json.toBody())
+            .apply { if (session != null) header(SESSION_HEADER, session) }.build()
+
+    private fun quietly(request: Request) {
+        try {
+            client.newCall(request).execute().close()
+        } catch (_: Exception) {
         }
-    }
-
-    private fun signIn(path: String, email: String, password: String): SignedIn {
-        val json = JSONObject().put("email", email).put("password", password)
-        val body = call(Request.Builder().url(base + path).post(json.toBody()).build())
-        val session = body.optString("session").ifBlank { throw ApiError("The server did not return a session.") }
-        return SignedIn(body.optString("email").ifBlank { email }, session)
     }
 
     private fun call(request: Request): JSONObject {
@@ -81,6 +97,7 @@ class AccountApi(server: String) {
 
     companion object {
         const val SESSION_HEADER = "X-OpenMob-Session"
+        const val DEVICE_KEY_HEADER = "X-OpenMob-Device-Key"
         private val JSON = "application/json; charset=utf-8".toMediaType()
         private val client = OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
