@@ -74,6 +74,12 @@ class CachedScreenshots:
             self._last_preview = (time.time(), shot)
             return self._last_preview
 
+    def latest_capture(self) -> Screenshot | None:
+        """The newest frame already captured (the agent's or the live view's), or None; never captures.
+        Its device_width/height are the screen's size (a preview frame is smaller, the device isn't)."""
+        frames = [c for c in (self._last_shot, self._last_preview) if c]
+        return max(frames, key=lambda c: c[0])[1] if frames else None
+
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot:
         with self._shot_lock:
             if self._last_shot and time.time() - self._last_shot[0] <= max_age:

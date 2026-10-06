@@ -98,6 +98,30 @@ class StepChoice:
     targets: dict  # operation -> (choice, probability, confidence) from its target head
 
 
+# The risky-tap check's questions with the target named in the question itself, so one request can
+# ask them about many candidate targets at once (see JevJudge.observe_step).
+RISK_ITEM_INSTRUCTIONS = (
+    "The agent may tap `tap_target` on this phone. Would that tap spend money, send a message or post, delete "
+    "data, or change account or security settings?"
+)
+REQUESTED_ITEM_INSTRUCTIONS = (
+    "Does `user_request` explicitly ask the agent to do what tapping `tap_target` would do? For example, "
+    "'send hello to Sam' explicitly asks for tapping Send; 'open my email' does not."
+)
+SCREEN_STATE_INSTRUCTIONS = "Which kind of phone screen is described in screen? Use the words on the screen and the foreground app."
+DONE_INSTRUCTIONS = "Does the screen show that user_request has already been fully carried out?"
+
+
+@dataclass
+class StepVerdict:
+    """observe_step's answers: the screen assessment, the fast path's choice, and tap risk per
+    candidate target key ({key: risk}, {key: requested} for the targets asked about)."""
+    assessment: ScreenAssessment
+    choice: StepChoice
+    risks: dict
+    requested: dict
+
+
 def _choice(answer: dict) -> tuple[str, float, float]:
     choice = str(answer["choice"])
     return choice, float((answer.get("probabilities") or {}).get(choice, 0.0)), float(answer.get("confidence", 0.0))
@@ -171,21 +195,18 @@ class JevJudge:
         self.on_timing = None
 
     def assess_screen(self, request: str, screen: dict) -> ScreenAssessment:
-        answers = self.client.ask(
-            {"user_request": request, "screen": screen},
-            {
-                "state": {
-                    "type": "choice",
-                    "instructions": "Which kind of phone screen is described in screen? Use the words on "
-                                    "the screen and the foreground app.",
-                    "criteria": SCREEN_STATES,
-                },
-                "done": {
-                    "type": "noul",
-                    "instructions": "Does the screen show that user_request has already been fully carried out?",
-                },
-            },
-        )
+        answers = self.client.ask({"user_request": request, "screen": screen}, self._screen_questions())
+        return self._assessment(answers)
+
+    @staticmethod
+    def _screen_questions() -> dict:
+        return {
+            "state": {"type": "choice", "instructions": SCREEN_STATE_INSTRUCTIONS, "criteria": SCREEN_STATES},
+            "done": {"type": "noul", "instructions": DONE_INSTRUCTIONS},
+        }
+
+    @staticmethod
+    def _assessment(answers: dict) -> ScreenAssessment:
         state = answers["state"]
         return ScreenAssessment(
             state=state["choice"],
@@ -212,6 +233,14 @@ class JevJudge:
         `targets` maps an operation (TAP, TYPE_TEXT) to its compatible elements {index: description};
         an operation needing a target that has none is left out of the choice. Each target head is
         its own choice question in the same request (the pattern of browser-use/jev-ultrafast)."""
+        answers = self.client.ask(
+            {"user_request": request, "screen": screen, "recent_actions": recent_actions[-RECENT_ACTIONS:]},
+            self._step_questions(targets),
+        )
+        return self._step_choice(answers, targets)
+
+    @staticmethod
+    def _step_questions(targets: dict[str, dict[str, str]]) -> dict:
         operations = {op: text for op, text in OPERATIONS.items() if op not in TARGETED or targets.get(op)}
         questions = {"operation": {"type": "choice", "instructions": NEXT_STEP_INSTRUCTIONS, "criteria": operations}}
         for op, candidates in targets.items():
@@ -222,10 +251,10 @@ class JevJudge:
                     "instructions": TARGET_INSTRUCTIONS[op],
                     "criteria": dict(items),
                 }
-        answers = self.client.ask(
-            {"user_request": request, "screen": screen, "recent_actions": recent_actions[-RECENT_ACTIONS:]},
-            questions,
-        )
+        return questions
+
+    @staticmethod
+    def _step_choice(answers: dict, targets: dict) -> StepChoice:
         operation = _choice(answers["operation"])
         chosen = {}
         for op in targets:
@@ -233,6 +262,28 @@ class JevJudge:
             if key in answers:
                 chosen[op] = _choice(answers[key])
         return StepChoice(*operation, targets=chosen)
+
+    def observe_step(self, request: str, screen: dict, recent_actions: list[dict], targets: dict[str, dict[str, str]],
+                     risk_targets: dict[str, str], requested_targets: dict[str, str]) -> StepVerdict:
+        """One request per step: assess_screen's heads (screen state, task done), next_step's heads
+        (operation and targets), and the risky-tap check's two questions for candidate targets
+        (`risk_targets` / `requested_targets`: {key: target description}). Every question sees the
+        same state and is answered independently, in parallel (docs.typesafe.ai: ask multiple
+        questions together), so this takes about as long as one of the separate calls."""
+        questions = {**self._screen_questions(), **self._step_questions(targets)}
+        for key, target in risk_targets.items():
+            questions[f"risky_{key}"] = {"type": "noul",
+                                         "instructions": {"tap_target": target, "question": RISK_ITEM_INSTRUCTIONS}}
+        for key, target in requested_targets.items():
+            questions[f"requested_{key}"] = {"type": "noul",
+                                             "instructions": {"tap_target": target, "question": REQUESTED_ITEM_INSTRUCTIONS}}
+        answers = self.client.ask(
+            {"user_request": request, "screen": screen, "recent_actions": recent_actions[-RECENT_ACTIONS:]},
+            questions,
+        )
+        risks = {k: float(answers[f"risky_{k}"]["noul"]) for k in risk_targets if f"risky_{k}" in answers}
+        requested = {k: float(answers[f"requested_{k}"]["noul"]) for k in requested_targets if f"requested_{k}" in answers}
+        return StepVerdict(self._assessment(answers), self._step_choice(answers, targets), risks, requested)
 
     def pick_package(self, spoken_name: str, candidates: dict[str, str]) -> tuple[str | None, float, float]:
         """Choose which package matches a spoken app name. Returns (package|None, probability, confidence)."""
