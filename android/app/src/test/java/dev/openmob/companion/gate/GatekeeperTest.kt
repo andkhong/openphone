@@ -192,4 +192,19 @@ class GatekeeperTest {
         assertFalse(RULES.blocked("com.amazon.mShop.android.shopping"))
         assertFalse(RULES.blocked("com.google.android.apps.photos"))
     }
+
+    /** B7 (emulator): a tap judged on a window list that hadn't caught up with a launching blocked app landed in it.
+     *  Admitted gestures wait for the list to settle; other calls and refusals don't. */
+    @Test fun admittedGesturesWaitForTheWindowListToSettle() {
+        val tap = Admission("allow", method = "tap", params = buy)
+        assertEquals(Gatekeeper.SETTLE_MS, gk.settleMs(tap, 0))
+        assertEquals(Gatekeeper.SETTLE_MS - 100, gk.settleMs(tap, 100))
+        assertEquals(0L, gk.settleMs(tap, Gatekeeper.SETTLE_MS))
+        assertEquals(0L, gk.settleMs(tap, 5_000))
+        assertEquals(Gatekeeper.SETTLE_MS, gk.settleMs(Admission("allow", method = "swipe"), 0))
+        assertEquals(Gatekeeper.SETTLE_MS, gk.settleMs(Admission("allow", method = "long_press"), 0))
+        assertEquals(0L, gk.settleMs(Admission("allow", method = "type_text"), 0))
+        assertEquals(0L, gk.settleMs(Admission("refuse", method = "tap"), 0))
+        assertTrue(Gatekeeper.SETTLE_MS > 100) // the service's notificationTimeout (accessibility_service_config.xml)
+    }
 }

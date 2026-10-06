@@ -114,6 +114,11 @@ object GateHost {
         if (adm == null || !adm.allowed) return null
         val g = gk()
         val deadline = SystemClock.uptimeMillis() + QUIET_WAIT_MS
+        while (SystemClock.uptimeMillis() < deadline) { // a window that just appeared reaches the list first (B7)
+            val wait = g.settleMs(adm, SystemClock.uptimeMillis() - service.lastChangeAt)
+            if (wait <= 0) break
+            SystemClock.sleep(minOf(wait, deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
+        }
         while (true) {
             val out = g.reverify(adm, screen(service, adm.method, adm.params))
             if (out.code != "gate_screen_unstable" || SystemClock.uptimeMillis() >= deadline) return out.takeIf { !it.allowed }

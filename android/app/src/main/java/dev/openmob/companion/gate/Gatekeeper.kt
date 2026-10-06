@@ -481,6 +481,14 @@ class Gatekeeper(
 
     // --- reverify: right before the side effect, under the gesture lock (D8) ------------------------
 
+    /** How much longer an admitted gesture waits for the window list to settle before [reverify] (B7): the list the
+     *  gate reads lags the screen by the accessibility event delay, so right after a window change (an app's launch
+     *  screen giving way to its first frame) a tap judged on the old list could land in a window that just appeared,
+     *  such as a blocked app. Waiting until nothing has changed for [SETTLE_MS] lets that window show up in the list
+     *  first. Never longer than the caller's deadline; a screen that never settles is judged as it is. */
+    fun settleMs(adm: Admission, quietMs: Long): Long =
+        if (adm.allowed && adm.method in GESTURES) maxOf(0L, SETTLE_MS - quietMs) else 0L
+
     fun reverify(adm: Admission, screen: GScreen): Admission = synchronized(lock) {
         if (!adm.allowed || adm.method !in rules.act) return adm
         val j = judge(adm.method, adm.params, screen)
@@ -948,6 +956,9 @@ class Gatekeeper(
     companion object {
         private val PERMISSION_APP = Regex("(?i)^allow\\s+(.+?)\\s+to\\s")
         val RANK = mapOf("ask" to 0, "plan" to 1, "auto" to 1, "trusted" to 2, "never" to 3)
+        /** Well over the accessibility service's notificationTimeout (100 ms), the event delay the list lags by. */
+        const val SETTLE_MS = 250L
+        val GESTURES = setOf("tap", "long_press", "swipe")
 
         /** A record's canonical text: sorted key=value pairs (booleans as 1/0). */
         fun canon(record: Map<String, Any?>): String = record.filterValues { it != null }.toSortedMap().entries
