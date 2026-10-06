@@ -12,18 +12,19 @@ import time
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Protocol
+from urllib.parse import quote
 
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError
-from ..phone.apps import AppResolver
+from ..phone.apps import NOT_LAUNCHABLE, AppResolver
 from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate, waiting
+from . import fast, gate, permission_dialogs, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
@@ -62,6 +63,12 @@ BRIEF_REPLIES = ("\nReply briefly: at most one short sentence about what you see
                  "No lists, no restating the request.\n")
 # Per-step model cost, recorded with each step (the steps table, `openmob timings`).
 STEP_TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "vision_image_side")
+# A screen that can't be read yet (a dialog Android hides from accessibility, the phone's OCR still reading it): poll
+# this long for it to become readable before the model looks at it or an action is reported as failed.
+READABLE_WAIT_S = 1.5
+READABLE_POLL_S = 0.15
+# A refusal that means "the phone can't read what's there yet", not "no" (the gatekeeper's code).
+UNREADABLE_CODES = {"gate_screen_unstable"}
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -172,6 +179,8 @@ class _TaskState:
     prompts: int = 0
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
     tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
+    app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
+    unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
 
 
 def is_yes(answer: str) -> bool:
@@ -293,6 +302,16 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
+            if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
+                state.app_in_front = obs.package
+            for _ in range(3):  # Android's permission dialogs: answered by rule, before any model sees them
+                if not self._permission_dialog(state, obs):
+                    break
+                self._settle(self.config.settle_delay, state)
+                obs = self._observe_settled(state)
+                self._show_later(state, messages, obs)
+            if state.cancel.is_set():
+                return AgentResult(False, "Stopped.", step - 1)
 
             self._apply_corrections(state, messages)
             if state.fast and not state.vision_next and not self._needs_plan(state):
@@ -551,6 +570,14 @@ class Agent:
     def _observe_settled(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
         """Observe, and sit out loading screens without spending a Claude call on each one."""
         obs = self._observe(state, before, pending)
+        if self._unreadable(obs.package, obs.elements):
+            seen = waiting.signature(obs.package, obs.elements)
+            if seen != state.unreadable_seen:  # once per screen: one that never gets readable costs one wait
+                state.unreadable_seen = seen
+                if self._await_readable(state):
+                    obs = self._observe(state, before, pending)  # it became readable: look again
+        else:
+            state.unreadable_seen = None
         while self._is_loading(obs) and state.auto_waited < self.config.jev_auto_wait_seconds:
             if state.cancel.is_set():
                 break
@@ -742,11 +769,16 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False,
-                 done_via: str = "vision") -> Outcome:
+                 done_via: str = "vision", source: str | None = None) -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
-                outcome = self._dispatch(name, args, obs, state)
+                try:
+                    outcome = self._dispatch(name, args, obs, state)
+                except DeviceError as exc:
+                    if getattr(exc, "code", None) not in UNREADABLE_CODES:
+                        raise
+                    outcome = self._when_readable(name, args, obs, state, exc)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         if outcome.done:
@@ -757,7 +789,7 @@ class Agent:
         if name in MOVES_SCREEN and not outcome.is_error:
             state.acted_on = obs
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
-        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step)
+        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, source)
         return outcome
 
     def _note_tokens(self, tokens, image_side: int | None = None) -> None:
@@ -775,7 +807,7 @@ class Agent:
         self._step_tokens = step
 
     def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float,
-                     fast_step: bool = False) -> None:
+                     fast_step: bool = False, source: str | None = None) -> None:
         """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
         Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
         record = getattr(self.io, "record_step", None)
@@ -813,6 +845,7 @@ class Agent:
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
                 "done_via": outcome.done_via, **(outcome.tokens or {}),
+                **({"source": source} if source else {}),
                 **(outcome.wait or state.settle_wait or {}),
             }
             record(row)
@@ -840,34 +873,13 @@ class Agent:
         if name == "propose_plan":
             return self._propose_plan(args, state)
         if name == "launch_app":
-            resolution = self.resolver.resolve(args["app"])
-            if resolution is None:
-                closest = ", ".join(f"{name} ({pkg})" for name, pkg in self.resolver.installed_apps(args["app"])[:5])
-                return Outcome(
-                    f"No installed app clearly matches {args['app']!r}. Closest: {closest}. Retry launch_app with "
-                    "an exact package if one of these is right, or check list_apps. Otherwise press HOME, open the "
-                    "app drawer, and search there.",
-                    is_error=True,
-                    settle=0,
-                )
-            if self._is_blocked(state, resolution.package):
-                return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
-            state.money_followup = None  # an app switch ends a payment's follow-up
-            self.driver.launch_app(resolution.package)
-            if state.task_app is None and not gate.is_launcher(resolution.package):
-                state.task_app = resolution.package
-            return Outcome(
-                f"Launched {resolution.package} (matched by {resolution.method}).",
-                settle=self.config.launch_settle_delay,
-                launched=resolution.package,
-                until="loading_done",
-            )
+            return self._launch_app(args, obs, state)
 
         if name == "list_apps":
-            apps = self.resolver.installed_apps(args.get("query", ""))
-            if args.get("query"):
-                apps = apps[:15]
-            return Outcome("\n".join(f"{n} ({p})" for n, p in apps) or "No apps found.", settle=0)
+            # Fresh from the phone: an app installed or removed since the last look shows as it is now.
+            self.resolver.packages(refresh=True)
+            text = self.resolver.listing(args.get("query", ""), limit=15 if args.get("query") else None)
+            return Outcome(text or "No apps found.", settle=0)
 
         if name == "open_url":
             url = gate.web_url(str(args["url"]))
@@ -1014,6 +1026,69 @@ class Agent:
 
         return Outcome(f"Unknown tool {name}.", is_error=True)
 
+    # --- opening apps ------------------------------------------------------------------------------
+
+    def _launch_app(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        """launch_app. An app that isn't installed, or is only archived (Android 15 keeps an archived app listed
+        with no launchable activity), is reported as not installed with the way to install it; with
+        install_if_missing its Play Store page opens instead (the same checks as open_url)."""
+        app = str(args["app"])
+        install = bool(args.get("install_if_missing"))
+        resolution = self.resolver.resolve(app)
+        if resolution is None:
+            self.resolver.packages(refresh=True)  # installed since the list was read?
+            resolution = self.resolver.resolve(app)
+        if resolution is None:
+            if install:
+                return self._open_store(f"market://search?q={quote(app)}&c=apps", obs, state,
+                                        f"No installed app matches {app!r}, so I opened a Play Store search for it.")
+            closest = ", ".join(f"{name} ({pkg})" for name, pkg in self.resolver.installed_apps(app)[:5])
+            return Outcome(
+                f"No installed app clearly matches {app!r}. Closest: {closest}. Retry launch_app with "
+                "an exact package if one of these is right, or check list_apps. To install it, launch_app with "
+                "install_if_missing. Otherwise press HOME, open the app drawer, and search there.",
+                is_error=True,
+                settle=0,
+            )
+        package = resolution.package
+        if self._is_blocked(state, package):
+            return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
+        state.money_followup = None  # an app switch ends a payment's follow-up
+        try:
+            self.driver.launch_app(package)
+        except DeviceError as exc:
+            if not NOT_LAUNCHABLE.search(str(exc)) or getattr(exc, "code", None):
+                raise
+            self.resolver.mark_archived(package)
+            store = f"market://details?id={package}"
+            if install:
+                return self._open_store(store, obs, state, f"{package} isn't installed (archived), so I opened its "
+                                                           "Play Store page.")
+            return Outcome(f"{package} isn't installed (archived: Android removed it but keeps it listed). Install "
+                           f"it: launch_app with install_if_missing, or open_url {store}.", is_error=True, settle=0)
+        self.resolver.mark_archived(package, False)
+        if state.task_app is None and not gate.is_launcher(package):
+            state.task_app = package
+        return Outcome(
+            f"Launched {package} (matched by {resolution.method}).",
+            settle=self.config.launch_settle_delay,
+            launched=package,
+            until="loading_done",
+        )
+
+    def _open_store(self, url: str, obs: Observation, state: _TaskState, text: str) -> Outcome:
+        """launch_app's install_if_missing: the app's Play Store page, through open_url's checks. In Ask every step
+        the owner approved opening the app, not the store: the model is told the link instead."""
+        if state.perms.mode() == "ask":
+            return Outcome(f"{text.split(',')[0]}. To install it, open_url {url}.", is_error=True, settle=0)
+        refused, resolved = self._check_url(url, state)
+        if refused:
+            return refused
+        self.driver.open_url(url)
+        if not resolved and (backed := self._back_out_if_blocked(state, obs.package)):
+            return backed
+        return Outcome(text, settle=self.config.launch_settle_delay, until="loading_done")
+
     # --- waiting for something observable (agent/waiting.py) ---------------------------------------
 
     def _waiter(self, state: _TaskState) -> waiting.Waiter:
@@ -1043,7 +1118,8 @@ class Agent:
             cond.target = resolution.package
         self.io.event("status", f"Waiting until {cond.describe()} (up to {cond.timeout_s:g}s)…")
         with self.timer.phase("settle"):
-            result = self._waiter(state).run(cond, baseline=(obs.package, obs.elements))
+            result = self._waiter(state).run(cond, baseline=(obs.package, obs.elements),
+                                             still_exit_s=waiting.STILL_EXIT_S)
         if result.stopped == "disconnected":
             raise DeviceError(result.seen)
         return Outcome(result.text(cond), settle=0, wait=self._wait_record(cond, result))
@@ -1078,6 +1154,114 @@ class Agent:
                 f" Stopped waiting for the install after {secs:.1f}s: {result.seen}.")
         return Outcome(tapped + note, settle=0 if result.met else None,
                        wait=self._wait_record(cond, result, auto=True))
+
+    # --- Android permission dialogs, by rule (agent/permission_dialogs.py) -----------------------------
+
+    def _permission_prompts(self, state: _TaskState) -> dict:
+        """The owner's answers per permission type: config permission_prompts over the defaults."""
+        return {**permission_dialogs.DEFAULTS, **(getattr(self.config, "permission_prompts", None) or {})}
+
+    def _permission_dialog(self, state: _TaskState, obs: Observation) -> bool:
+        """Answer a runtime permission dialog on screen by the owner's defaults, with no model call: notifications
+        Allow, location Approximate then "Only this time", camera, microphone, nearby devices and the like "Only
+        this time", photos "Allow limited access", never "Allow all the time"; another app's request asks the owner.
+        Left to the model when the request itself says how to answer ("don't allow notifications"), or before an
+        approved plan. Each tap goes through the usual checks (and, on a gatekeeper phone, the phone's own) and is
+        recorded as a step with source "auto_dialog". True: one was answered (the caller looks again)."""
+        if not getattr(self.config, "auto_permission_dialogs", True) or self._needs_plan(state):
+            return False
+        if permission_dialogs.request_mentions_permissions(state.task):
+            return False
+        dialog = permission_dialogs.detect(obs.package, obs.elements)
+        if dialog is None:
+            return False
+        mode = state.perms.mode()
+        task_app = state.app_in_front
+        plan = permission_dialogs.decide(dialog, mode=mode, prompts=self._permission_prompts(state),
+                                         task_app_label=self._app_label(task_app) if task_app else None,
+                                         task_package=task_app)
+        asked = plan.answer == "ask"
+        answer = plan.answer
+        if asked:
+            reply = self._ask_owner(state, permission_dialogs.question(dialog),
+                                    {"kind": "action", "action_kind": "permission", "package": obs.package})
+            answer = "allow" if is_yes(reply) else "deny"
+        target = permission_dialogs.button(dialog, answer, plan.grant, asked=asked)
+        if target is None:
+            return False
+        self.io.event("status", f"Permission dialog ({dialog.kind}, {dialog.app or 'an app'}): "
+                                f"{'asked the owner, ' if asked else ''}{answer}"
+                                f"{f' ({plan.accuracy})' if answer == 'allow' and plan.accuracy else ''}.")
+
+        if state.task_app is None and state.app_in_front and not gate.is_launcher(state.app_in_front):
+            state.task_app = state.app_in_front  # the dialog is not the task's app
+
+        def tap(element) -> bool:
+            # Decided above by the owner's defaults (and, for a yes, the owner): the server's own risky-tap check
+            # doesn't ask again. Refusals still apply, and a gatekeeper phone checks each tap itself.
+            state.approved = True
+            try:
+                outcome = self._execute("tap_element", {"index": element.index, "target": element.text},
+                                        obs, state, fast_step=True, source="auto_dialog")
+            finally:
+                state.approved = False
+            state.fast_steps += 1
+            return not outcome.is_error
+
+        if answer == "allow" and (card := permission_dialogs.accuracy_card(dialog, plan.accuracy)) is not None:
+            tap(card)  # Approximate unless the owner chose Precise, before the grant
+        if not tap(target) and answer == "allow":  # e.g. the owner said no on the phone's own prompt
+            deny = permission_dialogs.button(dialog, "deny")
+            if deny is not None:
+                tap(deny)
+        return True
+
+    # --- a screen that can't be read yet -------------------------------------------------------------
+
+    @staticmethod
+    def _unreadable(package: str | None, elements: list[UIElement]) -> bool:
+        """Something on top that can't be read yet: an unidentified window (no package) or a permission
+        controller with nothing labeled, or a screen whose every labeled element is covered by a higher window."""
+        labeled = [e for e in elements if e.text or e.desc]
+        if not labeled:
+            return package is None or bool(permission_dialogs.PACKAGES.search(package))
+        return all(e.covered for e in labeled)
+
+    def _await_readable(self, state: _TaskState, budget: float = READABLE_WAIT_S) -> bool:
+        """Poll (no model calls) up to `budget` for an unreadable screen to become readable: the phone's OCR of a
+        hidden dialog takes 0.1-0.5 s. Only on phones whose element list is quick to read. True: readable now."""
+        if not getattr(self.driver, "fast_ui_tree", False):
+            return False
+        deadline = time.monotonic() + budget
+        with self.timer.phase("settle"):
+            while time.monotonic() < deadline and not state.cancel.is_set():
+                state.cancel.wait(READABLE_POLL_S)
+                try:
+                    if not self._unreadable(self.driver.current_app(), self.driver.ui_elements()):
+                        return True
+                except DeviceError:
+                    return False
+        return False
+
+    def _when_readable(self, name: str, args: dict, obs: Observation, state: _TaskState, exc: DeviceError) -> Outcome:
+        """The phone couldn't read where the action lands yet ("The phone can't see what's there"): wait briefly
+        for the screen to become readable, then run the action once more if the screen is still the one it was
+        decided on. If it changed (a dialog opened over it), nothing is done and the next look shows why (a
+        permission dialog is then answered by rule)."""
+        readable = self._await_readable(state)
+        if not readable or state.perms.mode() == "ask":
+            return Outcome(f"Error: {exc}", is_error=True, settle=0)
+        try:
+            package, elements = self.driver.current_app(), self.driver.ui_elements()
+        except DeviceError:
+            return Outcome(f"Error: {exc}", is_error=True, settle=0)
+        same = (waiting.signature(package, elements) == waiting.signature(obs.package, obs.elements)
+                and sum(e.covered for e in elements) == sum(e.covered for e in obs.elements))
+        if not same:
+            return Outcome("Didn't do it: the screen changed while the phone couldn't read it (a dialog may have "
+                           "opened). Look at the new screen.", is_error=True, settle=0)
+        self.io.event("status", "The screen is readable now; trying that once more.")
+        return self._dispatch(name, args, obs, state)
 
     def _keyword_hits(self, text: str) -> list[str]:
         target = text.lower()

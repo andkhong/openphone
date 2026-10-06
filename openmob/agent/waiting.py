@@ -40,6 +40,11 @@ POLL_SECONDS = 0.7  # between polls on phones without wait_idle (adb dumps take 
 LOADING_QUIET_MS = 500  # loading_done: the screen must also have been quiet this long
 PHONE_CHUNK_MS = 10_000  # one wait_for call at most, so a stop is noticed between calls
 OCR_POLL_SECONDS = 1.0
+# Text, element and app conditions end early ("not met: the screen is still") once the screen has been completely
+# still this long with nothing loading on it: a label that isn't there on a still screen isn't coming by waiting
+# (a guessed "3." in a chess game). A spinner, progress bar or "Installing…" keeps the full timeout.
+STILL_EXIT_S = 2.5
+STILL_EXIT_CONDITIONS = {"text_appears", "text_disappears", "element_enabled", "app_in_front"}
 
 FRAME_SIZE = (18, 32)  # a frame for comparing treeless screens: 18 x 32 grayscale cells
 FRAME_CHANGED_CELL = 24  # a cell moved this much (of 255)...
@@ -82,7 +87,7 @@ class WaitResult:
     seen: str  # what matched, or what the screen shows at the timeout
     via: str  # phone (wait_for) | poll (element list) | frames (treeless screen) | none (stopped before reading)
     package: str | None = None
-    stopped: str | None = None  # why it ended without a verdict: cancelled | blocked | disconnected
+    stopped: str | None = None  # why it ended without a verdict: cancelled | blocked | disconnected | still
 
     def text(self, cond: Condition) -> str:
         secs = self.waited_ms / 1000
@@ -90,6 +95,10 @@ class WaitResult:
             return "Stopped while waiting."
         if self.stopped == "blocked":
             return f"Stopped waiting after {secs:.1f}s: {self.seen}"
+        if self.stopped == "still":
+            return (f"Not met after {secs:.1f}s: the screen has been still with nothing loading, so {cond.describe()} "
+                    f"isn't coming by waiting. Now: {self.seen}. Look at the screen and decide what to do next "
+                    "(in a game, wait_until screen_changes instead of guessing at text).")
         if self.met:
             return f"{cond.describe()} met after {secs:.1f}s: {self.seen}"
         return (f"Timed out after {secs:.1f}s waiting for {cond.describe()}. Now: {self.seen}. Look at the "
@@ -187,6 +196,23 @@ def frame_changed(a: list[int], b: list[int]) -> bool:
 
 def frame_still(a: list[int], b: list[int]) -> bool:
     return all(abs(x - y) <= FRAME_STILL_CELL for x, y in zip(a, b))
+
+
+def moved(a: "_Look", b: "_Look") -> bool:
+    """Whether the screen moved between two looks: another app, other labels (signature), or, on a screen read as
+    frames, any visible motion."""
+    if a.package != b.package:
+        return True
+    if labeled(a.elements) or labeled(b.elements):
+        if signature(a.package, a.elements) != signature(b.package, b.elements):
+            return True
+        # OCR text (a treeless screen read for a text condition) counts too: a game board's moves.
+        ocr = lambda els: sorted(el.text for el in els if el.cls == "OCRText")  # noqa: E731
+        if ocr(a.elements) != ocr(b.elements):
+            return True
+    if a.frame is not None and b.frame is not None:
+        return not frame_still(a.frame, b.frame)
+    return False
 
 
 def summary(package: str | None, elements: list[UIElement], limit: int = 6) -> str:
@@ -291,9 +317,12 @@ class Waiter:
     # --- the wait ------------------------------------------------------------------------------
 
     def run(self, cond: Condition, baseline: tuple[str | None, list[UIElement]] | None = None,
-            extra_stop: Callable[[_Look, float], str | None] | None = None) -> WaitResult:
+            extra_stop: Callable[[_Look, float], str | None] | None = None,
+            still_exit_s: float | None = None) -> WaitResult:
         """Wait for `cond`. `baseline` is the screen the wait is measured against (screen_changes): the
-        screen the model last saw, so a change while it was deciding counts too."""
+        screen the model last saw, so a change while it was deciding counts too. `still_exit_s`: a text,
+        element or app condition ends early, not met, once the screen has been completely still this long
+        with nothing loading on it (None: wait the full timeout)."""
         start = self.clock()
         deadline = start + cond.timeout_s
 
@@ -315,6 +344,8 @@ class Waiter:
         prev: _Look | None = None
         look = first
         phone_ok = "wait_for" in (getattr(self.driver, "capabilities", None) or ())
+        still_exit = still_exit_s if cond.until in STILL_EXIT_CONDITIONS and extra_stop is None else None
+        still_since = start  # when the screen last moved (or something was loading)
         while True:
             if self.blocked(look.package):
                 return done(False, f"{look.package} is blocked for this task, so the wait stopped", via, look, "blocked")
@@ -323,13 +354,23 @@ class Waiter:
                 return done(True, hit, via, look)
             if extra_stop is not None and (why := extra_stop(look, self.clock() - start)):
                 return done(False, why, via, look)
+            if still_exit is not None:
+                if prev is not None and (moved(prev, look) or loading_element(look.elements) is not None):
+                    still_since = self.clock()
+                elif prev is None and loading_element(look.elements) is not None:
+                    still_since = self.clock()
+                if self.clock() - still_since >= still_exit and self.clock() < deadline:
+                    return done(False, summary(look.package, look.elements), via, look, "still")
             if self.clock() >= deadline:
                 return done(False, summary(look.package, look.elements), via, look)
             if self.cancel.is_set():
                 return done(False, "stopped", via, look, "cancelled")
             idle: bool | None = None
             if phone_ok and extra_stop is None and (labeled(look.elements) or cond.until == "app_in_front"):
-                answer = self._phone_wait(cond, deadline)
+                # With a still-screen exit, the phone waits in chunks of about that long, so stillness is checked
+                # between them.
+                chunk = None if still_exit is None else max(still_exit - (self.clock() - still_since), 0.25)
+                answer = self._phone_wait(cond, deadline, chunk)
                 if answer is None:
                     phone_ok = False  # an app that can't after all: poll from here
                 else:
@@ -352,12 +393,13 @@ class Waiter:
             if via != "phone":
                 via = "poll" if labeled(look.elements) else "frames"
 
-    def _phone_wait(self, cond: Condition, deadline: float) -> dict | None:
-        """One wait_for on the phone (at most PHONE_CHUNK_MS). None: the phone can't."""
+    def _phone_wait(self, cond: Condition, deadline: float, chunk_s: float | None = None) -> dict | None:
+        """One wait_for on the phone (at most PHONE_CHUNK_MS, or `chunk_s`). None: the phone can't."""
         left_ms = int((deadline - self.clock()) * 1000)
         if left_ms <= 0:
             return {"met": False}
+        limit = PHONE_CHUNK_MS if chunk_s is None else min(PHONE_CHUNK_MS, int(chunk_s * 1000))
         try:
-            return self.driver.wait_for(cond.wire(), min(left_ms, PHONE_CHUNK_MS))
+            return self.driver.wait_for(cond.wire(), min(left_ms, limit))
         except DeviceError:
             return None
