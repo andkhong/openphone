@@ -23,7 +23,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate, permission_dialogs
+from . import fast, gate, permission_dialogs, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
@@ -40,6 +40,10 @@ SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast w
 RECHECK_QUIET_MS = 200  # a tap target that moved (a list settling): wait this quiet before trusting its new place
 RECHECK_MAX_MS = 800
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
+PLAY_STORE = "com.android.vending"
+INSTALL_BUTTON = re.compile(r"install|update|get|install on (this )?(phone|device)", re.I)
+INSTALLED_BUTTON = "Open|Play"  # what the Play Store's button turns into once an install is done
+INSTALL_TAP_GRACE_S = 5.0  # an enabled Install button still there after this long: the tap didn't start one
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 LOCKED_MESSAGE = "The phone stayed locked, so I stopped. Unlock it and ask again."
 DIALOG_MESSAGE = "A system dialog on the phone wasn't answered, so I stopped. Answer it and ask again."
@@ -130,6 +134,8 @@ class Outcome:
     quiet_ms: int | None = None  # adaptive settle: a longer quiet time (e.g. search suggestions)
     done_via: str | None = None  # for done: "vision" | "classifier"
     tokens: dict | None = None  # the model calls since the last step (set by _execute; see _note_tokens)
+    until: str | None = None  # the settle after it waits for this too (launch_app, open_url: "loading_done")
+    wait: dict | None = None  # a wait_until's condition and outcome, for the step record (wait_cond, wait_met…)
 
 
 @dataclass
@@ -146,6 +152,7 @@ class _TaskState:
     used_notes: list[str] = field(default_factory=list)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
     settle_idle: bool | None = None  # the last adaptive settle: the screen went quiet (False: hit the cap)
+    settle_wait: dict | None = None  # the last settle's own wait (auto loading_done), for the step it delayed
     fast: bool = False  # the fast path is on for this task
     vision_next: bool = False  # the next step must be a vision step (the last fast step made no progress)
     fast_steps: int = 0  # tool calls the fast path made
@@ -369,6 +376,7 @@ class Agent:
             settle = self.config.settle_delay
             launched: str | None = None
             quiet_ms: int | None = None
+            until: str | None = None
             for tool_use in tool_uses:
                 if tool_use.id in early and not finished:
                     outcome = early[tool_use.id]
@@ -381,6 +389,7 @@ class Agent:
                         settle = outcome.settle
                     launched = outcome.launched or launched
                     quiet_ms = outcome.quiet_ms or quiet_ms
+                    until = outcome.until or until
                     if outcome.done:
                         finished = outcome
                 results.append({
@@ -395,7 +404,7 @@ class Agent:
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step)
 
-            self._settle(settle, state, launched, quiet_ms)
+            self._settle(settle, state, launched, quiet_ms, until)
             obs = self._observe_after_action(state, obs)
             # The new screen goes after the tool results, not inside them: Anthropic rejects images
             # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
@@ -584,8 +593,12 @@ class Agent:
             if state.cancel.is_set():
                 break
             self.io.event("status", "Loading screen; waiting…")
-            self.timer.timed("wait", state.cancel.wait, LOADING_POLL_SECONDS)
-            state.auto_waited += LOADING_POLL_SECONDS
+            # Until the screen changes (then the classifier looks again), at most LOADING_POLL_SECONDS.
+            started = time.monotonic()
+            with self.timer.phase("wait"):
+                self._waiter(state).run(waiting.Condition("screen_changes", timeout_s=LOADING_POLL_SECONDS),
+                                        baseline=(obs.package, obs.elements))
+            state.auto_waited += max(time.monotonic() - started, 0.1)
             obs = self._observe(state, before, pending)
         return obs
 
@@ -852,6 +865,7 @@ class Agent:
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
                 "done_via": outcome.done_via, **(outcome.tokens or {}),
                 **({"handled_by": handled_by} if handled_by else {}),
+                **(outcome.wait or state.settle_wait or {}),
             }
             record(row)
         except Exception as exc:  # the trajectory record must never break a task
@@ -901,6 +915,7 @@ class Agent:
                 f"Launched {resolution.package} (matched by {resolution.method}).",
                 settle=self.config.launch_settle_delay,
                 launched=resolution.package,
+                until="loading_done",
             )
 
         if name == "list_apps":
@@ -918,7 +933,7 @@ class Agent:
             self.driver.open_url(url)
             if not resolved and (backed := self._back_out_if_blocked(state, obs.package)):
                 return backed
-            return Outcome(f"Opened {url}.", settle=self.config.launch_settle_delay)
+            return Outcome(f"Opened {url}.", settle=self.config.launch_settle_delay, until="loading_done")
 
         if name == "tap_element":
             index = int(args["index"])
@@ -966,7 +981,10 @@ class Agent:
                         return blocked
             self.driver.tap(*target.center)
             state.tapped_field = target if fast.is_text_field(target) or target.password else None
-            return Outcome(f"Tapped [{index}] {element.label!r}.")
+            text = f"Tapped [{index}] {element.label!r}."
+            if obs.package == PLAY_STORE and INSTALL_BUTTON.fullmatch((element.text or element.desc).strip()):
+                return self._wait_for_install(text, state)
+            return Outcome(text)
 
         if name in ("tap", "long_press"):
             # A long press is judged exactly like a tap, whatever its duration.
@@ -1031,7 +1049,12 @@ class Agent:
         if name == "wait":
             seconds = min(max(float(args["seconds"]), 0.5), 30.0)
             self.timer.timed("settle", self._sleep, seconds, state.cancel)
-            return Outcome(f"Waited {seconds:g}s.", settle=0)
+            return Outcome(f"Waited {seconds:g}s.", settle=0,
+                           wait={"wait_cond": "sleep", "wait_met": None, "wait_via": "sleep",
+                                 "waited_ms": int(seconds * 1000)})
+
+        if name == "wait_until":
+            return self._wait_until(args, obs, state)
 
         if name == "remember":
             return self._remember(args, obs, state)
@@ -1045,6 +1068,71 @@ class Agent:
             return Outcome(args.get("summary", "Done."), done=True, success=bool(args.get("success", True)))
 
         return Outcome(f"Unknown tool {name}.", is_error=True)
+
+    # --- waiting for something observable (agent/waiting.py) ---------------------------------------
+
+    def _waiter(self, state: _TaskState) -> waiting.Waiter:
+        """Reads only (no model calls): elements, the app in front, small frames, and OCR on a treeless
+        screen when the agent has OCR. A wait stops on an app this task may not touch."""
+        return waiting.Waiter(self.driver, state.cancel,
+                              ocr=(lambda shot: self._ocr_elements(shot, 0)) if self.use_ocr else None,
+                              blocked=lambda package: self._is_blocked(state, package))
+
+    @staticmethod
+    def _wait_record(cond: waiting.Condition, result: waiting.WaitResult, auto: bool = False) -> dict:
+        return {"wait_cond": ("auto:" if auto else "") + cond.describe()[:120], "wait_met": result.met,
+                "wait_via": result.via, "waited_ms": result.waited_ms}
+
+    def _wait_until(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        """The wait_until tool: return as soon as the condition holds (or at its timeout). Its time is
+        settle time; the step records the condition and the outcome."""
+        try:
+            cond = waiting.parse(args)
+        except ValueError as exc:
+            return Outcome(f"Error: {exc}", is_error=True, settle=0)
+        if cond.until == "app_in_front" and "." not in cond.target:
+            resolution = self.resolver.resolve(cond.target)  # an app's name: its package
+            if resolution is None:
+                return Outcome(f"No installed app clearly matches {cond.target!r}; give its package.",
+                               is_error=True, settle=0)
+            cond.target = resolution.package
+        self.io.event("status", f"Waiting until {cond.describe()} (up to {cond.timeout_s:g}s)…")
+        with self.timer.phase("settle"):
+            result = self._waiter(state).run(cond, baseline=(obs.package, obs.elements))
+        if result.stopped == "disconnected":
+            raise DeviceError(result.seen)
+        return Outcome(result.text(cond), settle=0, wait=self._wait_record(cond, result))
+
+    def _wait_for_install(self, tapped: str, state: _TaskState) -> Outcome:
+        """After an Install tap in the Play Store: wait (no model calls) until its button reads Open or
+        Play again, enabled, up to install_wait_seconds. Stops early when the tap didn't start an install
+        (Install is still there), a dialog or another app came up, or it's the screen of an app the phone
+        can't read quickly (adb, iOS: the model waits with wait_until instead)."""
+        if not (self.config.adaptive_settle and getattr(self.driver, "fast_ui_tree", False)) \
+                or self.config.install_wait_seconds <= 0:
+            return Outcome(tapped)
+        cond = waiting.Condition("element_enabled", INSTALLED_BUTTON, waiting.compile_target(INSTALLED_BUTTON),
+                                 float(self.config.install_wait_seconds))
+
+        def interrupted(look, elapsed: float) -> str | None:
+            if look.package and look.package != PLAY_STORE:
+                return f"{look.package} came to the front"
+            if any(el.covered for el in look.elements):
+                return "a dialog opened"
+            if elapsed >= INSTALL_TAP_GRACE_S and waiting.find_enabled(INSTALL_BUTTON, look.elements):
+                return "the Install button is still there, so no install started"
+            return None
+
+        self.io.event("status", "Installing; waiting until it's done…")
+        with self.timer.phase("settle"):
+            result = self._waiter(state).run(cond, extra_stop=interrupted)
+        if result.stopped == "cancelled":
+            return Outcome(tapped, wait=self._wait_record(cond, result, auto=True))
+        secs = result.waited_ms / 1000
+        note = (f" Waited {secs:.1f}s for the install: {result.seen}." if result.met else
+                f" Stopped waiting for the install after {secs:.1f}s: {result.seen}.")
+        return Outcome(tapped + note, settle=0 if result.met else None,
+                       wait=self._wait_record(cond, result, auto=True))
 
     def _keyword_hits(self, text: str) -> list[str]:
         target = text.lower()
@@ -2040,7 +2128,7 @@ class Agent:
         any provider takes it). The new screen follows when the main model next decides (_show_later)."""
         last = taken[-1][2]
         settle = self.config.settle_delay if last.settle is None else last.settle
-        self._settle(settle, state, last.launched, last.quiet_ms)
+        self._settle(settle, state, last.launched, last.quiet_ms, last.until)
         new = self._observe_after_action(state, obs)
         if any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False:
             state.vision_next = True  # no visible progress: the vision model takes the next step
@@ -2083,15 +2171,29 @@ class Agent:
                 out += f"+{tag}" if on else ""
         return out
 
-    def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None) -> None:
+    def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None,
+                until: str | None = None) -> None:
         """Let the screen catch up after an action. `seconds` is the most to wait (the fixed delay).
 
         Adaptive (config.adaptive_settle): a phone whose app offers wait_idle returns as soon as no
         window or content change has arrived for settle_quiet_ms. An adb phone ends a launch once the
         app is in front plus the short settle. Anything else (older apps, iOS): the fixed sleep.
+        After launch_app or open_url (`until` "loading_done"), on a phone whose element list is quick to
+        read: once quiet, if a spinner or "Loading" is still on screen (or the launched app isn't in front
+        yet), keep waiting until it's gone, up to launch_wait_seconds in all (agent/waiting.py).
         Recorded as settle time: the real time waited."""
         state.settle_idle = None
+        state.settle_wait = None
         if seconds <= 0:
+            return
+        if until == "loading_done" and self.config.adaptive_settle and getattr(self.driver, "fast_ui_tree", False) \
+                and self.config.launch_wait_seconds > 0:
+            started = time.monotonic()
+            self._settle(seconds, state, launched, quiet_ms)
+            idle = state.settle_idle
+            with self.timer.phase("settle"):
+                self._settle_loading(state, launched, self.config.launch_wait_seconds - (time.monotonic() - started))
+            state.settle_idle = idle
             return
         with self.timer.phase("settle"):
             if self.config.adaptive_settle and not state.cancel.is_set():
@@ -2113,3 +2215,34 @@ class Agent:
                         self._sleep(max(min(self.config.settle_delay, left), 0), state.cancel)
                     return
             self._sleep(max(seconds, 0), state.cancel)
+
+    def _settle_loading(self, state: _TaskState, launched: str | None, budget: float) -> None:
+        """The launch's settle is over: keep waiting only while something is visibly still loading."""
+        if budget <= 0.2 or state.cancel.is_set():
+            return
+        try:
+            package = self.driver.current_app()
+            elements = self.driver.ui_elements()
+        except DeviceError:
+            return
+        if self._is_blocked(state, package):
+            return
+        if launched and package != launched:
+            cond = waiting.Condition("app_in_front", launched, timeout_s=budget)
+        elif waiting.labeled(elements) and waiting.loading_element(elements) is not None:
+            cond = waiting.Condition("loading_done", timeout_s=budget)
+        else:
+            return  # nothing is loading: the settle was enough
+        result = self._waiter(state).run(cond)
+        if cond.until == "app_in_front" and result.met and budget - result.waited_ms / 1000 > 0.2:
+            cond2 = waiting.Condition("loading_done", timeout_s=budget - result.waited_ms / 1000)
+            try:
+                elements = self.driver.ui_elements()
+            except DeviceError:
+                elements = []
+            if waiting.labeled(elements) and waiting.loading_element(elements) is not None:
+                more = self._waiter(state).run(cond2)
+                result = waiting.WaitResult(more.met, result.waited_ms + more.waited_ms, more.seen, more.via,
+                                            more.package, more.stopped)
+                cond = cond2
+        state.settle_wait = self._wait_record(cond, result, auto=True)

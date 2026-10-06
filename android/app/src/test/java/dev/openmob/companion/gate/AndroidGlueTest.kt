@@ -63,6 +63,9 @@ class AndroidGlueTest {
         val screen = GScreen(listOf(GWindow(3, "application", 3, "", "", intArrayOf(0, 0, 1080, 2400), null)))
         assertEquals("gate_screen_unstable", gk.admit("tap", mapOf("x" to 5L, "y" to 5L), screen).code)
         assertEquals("redact", gk.admit("screenshot", emptyMap(), screen).decision)
+        // wait_for reads the same element list as ui_elements: blacked out the same way, never judged as an act.
+        assertEquals("redact", gk.admit("wait_for", mapOf("timeout_ms" to 1000L), screen).decision)
+        assertEquals("allow", gk.admit("wait_for", mapOf("timeout_ms" to 1000L), GScreen(emptyList())).decision)
         assertEquals("gate_blocked_app", gk.admit("stream_start", emptyMap(), screen).code)
         assertEquals("builtin:unknown_window", gk.hidden(screen))
     }

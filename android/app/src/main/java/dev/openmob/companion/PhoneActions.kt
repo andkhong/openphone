@@ -74,6 +74,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     fun redacted(method: String, params: JSONObject): Any? = when (method) {
         "screenshot" -> blackFrame(params.optInt("max_side", MAX_SIDE).coerceIn(MIN_SIDE, MAX_SIDE),
             params.optInt("quality", JPEG_QUALITY).coerceIn(MIN_QUALITY, 100)).let { if (params.optBoolean("binary")) it else it.toJson() }
+        "wait_for" -> redactedWait(0L)
         else -> JSONArray()
     }
 
@@ -114,6 +115,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         "wait_idle" -> waitIdle(
             params.optLong("quiet_ms", DEFAULT_QUIET_MS).coerceIn(MIN_QUIET_MS, MAX_IDLE_MS),
             params.optLong("max_ms", DEFAULT_IDLE_MAX_MS).coerceIn(0, MAX_IDLE_MS),
+        )
+        "wait_for" -> waitFor(
+            WaitCondition.from(params.getJSONObject("condition")),
+            params.optLong("timeout_ms", MAX_WAIT_FOR_MS).coerceIn(0, MAX_WAIT_FOR_MS),
         )
         else -> throw IllegalArgumentException("Unknown method $method")
     }
@@ -291,6 +296,51 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
     }
 
+    // --- wait_for --------------------------------------------------------------------------------
+
+    /** The elements a wait may look at: exactly what ui_elements would answer now, checked against the
+     *  gatekeeper before and after the read (like ConnectionService does for ui_elements). Null: a protected
+     *  app is visible, so the wait ends without a verdict (a "disappeared" would leak a bit about it). */
+    private fun waitElements(): List<WaitElement>? =
+        if (GateHost.refreshProtected(service)) null else WaitElement.parse(uiElements()).takeUnless { GateHost.refreshProtected(service) }
+
+    /** A wait the gatekeeper withheld (a protected app is visible): nothing about the screen, not even a verdict. */
+    private fun redactedWait(waited: Long): JSONObject = JSONObject().put("met", false).put("redacted", true)
+        .put("waited_ms", waited).put("seen", "").put("package", JSONObject.NULL)
+
+    /** Read-only: returns as soon as [cond] holds on this phone's element list, or at [timeoutMs]. The list is
+     *  read again on each window or content change (at most every WAIT_FOR_READ_MS) and at least every
+     *  WAIT_FOR_RECHECK_MS; between reads it costs only a timestamp check. Never acts on the screen. */
+    private fun waitFor(cond: WaitCondition, timeoutMs: Long): JSONObject {
+        val start = SystemClock.uptimeMillis()
+        var els: List<WaitElement>? = null
+        var readStamp = 0L
+        var readAt = 0L
+        var baseline: Set<String>? = null
+        while (true) {
+            val now = SystemClock.uptimeMillis()
+            val stamp = service.lastChangeAt
+            val fresh = els == null || (stamp != readStamp && now - readAt >= WAIT_FOR_READ_MS) ||
+                now - readAt >= WAIT_FOR_RECHECK_MS
+            if (fresh) {
+                readStamp = stamp
+                readAt = now
+                els = waitElements() ?: return redactedWait(now - start)
+            }
+            val pkg = currentApp()
+            val current = els ?: emptyList()
+            if (baseline == null) baseline = WaitCondition.signature(pkg, current)
+            // A change since the last read makes the list stale: don't call the screen quiet on it.
+            val quietFor = if (stamp != readStamp) 0L else now - max(stamp, start)
+            val seen = cond.check(pkg, current, baseline, quietFor)
+            if (seen != null || now - start >= timeoutMs) {
+                return JSONObject().put("met", seen != null).put("waited_ms", now - start)
+                    .put("seen", seen ?: "").put("package", pkg ?: JSONObject.NULL)
+            }
+            SystemClock.sleep(max(1L, minOf(WAIT_FOR_POLL_MS, timeoutMs - (now - start))))
+        }
+    }
+
     // --- ui_elements -----------------------------------------------------------------------------
 
     /** Never errors: any failure yields []. */
@@ -373,6 +423,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             // Optional, only when true: lets the server keep the model away from password fields.
             .apply { if (node.isPassword) put("password", true) }
             .apply { if (node.isEditable) put("editable", true) }
+            // Only when greyed out: the Play Store's "Open" while an install runs (wait_for's element_enabled).
+            .apply { if (!node.isEnabled) put("enabled", false) }
             // The field typing and ENTER go to, and its hint ("Search", "Card number"): the server tells
             // a search box from a form, and finds the address bar.
             .apply { if (node.isFocused && (node.isEditable || node.isPassword)) put("focused", true) }
@@ -701,6 +753,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         const val DEFAULT_IDLE_MAX_MS = 3_000L
         const val MAX_IDLE_MS = 8_000L // well inside the server's 10 s timeout
         const val IDLE_POLL_MS = 20L
+        const val MAX_WAIT_FOR_MS = 10_000L // per call, inside the server's 15 s timeout; the server calls again
+        const val WAIT_FOR_POLL_MS = 50L
+        const val WAIT_FOR_READ_MS = 150L // at most this often re-read the tree while events pour in
+        const val WAIT_FOR_RECHECK_MS = 1_000L // and at least this often (changes without events)
         val DIRECT_EXECUTOR = Executor { it.run() }
         val SUPPORTED_KEYS = listOf("BACK", "HOME", "APP_SWITCH", "ENTER", "DELETE", "WAKEUP", "POWER",
             "VOLUME_UP", "VOLUME_DOWN")

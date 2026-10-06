@@ -26,6 +26,8 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `variant` | The task's latency features: `fixed` or `adaptive` settle (`+q200` and the like when `settle_quiet_ms` isn't 300), plus `+fast` when the fast path was on, followed by its round D features: `+noshot`, `+1req`, `+launch`, `+fastdone` (see "Round D" below) |
 | `done_via` | On a `done` step: `vision` (the main model confirmed) or `classifier` (`fast_path_done` finished it). NULL on other steps |
 | `settle_idle` | 1 or 0: the adaptive settle before this step saw the screen go quiet, or hit its cap. NULL: a fixed sleep |
+| `wait_cond` | A wait on this step: `sleep` (the `wait` tool), a `wait_until` condition such as `element_enabled:Open\|Play`, or the loop's own wait, `auto:loading_done` after a launch (on the step it delayed) and `auto:element_enabled:Open\|Play` after a Play Store Install tap. Its time is in `settle_ms` |
+| `wait_met`, `wait_via`, `waited_ms` | Whether the wait ended on its condition (1) or its timeout (0); how it waited (`phone`: the app's `wait_for`, `poll`: the server read the element list, `frames`: tiny screenshots of a screen without elements, `sleep`); and how long |
 
 When one model response holds several tool calls, the shared observe and model time is on the
 first of them. `latency_ms` keeps its earlier meaning: the tool call alone, from dispatch to
@@ -101,6 +103,19 @@ Two features cut the time a step spends outside the model:
   scores, no element list, a repeat of the last action, an action that left the screen unchanged,
   and every DONE (unless `fast_path_done` finishes it, see Round D) go to the vision step. `fast_tier` turns it on only for tasks on the `fast` tier's
   model.
+
+- **Wait until** (`wait_until`, `launch_wait_seconds`, `install_wait_seconds`): the model waits for
+  a condition (`screen_changes`, `text_appears`, `text_disappears`, `element_enabled`,
+  `app_in_front`, `loading_done`) instead of a fixed `wait`, and the wait ends the moment it holds,
+  with no model calls in between. The phone checks it itself where the app offers `wait_for`
+  (docs/phone-protocol.md §4.16); otherwise the server polls the element list. The loop waits on
+  its own too: after `launch_app` / `open_url`, while a spinner or "Loading" is on screen (up to
+  10 s in all), and after an Install tap in the Play Store until the button reads Open or Play again
+  (up to 90 s). `openmob timings` lists the waits per group: blind sleeps, `wait_until` and the
+  loop's own, with how many met their condition and the time waited. The case it was built for,
+  "install chess.com and play a game with a bot", spent about 50 s in blind waits plus a model
+  call before each: a 15 s `wait` after Install (the Play Store showed Open well before) and three
+  waits (5 + 5 + 10 s) while the app loaded.
 
 Three safety checks apply to every step: `tap_element` refuses an element the app marks `covered`
 (under a dialog or the keyboard); on app phones it re-reads the elements just before the tap and

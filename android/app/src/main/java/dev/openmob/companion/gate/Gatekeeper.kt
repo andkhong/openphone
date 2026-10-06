@@ -356,7 +356,8 @@ class Gatekeeper(
         if (method in rules.task) return requestTask(params)
         if (method in rules.read || method.startsWith("stream_")) {
             val hidden = hidden(screen)
-            if ((method == "screenshot" || method == "ui_elements") && hidden.isNotEmpty()) {
+            // wait_for reads the same element list as ui_elements, so it is blacked out the same way.
+            if ((method == "screenshot" || method == "ui_elements" || method == "wait_for") && hidden.isNotEmpty()) {
                 return Admission("redact", rule = hidden, method = method, params = params)
             }
             if (method == "stream_start" && hidden.isNotEmpty()) return refuse("gate_blocked_app", hidden,

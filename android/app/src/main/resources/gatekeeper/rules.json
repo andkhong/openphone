@@ -3,7 +3,7 @@
   "version": 1,
   "methods": {
     "meta": ["device_state", "wait_idle"],
-    "read": ["screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "resolve_url",
+    "read": ["screenshot", "ui_elements", "wait_for", "current_app", "launchable_packages", "app_labels", "resolve_url",
              "stream_start", "stream_stop", "stream_keyframe"],
     "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "wake_unlock"],
     "task": ["task_grant"]

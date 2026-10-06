@@ -161,7 +161,7 @@ object GateHost {
         }
         if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList(), available = service != null))
         if (method in g.rules.read || method.startsWith("stream_")) {
-            var screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
+            var screen = if (method == "screenshot" || method == "ui_elements" || method == "wait_for" || method == "stream_start")
                 GateScreens.windowPackages(service) else GScreen(emptyList())
             // A window with no package and no readable tree may be a permission dialog Android hides: OCR it.
             g.ocrCandidate(screen)?.takeIf { it.pkg.isEmpty() }?.let { w ->
