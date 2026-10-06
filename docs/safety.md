@@ -29,8 +29,19 @@ and approve its own purchase.
 Android's secure key store that can only be used right after the owner passes the screen lock
 (fingerprint, face or PIN), and gives the server its public half. Every "approve" must carry a fresh
 signature from that key, so even someone who steals a phone's connection key can't approve a
-purchase: they'd need the owner's screen lock too. Declining needs no signature. (Phones running an
-app older than this keep working as before until they update.)
+purchase: they'd need the owner's screen lock too. Declining needs no signature.
+
+**An approval covers one action, the one it showed.** The prompt says exactly what will happen (the
+app, the button's text and id, any text to be typed), and the phone signs a digest of that action.
+OpenMob runs the action only if it is still that action: if the screen changed while the owner was
+deciding (the button moved, or another one took its place), it doesn't tap, and the agent looks
+again. A yes for one action never authorizes another.
+
+**A phone must be able to sign to approve.** On a hosted account, a phone whose app hasn't registered
+a screen-lock key (an app older than approval keys) can only **decline**: its prompt says to update
+the app and reconnect, which registers the key. Apps older than action-bound approvals are refused
+the same way until they update. (Local token mode has no keys, so nothing changes there: an app
+phone's screen-lock yes is accepted as before, and a phone over USB is approved from the dashboard.)
 
 ## Phones and their connections
 
@@ -211,6 +222,27 @@ entry for the one store you test against.
 not "don't ask". Modes decide whether a prompt appears at all. A key with `confirm_approve` and the
 default Auto mode gets the same prompts as any key; they go to the key instead of the phone. No mode
 lets a server, key or dashboard approve on its own.
+
+## What is guarded
+
+Every action that could commit something is judged by **what it really touches**, never by the
+model's own description of it. The model's words can only add caution.
+
+| Action | How it's judged |
+|---|---|
+| `tap`, `long_press` at coordinates | By the element actually at that point on the screen (re-read if the screen may have changed): its text, description and resource id. A long press of any length is judged as a tap. If nothing labeled is there, it asks in shopping, payment, food, travel and ride apps |
+| `tap_element` | By the element's own text, description and resource id, plus whatever its centre lands on |
+| `swipe`, `scroll` | A swipe that barely moves (within twice the touch slop, 48 px) or is quicker than 150 ms is a tap, judged as one at its start point; so is a swipe that starts and ends on the same button. Any other swipe is judged at each end that is a commit control: a slider ("Slide to pay") or a risky label |
+| ENTER (`press_key ENTER`, `type_text` with `submit`) | In messaging, email and social apps it's a **send**. In a browser or web form, and on a payment screen, it's a **submit** that asks (as a payment when money words are on screen). Search boxes never ask. In a browser's address bar, the link checks below run on the URL |
+| `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
+| `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar |
+
+Typed text that goes through the clipboard (some fields only accept a paste) doesn't stay there: the
+app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
+previous clipboard back, or clears it.
+
+These are server-side checks. The [phone gatekeeper design](design/phone-gatekeeper.md) moves the
+same rules onto the phone itself.
 
 ## Sensitive apps are off-limits by default
 
