@@ -50,6 +50,7 @@ class ApprovalActivity : Activity() {
     private lateinit var explainText: TextView
     private lateinit var alwaysBox: CheckBox
     private lateinit var questionText: TextView
+    private lateinit var actionText: TextView
     private lateinit var requesterText: TextView
     private lateinit var statusText: TextView
     private lateinit var approveButton: Button
@@ -118,15 +119,34 @@ class ApprovalActivity : Activity() {
         if (always != null) alwaysBox.text = "${getString(R.string.approval_always)}\n${always.text}"
         requesterText.text = request?.let { getString(R.string.approval_requester, it.requester) }.orEmpty()
         requesterText.visibility = if (request == null) View.GONE else View.VISIBLE
+        // What exactly will happen, built here from the action's own fields (what the signature binds).
+        val line = request?.actionLine.orEmpty()
+        actionText.text = if (line.isEmpty()) "" else getString(R.string.approval_action, line)
+        actionText.visibility = if (line.isEmpty()) View.GONE else View.VISIBLE
+        val blocker = request?.let { blocker(it) }
         if (!open && request != null) showStatus(getString(R.string.approval_gone))
-        listOf(approveButton, denyButton).forEach {
-            it.isEnabled = open
-            it.alpha = if (open) 1f else 0.45f
-        }
+        else if (blocker != null) showStatus(blocker)
+        denyButton.isEnabled = open
+        denyButton.alpha = if (open) 1f else 0.45f
+        // A phone that can't sign this approval can only deny it.
+        approveButton.isEnabled = open && blocker == null
+        approveButton.alpha = if (approveButton.isEnabled) 1f else 0.45f
+        approveButton.visibility = if (blocker != null) View.GONE else View.VISIBLE
+    }
+
+    /** Why this request can't be approved on this phone (it can still be denied), or null. */
+    private fun blocker(request: Approvals.Request): String? = when {
+        !request.canApprove -> request.cannotApproveReason.ifEmpty { getString(R.string.approval_cannot) }
+        // The action shown must be the action signed: a request whose digest doesn't match its own
+        // fields is malformed (or lying), so it can't be approved.
+        request.digest.isNotEmpty() && !request.consistent -> getString(R.string.approval_mismatch)
+        request.signatureRequired && request.digest.isEmpty() -> getString(R.string.approval_mismatch)
+        else -> null
     }
 
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
+        blocker(request)?.let { return showStatus(it) }
         val always = request.always
         // "Always allow" for payments needs a second, explicit yes before the screen lock.
         if (alwaysBox.isChecked && always != null && always.confirmTwice) {
@@ -155,6 +175,11 @@ class ApprovalActivity : Activity() {
         // The approval key only signs once this prompt is passed: that signature is what the server
         // trusts, so nothing else on the phone (or holding its device key) can approve.
         val signer = ApprovalKeys.signer()
+        if (signer == null && request.signatureRequired) {
+            // Without the key there is nothing the server would accept: never send an unsigned yes.
+            showStatus(getString(R.string.approval_no_key))
+            return
+        }
         val built = BiometricPrompt.Builder(this)
             .setTitle(getString(when (request.kind) {
                 "mode_change" -> R.string.approval_prompt_title_mode
@@ -162,7 +187,8 @@ class ApprovalActivity : Activity() {
                 else -> R.string.approval_prompt_title
             }))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
-            .setDescription(request.shownQuestion)
+            .setDescription(listOf(request.shownQuestion, request.actionLine).filter { it.isNotEmpty() }
+                .joinToString("\n"))
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
         val callback = object : BiometricPrompt.AuthenticationCallback() {
@@ -170,12 +196,15 @@ class ApprovalActivity : Activity() {
                     if (prompt === cancel) prompt = null
                     val unlocked = result?.cryptoObject?.signature
                     if (unlocked == null) {
-                        send(approved = true) // no approval key on this phone: the server treats it as an older app
+                        // No approval key: only a server that doesn't require signatures (token/dev mode)
+                        // takes an unsigned yes; accounts mode refused this above.
+                        if (request.signatureRequired) showStatus(getString(R.string.approval_no_key))
+                        else send(approved = true)
                         return
                     }
                     val now = System.currentTimeMillis() / 1000
                     val signature = runCatching {
-                        ApprovalKeys.sign(unlocked, request.id, request.taskId, now, grantAlways)
+                        ApprovalKeys.sign(unlocked, request.id, request.taskId, request.digest, now, grantAlways)
                     }.getOrNull()
                     if (signature == null) {
                         showStatus(getString(R.string.approval_not_confirmed))
@@ -227,6 +256,8 @@ class ApprovalActivity : Activity() {
         card.addView(labelText)
         questionText = text("", 20f, getColor(R.color.om_text), bold = true)
         card.addView(questionText, margins(top = 6))
+        actionText = text("", 15f, getColor(R.color.om_text))
+        card.addView(actionText, margins(top = 8))
         requesterText = text("", 14f, getColor(R.color.om_text_secondary))
         card.addView(requesterText, margins(top = 6))
         explainText = text(getString(R.string.approval_explain), 13f, getColor(R.color.om_text_tertiary))

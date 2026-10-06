@@ -243,13 +243,66 @@ def test_unsigned_or_forged_approvals_are_rejected(h, forge):
     assert not any(a[0] == "tap" for a in h.pa1.driver.actions)
 
 
-def test_a_phone_without_an_approval_key_still_works(h):
+def test_an_app_phone_without_an_approval_key_can_only_decline(h):
     old_app = str(uuid.uuid4())
     key = h.pair(h.alice, old_app)  # an app too old to send an approval key
-    p = h.connect(old_app, key, approve=True)
+    p = h.connect(old_app, key, approve=True)  # it answers yes, unsigned
     assert p.welcome.wait(5)
     h.alice.post(f"/api/devices/app-{old_app}/command", json={"text": "check the cart"})
-    assert wait_for(lambda: p.approval_requests) and wait_for(lambda: h.status(old_app) == "succeeded")
+    assert wait_for(lambda: p.approval_requests)
+    request = p.approval_requests[-1]
+    assert request["can_approve"] is False and "can only decline" in request["cannot_approve_reason"]
+    assert request["signature_required"] is True
+    assert wait_for(lambda: any("can't approve yet" in m for k, m in p.events if k == "status"))
+    assert not wait_for(lambda: h.status(old_app) == "succeeded", timeout=1.0)
+    assert not any(a[0] == "tap" for a in p.driver.actions)
+    p.send({"type": "approval", "id": request["id"], "approved": False})  # declining still works
+    assert wait_for(lambda: h.status(old_app) in ("succeeded", "failed"))
+    assert not any(a[0] == "tap" for a in p.driver.actions)
+
+
+def test_an_old_app_signing_without_the_action_digest_is_refused(h):
+    old_app = str(uuid.uuid4())
+    signer = new_signer()
+    key = h.pair(h.alice, old_app, signer)
+    p = h.connect(old_app, key, signer, legacy_signing=True)  # signs `id|task|true|ts`, as before
+    assert p.welcome.wait(5)
+    start_cart(h, old_app)
+    request = p.approval_requests[-1]
+    p.send(p.approval(request["id"], request["task_id"], True))
+    assert not wait_for(lambda: h.status(old_app) == "succeeded", timeout=1.0)
+    assert not any(a[0] == "tap" for a in p.driver.actions)
+
+
+def test_a_signed_approval_for_one_action_does_not_authorize_another(h):
+    from openmob.phone.approval_keys import action_digest
+
+    start_cart(h, h.ids.a1)
+    request = h.pa1.approval_requests[-1]
+    # The request names the action (the tool, the app, the target) and its digest; the phone signs that.
+    assert request["action"]["tool"] == "tap" and request["digest"] == action_digest(request["action"])
+    other = action_digest({**request["action"], "text": "Buy 10 now"})
+    h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True, digest=other))  # signed, other action
+    assert not wait_for(lambda: h.status(h.ids.a1) == "succeeded", timeout=1.0)
+    assert not any(a[0] == "tap" for a in h.pa1.driver.actions)
+    h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True))  # this action: approved
+    assert wait_for(lambda: h.status(h.ids.a1) == "succeeded")
+    assert any(a[0] == "tap" for a in h.pa1.driver.actions)
+
+
+def test_an_approval_does_not_cover_a_screen_that_changed_while_asking(h):
+    from openmob.phone.adb import UIElement
+
+    driver = h.pa1.driver
+    driver.elements = [UIElement(0, "Buy now", "", "buy", "Button", True, None, (0, 0, 200, 100))]
+    start_cart(h, h.ids.a1)
+    request = h.pa1.approval_requests[-1]
+    assert request["action"]["text"] == "Buy now"
+    # Before the owner answers, the page swaps the button under the same spot.
+    driver.elements = [UIElement(0, "Subscribe yearly", "", "buy", "Button", True, None, (0, 0, 200, 100))]
+    h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True))
+    assert wait_for(lambda: h.status(h.ids.a1) in ("succeeded", "failed"))
+    assert not any(a[0] == "tap" for a in driver.actions)
 
 
 def test_approval_key_registers_on_first_connect_once(h):

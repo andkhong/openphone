@@ -37,7 +37,26 @@ def el(i, text, cls="Button", bounds=None, checked=None, editable=False):
                      editable=editable)
 
 
+def place_targets(steps, elements):
+    """Coordinate taps are judged by what is really at the point, so put a button labeled like each
+    tap's target on screen (unless one is there already) and aim the tap at it."""
+    elements = list(elements or [])
+    for step in steps:
+        for t in step:
+            target = t.input.get("target")
+            if t.name not in ("tap", "long_press") or not target or "x" not in t.input:
+                continue
+            button = next((e for e in elements if e.text == target), None)
+            if button is None:
+                top = 1600 + 90 * sum(e.bounds[1] >= 1600 for e in elements)
+                button = UIElement(len(elements), target, "", "", "Button", True, None, (0, top, 1000, top + 80))
+                elements.append(button)
+            t.input["x"], t.input["y"] = button.center[0] // 2, button.center[1] // 2  # screenshot is half size
+    return elements
+
+
 def agent(steps, tmp_path, io=None, package=WA, elements=None, settings=None, mode="auto", **cfg):
+    elements = place_targets(steps, elements)
     driver = FakeDriver(packages=[WA, SHOP, "com.android.settings", "com.google.android.apps.messaging"],
                         elements=elements or [], labels={WA: "WhatsApp", SHOP: "Amazon"})
     driver.package = package

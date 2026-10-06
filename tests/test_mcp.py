@@ -118,7 +118,7 @@ def test_confirmations_belong_to_the_owner(api):
     assert not any(a[0] == "tap" for a in api.alice.driver.actions)
     assert wait_for(lambda: api.alice.phone.approval_requests)
     request = api.alice.phone.approval_requests[-1]
-    api.alice.phone.send({"type": "approval", "id": request["id"], "approved": True})
+    api.alice.phone.send(api.alice.phone.approval(request["id"], request["task_id"], True))
     assert ok(call(api, api.alice, "get_task", task_id=task["id"], wait_seconds=10))["status"] == "succeeded"
 
 

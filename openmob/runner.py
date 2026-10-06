@@ -89,6 +89,9 @@ class Coordinator:
         # Whether a risky action may be approved by typing or saying "yes" (submit). False for app
         # phones, which approve only through the screen-lock prompt (DeviceManager.resolve_approval).
         self.text_approvals = True
+        # The digest of the action the owner's phone approved (phone/approval_keys.py), handed to the
+        # agent with the yes (take_approval_digest): it runs the action only if it still matches.
+        self._approval_digest: str | None = None
         self._unanswered: str | None = None  # the task stopped because nobody answered its question
         self._stop_reason: str | None = None  # why stop() cancelled the running task, if it said
         self.listeners: list = []
@@ -235,11 +238,13 @@ class Coordinator:
         except Exception as exc:  # history must never break the agent
             print(format_event("error", f"Step not saved: {exc}"), flush=True)
 
-    def answer(self, task_id: str, text: str) -> bool:
-        """Answer the running task's pending question. False if that task isn't asking."""
+    def answer(self, task_id: str, text: str, digest: str | None = None) -> bool:
+        """Answer the running task's pending question. False if that task isn't asking. `digest`: a yes
+        signed on the owner's phone names the action it approved."""
         with self._lock:
             if self.current_task != task_id or self.question is None:
                 return False
+            self._approval_digest = digest
         self.event("heard", f"[api] {text}", task=task_id)
         self.answers.put(text)
         return True
@@ -269,6 +274,7 @@ class Coordinator:
         with self._lock:
             self.question = question
             self.question_kind = kind
+            self._approval_digest = None
         data = None
         if kind in ("confirm", "plan"):  # both wait for the owner's approval prompt
             data = {"confirm": True, **({"approval": details} if details else {})}
@@ -295,6 +301,12 @@ class Coordinator:
         """The agent wants approval for a risky action (buy, send, delete…), a step (ask mode) or a
         plan. `details` ({kind, action_kind, package, always, plan}) go with the phone's prompt."""
         return self.ask(question, kind="plan" if (details or {}).get("kind") == "plan" else "confirm", details=details)
+
+    def take_approval_digest(self) -> str | None:
+        """The digest of the action the last answer approved on a phone (once), or None."""
+        with self._lock:
+            digest, self._approval_digest = self._approval_digest, None
+        return digest
 
     def record_prompt(self, prompt: dict) -> None:
         """One approval prompt's decision and latency (Agent._ask_owner) → history, for `openmob prompts`."""

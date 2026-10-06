@@ -54,6 +54,9 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     "type_text": ({"text": "str"}, "null", 15),
     "key": ({"name": "HOME|BACK|ENTER|APP_SWITCH|DELETE|... (see adb.KEYCODES)"}, "null", 10),
     "open_url": ({"url": "str"}, "null", 15),
+    # Newer apps (hello device.capabilities has "resolve_url"): which app would open this URL, before
+    # opening it, so the server can refuse a link into a blocked app. package is null for a chooser.
+    "resolve_url": ({"url": "str"}, "{package: str or null, candidates: list[str]}", 10),
     "wake_unlock": ({}, "null (wake the screen; dismiss a non-secure keyguard)", 10),
     # Newer apps: is the phone usable right now? Older apps answer "Unknown method" (the check is skipped).
     "device_state": ({}, "{interactive, locked, secure: bool}: screen on, keyguard showing, PIN-type lock", 5),
@@ -139,7 +142,8 @@ def encode_element(el: UIElement) -> dict:
         "checked": el.checked,
         "bounds": list(el.bounds),
         # Optional flags, only when true (older servers ignore them).
-        **{flag: True for flag in ("editable", "password", "covered") if getattr(el, flag)},
+        **{flag: True for flag in ("editable", "password", "covered", "focused") if getattr(el, flag)},
+        **({"hint": el.hint} if el.hint else {}),
     }
 
 
@@ -157,4 +161,6 @@ def decode_element(index: int, data: dict) -> UIElement:
         editable=bool(data.get("editable")),
         password=bool(data.get("password")),
         covered=bool(data.get("covered")),
+        focused=bool(data.get("focused")),
+        hint=str(data.get("hint") or ""),
     )

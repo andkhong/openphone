@@ -87,6 +87,8 @@ class UIElement:
     editable: bool = False  # a text field
     password: bool = False  # a password field (never typed into)
     covered: bool = False  # its center is under a higher window (a dialog, the keyboard), so a tap would miss
+    focused: bool = False  # the text field that has input focus (typing and ENTER go to it)
+    hint: str = ""  # a text field's hint ("Search", "Card number"), from apps that report it
 
     @property
     def center(self) -> tuple[int, int]:
@@ -133,6 +135,7 @@ def parse_ui_xml(xml_text: str, limit: int = 150) -> list[UIElement]:
                 bounds=(x1, y1, x2, y2),
                 editable="EditText" in (node.get("class") or ""),
                 password=node.get("password") == "true",
+                focused=node.get("focused") == "true" and "EditText" in (node.get("class") or ""),
             )
         )
         if len(elements) >= limit:
@@ -373,6 +376,25 @@ class PhoneDriver(CachedScreenshots):
         out = self.shell(f"am start -a android.intent.action.VIEW -d {shlex.quote(url)}")
         if "Error" in out:
             raise AdbError(out.strip())
+
+    def resolve_url(self, url: str) -> dict | None:
+        """Which app would open `url`, before opening it: {"package": the handler or None (a chooser
+        or nothing), "candidates": every app that could}. None when this phone can't say."""
+        intent = f"-a android.intent.action.VIEW -d {shlex.quote(url)}"
+        try:
+            chosen = self.shell(f"cmd package resolve-activity --brief {intent}")
+            options = self.shell(f"cmd package query-activities --brief {intent}")
+        except AdbError:
+            return None
+
+        def packages(out: str) -> list[str]:
+            return [line.split("/", 1)[0].strip() for line in out.splitlines()
+                    if "/" in line and not line.startswith(" ") and "=" not in line]
+        picked = packages(chosen)
+        package = picked[-1] if picked else None
+        if package == "android":  # the system's chooser: the owner (or the agent) picks next
+            package = None
+        return {"package": package, "candidates": sorted(set(packages(options)))}
 
     # --- actions ---------------------------------------------------------
 

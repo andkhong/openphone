@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import threading
 import time
 import uuid
@@ -11,6 +12,7 @@ from pathlib import Path
 from . import permissions as perm
 from .config import Config
 from .phone.adb import AdbError, PhoneDriver
+from .phone.approval_keys import action_digest
 from .phone.apps import DEFAULT_LABEL_CACHE
 from .phone.base import Device, DeviceError
 from .phone.remote import PhoneLink, RemoteDriver
@@ -92,6 +94,11 @@ class DeviceManager:
         # (session) -> bool: may this phone approve a loosening? Hosted: only with a registered
         # approval key (its signature is the proof). None: yes (token/dev mode, no keys exist).
         self.can_loosen = None
+        # (session) -> str | None: why this phone can't approve at all yet (hosted: an app phone with no
+        # registered approval key), or None. Such a phone is still asked, so it can decline.
+        self.approval_blocker = None
+        # (session) -> bool: its approvals must be signed (hosted app phones). Sent with each request.
+        self.requires_signature = None
         # approval id -> {status: pending|approved|denied|expired|replaced, device_id, account_id, patch,
         # loosens, created, decided}: permission changes waiting for (or decided on) the phone.
         self.permission_requests: dict[str, dict] = {}
@@ -295,11 +302,24 @@ class DeviceManager:
     def _approval_targets(self, acting: Session) -> list[Session]:
         return [s for s in list(self.sessions.values()) if s.link and s.account_id == acting.account_id]
 
+    @staticmethod
+    def _bound_action(kind: str, question: str, details: dict) -> dict:
+        """The action an approval binds (phone/approval_keys.py): the agent's own (tool, app, target,
+        typed text), or, for a plan or anything without one, the request itself."""
+        action = details.get("action")
+        if isinstance(action, dict) and action.get("tool"):
+            return dict(action)
+        text = "\n".join(str(s) for s in details.get("plan") or []) or question
+        return {"tool": kind or "action", "package": details.get("package") or "", "input": text}
+
     def _ask_owner(self, acting: Session, task_id: str, question: str, who: dict | None,
                    details: dict | None = None) -> None:
         approval_id = uuid.uuid4().hex
+        details = details or {}
+        kind = details.get("kind") or "action"
+        action = self._bound_action(kind, question, details)
         record = {"session": acting, "task_id": task_id, "question": question, "who": who, "sent": set(),
-                  "kind": (details or {}).get("kind") or "action", "details": details or {}}
+                  "kind": kind, "details": details, "action": action, "digest": action_digest(action)}
         with self._approvals_lock:
             self.approvals[approval_id] = record
         for target in self._approval_targets(acting):
@@ -320,7 +340,14 @@ class DeviceManager:
             "question": record["question"], "requester": record["who"]["name"] if record["who"] else "You",
             "device_id": acting.info.id, "device_name": acting.info.model,  # which phone would act
             "kind": record.get("kind", "action"),  # action | step | plan | mode_change
+            # What the approval binds: the phone shows it, recomputes the digest and signs that.
+            "action": record.get("action") or {}, "digest": record.get("digest") or "",
         }
+        if self.requires_signature is not None and self.requires_signature(target):
+            message["signature_required"] = True
+        if self.approval_blocker is not None and (why := self.approval_blocker(target)):
+            message["can_approve"] = False  # this phone can only decline (its app shows why)
+            message["cannot_approve_reason"] = why
         details = record.get("details") or {}
         if details.get("plan"):
             message["plan"] = list(details["plan"])
@@ -371,8 +398,9 @@ class DeviceManager:
                   and session is record["session"] and self._may_loosen(session))
         if approved and self.approval_verifier is not None and not self.approval_verifier(
                 session, approval_id, record, {**message, "always": always}):
-            session.coordinator.event("status", "An approval wasn't signed with this phone's screen lock, "
-                                                "so it was ignored.", task=None)
+            why = self.approval_blocker(session) if self.approval_blocker is not None else None
+            session.coordinator.event("status", why or "An approval wasn't signed with this phone's screen lock "
+                                                       "for this action, so it was ignored.", task=None)
             return False
         with self._approvals_lock:
             if self.approvals.pop(str(approval_id), None) is None:
@@ -390,7 +418,9 @@ class DeviceManager:
                 acting.coordinator.event("status", f"Always allowed from now on: {offer.get('text') or offer['kind']}",
                                          task=task_id)
                 self.push_permissions(acting)
-        if not acting.coordinator.answer(task_id, ("yes, always" if always else "yes") if approved else "no"):
+        answer = ("yes, always" if always else "yes") if approved else "no"
+        # A yes names the action it approved: the agent runs it only if that's still the action at hand.
+        if not acting.coordinator.answer(task_id, answer, digest=record.get("digest") if approved else None):
             return False
         for listener in self.approval_listeners:
             try:
@@ -524,7 +554,9 @@ class DeviceManager:
         request for the same phone replaces an older one still pending."""
         approval_id = uuid.uuid4().hex
         question = perm.describe_loosening(loosens)
+        action = {"tool": "mode_change", "input": f"{question}\n{json.dumps(patch, sort_keys=True)}"}
         record = {"session": session, "task_id": f"mode_change:{approval_id[:12]}", "question": question,
+                  "action": action, "digest": action_digest(action),
                   "who": {"name": requester, "human": True}, "sent": set(), "kind": "mode_change", "details": {},
                   "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
                                                                           if k in ("default_mode", "ceiling", "never")}}}

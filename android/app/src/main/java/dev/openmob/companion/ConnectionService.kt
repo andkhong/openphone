@@ -267,7 +267,7 @@ class ConnectionService : Service() {
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
-                .put("capabilities", JSONArray().put("wait_idle"))
+                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url"))
         )
 
     private fun handleCall(message: JSONObject) {

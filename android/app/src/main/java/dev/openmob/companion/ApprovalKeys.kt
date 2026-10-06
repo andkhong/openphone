@@ -13,8 +13,10 @@ import java.security.spec.ECGenParameterSpec
  * The key that proves an approval came through this phone's screen lock (docs/phone-protocol.md).
  * An EC P-256 pair in the Android Keystore that can only sign right after the owner passes a strong
  * biometric or the device credential. Its public half is registered with the server at pairing (or
- * on first connect); approvals carry a signature over `<approval id>|<task id>|true|<unix time>`,
- * so a stolen device key, or anything else on the socket, can't approve. Denials aren't signed.
+ * on first connect); approvals carry a signature over
+ * `<approval id>|<task id>|<action digest>|true|<unix time>` ([ActionDigest]: the action the prompt
+ * showed), so a stolen device key, or anything else on the socket, can't approve, and a yes for one
+ * action can't approve another. Denials aren't signed.
  */
 object ApprovalKeys {
     private const val ALIAS = "openmob_approval"
@@ -55,12 +57,16 @@ object ApprovalKeys {
     }
 
     /** `always`: "Always allow this" is signed too (`…|always`), so the grant carries the screen lock. */
-    fun message(approvalId: String, taskId: String, timestamp: Long, always: Boolean = false): ByteArray =
-        ("$approvalId|$taskId|true|$timestamp" + if (always) "|always" else "").toByteArray()
+    fun message(approvalId: String, taskId: String, digest: String, timestamp: Long, always: Boolean = false): ByteArray =
+        // An older server sends no digest: sign its format (`id|task|true|ts`), which it still checks.
+        ((if (digest.isEmpty()) "$approvalId|$taskId" else "$approvalId|$taskId|$digest") +
+            "|true|$timestamp" + if (always) "|always" else "").toByteArray()
 
     /** Sign with a Signature the BiometricPrompt just unlocked. */
-    fun sign(unlocked: Signature, approvalId: String, taskId: String, timestamp: Long, always: Boolean = false): String {
-        unlocked.update(message(approvalId, taskId, timestamp, always))
+    fun sign(
+        unlocked: Signature, approvalId: String, taskId: String, digest: String, timestamp: Long, always: Boolean = false,
+    ): String {
+        unlocked.update(message(approvalId, taskId, digest, timestamp, always))
         return Base64.encodeToString(unlocked.sign(), Base64.NO_WRAP)
     }
 }
