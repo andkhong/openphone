@@ -512,7 +512,8 @@ def main(argv: list[str] | None = None) -> None:
     p_bench.add_argument("--model", help="the model to run (default: the config's model)")
     p_bench.add_argument("--only", choices=["both", "on", "off"], default="both", help="which Jev modes to run")
     p_bench.add_argument("--conditions", help="compare latency conditions instead of Jev on/off: a comma-separated "
-                                              "list of baseline, settle, fast (e.g. baseline,settle,fast)")
+                                              "list of baseline, settle, fast (round C), fastd (round D), "
+                                              "fast-q200, fastd-q200 (e.g. fast,fastd)")
     p_bench.add_argument("--no-home", action="store_true", help="don't press HOME before each run")
 
     args = parser.parse_args(argv)

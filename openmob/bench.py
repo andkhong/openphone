@@ -1,7 +1,7 @@
 """`openmob bench`: run the same tasks under several conditions and compare.
 
 Internal tool (docs/benchmarks.md). A mode is either Jev on / off (True / False), or a latency
-condition (CONDITIONS: baseline, settle, fast). Each task runs once per mode from the home screen,
+condition (CONDITIONS: baseline, settle, fast = round C, fastd = round D, and -q200 variants). Each task runs once per mode from the home screen,
 on a fresh agent, isolated from the chat's recent requests. Collected per run: success, steps, fast
 steps, time per phase (agent/timing.py), credits (steps × the model's tier price) and token counts.
 """
@@ -17,11 +17,24 @@ import yaml
 
 from .agent.timing import PHASES
 
+# The fast path's round D features (docs/benchmarks.md): off for rounds A-C, on for D.
+ROUND_D_OFF = {"fast_path_lazy_screenshot": False, "jev_one_request": False, "fast_path_direct_launch": False,
+               "fast_path_done": False}
+ROUND_D_ON = {key: True for key in ROUND_D_OFF}
+
 # Latency conditions: the config each one runs with.
 CONDITIONS = {
-    "baseline": {"adaptive_settle": False, "fast_path": "off"},  # fixed settle sleeps, every step to the model
-    "settle": {"adaptive_settle": True, "fast_path": "off"},  # adaptive settle only
-    "fast": {"adaptive_settle": True, "fast_path": "on"},  # adaptive settle + the fast path (needs Jev)
+    # fixed settle sleeps, every step to the model
+    "baseline": {"adaptive_settle": False, "fast_path": "off", **ROUND_D_OFF},
+    "settle": {"adaptive_settle": True, "fast_path": "off", **ROUND_D_OFF},  # adaptive settle
+    # round C: adaptive settle + the fast path (needs Jev); the vision model confirms every DONE
+    "fast": {"adaptive_settle": True, "fast_path": "on", **ROUND_D_OFF},
+    # round D: + the classifier's DONE, direct app launches, one classifier request per step, and no
+    # screenshot on fast steps
+    "fastd": {"adaptive_settle": True, "fast_path": "on", **ROUND_D_ON},
+    # rounds C and D with a 200 ms quiet time for adaptive settle
+    "fast-q200": {"adaptive_settle": True, "fast_path": "on", "settle_quiet_ms": 200, **ROUND_D_OFF},
+    "fastd-q200": {"adaptive_settle": True, "fast_path": "on", "settle_quiet_ms": 200, **ROUND_D_ON},
 }
 Mode = bool | str
 
@@ -49,6 +62,7 @@ class BenchRun:
     usage: dict = field(default_factory=dict)
     error: str | None = None
     fast_steps: int = 0  # steps the fast path took
+    done_via: str | None = None  # who finished it: vision | classifier
 
     @property
     def jev(self) -> Mode:
@@ -93,7 +107,8 @@ def run_bench(
             else:
                 # Credits count the steps the model decided; fast steps are priced the same here.
                 run = BenchRun(task, mode, result.success, result.steps, result.summary, dict(result.timings),
-                               result.steps * credits_per_step, result.usage.as_dict(), fast_steps=result.fast_steps)
+                               result.steps * credits_per_step, result.usage.as_dict(), fast_steps=result.fast_steps,
+                               done_via=getattr(result, "done_via", None))
             runs.append(run)
             if on_run:
                 on_run(run)
@@ -126,6 +141,7 @@ def summarize(runs: list[BenchRun]) -> dict[Mode, dict]:
             "errors": sum(r.error is not None for r in mine),
             "steps": _mean([r.steps for r in mine]),
             "fast_steps": _mean([r.fast_steps for r in mine]),
+            "classifier_done": sum(r.done_via == "classifier" for r in mine),
             "credits": sum(r.credits for r in mine),
             "jev_calls": sum(r.usage.get("jev_calls", 0) for r in mine),
             "model_calls": sum(r.usage.get("model_calls", 0) for r in mine),
@@ -153,6 +169,8 @@ def format_comparison(runs: list[BenchRun]) -> str:
     row("steps", "steps", lambda v: f"{v:.1f}")
     if any(s[m]["fast_steps"] for m in modes):
         row("fast steps", "fast_steps", lambda v: f"{v:.1f}")
+    if any(s[m]["classifier_done"] for m in modes):
+        row("done by jev (sum)", "classifier_done")
     for p in PHASES:
         row(f"{p} ms", f"{p}_ms")
     row("agent ms", "agent_ms")
@@ -203,8 +221,8 @@ def main(cfg, args) -> None:
         unknown = [c for c in modes if c not in CONDITIONS]
         if unknown or not modes:
             sys.exit(f"--conditions takes a comma-separated list of: {', '.join(CONDITIONS)}")
-        if "fast" in modes and not (cfg.jev_api_key and cfg.jev_enabled):
-            sys.exit("The fast condition needs Jev: set TYPESAFE_API_KEY (and don't set OPENMOB_JEV=off).")
+        if any(CONDITIONS[m]["fast_path"] != "off" for m in modes) and not (cfg.jev_api_key and cfg.jev_enabled):
+            sys.exit("The fast conditions need Jev: set TYPESAFE_API_KEY (and don't set OPENMOB_JEV=off).")
     else:
         modes = {"both": (True, False), "on": (True,), "off": (False,)}[args.only]
         if True in modes and not cfg.jev_api_key:
@@ -224,6 +242,7 @@ def main(cfg, args) -> None:
         print(f"== {run.task.name} · {mode_label(run.mode)}: "
               f"{'ok' if run.success else 'failed'} in {run.steps} steps"
               + (f" ({run.fast_steps} fast)" if run.fast_steps else "")
+              + (" (done by jev)" if run.done_via == "classifier" else "")
               + f", {agent_ms(run.timings) / 1000:.1f}s agent time"
               + (f" ({run.error})" if run.error else ""), flush=True)
 

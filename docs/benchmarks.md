@@ -14,7 +14,7 @@ nested phase, such as a classifier call during an observation, counts only in th
 | Column | What it covers |
 |---|---|
 | `observe_ms` | The foreground app, the screenshot, the accessibility elements and OCR. Excludes the classifier call and loading-screen waits |
-| `jev_ms` | Jev: `assess_screen` on every observation, `assess_tap` in the risky-tap check, and app picking inside `launch_app`. 0 when Jev is off |
+| `jev_ms` | Jev: `assess_screen` on every observation, `assess_tap` in the risky-tap check, and app picking inside `launch_app`; on fast-path tasks with `jev_one_request`, the one request per step that replaces the first two. 0 when Jev is off |
 | `wait_ms` | Human time and loading screens: the waits in `_observe_settled`, risky-tap approvals, and `ask_user` answers |
 | `model_ms` | The main model call or calls, including a nudge call that returned no tool call |
 | `action_ms` | The tool itself: the phone action and the tool's own work, such as app resolution. App picking by the small LLM picker is counted here |
@@ -23,7 +23,8 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `jev` | 1 or 0: whether Jev was on for the step |
 | `model` | The model that decided the step |
 | `fast` | 1: the fast path decided the step (Jev's `next_step` plus the small text model), 0: the main model |
-| `variant` | The task's latency features: `fixed` or `adaptive` settle, plus `+fast` when the fast path was on |
+| `variant` | The task's latency features: `fixed` or `adaptive` settle (`+q200` and the like when `settle_quiet_ms` isn't 300), plus `+fast` when the fast path was on, followed by its round D features: `+noshot`, `+1req`, `+launch`, `+fastdone` (see "Round D" below) |
+| `done_via` | On a `done` step: `vision` (the main model confirmed) or `classifier` (`fast_path_done` finished it). NULL on other steps |
 | `settle_idle` | 1 or 0: the adaptive settle before this step saw the screen go quiet, or hit its cap. NULL: a fixed sleep |
 
 When one model response holds several tool calls, the shared observe and model time is on the
@@ -98,7 +99,7 @@ Two features cut the time a step spends outside the model:
   `fast_path_min_confidence`, the step runs without the main model. TYPE_TEXT and LAUNCH_APP ask
   `fast_path_text_model` (default `resolver_model`) for the text as tiny JSON. ESCALATE, low
   scores, no element list, a repeat of the last action, an action that left the screen unchanged,
-  and every DONE go to the vision step. `fast_tier` turns it on only for tasks on the `fast` tier's
+  and every DONE (unless `fast_path_done` finishes it, see Round D) go to the vision step. `fast_tier` turns it on only for tasks on the `fast` tier's
   model.
 
 Three safety checks apply to every step: `tap_element` refuses an element the app marks `covered`
@@ -164,3 +165,82 @@ All 15 runs succeeded.
 With the fast path, opening Settings and tapping Display ran without the main model; only the DONE
 confirmation was a vision step. One easy task in a well-labeled app: re-measure on harder tasks
 (typing, search, long lists, poorly labeled apps) before reading more into it.
+
+Per step in the fast-path round (round C, medians; settle is on the step after its action):
+
+| Step | observe | classifier | model | action | settle | total |
+|---|---|---|---|---|---|---|
+| 1 open Settings (fast) | 0.23 | 0.30 | 0.61 (text model names the app) | 0.18 | 0 | 1.29 |
+| 2 tap Display (fast) | 0.40 | 0.37 | 0 | 0.06 | 0.45 | 1.41 |
+| 3 DONE (vision confirm) | 0.25 | 0.25 | 1.84 | 0 | 0.67 | 3.01 |
+
+## Round D: four more cuts on fast-path tasks
+
+Each has its own switch, so rounds can be compared. The variant names the ones that were on.
+
+| Feature | Switch (default) | Variant tag | What it saves on the task above |
+|---|---|---|---|
+| The classifier's DONE | `fast_path_done` (false), `fast_path_done_min_probability` (0.85), `OPENMOB_FAST_DONE=on` | `+fastdone` | the vision confirmation, about 1.5 to 1.8 s |
+| Exact app names launch directly | `fast_path_direct_launch` (true) | `+launch` | the text model on LAUNCH_APP, about 0.6 s |
+| One classifier request per step | `jev_one_request` (true), `jev_risk_heads` (40) | `+1req` | 0.3 to 0.6 s per fast step |
+| No screenshot on fast steps | `fast_path_lazy_screenshot` (true) | `+noshot` | 0.1 to 0.3 s per fast step |
+| Settle quiet time | `settle_quiet_ms` (300), `OPENMOB_SETTLE_QUIET_MS` | `+q200` | up to 0.1 s per settle at 200 |
+
+- **The classifier's DONE.** A fast-path DONE usually goes to a vision step. With `fast_path_done`,
+  the task ends without it only when all of these hold: (a) the DONE operation and the
+  "request looks complete" head both reach `fast_path_done_min_probability`, with the operation's
+  confidence at least `fast_path_min_confidence`; (b) the screen shows what the request asked to
+  open: a title (a non-tappable label named after it, in the top 30% of the screen and not inside
+  a tappable row) or a selected tab, or for "open <app>" that app in front; (c) the task only
+  navigated: every clause of the request starts with a navigation verb (open, go to, show, …),
+  no word in it implies a side effect (`confirm_keywords` plus book, submit, order, call, share,
+  turn, set, change, search, …), no tap was risky (keywords or the classifier) and nothing was
+  typed; (d) no vision step ran, the fast path never declined a repeat, no action left the screen
+  unchanged, and the user sent no correction. Otherwise the vision model confirms, as before. The
+  `done` step records `done_via`, and so does the task's outcome event (internal; the API doesn't
+  show it). `openmob timings` prints how many tasks each finished.
+- **Exact app names.** On LAUNCH_APP, the request's app phrases ("open Settings", "go to Display
+  in Settings", "launch the Spotify app") are compared with the installed apps' cached labels and
+  aliases, ignoring case, diacritics and spacing. One match that isn't already in front launches
+  directly (through `launch_app`, so blocked apps stay blocked); none or several ask the text model.
+- **One classifier request per step.** On fast-path tasks, on screens the fast path can use, the
+  observation sends one request with every head: screen state, "looks complete", the operation,
+  the TAP and TYPE_TEXT target heads, and the risky-tap questions for up to `jev_risk_heads`
+  candidate elements (tappable ones first), each naming its target in the question (TypeSafe
+  answers every question in a request in parallel against the same state). "Requested" questions go
+  only to elements a confirm keyword names, the only ones where "requested" can matter. `_guard`
+  is unchanged: keywords or classifier risk make a tap risky; requested is keywords and classifier
+  (the classifier may veto it, never grant it). A tap whose element wasn't asked about, or a
+  coordinate tap, gets the separate `assess_tap` as before. Vision taps on such a screen reuse the
+  same answers. Other screens (no element list, fast path off) ask `assess_screen` as before.
+- **No screenshot on fast steps.** On fast-path tasks the observation reads the foreground app and
+  the elements and decides; the screenshot is taken only when a vision step needs it (the main model
+  then sees the current screen and its screenshot, after a note listing the fast steps). Screens
+  without a usable element list still take it at once, for OCR. A fast scroll takes it to size the
+  swipe. Step records use a recent frame for screen sizes (`screen_w` / `screen_h` may be empty on a
+  fresh server). The live view has its own feed and captures on its own when the agent hasn't.
+
+To compare round C with round D on an adb phone:
+
+```sh
+openmob bench tasks.yaml --conditions fast,fastd --serial emulator-5554
+openmob bench tasks.yaml --conditions fast,fastd,fastd-q200   # and a 200 ms quiet time
+```
+
+`fast` is round C (the fast path with every round D feature off), `fastd` is round D, and
+`fast-q200` / `fastd-q200` set `settle_quiet_ms` to 200. The table adds "done by jev (sum)". Through
+the server and the app (where `wait_idle` works):
+
+```sh
+OPENMOB_ROUND_D=off openmob run    # round C: all four round D features off
+OPENMOB_ROUND_D=on openmob run     # round D: all four on (by default only fast_path_done is off)
+OPENMOB_ROUND_D=on OPENMOB_SETTLE_QUIET_MS=200 openmob run   # round D, 200 ms quiet time
+openmob timings --since 2h          # one group per variant, e.g. adaptive+fast and adaptive+fast+noshot+1req+launch+fastdone
+```
+
+Expected on "Open Settings and go to Display" (round C, 6.0 s): about −0.6 s on step 1 (no text
+model), −0.3 to −0.6 s per fast step from the merged request, −0.1 to −0.3 s per fast step from the
+skipped screenshot, and about −1.5 s from the classifier's DONE when its checks pass, so roughly
+3 to 3.5 s. The DONE check depends on how the phone reports the page title: if Samsung's Display
+page shows "Display" only inside a tappable header, the check fails and the vision step stays.
+Look at `done_via` in the steps table after the runs.
