@@ -244,3 +244,92 @@ skipped screenshot, and about −1.5 s from the classifier's DONE when its check
 3 to 3.5 s. The DONE check depends on how the phone reports the page title: if Samsung's Display
 page shows "Display" only inside a tappable header, the check fails and the vision step stays.
 Look at `done_via` in the steps table after the runs.
+
+## Vision steps: four cuts, whatever the model
+
+A vision step (the main model sees the screenshot, the element list and the history, and returns one
+tool call) measured 1.5 to 1.8 s on `balanced`. Games and apps without labels are nearly all vision
+steps. Each cut below is a config switch:
+
+| setting | default | what it does |
+|---|---|---|
+| `history_trim: batch`, `history_max_screenshots: 4` | on | Screenshots pile up to 4, then the oldest go down to `keep_screenshots` (2) at once. Before, an older screenshot was replaced by "(earlier screen omitted)" at every step, which changed an earlier message and so broke the prompt cache. Now earlier messages stay byte-identical between trims. `rolling` is the old behavior. |
+| `history_cache` | on | Anthropic: cache breakpoints at the end of the last two user messages (with system and tools, 4 breakpoints, Anthropic's maximum). Each step reads the whole conversation up to the previous step from the cache. Other providers cache prefixes on their own, so for them only the batch trimming applies. |
+| `vision_max_side_labeled: 768` | on | On a screen with at least `vision_labeled_min_elements` (8) labeled elements and no OCR words, the screenshot's long side is 768 px instead of 1280: about 350 image tokens instead of about 1,000. The model mostly taps by element index there. The observation's screenshot is replaced by the smaller one (same device size), so element centers, `tap`/`swipe` coordinates and step records all map back through it. Games, OCR and sparse screens keep 1280. `0` turns it off. |
+| `vision_brief`, `vision_max_tokens: 512` | on | The system prompt asks for at most one short sentence before the tool call, and the cap is 512 output tokens. A reply that hits the cap before its tool call is complete is asked again with the model's full `max_tokens`. The thought still reaches the dashboard. |
+| `vision_stream` | off | Anthropic: stream the reply and run each tool call as soon as its block is complete, before `message_stop`. It is off by default because it saves only the tail of the reply (tens of ms) and keeps the stream open while an approval is pending. A failed stream falls back to the plain call. |
+
+What to expect per vision step (Sonnet 5.5, 2 to 4 screenshots in the history):
+- **Shorter replies:** the largest cut. Each output token is about 10 to 15 ms; a reply that used to
+  restate the screen (60 to 120 tokens) becomes 20 to 40, so about −0.4 to −0.8 s.
+- **Cached history:** −0.1 to −0.3 s time to first token from the second vision step on, and the
+  history's input is billed at the cache-read rate (one tenth). Every third step after the history
+  holds 4 screenshots re-writes the cache once (a trim step).
+- **768 px screenshots:** about 650 fewer input tokens per new screen, and less image work on the
+  provider's side: −50 to −150 ms on labeled screens.
+- **Streaming:** 0 to 50 ms.
+
+### Per-step tokens
+
+Steps now record what their model call cost: `input_tokens` (uncached), `output_tokens`,
+`cache_read_tokens`, `cache_write_tokens` and `vision_image_side` (the long side of the screenshot
+the model saw). They are nullable columns on `steps` (added to older databases on start), filled on
+steps that made a main-model call (a vision step, or a fast step that asked the small text model).
+`openmob timings` adds one line per group:
+
+```
+  tokens per model step (12): input 1,840 · cache read 9,310 (79% of the prompt) · cache write 1,620 · output 31 · screenshot 768 px
+```
+
+Compare before and after with the old behavior in `config.yaml` (`history_trim: rolling`,
+`history_cache: false`, `vision_max_side_labeled: 0`, `vision_brief: false`, `vision_max_tokens: 0`).
+None of this is in the public API's events: per-step token counts stay internal.
+
+## Model comparison (`openmob bench-api`)
+
+`openmob bench` drives an adb phone from its own process. `openmob bench-api` measures what an API
+caller gets instead: every run is a developer-API task on a running server and a real phone. Tiers
+switch per task (`fast` = Haiku 4.5, `balanced` = Sonnet 5.5, `best`), so no server restart is
+needed. Permission modes are passed through as `permission_mode` on the task (for servers that support
+them).
+
+```sh
+export OPENMOB_API_KEY=om_live_...      # or --key-file ~/.openmob-bench-key; never printed or saved
+openmob bench-api bench/vision_tasks.yaml --url http://localhost:8765 \
+    --tiers fast,balanced --runs 5 --warmup 1 --out bench-results
+# crossed with permission modes:  --permission-modes ask,auto
+# a phone other than the only online one:  --device app-abc123
+```
+
+How a run works:
+- `POST /v1/devices/{id}/tasks` with the instruction, the tier (and permission mode), `memory: off`
+  and the task's `max_steps`. Then **one** `GET /v1/tasks/{id}/events` request (SSE) follows it to
+  the `done` event. Nothing polls, so a run costs 2 requests (4 with its reset), and the client keeps
+  itself under 55 requests a minute (the server allows 60 per key) and honors `Retry-After`.
+- A task's `reset` runs before every run (warm-ups included). It is in the JSONL marked
+  `kind: reset`, and left out of the summary.
+- First a warm-up round (each condition once, `--warmup 0` skips it), then `--runs` rounds with the
+  conditions interleaved: fast, balanced, fast, balanced… so drift (phone heat, network, the
+  provider's load) hits every condition alike.
+- Nobody answers questions during a bench: a task that asks (`ask_user`, or a risky-tap
+  confirmation) is cancelled and counts as unsuccessful ("asked a question").
+
+Collected per run, from the public task and its events: success, steps, credits, wall time
+(the server's `created` → `finished`), time to first action (`created` → the first action event),
+and the per-phase timings of every step (`observe`, `classifier`, `model`, `action`, `settle`,
+`wait`, `total`), summed per run.
+
+Results: `bench-results/bench-api-<time>.jsonl` (one line per run, warm-ups and resets included and
+marked) and `bench-api-<time>.md`: per task, a table per condition with the median and (min–max) of
+wall time, steps, credits and time to first action, a per-phase table, and a list of unsuccessful
+runs. The markdown is printed at the end too.
+
+`bench/vision_tasks.yaml` holds:
+1. `settings-display`: "Open Settings and go to Display", the labeled baseline (reset: go home).
+2. `clock-stopwatch`: start, pause and reset the Clock app's stopwatch. Its controls are icon-only on
+   Pixel, so the model works from the screenshot. It is self-reversing (it ends at zero), and its
+   reset puts the stopwatch back to zero if a run stopped halfway.
+3. A commented placeholder for a game task ("open <game> and open its main menu"): fill in a game
+   installed on the test phone.
+
+Tasks must stay read-only or self-reversing: nothing that sends, buys or deletes.

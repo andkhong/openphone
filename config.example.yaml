@@ -42,6 +42,17 @@ verify_taps: true                  # re-check a tap target just before tapping (
 ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
 ocr: true                          # Apple Vision OCR for screens without an accessibility tree
 
+# Vision steps (docs/benchmarks.md, "Vision steps")
+keep_screenshots: 2                # screenshots left in the history after a trim
+history_trim: batch                # batch: trim only past history_max_screenshots (prompt-cache friendly) | rolling
+history_max_screenshots: 4
+history_cache: true                # Anthropic: cache the conversation, not only the system prompt and tools
+vision_max_side_labeled: 768       # smaller screenshot on richly labeled screens (0: always screenshot_max_side)
+vision_labeled_min_elements: 8
+vision_brief: true                 # at most one short sentence before the tool call
+vision_max_tokens: 512             # output cap for vision steps (0: the model's own); cut-off replies are retried
+vision_stream: false               # Anthropic: run each tool call as soon as it has streamed in
+
 # TypeSafe Jev: text-only classifier for screen state, tap risk, and app picking.
 # Turns on automatically when TYPESAFE_API_KEY is set.
 jev_model: jev-latest
