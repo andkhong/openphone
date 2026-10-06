@@ -11,6 +11,8 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
 | Method | Path | Scope | Does |
 |---|---|---|---|
 | `GET` | [`/v1/devices`](#get-v1devices) | `devices:read` | List your phones |
+| `POST` | [`/v1/enrollments`](#post-v1enrollments) | `devices:add` | Start pairing a phone (`openmob phone add`) |
+| `GET` | [`/v1/enrollments/{id}`](#get-v1enrollmentsid) | `devices:add` | Whether that phone confirmed and came online |
 | `POST` | [`/v1/devices/{device_id}/tasks`](#post-v1devicesdevice_idtasks) | `tasks:run` | Start a task |
 | `GET` | [`/v1/limits`](#get-v1limits) | `tasks:read` | Your key's limits and today's use |
 | `GET` | [`/v1/tasks`](#get-v1tasks) | `tasks:read` | List recent tasks |
@@ -75,6 +77,7 @@ new key.
 | `history:read` | Read this key's past tasks with their instructions and outcomes (`GET /v1/history`) | No |
 | `memory:read` | Read your memory notes | No |
 | `memory:write` | Add and delete memory notes | No |
+| `devices:add` | Start pairings for your account (`openmob phone add`). **Sensitive:** the phone still has to confirm with its screen lock | No |
 
 ## Idempotent retries
 
@@ -168,20 +171,56 @@ an ordinary success, failure or cancel.
 
 ### GET /v1/devices
 
-Scope `devices:read`. Lists the phones paired to your account.
+Scope `devices:read`. Lists **every** phone paired to your account, online or not (removed ones
+aren't listed).
 
 ```json
-{"devices": [{"id": "app-3f2a9c", "name": "Pixel 9", "platform": "android",
-              "online": true, "busy": false, "last_seen": 1791219552.32}]}
+{"devices": [{"id": "app-3f2a9c", "name": "Pixel 9", "model": "Pixel 9", "platform": "android",
+              "online": true, "busy": false, "last_seen": 1791219552.32, "paired_at": 1791133152.1}]}
 ```
 
 | Field | Meaning |
 |---|---|
 | `id` | Use it in the task and screenshot paths |
-| `name` | The phone's model name |
+| `name`, `model` | The phone's model name |
+| `platform` | `android` (or `ios` for a bridged iPhone while it's connected) |
 | `online` | The OpenMob app is connected, so the phone can take tasks |
 | `busy` | It's running a task right now |
 | `last_seen` | When it last connected |
+| `paired_at` | When it was last paired |
+
+The owner removes a phone on the dashboard (account button → **Your phones** → Remove, which
+revokes its key and closes its connections at once); the phone can unpair itself with its own key
+(see [the phone protocol](phone-protocol.md#26-pairing-and-unpairing-accounts-mode)).
+
+### POST /v1/enrollments
+
+Scope `devices:add`. Starts pairing a phone that's on the caller's USB cable; `openmob phone add`
+uses it. Body (optional): `{"device_id": "<the app's id>"}`. If that phone is already paired to
+your account, nothing new is made:
+
+```json
+{"already_paired": true, "device_id": "app-3f2a9c", "online": true, "email": "you@example.com"}
+```
+
+Otherwise it makes a single-use pairing code (2 minutes, your account), the same kind the dashboard
+shows as a QR code:
+
+```json
+{"already_paired": false, "server": "https://openmob.example.com", "enrollment_id": "1a2b3c4d",
+ "code": "1a2b3c4d…", "app_link": "openmob://connect?server=…&code=…", "pair_url": "https://…/pair?code=…",
+ "expires": 1791219672.0, "ttl": 120, "email": "you@example.com"}
+```
+
+Open `app_link` on the phone (`adb shell am start -a android.intent.action.VIEW -d '<app_link>'`).
+**The phone isn't paired until its owner confirms** on the phone with the screen lock. Codes per
+account are limited (30 an hour, `429`).
+
+### GET /v1/enrollments/{id}
+
+Scope `devices:add`. `{"status": "pending" | "paired" | "expired", "device_id", "online", "model"}`:
+`paired` once the phone confirmed, `online` once its app connected. Another account's enrollment is
+a `404`.
 
 ## Tasks
 

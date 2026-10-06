@@ -40,6 +40,7 @@ Source of truth in the repo: `openmob/phone/protocol.py` (message types, `METHOD
 URL: `wss://<server>/phone/ws?t=<token>`
 
 * `<server>` and `<token>` come from the user (pasted or scanned as a QR code from the server's console or dashboard). The token is the same one that protects the dashboard (`?t=` in the dashboard URL).
+* Accounts mode: no `?t=`. The phone sends its own device key in `hello` (`key`), obtained by pairing (§2.6).
 * Use **`wss://` only** in release builds (see §6). Allow `ws://` only in debug builds, for LAN testing.
 
 ### 2.2 Handshake
@@ -78,6 +79,24 @@ Keepalive: no application-level ping is defined. Use WebSocket ping frames from 
 While connected, run the socket inside a **foreground service** with a **persistent notification** ("OpenMob agent connected", with a **Disconnect** action). Without one, Android will kill the connection in the background. On Android 14+ a foreground service type must be declared (see §5.3).
 
 ---
+
+### 2.6 Pairing and unpairing (accounts mode)
+
+Pairing turns a one-time code into this phone's own device key. The phone never gets a dashboard session.
+
+1. The code arrives in a link, `openmob://connect?server=<url-encoded server>&code=<code>`: from the dashboard's QR code (through the server's `/pair` page) or from `openmob phone add` over USB (`am start`). A code is an 8-character id followed by a 128-bit secret; it works once, for 2 minutes, for one account.
+2. `POST /api/pair/check` `{"code"}` → `{"email", "expires", "server"}`: which account the code pairs with. It doesn't use the code up.
+3. The app asks its owner once, with `BiometricPrompt` (`BIOMETRIC_STRONG | DEVICE_CREDENTIAL`): title "Connect this phone to *\<host\>*?", subtitle "as *\<email\>*". Nothing changes before this.
+4. `POST /api/pair/claim` `{"code", "device_id", "model", "approval_key"}` (no session, no cookie) → `{"key", "server", "email", "device_id"}`. `approval_key` is the phone's screen-lock-bound public key (§3.3). Any socket using an older key for this `device_id` is closed (`4401`).
+5. The app stores `key` encrypted with a Keystore key and connects with it.
+
+Errors: `400` for a wrong, used, expired or voided code (with `detail`), `429` after too many wrong codes from one address or for one account (`Retry-After`).
+
+`POST /api/pair/redeem` (the same body, plus an `X-OpenMob-Session` header of the code's own account) remains for older apps and `openmob bridge --email`.
+
+**Unpair:** `POST /api/phone/unpair` `{"device_id"}` with header `X-OpenMob-Device-Key: <key>` → `{"ok": true}`, or `401` for a wrong or revoked key. The server revokes the key and closes the phone's sockets.
+
+**Live view offer:** when someone opens the live view of a phone that didn't allow screen sharing, the server sends once per connection `{"type": "event", "kind": "live_view", "message": …}`. The app may then offer screen sharing (it never asks at setup or connect); older apps show it as an activity line.
 
 ## 3. Messages
 

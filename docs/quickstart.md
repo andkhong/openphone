@@ -20,14 +20,21 @@ export OPENMOB_SERVER=https://<server>
 
 ## 2. Find your phone
 
+No phone paired yet? On the dashboard, open **Connect a phone**, scan the QR code with the phone and
+confirm on it with your fingerprint or PIN ([Set up a phone](phone-setup.md)). With the phone on a
+USB cable, `openmob phone add` does the whole setup in one command (it needs a key with the
+`devices:add` scope).
+
 ```sh
 curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" $OPENMOB_SERVER/v1/devices
 ```
 
 ```json
-{"devices": [{"id": "app-3f2a9c", "name": "Pixel 9", "platform": "android",
-              "online": true, "busy": false, "last_seen": 1791219552.32}]}
+{"devices": [{"id": "app-3f2a9c", "name": "Pixel 9", "model": "Pixel 9", "platform": "android",
+              "online": true, "busy": false, "last_seen": 1791219552.32, "paired_at": 1791133152.1}]}
 ```
+
+Every paired phone is listed, online or not; pick one with `"online": true`.
 
 ## 3. Run a task and follow it
 
