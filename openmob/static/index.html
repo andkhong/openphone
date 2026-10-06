@@ -724,7 +724,9 @@ function showNewPhone(devices) {
       try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/trust`, { method: "POST" }); }
       catch (e) { ok.disabled = false; alert(e.message); return; }
     }
-    markPairingSeen(`${fresh.id}:${fresh.paired_at}:false`);
+    // The same key showNewPhone looks up (id:paired_at): a different one never matched, so the
+    // banner came back on the next refresh.
+    markPairingSeen(`${fresh.id}:${fresh.paired_at}`);
     box.hidden = true;
     loadDevices();
   };
