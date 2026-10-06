@@ -59,7 +59,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -262,7 +263,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "amazon_checkout": {
@@ -378,7 +380,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "amazon_checkout_card": {
@@ -483,7 +486,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "amazon_autofill": {
@@ -603,7 +607,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "slide_to_pay": {
@@ -679,7 +684,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "chase": {
@@ -742,7 +748,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "login_form": {
@@ -835,7 +842,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "otp_form": {
@@ -900,7 +908,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "chrome_url_js": {
@@ -964,7 +973,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "chrome_url_bank": {
@@ -1028,7 +1038,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1098,7 +1109,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "web_checkout_enter": {
@@ -1217,7 +1229,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "whatsapp_chat": {
@@ -1309,7 +1322,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "gmail_list": {
@@ -1413,7 +1427,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_main": {
@@ -1672,7 +1687,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_internet": {
@@ -1835,7 +1851,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_security": {
@@ -1982,7 +1999,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_dev": {
@@ -2089,7 +2107,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_keyboards": {
@@ -2196,7 +2215,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_datetime": {
@@ -2359,7 +2379,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_bluetooth": {
@@ -2506,7 +2527,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_system": {
@@ -2641,7 +2663,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_app_info_amazon": {
@@ -2844,7 +2867,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_app_info_chase": {
@@ -2991,7 +3015,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "samsung_accessibility": {
@@ -3097,7 +3122,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "openmob_app": {
@@ -3160,7 +3186,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "keyguard_secure": {
@@ -3361,7 +3388,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "share_sheet": {
@@ -3464,7 +3492,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "german_shop": {
@@ -3580,7 +3609,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "permission_dialog_session": {
@@ -3710,7 +3740,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "permission_dialog_other": {
@@ -3826,7 +3857,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "whatsapp_chat_busy": {
@@ -3918,7 +3950,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "quiet_ms": 40
  },
@@ -3980,7 +4013,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "deep_truncated": {
@@ -4057,7 +4091,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_about": {
@@ -4204,7 +4239,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "vpn_consent": {
@@ -4333,7 +4369,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "contacts_app": {
@@ -4409,7 +4446,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4525,7 +4563,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "inapp_webview_autofill": {
@@ -4646,7 +4685,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "native_autofill": {
@@ -4753,7 +4793,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "kalshi_app": {
@@ -4816,7 +4857,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_google": {
@@ -4990,7 +5032,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_approx": {
@@ -5164,7 +5207,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_samsung": {
@@ -5338,7 +5382,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_always_only": {
@@ -5468,7 +5513,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "notifications_kalshi": {
@@ -5598,7 +5644,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "camera_kalshi": {
@@ -5742,7 +5789,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_other_app": {
@@ -5916,7 +5964,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "location_oem_unknown": {
@@ -6032,7 +6081,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "otp_focus_unread": {
@@ -6097,7 +6147,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "focus_unknown_window": {
@@ -6164,7 +6215,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "hidden_permission_dialog": {
@@ -6243,7 +6295,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "hidden_permission_samsung": {
@@ -6335,7 +6388,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "partial_window": {
@@ -6398,7 +6452,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "no_accessibility": {
@@ -6420,7 +6475,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_field": {
@@ -6546,7 +6602,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_password": {
@@ -6672,7 +6729,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_otp": {
@@ -6798,7 +6856,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_blocked": {
@@ -6924,7 +6983,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_unknown_window": {
@@ -7050,7 +7110,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_unlisted_window": {
@@ -7176,7 +7237,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "compose_webview": {
@@ -7288,7 +7350,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "kalshi_market": {
@@ -7404,7 +7467,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "quiet_ms": 40
  },
@@ -7521,7 +7585,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "quiet_ms": 40
  },
@@ -7651,7 +7716,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "kalshi_ticket_odds": {
@@ -7780,7 +7846,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "kalshi_ticket_repriced": {
@@ -7909,7 +7976,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "ticker_board": {
@@ -8050,7 +8118,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "youtube_channel": {
@@ -8153,7 +8222,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "youtube_join": {
@@ -8242,7 +8312,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "share_link_sheet": {
@@ -8400,7 +8471,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -8534,7 +8606,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -8629,7 +8702,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -8724,7 +8798,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -8819,7 +8894,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "photo_viewer": {
@@ -8882,7 +8958,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "instagram_post": {
@@ -8958,7 +9035,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "messenger_share_list": {
@@ -9102,7 +9180,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -9197,7 +9276,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -9292,7 +9372,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "owner": [
    "Ann Lee",
@@ -9403,7 +9484,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "paywall_offscreen_price": {
@@ -9507,7 +9589,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "shop_subscribe": {
@@ -9570,7 +9653,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "ocr_location": {
@@ -9651,7 +9735,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -9814,7 +9899,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -9947,7 +10033,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10100,7 +10187,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10263,7 +10351,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10426,7 +10515,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10559,7 +10649,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10722,7 +10813,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -10865,7 +10957,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -11008,7 +11101,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -11131,7 +11225,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": null
  },
@@ -11275,7 +11370,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "uninstall_chase": {
@@ -11418,7 +11514,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "uninstall_openmob": {
@@ -11561,7 +11658,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "uninstall_unknown": {
@@ -11704,7 +11802,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "install_apk": {
@@ -11847,7 +11946,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_app_info_chess": {
@@ -12022,7 +12122,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "settings_app_info_openmob": {
@@ -12169,7 +12270,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "chess_app": {
@@ -12245,7 +12347,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   }
  },
  "samsung_notifications_real": {
@@ -12327,7 +12430,8 @@
    "com.kalshi.mobile": "Kalshi",
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
-   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
   },
   "ocr": [
    {
@@ -12471,5 +12575,475 @@
     "conf": 1
    }
   ]
+ },
+ "contacts_kalshi_allow_only": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access your contacts?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
+  }
+ },
+ "nearby_kalshi_allow_only": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to find, connect to, and determine the relative position of nearby devices?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
+  }
+ },
+ "camera_kalshi_allow_only": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to take pictures and record video?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
+  }
+ },
+ "play_store_chess": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.vending",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Chess - Play and Learn",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        300,
+        1040,
+        400
+       ],
+       "children": []
+      },
+      {
+       "text": "Install",
+       "desc": "",
+       "id": "com.android.vending:id/install_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        800,
+        1040,
+        920
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store"
+  }
  }
 }

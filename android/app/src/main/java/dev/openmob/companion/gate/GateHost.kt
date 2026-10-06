@@ -109,6 +109,16 @@ object GateHost {
         return read.windows.firstOrNull { it.root?.cls == "OCRDialog" }?.root?.children
     }
 
+    /** The package of a hidden permission dialog the phone has identified from its last OCR reading (non-blocking:
+     *  the cached reading only), or null. */
+    fun ocrDialogPackage(service: OpenMobAccessibilityService): String? {
+        val g = gate ?: return null
+        val base = GateScreens.dialogScreen(service)
+        val cand = g.ocrCandidate(base) ?: return null
+        val lines = PermissionOcr.cached(service, cand.id) ?: return null
+        return g.ocrPreview(base.withOcr(lines)).windows.firstOrNull { it.root?.cls == "OCRDialog" }?.pkg?.ifEmpty { null }
+    }
+
     @Volatile private var lastReadLog = ""
 
     /** Diagnostics (logcat OpenMobGate): how a read was gated around a window the phone can't read. Only the dialog's

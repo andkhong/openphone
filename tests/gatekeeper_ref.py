@@ -764,7 +764,7 @@ class Gatekeeper:
         now = self.now()
         self.own_requests.append({"digest": sha256(" ".join(text.split())),
                                   "expires": now + self.r.limits["own_request_ms"]})
-        for kind in ("send", "post", "delete"):
+        for kind in ("send", "post", "delete", "install"):
             if any_phrase(toks, self.r.w[kind]):
                 self.credits.append({"kind": kind, "expires": now + self.r.limits["requested_ms"]})
 
@@ -871,7 +871,7 @@ class Gatekeeper:
         if mode != "ask" and self._task_covers(risk, params, j.package, screen):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
         if mode != "ask" and self.everyday and self.level(risk) == "tap" and risk.kind not in ("permission",
-                                                                                             "uninstall"):
+                                                                                             "uninstall", "install"):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
         # Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         # (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -974,7 +974,7 @@ class Gatekeeper:
         kinds = {"other", "fill"}
         for kind, extra in (("send", ["share", "message", "text", "reply", "forward", "email", "tell"]),
                             ("share", ["share", "send", "forward"]), ("post", ["share"]),
-                            ("delete", ["unsubscribe", "clear", "remove", "empty", "uninstall"])):
+                            ("delete", ["unsubscribe", "clear", "remove", "empty", "uninstall"]), ("install", [])):
             if any_phrase(toks, self.r.w.get(kind, []) + extra):
                 kinds.add(kind)
         return kinds
@@ -1012,7 +1012,8 @@ class Gatekeeper:
         if risk.reason.startswith("uninstall:"):
             app = risk.grant or ""  # an uninstall counts as the app it removes
         label = tokens((screen.labels.get(app) if screen else "") or "")
-        if app != g["first"] and not (label and has_phrase(g["words"], " ".join(label))):
+        # An install the request asks for happens in the Play Store, whatever app the task is about.
+        if risk.kind != "install" and app != g["first"] and not (label and has_phrase(g["words"], " ".join(label))):
             return False
         g["used"] += 1
         if package:
@@ -1079,7 +1080,7 @@ class Gatekeeper:
                 and self.followup["task"] == str(params.get("task") or ""):  # acts <= 3 (_track_followup)
             self.followup = None
             return "permit:purchase_flow"
-        if risk.kind in ("send", "post", "delete") and not risk.money:
+        if risk.kind in ("send", "post", "delete", "install") and not risk.money:
             for c in self.credits:
                 if c["kind"] == risk.kind:
                     self.credits.remove(c)
@@ -1568,7 +1569,11 @@ class Gatekeeper:
         else:
             # "Only this time" by default; where the dialog doesn't offer it, the next narrowest grant.
             only_once = any(self._perm_role(Target(w, [n])) == "one_time" for n in walk(w.root, []) if n.clickable)
-            ok = setting == "while_using" or (setting == "once" and (role == "one_time" or not only_once))
+            # ...except a lasting grant of a dangerous kind (contacts, SMS…): it asks unless the owner signed
+            # persistent_grants: allow.
+            lasting = kind in self.r.d["permission_dialog"]["persistent_ask"] and \
+                self.perm_setting("persistent_grants") != "allow"
+            ok = setting == "while_using" or (setting == "once" and (role == "one_time" or (not only_once and not lasting)))
         ok = ok or self._perm_granted(grant)
         if ok and kind == "location" and self.perm_setting("location_accuracy") != "precise" and \
                 self._precise_selected(w) and not self._perm_granted(f"{self.last_app}|location_accuracy|precise"):
@@ -1672,6 +1677,11 @@ class Gatekeeper:
                 j.refuse = res
             else:
                 j.risk = res
+            return j
+        # A Play Store Install tap installs an app: a tap-level step (covered when the request asks to install).
+        store = r.d["play_store"]
+        if w.package == store["package"] and label and any(label == tokens(b) for b in store["install_buttons"]):
+            j.risk = Risk("install", "install:play_store", wording="Allow installing an app from the Play Store?")
             return j
         # Settings
         tier = ("none", "")

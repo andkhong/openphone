@@ -38,6 +38,7 @@
     "send": ["send", "send message", "reply all"],
     "post": ["post", "publish", "tweet", "share post", "upload"],
     "delete": ["delete", "delete forever", "uninstall", "remove", "erase", "discard", "trash"],
+    "install": ["install", "reinstall"],
     "pre_commit": ["add to cart", "add to basket", "add to bag", "add to order", "checkout", "check out",
                    "proceed to checkout", "go to checkout", "continue to checkout", "continue", "review order",
                    "select delivery", "view cart", "view basket", "view order", "order history", "order details",
@@ -104,9 +105,14 @@
                      ["foreground", "bei nutzung der app"], ["foreground", "wahrend der app nutzung"],
                      ["precise", "genau"], ["approximate", "ungefahr"], ["allow", "zulassen"]],
     "values": {"notifications": ["deny", "allow"], "location_accuracy": ["approximate", "precise"],
-               "default": ["deny", "ask", "once", "while_using"]},
-    "defaults": {"notifications": "allow", "location_accuracy": "approximate", "default": "once"}
+               "persistent_grants": ["ask", "allow"], "default": ["deny", "ask", "once", "while_using"]},
+    "defaults": {"notifications": "allow", "location_accuracy": "approximate", "persistent_grants": "ask", "default": "once"},
+    "_persistent_doc": "Dangerous kinds whose dialog offers no one-time option: the default 'once' doesn't stretch to a lasting Allow; it asks unless the owner signed persistent_grants: allow.",
+    "persistent_ask": ["contacts", "sms", "phone", "calendar", "body_sensors", "nearby_devices"]
   },
+  "play_store": {"_doc": "A Play Store Install tap installs an app: a tap-level ask (design §5), covered by a request that asks to install.",
+                 "package": "com.android.vending",
+                 "install_buttons": ["install", "install on this phone", "install on this device", "install on phone"]},
   "payment_words": ["pay", "pay now", "place order", "place your order", "buy now", "checkout", "complete purchase",
                     "confirm purchase", "order total", "total due"],
   "schemes": {

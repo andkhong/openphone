@@ -8382,5 +8382,199 @@
     }
    }
   ]
+ },
+ {
+  "name": "a lasting grant of a dangerous kind asks; the owner can sign persistent_grants: allow",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:contacts"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "nearby_kalshi_allow_only",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:nearby_devices"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "camera_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "persistent_grants",
+     "value": "allow"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a Play Store Install tap asks; a request to install covers it once",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "level": "tap",
+     "rule": "risk:install:play_store"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 350
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "instruction": "install chess and play 5 moves against a bot"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow",
+     "rule": "requested"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   }
+  ]
  }
 ]

@@ -415,8 +415,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return JSONObject()
             .put("text", text)
             .put("desc", desc)
-            .put("resource_id", node.viewIdResourceName.orEmpty().substringAfterLast('/'))
-            .put("cls", node.className?.toString().orEmpty().substringAfterLast('.'))
+            // The phone's own OCR marks (ocr_permission_message, OCRText) never come from an app's tree: an app or a web
+            // page (Chrome passes HTML ids through) can't pass for a permission dialog the phone read.
+            .put("resource_id", node.viewIdResourceName.orEmpty().substringAfterLast('/').let { if (it in OCR_MARKS) "" else it })
+            .put("cls", node.className?.toString().orEmpty().substringAfterLast('.').let { if (it in OCR_MARKS) "View" else it })
             .put("clickable", clickable)
             .put("checked", if (node.isCheckable) node.isChecked else JSONObject.NULL)
             .put("bounds", JSONArray().put(r.left).put(r.top).put(r.right).put(r.bottom))
@@ -437,6 +439,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     /** Never errors. Skips the notification shade and our own overlay, per the spec. */
     private fun currentApp(): String? {
+        // A hidden permission dialog the phone identified and read (OCR) is the permission controller's window, even
+        // though Android names no package for it.
+        runCatching { GateHost.ocrDialogPackage(service) }.getOrNull()?.let { return it }
         val ignored = setOf("com.android.systemui", service.packageName)
         val fromWindow = runCatching { service.rootInActiveWindow?.packageName?.toString() }.getOrNull()
         return listOfNotNull(fromWindow, service.currentPackage).firstOrNull { it !in ignored }
@@ -775,6 +780,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         val SUPPORTED_KEYS = listOf("BACK", "HOME", "APP_SWITCH", "ENTER", "DELETE", "WAKEUP", "POWER",
             "VOLUME_UP", "VOLUME_DOWN")
         val UNSUPPORTED_KEYS = setOf("TAB", "MENU", "SEARCH", "ESCAPE")
+        val OCR_MARKS = setOf("ocr_permission_message", "OCRText", "OCRDialog")
     }
 }
 

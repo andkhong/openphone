@@ -1398,6 +1398,40 @@ SCREENS.update({
 })
 
 
+# --- review of the tight loop: lasting grants of dangerous kinds, and Play Store installs ------------------------------
+LABELS["com.android.vending"] = "Google Play Store"
+SCREENS.update({
+    "contacts_kalshi_allow_only": location_dialog(message="Allow Kalshi to access your contacts?",
+                                                  buttons=("allow", "deny"), cards=False),
+    "nearby_kalshi_allow_only": location_dialog(
+        message="Allow Kalshi to find, connect to, and determine the relative position of nearby devices?",
+        buttons=("allow", "deny"), cards=False),
+    "camera_kalshi_allow_only": location_dialog(message="Allow Kalshi to take pictures and record video?",
+                                                buttons=("allow", "deny"), cards=False),
+    "play_store_chess": screen(app("com.android.vending", [
+        node(text="Chess - Play and Learn", bounds=(40, 300, 1040, 400)),
+        button("Install", "com.android.vending:id/install_button", (40, 800, 1040, 920))]), labels=LABELS),
+})
+SCENARIOS += [
+    sc("a lasting grant of a dangerous kind asks; the owner can sign persistent_grants: allow", [
+        KALSHI,
+        step("tap", "contacts_kalshi_allow_only", ask("permission", level="tap", rule="risk:permission:contacts"),
+             x=540, y=1505),
+        step("tap", "nearby_kalshi_allow_only", ask("permission", rule="risk:permission:nearby_devices"), x=540, y=1505),
+        step("tap", "contacts_kalshi_allow_only", allow(), x=540, y=1635),
+        step("tap", "camera_kalshi_allow_only", allow(), x=540, y=1505),  # not a listed kind: the narrowest offered
+        step("tap", "notifications_kalshi", allow(), x=540, y=1505),
+        perm_default("persistent_grants", "allow"),
+        step("tap", "contacts_kalshi_allow_only", allow(), x=540, y=1505)], tags=["permissions"]),
+    sc("a Play Store Install tap asks; a request to install covers it once", [
+        step("tap", "play_store_chess", ask("install", level="tap", rule="risk:install:play_store"), x=540, y=860),
+        step("tap", "play_store_chess", allow(), x=540, y=350),
+        {"instruction": "install chess and play 5 moves against a bot"},
+        step("tap", "play_store_chess", allow(rule="requested"), x=540, y=860),
+        step("tap", "play_store_chess", ask("install"), x=540, y=860)], tags=["friction"]),
+]
+
+
 def main():
     (HERE / "screens.json").write_text(json.dumps(SCREENS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "scenarios.json").write_text(json.dumps(SCENARIOS, indent=1, ensure_ascii=False) + "\n")
