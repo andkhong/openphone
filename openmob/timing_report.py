@@ -98,6 +98,9 @@ def summarize(rows: list[dict]) -> list[dict]:
             "steps_per_task": stats([float(n) for n in per_task.values()]),
             "phases": _phases(members),
         }
+        dones = [r.get("done_via") for r in members if r.get("done_via")]
+        if dones:
+            group["done_via"] = {"classifier": dones.count("classifier"), "vision": dones.count("vision")}
         if any(r.get("fast") for r in members):
             fast = [r for r in members if r.get("fast")]
             vision = [r for r in members if not r.get("fast")]
@@ -136,6 +139,8 @@ def format_report(groups: list[dict]) -> str:
             lines.append(f"  {'mean ms/step':<14}{'fast':>9}{'vision':>9}")
             for label, key in SPLIT_ROWS:
                 lines.append(f"  {label:<14}{_ms(f['phases'][key]['mean']):>9}{_ms(v['phases'][key]['mean']):>9}")
+        if done := g.get("done_via"):
+            lines.append(f"  finished by: {done['classifier']} jev (no vision confirmation), {done['vision']} vision")
         lines.append("")
     lines.append("agent time = total − wait (approvals, answers, loading screens). "
                  "settle is counted on the step after the action that caused it.")

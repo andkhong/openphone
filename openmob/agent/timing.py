@@ -6,7 +6,8 @@ step. Phases are exclusive: time inside a nested phase (a classifier call during
 approval wait during a tap) counts there and not in the enclosing one.
 
 - observe: foreground app, screenshot, accessibility elements and OCR (classifier calls excluded)
-- jev:     the screen classifier (assess_screen, assess_tap) and classifier app picking
+- jev:     the screen classifier (assess_screen, assess_tap, or the one observe_step request per step)
+           and classifier app picking
 - wait:    human or loading time: loading-screen waits, risky-tap approvals, ask_user answers
 - model:   the main model call(s), including a nudge call that produced no tool call
 - action:  the phone action and the tool's own work (app resolution included)

@@ -82,7 +82,7 @@ def test_settle_returns_once_the_screen_is_quiet(tmp_path):
     assert back["settle_ms"] < 1000 and done["settle_ms"] < 1000  # well under either cap, even under load
     assert back["settle_idle"] is True and done["settle_idle"] is True
     assert steps[0]["settle_idle"] is None  # nothing settled before the first step
-    assert {s["variant"] for s in steps} == {"adaptive"}
+    assert {s["variant"] for s in steps} == {"adaptive+q50"}  # a non-default quiet time is named
 
 
 def test_settle_stops_at_the_cap_on_a_screen_that_never_goes_quiet(tmp_path):

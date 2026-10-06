@@ -402,3 +402,18 @@ def test_fast_settle_and_variant_columns_are_stored(tmp_path):
     assert step["fast"] is True and step["settle_idle"] is False and step["variant"] == "adaptive+fast"
     timed = h.step_timings()[0]
     assert timed["fast"] == 1 and timed["variant"] == "adaptive+fast"
+
+
+def test_done_via_is_stored_and_reported(tmp_path):
+    h = History(tmp_path / "h.sqlite")
+    chat = h.create_chat(None, "p", "Pixel", "hi")
+    variant = "adaptive+fast+noshot+1req+launch+fastdone"
+    h.record_step(chat, "t1", {"idx": 1, "tool": "tap_element", "is_error": False, "jev": True, "model": "m",
+                               "fast": True, "variant": variant, **dict.fromkeys(PHASE_KEYS, 5)})
+    h.record_step(chat, "t1", {"idx": 2, "tool": "done", "is_error": False, "jev": True, "model": "m",
+                               "fast": True, "variant": variant, "done_via": "classifier",
+                               **dict.fromkeys(PHASE_KEYS, 5)})
+    assert h.steps(None, "t1")[1]["done_via"] == "classifier"
+    groups = summarize(h.step_timings())
+    assert [g["variant"] for g in groups] == [variant] and groups[0]["done_via"] == {"classifier": 1, "vision": 0}
+    assert "finished by: 1 jev (no vision confirmation), 0 vision" in format_report(groups)

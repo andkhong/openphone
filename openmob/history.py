@@ -97,6 +97,7 @@ CREATE TABLE IF NOT EXISTS steps (
     settle_idle INTEGER,              -- 1 / 0: the adaptive settle before it saw the screen go quiet / hit its cap (NULL: fixed sleep)
     fast INTEGER,                     -- 1: decided by the fast path (classifier + small text model), 0: by the main model
     variant TEXT,                     -- the latency features the agent ran with: fixed | adaptive | adaptive+fast …
+    done_via TEXT,                    -- on a done step: vision (the main model) | classifier (fast_path_done)
     PRIMARY KEY (turn_id, idx)
 );
 CREATE INDEX IF NOT EXISTS steps_by_chat ON steps (chat_id);
@@ -119,7 +120,7 @@ TIMING_COLUMNS = ("observe_ms", "jev_ms", "wait_ms", "model_ms", "action_ms", "s
 MIGRATIONS = [("turns", "package", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TIMING_COLUMNS + ("jev",)
 ] + [("steps", "model", "TEXT"), ("steps", "settle_idle", "INTEGER"), ("steps", "fast", "INTEGER"),
-      ("steps", "variant", "TEXT")]
+      ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT")]
 
 
 class History:
@@ -228,8 +229,8 @@ class History:
                 """INSERT OR REPLACE INTO steps (turn_id, idx, chat_id, account_id, device_id, t, tool, args, norm_xy,
                    package, screen_w, screen_h, anchor, outcome, is_error, latency_ms, source,
                    observe_ms, jev_ms, wait_ms, model_ms, action_ms, settle_ms, total_ms, jev, model,
-                   settle_idle, fast, variant)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   settle_idle, fast, variant, done_via)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (turn_id, step["idx"], chat_id, account_id or LOCAL_ACCOUNT, device_id, step.get("t", time.time()),
                  step["tool"], json.dumps(step.get("args") or {}, default=str), js(step.get("norm_xy")),
                  step.get("package"), step.get("screen_w"), step.get("screen_h"), js(step.get("anchor")),
@@ -238,7 +239,8 @@ class History:
                  *(step.get(c) for c in TIMING_COLUMNS),
                  None if step.get("jev") is None else int(bool(step["jev"])), step.get("model"),
                  None if step.get("settle_idle") is None else int(bool(step["settle_idle"])),
-                 None if step.get("fast") is None else int(bool(step["fast"])), step.get("variant")),
+                 None if step.get("fast") is None else int(bool(step["fast"])), step.get("variant"),
+                 step.get("done_via")),
             )
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
@@ -304,7 +306,7 @@ class History:
             where.append("COALESCE(s.model, t.model) = ?")
             args.append(model)
         rows = self._q(
-            f"""SELECT s.turn_id, s.idx, s.jev, s.fast, s.variant, s.settle_idle, COALESCE(s.model, t.model) AS model,
+            f"""SELECT s.turn_id, s.idx, s.jev, s.fast, s.variant, s.settle_idle, s.done_via, COALESCE(s.model, t.model) AS model,
                        {", ".join("s." + c for c in TIMING_COLUMNS)}
                 FROM steps s LEFT JOIN turns t ON t.id = s.turn_id WHERE {" AND ".join(where)} ORDER BY s.t""",
             tuple(args),

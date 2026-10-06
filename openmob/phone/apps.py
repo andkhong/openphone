@@ -6,6 +6,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -35,8 +36,13 @@ class Resolution:
     score: float = 100.0
 
 
+def fold(text: str) -> str:
+    """Drop diacritics: 'Café' -> 'Cafe'."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
 def normalize(text: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", fold(text).lower()).split())
 
 
 def package_words(package: str) -> str:
@@ -156,6 +162,20 @@ class AppResolver:
             if picked in packages:
                 return Resolution(picked, "llm", 80)
         return None
+
+    def exact(self, name: str) -> str | None:
+        """The one installed package whose alias or display name is `name`, compared case-, diacritic-
+        and space-insensitively (with no fuzzy guessing), else None. Reads only names already cached,
+        so it never waits on the phone beyond the package list."""
+        query = normalize(name)
+        if not query:
+            return None
+        if query in self.aliases:
+            return self.aliases[query]
+        squeezed = query.replace(" ", "")
+        hits = {p for p in self.packages() if (label := normalize(self.labels.get(p) or ""))
+                and (label == query or label.replace(" ", "") == squeezed)}
+        return hits.pop() if len(hits) == 1 else None
 
     def _match_names(self, query: str, packages: list[str]) -> Resolution | None:
         scored: list[tuple[float, str]] = []
