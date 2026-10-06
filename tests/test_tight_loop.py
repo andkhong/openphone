@@ -521,3 +521,16 @@ def test_an_unreadable_window_is_given_a_moment_before_the_model_looks(tmp_path)
     ], tmp_path)
     agent.run("open chess as a guest")
     assert phone.tapped == ["Play as Guest"] and ("key", "BACK") in phone.actions and len(client.requests) == 2
+
+
+def test_the_feed_shows_a_count_not_the_owners_app_list(tmp_path):
+    """The dashboard showed every app and package on the phone; the model still gets the list."""
+    phone = ArchivedPhone()
+    agent, client, io_ = make(phone, [
+        [tool_use("list_apps", "a")],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], tmp_path)
+    agent.run("what's on my phone")
+    feed = [m for k, m in io_.events if m.startswith("list_apps:")]
+    assert feed == ["list_apps: Checked the installed apps (3 found)."]
+    assert "(com.whatsapp)" in last_text(client.requests[1])

@@ -145,6 +145,7 @@ class Outcome:
     tokens: dict | None = None  # the model calls since the last step (set by _execute; see _note_tokens)
     until: str | None = None  # the settle after it waits for this too (launch_app, open_url: "loading_done")
     wait: dict | None = None  # a wait_until's condition and outcome, for the step record (wait_cond, wait_met…)
+    shown: str | None = None  # what the activity feed shows instead of text (the model still gets text)
 
 
 @dataclass
@@ -409,7 +410,7 @@ class Agent:
     def _act(self, call, obs: Observation, state: _TaskState) -> Outcome:
         """Run one of the main model's tool calls and report it."""
         outcome = self._execute(call.name, call.input, obs, state)
-        self._event("error" if outcome.is_error else "action", f"{call.name}: {outcome.text}",
+        self._event("error" if outcome.is_error else "action", f"{call.name}: {outcome.shown or outcome.text}",
                     {"timings": outcome.timings, "jev": self.judge is not None})
         return outcome
 
@@ -887,7 +888,10 @@ class Agent:
             # Fresh from the phone: an app installed or removed since the last look shows as it is now.
             self.resolver.packages(refresh=True)
             text = self.resolver.listing(args.get("query", ""), limit=15 if args.get("query") else None)
-            return Outcome(text or "No apps found.", settle=0)
+            # The feed shows a count, not the phone's app list (the owner's apps are nobody's business on screen).
+            count = len([line for line in (text or "").splitlines() if line.strip()])
+            shown = f"Checked the installed apps ({count} found)." if count else "No apps found."
+            return Outcome(text or "No apps found.", settle=0, shown=shown)
 
         if name == "open_url":
             url = gate.web_url(str(args["url"]))
@@ -1994,7 +1998,7 @@ class Agent:
                 self._settle(c.settle_delay, state, quiet_ms=FOCUS_QUIET_MS)
             outcome = self._execute(name, args, obs, state, fast_step=True)
             state.fast_steps += 1
-            shown = f"{name}: {'Typed ' + REDACTED + '.' if name == 'type_text' and not outcome.is_error else outcome.text}"
+            shown = f"{name}: {'Typed ' + REDACTED + '.' if name == 'type_text' and not outcome.is_error else outcome.shown or outcome.text}"
             self._event("error" if outcome.is_error else "action", shown,
                         {"timings": outcome.timings, "jev": True, "fast": True})
             taken.append((name, args, outcome))
