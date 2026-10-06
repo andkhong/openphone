@@ -74,6 +74,15 @@ def test_gate_prompt_ids_are_namespaced():
     assert adm.decision == "ask" and adm.approval_id.startswith("gk")
 
 
+def test_permission_defaults_tighten_freely_and_loosen_only_signed():
+    gk = Gatekeeper()
+    assert (gk.perm_setting("camera"), gk.perm_setting("notifications"), gk.perm_setting("location_accuracy")) == \
+        ("ask", "deny", "approximate")
+    assert not gk.tighten_permission("camera", "while_using")
+    assert gk.tighten_permission("camera", "deny") and gk.perm_setting("camera") == "deny"
+    assert not gk.tighten_permission("camera", "always")
+
+
 def test_the_scenarios_cover_every_area():
     tags = {t for s in SCENARIOS for t in s["tags"]}
     assert {"friction", "permits", "grants", "clock", "modes", "hard_deny", "settings", "risk", "limits",

@@ -21,7 +21,11 @@ PACKAGES = ["com.amazon.mShop.android.shopping", "com.whatsapp", "com.android.ch
             "com.google.android.gms", "com.example.shop", "com.google.android.permissioncontroller",
             "com.android.intentresolver", ""]
 NEUTRAL = ["photo", "news", "hello", "Mom", "weather", "Today", "cable", "2 pack", "Profile", "Gestern", "Warenkorb",
-           "Bestellung", "€12,99", "$4.50", "Total", "Settings", "OK", "Next"]
+           "Bestellung", "€12,99", "$4.50", "Total", "Settings", "OK", "Next",
+           "Allow Example to access this device's location?", "Allow Example to send you notifications?",
+           "Allow WhatsApp to take pictures and record video?", "Only this time", "While using the app",
+           "Allow all the time", "Precise", "Approximate"]
+P = "com.android.permissioncontroller:id/"
 
 
 def vocab(rules: Rules) -> list[str]:
@@ -38,7 +42,10 @@ def gen_node(rng, words, top, depth=0):
     d = {"text": rng.choice(words) if rng.random() < 0.6 else "",
          "desc": rng.choice(words) if rng.random() < 0.2 else "",
          "id": rng.choice(["", "", "buy_now", "sendButton", "place_order", "title", "cc-number", "url_bar",
-                           "search_box", "otp", "delete", "submit", "android:id/switch_widget"]),
+                           "search_box", "otp", "delete", "submit", "android:id/switch_widget",
+                           P + "permission_message", P + "permission_allow_foreground_only_button",
+                           P + "permission_allow_one_time_button", P + "permission_allow_always_button",
+                           P + "permission_deny_button", P + "permission_location_accuracy_radio_fine"]),
          "cls": rng.choice(["android.widget.TextView", "android.widget.Button", "android.widget.EditText",
                             "android.widget.SeekBar", "android.view.View", "android.webkit.WebView"]),
          "bounds": bounds, "children": []}
@@ -70,12 +77,34 @@ def gen_screen(rng, words):
         if pkg or rng.random() < 0.5:
             w["root"] = {"cls": "android.widget.FrameLayout", "bounds": [0, top, W, H], "children": kids}
         windows.append(w)
+    if rng.random() < 0.25:  # a runtime permission dialog on top, over the task's app (com.example.app)
+        windows[0].update(package="com.example.app", type="application", bounds=[0, 0, W, H], layer=1)
+        windows[0]["root"] = {"cls": "android.widget.FrameLayout", "bounds": [0, 0, W, H], "children": [
+            {"text": "Home", "id": "home", "clickable": True, "bounds": [0, 100, W, 300], "children": []}]}
+        prefix = rng.choice(["com.android.permissioncontroller:id/", "com.samsung.android.permissioncontroller:id/"])
+        roles = rng.sample(["permission_allow_foreground_only_button", "permission_allow_one_time_button",
+                            "permission_allow_always_button", "permission_allow_button", "permission_deny_button",
+                            "permission_location_accuracy_radio_fine", "permission_location_accuracy_radio_coarse"],
+                           rng.randrange(1, 5))
+        kids = [{"text": rng.choice(NEUTRAL[-8:-5] + ["Allow Spyware to access your contacts?"]),
+                 "id": prefix + "permission_message", "bounds": [40, 1050, 1040, 1150], "children": []}]
+        kids += [{"text": "", "id": prefix + r, "cls": "android.widget.Button", "clickable": True,
+                  "bounds": [40, 1200 + 120 * i, 1040, 1300 + 120 * i], "children": []} for i, r in enumerate(roles)]
+        windows.append({"id": 9, "type": "application", "layer": 9,
+                        "package": rng.choice(["com.google.android.permissioncontroller",
+                                               "com.samsung.android.permissioncontroller"]),
+                        "title": "", "bounds": [0, 1000, W, 2000],
+                        "root": {"cls": "android.widget.FrameLayout", "bounds": [0, 1000, W, 2000], "children": kids}})
     return {"windows": windows, "quiet_ms": rng.choice([1000, 1000, 40]),
             "keyguard": {"locked": rng.random() < 0.05, "secure": True},
             "autofill_service": rng.choice(["", "com.google.android.gms"]),
             "resolve": {"https://x.example/": {"package": rng.choice(PACKAGES)},
                         "tel:1": {"package": rng.choice(["com.google.android.dialer", "com.evil"])}},
             "labels": {"com.whatsapp": "WhatsApp", "com.example.app": "Example", "com.chase.sig.android": "Chase"}}
+
+
+PERM_RECORDS = [("location", "while_using"), ("location", "once"), ("location_accuracy", "precise"),
+                ("notifications", "allow"), ("camera", "deny"), ("camera", "bogus")]
 
 
 def gen_call(rng, screen):
@@ -127,7 +156,13 @@ def build(n=400, seed=7):
         if rng.random() < 0.2:
             steps.append({"policy": {"type": "never", "duration_ms": 3600000, "allow_money": rng.random() < 0.5},
                           "sig": "valid", "expect_accepted": True})
-        for _ in range(rng.choice([1, 2])):
+        if rng.random() < 0.3:
+            perm, value = rng.choice(PERM_RECORDS)
+            steps.append({"policy": {"type": "permission_default", "perm": perm, "value": value}, "sig": "valid",
+                          "expect_accepted": value != "bogus"})
+        if any(w["id"] == 9 for w in screens[name]["windows"]):  # first the app itself (the task's app)
+            steps.append({"call": {"method": "tap", "params": {"x": 540, "y": 200}}, "screen": name, "expect": {}})
+        for _ in range(rng.choice([1, 2, 3])):
             steps.append({"call": gen_call(rng, screens[name]), "screen": name, "expect": {}})
         case = {"name": name, "tags": ["fuzz"], "steps": steps}
         # The reference engine's answers become the expectations.

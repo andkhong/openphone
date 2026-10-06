@@ -53,7 +53,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -250,7 +251,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "amazon_checkout": {
@@ -360,7 +362,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "amazon_checkout_card": {
@@ -459,7 +462,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "amazon_autofill": {
@@ -573,7 +577,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "slide_to_pay": {
@@ -643,7 +648,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "chase": {
@@ -700,7 +706,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "login_form": {
@@ -787,7 +794,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "otp_form": {
@@ -846,7 +854,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "chrome_url_js": {
@@ -904,7 +913,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "chrome_url_bank": {
@@ -962,7 +972,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1026,7 +1037,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "web_checkout_enter": {
@@ -1139,7 +1151,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "whatsapp_chat": {
@@ -1225,7 +1238,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "gmail_list": {
@@ -1323,7 +1337,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_main": {
@@ -1576,7 +1591,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_internet": {
@@ -1733,7 +1749,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_security": {
@@ -1874,7 +1891,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_dev": {
@@ -1975,7 +1993,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_keyboards": {
@@ -2076,7 +2095,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_datetime": {
@@ -2233,7 +2253,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_bluetooth": {
@@ -2374,7 +2395,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_system": {
@@ -2503,7 +2525,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_app_info_amazon": {
@@ -2700,7 +2723,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_app_info_chase": {
@@ -2841,7 +2865,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "samsung_accessibility": {
@@ -2941,7 +2966,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "openmob_app": {
@@ -2998,7 +3024,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "keyguard_secure": {
@@ -3193,7 +3220,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "share_sheet": {
@@ -3290,7 +3318,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "german_shop": {
@@ -3400,7 +3429,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "permission_dialog_session": {
@@ -3524,7 +3554,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "permission_dialog_other": {
@@ -3634,7 +3665,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "whatsapp_chat_busy": {
@@ -3720,7 +3752,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   },
   "quiet_ms": 40
  },
@@ -3776,7 +3809,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "deep_truncated": {
@@ -3847,7 +3881,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "settings_about": {
@@ -3988,7 +4023,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "vpn_consent": {
@@ -4111,7 +4147,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "contacts_app": {
@@ -4181,7 +4218,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4291,7 +4329,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "inapp_webview_autofill": {
@@ -4406,7 +4445,8 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  },
  "native_autofill": {
@@ -4507,7 +4547,962 @@
    "com.chess": "Chess.com",
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
-   "com.example.app": "Example"
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "kalshi_app": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "markets",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "location_google": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access this device's location?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Precise",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_fine",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        40,
+        1170,
+        520,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "Approximate",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_coarse",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        560,
+        1170,
+        1040,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": false
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Only this time",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_one_time_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1710,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "location_samsung": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.samsung.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access this device's location?",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Precise",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_location_accuracy_radio_fine",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        40,
+        1170,
+        520,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "Approximate",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_location_accuracy_radio_coarse",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        560,
+        1170,
+        1040,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": false
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Only this time",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_allow_one_time_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.samsung.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1710,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "location_always_only": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access this device's location?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow all the time",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_always_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "notifications_kalshi": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to send you notifications?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "camera_kalshi": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to take pictures and record video?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Only this time",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_one_time_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1710,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "location_other_app": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Tracker to access this device's location?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Precise",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_fine",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        40,
+        1170,
+        520,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "Approximate",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_coarse",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        560,
+        1170,
+        1040,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": false
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Only this time",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_one_time_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1710,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
   }
  }
 }

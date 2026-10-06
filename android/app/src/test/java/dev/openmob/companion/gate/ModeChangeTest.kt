@@ -55,6 +55,16 @@ class ModeChangeTest {
         assertEquals("grant", gk.admit("tap", mapOf("x" to 990L, "y" to 2250L), SCREENS.getValue("whatsapp_chat")).rule)
     }
 
+    @Test fun approvedPermissionDefaultsBecomeSignedPolicy() {
+        val a = action("q", "{\"permission_prompts\": {\"location\": \"while_using\", \"location_accuracy\": \"precise\"}}")
+        assertEquals("Let agents allow location (while_using) in permission dialogs without asking? " +
+                     "Let agents give apps your precise location without asking?", ModeChange.describe(a.getValue("input")))
+        assertEquals(2, approve(a))
+        assertEquals("while_using", gk.permSetting("location"))
+        assertEquals("precise", gk.permSetting("location_accuracy"))
+        assertEquals(0, approve(action("q", "{\"permission_prompts\": {\"location\": \"always\"}}")))
+    }
+
     @Test fun neverOffIsATightening() {
         assertTrue(ModeChange.turnsNeverOff(action("q", "{\"never\": \"off\"}").getValue("input")))
         assertFalse(ModeChange.turnsNeverOff(action("q", "{\"never\": \"1h\"}").getValue("input")))

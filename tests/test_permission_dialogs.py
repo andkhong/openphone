@@ -3,6 +3,8 @@
 Fixtures: the Google (Pixel) permission controller, Samsung's One UI one, and the older AOSP package installer.
 """
 
+import dataclasses
+
 import pytest
 from conftest import FakeDriver, RecordingIO, ScriptedClient, tool_use
 
@@ -54,40 +56,89 @@ def test_not_a_dialog():
     assert pd.detect("com.chess", [UIElement(0, "Allow", "", "com.chess:id/ok", "Button", True, None, (0, 0, 9, 9))]) is None
 
 
+def decide(d, mode="auto", app="Chess.com", **prompts):
+    return pd.decide(d, mode=mode, prompts=prompts, task_app_label=app)
+
+
 @pytest.mark.parametrize("kind", list(MESSAGES))
-def test_the_decision_per_type(kind):
+def test_the_default_per_type(kind):
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES[kind]))
     expected = "deny" if kind == "notifications" else "ask"
-    assert pd.decide(d, mode="auto", notifications="deny", task_app_label="Chess.com") == expected
+    assert decide(d).answer == expected
     if kind == "notifications":
-        assert pd.decide(d, mode="auto", notifications="allow", task_app_label="Chess.com") == "allow"
+        assert decide(d, notifications="allow").answer == "allow"
     else:
         assert pd.question(d).startswith("Allow Chess.com to use your ")
 
 
-@pytest.mark.parametrize("kind", list(MESSAGES))
-def test_dont_ask_mode_denies_everything_but_the_notification_setting(kind):
+@pytest.mark.parametrize("kind", [k for k in MESSAGES if k != "notifications"])
+@pytest.mark.parametrize("setting,answer,tapped", [("deny", "deny", "Don't allow"), ("ask", "ask", None),
+                                                   ("once", "allow", "Only this time"),
+                                                   ("while_using", "allow", "While using the app")])
+def test_each_setting(kind, setting, answer, tapped):
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES[kind]))
-    got = pd.decide(d, mode="never", notifications="allow", task_app_label="Chess.com")
-    assert got == ("allow" if kind == "notifications" else "deny")
+    plan = decide(d, **{kind: setting})
+    assert plan.answer == answer
+    if tapped:
+        assert pd.button(d, plan.answer, plan.grant).text == tapped
+
+
+@pytest.mark.parametrize("kind", list(MESSAGES))
+def test_dont_ask_mode_denies_unless_once_or_while_using(kind):
+    d = pd.detect(GOOGLE, dialog_elements(MESSAGES[kind]))
+    assert decide(d, mode="never", notifications="allow").answer == ("allow" if kind == "notifications" else "deny")
+    if kind != "notifications":
+        assert decide(d, mode="never", **{kind: "once"}).answer == "allow"
+        assert decide(d, mode="never", **{kind: "while_using"}).answer == "allow"
 
 
 def test_another_apps_request_asks():
     d = pd.detect(GOOGLE, dialog_elements("Allow Spyware to send you notifications?"))
-    assert pd.decide(d, mode="auto", notifications="allow", task_app_label="Chess.com") == "ask"
-    assert pd.decide(d, mode="auto", notifications="deny", task_app_label="Chess.com") == "deny"  # deny never asks
+    assert decide(d, notifications="allow").answer == "ask"
+    assert decide(d).answer == "deny"  # deny never asks
     d = pd.detect(GOOGLE, dialog_elements("Allow Spyware to access your contacts?"))
-    assert pd.decide(d, mode="auto", notifications="deny", task_app_label="Chess.com") == "ask"
+    assert decide(d, contacts="while_using").answer == "ask"  # the owner's default is for the task's own app
 
 
 def test_a_yes_taps_the_narrowest_grant():
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES["camera"], roles=("always", "foreground", "one_time", "deny")))
-    assert pd.button(d, "allow").text == "Only this time"
+    assert pd.button(d, "allow", "once", asked=True).text == "Only this time"
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES["location"], roles=("always", "foreground", "deny")))
-    assert pd.button(d, "allow").text == "While using the app"
-    d = pd.detect(GOOGLE, dialog_elements(MESSAGES["location"], roles=("always", "deny")))
-    assert pd.button(d, "allow") is None  # never "Allow all the time"
+    assert pd.button(d, "allow", "once", asked=True).text == "While using the app"
     assert pd.button(d, "deny").text == "Don't allow"
+
+
+def test_never_allow_all_the_time_unless_the_owner_says_so():
+    d = pd.detect(GOOGLE, dialog_elements(MESSAGES["location"], roles=("always", "deny")))
+    for setting in ("once", "while_using"):
+        assert decide(d, location=setting).answer == "ask"  # the only grant is background location: ask
+        assert decide(d, mode="never", location=setting).answer == "deny"
+    assert pd.button(d, "allow", "while_using") is None
+    assert pd.button(d, "allow", "once", asked=True).text == "Allow all the time"  # only after the owner's yes
+
+
+def location_elements(prefix="com.android.permissioncontroller:id/", precise_checked=True, ids=True):
+    els = dialog_elements(MESSAGES["location"], prefix=prefix)
+    n = len(els)
+    els.append(UIElement(n, "Precise", "", prefix + "permission_location_accuracy_radio_fine" if ids else "",
+                         "RadioButton", True, precise_checked, (40, 1100, 520, 1240)))
+    els.append(UIElement(n + 1, "Approximate", "", prefix + "permission_location_accuracy_radio_coarse" if ids else "",
+                         "RadioButton", True, not precise_checked, (560, 1100, 1040, 1240)))
+    return els
+
+
+@pytest.mark.parametrize("package,prefix,ids", [
+    (GOOGLE, "com.android.permissioncontroller:id/", True),
+    (SAMSUNG, "com.samsung.android.permissioncontroller:id/", True),
+    (SAMSUNG, "com.samsung.android.permissioncontroller:id/", False)])  # One UI text-only cards
+def test_approximate_is_chosen_unless_the_owner_says_precise(package, prefix, ids):
+    d = pd.detect(package, location_elements(prefix, ids=ids))
+    plan = decide(d, location="while_using")
+    assert plan.accuracy == "approximate" and pd.accuracy_card(d, plan.accuracy).text == "Approximate"
+    plan = decide(d, location="while_using", location_accuracy="precise")
+    assert pd.accuracy_card(d, plan.accuracy) is None  # Precise is already selected
+    d = pd.detect(package, location_elements(prefix, precise_checked=False, ids=ids))
+    assert pd.accuracy_card(d, "approximate") is None and pd.accuracy_card(d, "precise").text == "Precise"
 
 
 class DialogPhone(FakeDriver):
@@ -116,14 +167,14 @@ class StepIO(RecordingIO):
         self.steps.append(row)
 
 
-def run(tmp_path, message, answers=None, mode="auto", notifications="deny", phone=None):
+def run(tmp_path, message, answers=None, mode="auto", phone=None, **prompts):
     driver = (phone or DialogPhone)(message)
     client = ScriptedClient([[tool_use("done", "d", summary="ok", success=True)]])
     io = StepIO(answers)
     agent = Agent(client, driver, AppResolver(driver, label_cache=tmp_path / "l.json"),
                   Config(settle_delay=0, launch_settle_delay=0), io, use_ocr=False)
     perms = TaskPermissions(mode, lambda: {"ceiling": "trusted", "default_mode": mode,
-                                           "notifications_permission": notifications,
+                                           "permission_prompts": prompts,
                                            **({"never_until": 9e12} if mode == "never" else {})})
     agent.run("play chess", permissions=perms)
     return driver, client, io
@@ -178,3 +229,37 @@ def test_dont_ask_mode_denies_the_camera_without_asking(tmp_path):
     assert io.questions == []
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and taps[0][2] > 1850
+
+
+class LocationPhone(DialogPhone):
+    """Kalshi asks for location with Precise/Approximate cards; tapping a card selects it, a button answers."""
+
+    def __init__(self, message):
+        super().__init__(message)
+        self.elements = location_elements()
+
+    def tap(self, x, y):
+        FakeDriver.tap(self, x, y)
+        hit = next(e for e in self.elements if e.bounds[0] <= x < e.bounds[2] and e.bounds[1] <= y < e.bounds[3])
+        if hit.cls == "RadioButton":
+            self.elements = [dataclasses.replace(e, checked=(e is hit)) if e.cls == "RadioButton" else e
+                             for e in self.elements]
+        else:
+            self.answered = hit.text
+            self.elements = []
+
+
+def test_location_while_using_picks_approximate_first(tmp_path):
+    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="while_using")
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 2 and taps[0][1] > 540  # the Approximate card, then…
+    assert driver.answered == "While using the app"
+    assert io.questions == [] and len(client.requests) == 1
+    assert all(r.get("handled_by") == "permission_rule" for r in io.steps if r["tool"] == "tap_element")
+
+
+def test_location_precise_when_the_owner_says_so(tmp_path):
+    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="once",
+                             location_accuracy="precise")
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and driver.answered == "Only this time"  # Precise was already selected

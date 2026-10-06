@@ -361,13 +361,16 @@ previous clipboard back, or clears it.
 These are server-side checks. On phones with the gatekeeper the phone runs the same rules itself
 ([above](#the-phone-enforces-it-too-gatekeeper); [design](design/phone-gatekeeper.md)).
 
-**Android permission dialogs** ("Allow Chess.com to send you notifications?") are answered by rule at
+**Android permission dialogs** ("Allow Kalshi to access this device's location?") are answered by rule at
 observation time, before any model sees the screen, and recorded as a fast step (`handled_by:
-"permission_rule"`): notifications are denied unless the owner set `notifications_permission` to
-`allow`; camera, microphone, location, contacts, photos and media, phone, SMS, calendar, nearby devices
-(and anything else) ask the owner ("Allow Chess.com to use your camera?"), and a yes taps the narrowest
-grant ("Only this time", else "While using the app", never "Allow all the time"); a request from an app
-other than the task's asks; under Don't ask everything but notifications is denied.
+"permission_rule"`), by the owner's `permission_prompts` settings: location, camera, microphone, contacts,
+photos and media, phone, SMS, calendar and nearby devices each `ask` (default: the owner is asked on the phone),
+`once`, `while_using` or `deny`; location accuracy `approximate` (default: the Approximate card is chosen before
+granting) or `precise`; notifications `deny` (default) or `allow`. "Allow all the time" is never chosen by
+rule: if it's the only grant offered, the owner is asked. A request from an app other than the task's always
+asks; under Don't ask anything that would ask is denied. Allowing more is a loosening: it needs the phone's
+screen-lock approval, and on gatekeeper phones the phone keeps these settings as signed policy and enforces
+them itself (a per-app "Always allow for <app>" on its prompt is a signed grant); asking more is free.
 
 ## Sensitive apps are off-limits by default
 

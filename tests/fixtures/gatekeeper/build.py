@@ -433,10 +433,10 @@ SCENARIOS = [
         step("tap", "settings_app_info_amazon", ask("settings"), x=540, y=760),
         step("tap", "settings_app_info_amazon", ask(), x=540, y=900),
         step("tap", "settings_app_info_chase", refuse("gate_blocked_app"), x=540, y=620)], tags=["settings"]),
-    sc("permission dialogs: the task's app passes, another app asks", [
+    sc("permission dialogs: the task's app follows the settings, another app asks", [
         step("tap", "launcher", allow(), x=100, y=1900),
         step("tap", "permission_dialog_session", allow(), x=540, y=300),
-        step("tap", "permission_dialog_session", allow(), x=540, y=1550),
+        step("tap", "permission_dialog_session", ask("permission"), x=540, y=1550),  # camera: asks by default
         step("tap", "permission_dialog_other", ask("settings"), x=540, y=1550)], tags=["settings"]),
     sc("surfaces: OpenMob, keyguard, biometric prompt", [
         step("tap", "openmob_app", refuse("gate_denied_page", rule="builtin:own_window"), x=700, y=1650),
@@ -531,6 +531,112 @@ SCREENS.update({
              button("ann@example.com", "autofill_dataset", (40, 1720, 1040, 1820))])},
         autofill_service="com.google.android.gms", labels=LABELS),
 })
+LABELS["com.kalshi"] = "Kalshi"
+
+
+def location_dialog(vendor="com.google.android.permissioncontroller", message=None, buttons=("foreground", "one_time", "deny"),
+                    cards=True, prefix="com.android.permissioncontroller:id/"):
+    """A runtime permission dialog over Kalshi (Google, or Samsung with its own package and ids)."""
+    kids = [node(text=message or "Allow Kalshi to access this device's location?", id=prefix + "permission_message",
+                 bounds=(40, 1050, 1040, 1150))]
+    if cards:
+        kids += [node(cls="android.widget.RadioButton", text="Precise", id=prefix + "permission_location_accuracy_radio_fine",
+                      bounds=(40, 1170, 520, 1400), clickable=True, checked=True),
+                 node(cls="android.widget.RadioButton", text="Approximate",
+                      id=prefix + "permission_location_accuracy_radio_coarse", bounds=(560, 1170, 1040, 1400),
+                      clickable=True, checked=False)]
+    labels = {"foreground": ("permission_allow_foreground_only_button", "While using the app"),
+              "one_time": ("permission_allow_one_time_button", "Only this time"),
+              "always": ("permission_allow_always_button", "Allow all the time"),
+              "allow": ("permission_allow_button", "Allow"),
+              "deny": ("permission_deny_button", "Don't allow")}
+    for i, role in enumerate(buttons):
+        rid, text = labels[role]
+        kids.append(button(text, prefix + rid, (40, 1450 + 130 * i, 1040, 1560 + 130 * i)))
+    return screen(app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
+                  {"id": 5, "type": "application", "layer": 5, "package": vendor, "title": "",
+                   "bounds": [0, 1000, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1000, W, 2000),
+                                                            children=kids)}, labels=LABELS)
+
+
+SCREENS.update({
+    "kalshi_app": screen(app("com.kalshi", [button("Markets", "markets", (0, 200, W, 400))]), labels=LABELS),
+    "location_google": location_dialog(),
+    "location_samsung": location_dialog(vendor="com.samsung.android.permissioncontroller",
+                                        prefix="com.samsung.android.permissioncontroller:id/"),
+    "location_always_only": location_dialog(buttons=("always", "deny"), cards=False),
+    "notifications_kalshi": location_dialog(message="Allow Kalshi to send you notifications?", buttons=("allow", "deny"),
+                                            cards=False),
+    "camera_kalshi": location_dialog(message="Allow Kalshi to take pictures and record video?",
+                                     buttons=("foreground", "one_time", "deny"), cards=False),
+    "location_other_app": location_dialog(message="Allow Tracker to access this device's location?"),
+})
+WHILE_USING, ONCE, DENY_BTN = dict(x=540, y=1505), dict(x=540, y=1635), dict(x=540, y=1765)
+PRECISE, APPROX = dict(x=280, y=1285), dict(x=800, y=1285)
+
+
+def perm_default(perm, value, sig="valid"):
+    return {"policy": {"type": "permission_default", "perm": perm, "value": value}, "sig": sig,
+            "expect_accepted": sig == "valid"}
+
+
+KALSHI = step("tap", "kalshi_app", allow(), x=540, y=300)
+SCENARIOS += [
+    sc("location by default: approximate and deny pass, anything that grants asks", [
+        KALSHI,
+        step("tap", "location_google", allow(), **APPROX),
+        step("tap", "location_google", ask("permission", rule="risk:permission:location_accuracy"), **PRECISE),
+        step("tap", "location_google", ask("permission", rule="risk:permission:location"), **WHILE_USING),
+        step("tap", "location_google", ask("permission"), **ONCE),
+        step("tap", "location_google", allow(), **DENY_BTN)], tags=["permissions"]),
+    sc("Samsung's permission controller is read the same way", [
+        KALSHI, step("tap", "location_samsung", allow(), **APPROX),
+        step("tap", "location_samsung", ask("permission"), **PRECISE),
+        step("tap", "location_samsung", ask("permission"), **WHILE_USING)], tags=["permissions"]),
+    sc("signed defaults: while using and precise", [
+        KALSHI, perm_default("location", "while_using"), perm_default("location_accuracy", "precise"),
+        step("tap", "location_google", allow(), **PRECISE),
+        step("tap", "location_google", allow(), **WHILE_USING),
+        step("tap", "location_google", allow(), **ONCE)], tags=["permissions"]),
+    sc("signed default once: only this time passes, while using asks", [
+        KALSHI, perm_default("location", "once"),
+        step("tap", "location_google", allow(), **ONCE),
+        step("tap", "location_google", ask("permission"), **WHILE_USING)], tags=["permissions"]),
+    sc("an unsigned default changes nothing", [
+        KALSHI, perm_default("location", "while_using", sig="bad"),
+        step("tap", "location_google", ask("permission"), **WHILE_USING)], tags=["permissions"]),
+    sc("never Allow all the time, whatever the setting", [
+        KALSHI, perm_default("location", "while_using"),
+        step("tap", "location_always_only", ask("permission", rule="risk:permission:always"), x=540, y=1505),
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("tap", "location_always_only", refuse("gate_denied", rule="never:permission:always"), mode="never",
+             x=540, y=1505)], tags=["permissions"]),
+    sc("Don't ask denies unless the setting is once or while using", [
+        KALSHI, {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("tap", "camera_kalshi", refuse("gate_denied", rule="never:permission:camera"), mode="never", **ONCE),
+        step("tap", "camera_kalshi", allow(), mode="never", **DENY_BTN),
+        perm_default("camera", "once"),
+        step("tap", "camera_kalshi", allow(), mode="never", **ONCE),
+        step("tap", "camera_kalshi", refuse("gate_denied"), mode="never", **WHILE_USING)], tags=["permissions"]),
+    sc("notifications: deny by default, allow when the owner says", [
+        KALSHI, step("tap", "notifications_kalshi", ask("permission", rule="risk:permission:notifications"),
+                     x=540, y=1505),
+        step("tap", "notifications_kalshi", allow(), x=540, y=1635),
+        perm_default("notifications", "allow"),
+        step("tap", "notifications_kalshi", allow(), x=540, y=1505)], tags=["permissions"]),
+    sc("another app's location request asks even with a loose default", [
+        KALSHI, perm_default("location", "while_using"),
+        step("tap", "location_other_app", ask("settings", rule="risk:permission:other_app"), **WHILE_USING)],
+       tags=["permissions"]),
+    sc("Always allow for Kalshi: a per-app override", [
+        KALSHI, step("tap", "location_google", ask("permission"), **WHILE_USING),
+        {"approve": "last", "sig": "valid", "grant": True},
+        step("tap", "location_google", allow(), **WHILE_USING),
+        step("tap", "location_google", allow(rule="grant"), **ONCE),
+        step("tap", "location_google", allow(rule="grant"), **WHILE_USING),
+        step("tap", "location_google", ask("permission"), **PRECISE)], tags=["permissions", "grants"]),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap

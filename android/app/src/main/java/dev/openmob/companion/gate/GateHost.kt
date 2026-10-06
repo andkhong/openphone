@@ -175,9 +175,13 @@ object GateHost {
             "pay" -> "pay for anything in $app without asking"
             "share" -> "share anything from $app to ${offer.binding.substringAfter('>')} without asking"
             "settings" -> "change this Settings page without asking"
+            "permission" -> offer.binding.split('|').let {
+                "allow ${it.getOrNull(1)?.replace('_', ' ')} (${it.getOrNull(2)}) for this app in permission dialogs without asking"
+            }
             else -> "fill your saved passwords and cards into $app without asking"
         }
-        return Approvals.Always(adm.pkg, offer.kind, days, text, offer.confirmTwice)
+        val target = if (offer.kind == "permission") offer.binding.substringBefore('|') else adm.pkg
+        return Approvals.Always(target, offer.kind, days, text, offer.confirmTwice)
     }
 
     fun approvalMessage(id: String, grant: Boolean): String? = gk().approvalMessage(id, grant)
@@ -232,6 +236,9 @@ object GateHost {
     }
 
     fun resume() = gate?.resume()
+
+    /** A permission-dialog default from the server: taken only if it tightens (loosening is signed on the phone). */
+    fun tightenPermission(perm: String, value: String) { if (gate?.tightenPermission(perm, value) == true) save() }
     fun noteInstruction(text: String) = gate?.noteInstruction(text)
     val suspended: Boolean get() = gate?.suspended == true
 

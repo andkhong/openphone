@@ -122,7 +122,8 @@ class ApprovalActivity : Activity() {
         })
         val always = request?.always
         alwaysBox.visibility = if (always != null && open) View.VISIBLE else View.GONE
-        if (always != null) alwaysBox.text = "${getString(R.string.approval_always)}\n${always.text}"
+        if (always != null) alwaysBox.text = (if (always.kind == "permission") getString(R.string.gate_always_for, appLabel(always.app))
+            else getString(R.string.approval_always)) + "\n${always.text}"
         requesterText.text = request?.let {
             if (it.gate) (if (it.serverSays.isEmpty()) "" else getString(R.string.gate_server_says, it.serverSays))
             else getString(R.string.approval_requester, it.requester)
@@ -283,6 +284,11 @@ class ApprovalActivity : Activity() {
         showStatus(getString(if (Approvals.get(requestId) != null) R.string.approval_offline else R.string.approval_gone))
         render()
     }
+
+    @Suppress("DEPRECATION")
+    private fun appLabel(pkg: String): String =
+        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+            .getOrDefault(pkg)
 
     private fun showStatus(message: String) {
         statusText.text = message

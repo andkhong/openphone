@@ -580,6 +580,12 @@ gate. There are no captured OEM Settings dumps yet (the Settings fixtures are ha
   actions and for at most 10 minutes after the owner last used the phone; a screen-off mid-task pauses rather
   than unlocking; Build number and the VPN consent dialog ask; permission-change prompts are limited to 2 an
   hour; gate prompt ids start with `gk` and the legacy path refuses them.
+- **Permission dialogs (owner request, after review round 1):** the session app's runtime permission dialogs
+  follow the owner's settings rather than the D2 "never asks" for the session's app: per type `ask` (default)
+  | `once` | `while_using` | `deny`, location accuracy `approximate` (default) | `precise`, notifications `deny`
+  (default) | `allow`, kept as signed `permission_default` records (tightening unsigned), with per-app
+  overrides as signed `permission` grants from the prompt's "Always allow for <app>". "Allow all the time"
+  always asks; denying and Approximate never do.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

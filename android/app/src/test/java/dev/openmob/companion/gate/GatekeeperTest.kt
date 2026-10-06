@@ -149,11 +149,30 @@ class GatekeeperTest {
         val screen = SCREENS.getValue("permission_dialog_session")
         gk.admit("tap", mapOf("x" to 540L, "y" to 300L), screen) // the task's app (Chess.com) in front
         clock.elapsed += 500
-        assertTrue(gk.admit("tap", mapOf("x" to 540L, "y" to 1550L), screen).allowed) // its own dialog: allowlisted
+        assertEquals("ask", gk.admit("tap", mapOf("x" to 540L, "y" to 1550L), screen).decision.also {
+            gk.revokeAll() // (drop that prompt) camera asks by default
+        })
+        assertTrue(policy(mapOf("type" to "permission_default", "perm" to "camera", "value" to "while_using")))
+        clock.elapsed += 500
+        gk.admit("tap", mapOf("x" to 540L, "y" to 300L), screen)
+        clock.elapsed += 500
+        assertTrue(gk.admit("tap", mapOf("x" to 540L, "y" to 1550L), screen).allowed) // the owner's signed default
         clock.elapsed += 500
         val asked = gk.admit("tap", mapOf("x" to 540L, "y" to 1550L, "hint" to "Allow Chess.com to use your camera?"), screen)
         assertEquals("ask", asked.decision)
         assertEquals("Allow Chess.com to take pictures and record video?", asked.wording)
+    }
+
+    @Test fun permissionDefaultsTightenFreelyButLoosenOnlySigned() {
+        assertEquals("ask", gk.permSetting("camera"))
+        assertEquals("deny", gk.permSetting("notifications"))
+        assertEquals("approximate", gk.permSetting("location_accuracy"))
+        assertFalse(gk.tightenPermission("camera", "while_using")) // a loosening needs a signature
+        assertTrue(gk.tightenPermission("camera", "deny"))
+        assertEquals("deny", gk.permSetting("camera"))
+        assertFalse(policy(mapOf("type" to "permission_default", "perm" to "camera", "value" to "always")))
+        assertTrue(policy(mapOf("type" to "permission_default", "perm" to "location_accuracy", "value" to "precise")))
+        assertTrue(gk.tightenPermission("location_accuracy", "approximate"))
     }
 
     @Test fun theRunnerReportsAWrongExpectation() {

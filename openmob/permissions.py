@@ -122,6 +122,28 @@ DEFAULT_TERMINAL_WORDS = ["place order", "place your order", "confirm purchase",
                           "pay now", "confirm", "confirm order", "confirm payment"]
 DEFAULT_START_FLOW_WORDS = ["buy now", "buy", "subscribe", "book", "top up", "recharge", "donate"]
 FOLLOWUP_SECONDS = 180
+# Android runtime permission dialogs (agent/permission_dialogs.py; the phone's gatekeeper enforces the same,
+# rules.json "permission_dialog"). Values tightest first. Never "Allow all the time", whatever the setting.
+PERMISSION_TYPES = ("location", "camera", "microphone", "contacts", "photos", "phone", "sms", "calendar",
+                    "nearby_devices")
+PERMISSION_DEFAULTS = {"notifications": "deny", "location_accuracy": "approximate",
+                       **{k: "ask" for k in PERMISSION_TYPES}}
+PERMISSION_QUESTIONS = {
+    "once": "Let agents allow {what} \"only this time\" in permission dialogs without asking?",
+    "while_using": "Let agents allow {what} \"while using the app\" in permission dialogs without asking?",
+    "ask": "Ask you again before agents allow {what}?",
+    "allow": "Let agents allow {what} in permission dialogs without asking?",
+    "precise": "Let agents give apps your precise location without asking?",
+}
+
+
+def permission_values(kind: str) -> tuple:
+    """A permission type's settings, tightest first."""
+    if kind == "notifications":
+        return ("deny", "allow")
+    if kind == "location_accuracy":
+        return ("approximate", "precise")
+    return ("deny", "ask", "once", "while_using")
 
 
 class PermissionsInvalid(ValueError):
@@ -151,7 +173,7 @@ def looser(a: str, b: str) -> bool:
 
 def default_settings() -> dict:
     return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
-            "never_money": False, "notifications_permission": "deny"}
+            "never_money": False, "permission_prompts": dict(PERMISSION_DEFAULTS)}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -168,9 +190,10 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
         s["never_until"] = float(until) if isinstance(until, (int, float)) and until > now else None
         # Purchases without asking last only as long as the never window they were allowed with.
         s["never_money"] = bool(s["never_until"]) and settings.get("never_money") is True
-        # Android's "Allow X to send you notifications?" (agent/permission_dialogs.py): deny unless the owner says allow.
-        if settings.get("notifications_permission") in ("allow", "deny"):
-            s["notifications_permission"] = settings["notifications_permission"]
+        # Android's runtime permission dialogs (agent/permission_dialogs.py): the owner's defaults per type.
+        prompts = settings.get("permission_prompts") if isinstance(settings.get("permission_prompts"), dict) else {}
+        s["permission_prompts"] = {k: (prompts.get(k) if prompts.get(k) in permission_values(k) else v)
+                                   for k, v in PERMISSION_DEFAULTS.items()}
         s["trusted"] = [e for e in (settings.get("trusted") or [])
                         if isinstance(e, dict) and (e.get("expires_at") or 0) > now]
     if s["default_mode"] == "never" and not s["never_until"]:
@@ -191,7 +214,7 @@ def public(settings: dict, now: float | None = None) -> dict:
     s = normalize(settings, now)
     return {"default_mode": s["default_mode"], "ceiling": effective_ceiling(s, now), "standing_ceiling": s["ceiling"],
             "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
-            "notifications_permission": s["notifications_permission"],
+            "permission_prompts": s["permission_prompts"],
             "modes": list(MODES)}
 
 
@@ -275,10 +298,20 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
             raise PermissionsInvalid(f"never must be one of: {', '.join(NEVER_DURATIONS)} or off.")
     if allow_money is False:
         new["never_money"] = False
-    if "notifications_permission" in patch and patch["notifications_permission"] is not None:
-        if patch["notifications_permission"] not in ("allow", "deny"):
-            raise PermissionsInvalid("notifications_permission is allow or deny.")
-        new["notifications_permission"] = patch["notifications_permission"]  # deny or allow: no approval needed
+    if patch.get("permission_prompts") is not None:
+        prompts = patch["permission_prompts"]
+        if not isinstance(prompts, dict):
+            raise PermissionsInvalid("permission_prompts is an object: {type: setting}.")
+        new["permission_prompts"] = dict(cur["permission_prompts"])
+        for kind, value in prompts.items():
+            if kind not in PERMISSION_DEFAULTS:
+                raise PermissionsInvalid(f"Unknown permission type {kind!r}. One of: {', '.join(PERMISSION_DEFAULTS)}.")
+            values = permission_values(kind)
+            if value not in values:
+                raise PermissionsInvalid(f"{kind} is one of: {', '.join(values)}.")
+            if values.index(value) > values.index(cur["permission_prompts"][kind]):
+                loosens.append(f"permission:{kind}:{value}")  # loosening: the phone's screen lock
+            new["permission_prompts"][kind] = value
     if "trusted" in patch and patch["trusted"] is not None:
         if not isinstance(patch["trusted"], list) or len(patch["trusted"]) > MAX_ENTRIES:
             raise PermissionsInvalid(f"trusted is a list of at most {MAX_ENTRIES} entries.")
@@ -322,6 +355,9 @@ def describe_loosening(loosens: list[str]) -> str:
                          else f"Allow agents to act without asking on this phone for {span}?")
         elif kind == "ceiling":
             parts.append(f"Allow the {LABELS[rest]} mode on this phone?")
+        elif kind == "permission":
+            which, _, value = rest.partition(":")
+            parts.append(PERMISSION_QUESTIONS.get(value, "Change {what} prompts?").format(what=which.replace("_", " ")))
         elif kind == "trusted":
             target, _, kinds = rest.rpartition(":")
             parts.append(f"Let agents {'/'.join(kinds.split(','))} in {target} without asking?")

@@ -531,6 +531,10 @@ class ConnectionService : Service() {
                     // The banner and the mode come from this phone's own signed policy (GateHost), never from the
                     // server's claim. A server saying `never` is off is a tightening, taken from anywhere.
                     if (message.optString("ceiling") != "never") GateHost.dropNever() else GateHost.refreshBanner()
+                    // Permission-dialog defaults: only tightenings are taken from the server (loosening is signed here).
+                    message.optJSONObject("permission_prompts")?.let { p ->
+                        p.keys().forEach { GateHost.tightenPermission(it, p.optString(it)) }
+                    }
                     updateNotification(statusLine)
                     scheduleNeverExpiry()
                 }

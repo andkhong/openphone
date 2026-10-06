@@ -1420,32 +1420,39 @@ class Agent:
         except Exception:
             settings = {}
         task_app = state.app_in_front
-        decision = permission_dialogs.decide(dialog, mode=mode, task_app_label=self._app_label(task_app) if task_app
-                                             else None, notifications=settings.get("notifications_permission", "deny"))
-        asked = decision == "ask"
+        plan = permission_dialogs.decide(dialog, mode=mode, prompts=settings.get("permission_prompts") or {},
+                                         task_app_label=self._app_label(task_app) if task_app else None)
+        asked = plan.answer == "ask"
+        answer = plan.answer
         if asked:
-            answer = self._ask_owner(state, permission_dialogs.question(dialog),
-                                     {"kind": "action", "action_kind": "permission", "package": obs.package})
-            decision = "allow" if is_yes(answer) else "deny"
-        target = permission_dialogs.button(dialog, decision)
+            reply = self._ask_owner(state, permission_dialogs.question(dialog),
+                                    {"kind": "action", "action_kind": "permission", "package": obs.package})
+            answer = "allow" if is_yes(reply) else "deny"
+        target = permission_dialogs.button(dialog, answer, plan.grant, asked=asked)
         if target is None:
             return False
         self.io.event("status", f"Permission dialog ({dialog.kind}, {dialog.app or 'an app'}): "
-                                f"{'asked the owner, ' if asked else ''}{decision}.")
-        # Decided above by the owner's policy (and, for a yes, the owner): the server's own Settings check doesn't
-        # ask again. On a gatekeeper phone the phone still checks the tap, with the hint _ask_owner left.
-        state.approved = True
-        outcome = self._execute("tap_element", {"index": target.index}, obs, state, fast_step=True,
-                                handled_by="permission_rule")
-        state.approved = False
-        state.fast_steps += 1
-        if outcome.is_error and decision == "allow":  # e.g. the owner said no on the phone's own prompt
+                                f"{'asked the owner, ' if asked else ''}{answer}"
+                                f"{f' ({plan.accuracy})' if answer == 'allow' and plan.accuracy else ''}.")
+
+        def tap(element) -> bool:
+            # Decided above by the owner's settings (and, for a yes, the owner): the server's own Settings check
+            # doesn't ask again. On a gatekeeper phone the phone still checks each tap against its signed settings.
+            state.approved = True
+            try:
+                outcome = self._execute("tap_element", {"index": element.index}, obs, state, fast_step=True,
+                                        handled_by="permission_rule")
+            finally:
+                state.approved = False
+            state.fast_steps += 1
+            return not outcome.is_error
+
+        if answer == "allow" and (card := permission_dialogs.accuracy_card(dialog, plan.accuracy)) is not None:
+            tap(card)  # Approximate unless the owner chose Precise, before the grant
+        if not tap(target) and answer == "allow":  # e.g. the owner said no on the phone's own prompt
             deny = permission_dialogs.button(dialog, "deny")
             if deny is not None:
-                state.approved = True
-                self._execute("tap_element", {"index": deny.index}, obs, state, fast_step=True,
-                              handled_by="permission_rule")
-                state.approved = False
+                tap(deny)
         return True
 
     # --- gatekeeper phones (docs/design/phone-gatekeeper.md) and the lock screen ---------------------

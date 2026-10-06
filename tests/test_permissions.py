@@ -417,3 +417,22 @@ def test_prompt_report_summarizes_the_budget():
     s = summarize(prompts, tasks)
     assert s["median_prompts_per_task"] == 1 and s["fast_approval_share"] == 0.5
     assert "OVER" in format_report(s) and "Median prompts per task: 1" in format_report(s)
+
+
+def test_permission_prompt_defaults_loosen_only_with_the_phone():
+    from openmob import permissions as perm
+
+    cur = perm.default_settings()
+    assert perm.normalize(cur)["permission_prompts"]["location"] == "ask"
+    assert perm.normalize(cur)["permission_prompts"]["notifications"] == "deny"
+    assert perm.normalize(cur)["permission_prompts"]["location_accuracy"] == "approximate"
+    new, loosens = perm.apply_patch(cur, {"permission_prompts": {"location": "while_using",
+                                                                 "location_accuracy": "precise"}}, {})
+    assert loosens == ["permission:location:while_using", "permission:location_accuracy:precise"]
+    assert "precise location" in perm.describe_loosening(loosens)
+    tightened, loosens = perm.apply_patch(new, {"permission_prompts": {"location": "deny"}}, {})
+    assert loosens == [] and tightened["permission_prompts"]["location"] == "deny"
+    for bad in ({"location": "always"}, {"teleport": "ask"}, ["location"]):
+        with pytest.raises(perm.PermissionsInvalid):
+            perm.apply_patch(cur, {"permission_prompts": bad}, {})
+    assert perm.normalize({"permission_prompts": {"camera": "always"}})["permission_prompts"]["camera"] == "ask"

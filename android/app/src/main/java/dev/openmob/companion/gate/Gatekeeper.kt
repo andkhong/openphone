@@ -80,6 +80,8 @@ class Gatekeeper(
     private val grants = mutableListOf<Grant>()
     var ceiling = "auto"
         private set
+    /** The owner's permission-dialog defaults (signed records, or tightenings from anywhere). */
+    private val permDefaults = HashMap<String, String>()
     private var never: Never? = null
     private var tokens = rules.limit("act_burst").toDouble()
     private var lastRefill = clock.elapsed()
@@ -146,10 +148,17 @@ class Gatekeeper(
                 never = Never(issued, d, record["allow_money"] == true)
                 return true
             }
+            "permission_default" -> {
+                val perm = record["perm"] as? String ?: return false
+                val value = record["value"] as? String ?: return false
+                if (value !in permValues(perm)) return false
+                permDefaults[perm] = value
+                return true
+            }
             "grant" -> {
                 val kind = record["kind"] as? String ?: return false
                 val binding = record["binding"]?.toString().orEmpty()
-                if (kind !in setOf("send", "post", "delete", "pay", "share", "settings", "fill") || binding.isEmpty()) return false
+                if (kind !in setOf("send", "post", "delete", "pay", "share", "settings", "fill", "permission") || binding.isEmpty()) return false
                 val cap = if (kind == "pay") lim("pay_grant_max_ms") else lim("grant_max_ms")
                 val d = minOf(record.long("duration_ms"), cap)
                 if (d <= 0) return false
@@ -211,6 +220,27 @@ class Gatekeeper(
     }
 
     /** The effective mode: min(requested, ceiling) by rank (D16). A claim can only tighten. */
+    private val permRules = rules.d["permission_dialog"].obj()
+
+    /** The settings a permission takes, tightest first. */
+    private fun permValues(perm: String): List<String> {
+        val v = permRules["values"].obj()
+        return (v[perm] ?: v["default"]).strings()
+    }
+
+    fun permSetting(perm: String): String = synchronized(lock) {
+        val d = permRules["defaults"].obj()
+        permDefaults[perm] ?: (d[perm] ?: d["default"]).toString()
+    }
+
+    /** A tightening (deny, ask, approximate…) is taken from anywhere, unsigned; loosening needs a signed record. */
+    fun tightenPermission(perm: String, value: String): Boolean = synchronized(lock) {
+        val values = permValues(perm)
+        if (value !in values || values.indexOf(value) >= values.indexOf(permSetting(perm))) return false
+        permDefaults[perm] = value
+        true
+    }
+
     fun mode(requested: String?): String = synchronized(lock) {
         val c = if (never != null) "never" else ceiling
         val r = if (requested != null && requested in RANK) requested else c
@@ -376,7 +406,11 @@ class Gatekeeper(
             credits.firstOrNull { it.kind == risk.kind }?.let { credits.remove(it); return "requested" }
         }
         val g = risk.grant
-        if (g != null && grants.any { it.kind == risk.kind && it.binding == g && it.issued + it.durationMs > now }) return "grant"
+        if (g != null) {
+            val wanted = mutableSetOf(g)
+            if (risk.kind == "permission" && g.endsWith("|once")) wanted.add(g.removeSuffix("once") + "while_using")
+            if (grants.any { it.kind == risk.kind && it.binding in wanted && it.issued + it.durationMs > now }) return "grant"
+        }
         return null
     }
 
@@ -532,7 +566,8 @@ class Gatekeeper(
     }
 
     private fun appWindow(w: GWindow): Boolean = w.type == "application" && w.pkg != rules.surfStr("systemui") &&
-        !isSettings(w) && w.pkg !in rules.surfList("share_packages") && w.pkg !in rules.surfList("credential_packages")
+        !isSettings(w) && w.pkg !in rules.surfList("share_packages") && w.pkg !in rules.surfList("credential_packages") &&
+        !rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)
 
     private fun isSettings(w: GWindow): Boolean {
         if (rules.settingsPkg.containsMatchIn(w.pkg)) return true
@@ -590,6 +625,50 @@ class Gatekeeper(
             return below.isNotEmpty() && below[0].pkg == lastApp
         }
         return GateText.hasPhrase(title, session.joinToString(" "))
+    }
+
+    private fun permRole(t: GTarget): String? {
+        for (n in listOfNotNull(t.pressed, t.hit)) if (n.id.isNotEmpty()) {
+            for (pair in permRules["button_ids"].list()) {
+                val (role, rx) = pair.strings()
+                if (rules.rx(rx).containsMatchIn(n.id)) return role
+            }
+        }
+        val label = t.labelTokens()
+        for (pair in permRules["button_texts"].list()) {
+            val (role, text) = pair.strings()
+            if (label.isNotEmpty() && label == GateText.tokens(text)) return role
+        }
+        return null
+    }
+
+    /** A tap in a runtime permission dialog. Denying (and "Approximate") is always fine; "Allow all the time" always
+     *  asks; another app's request asks; the task's own app follows the owner's settings (signed per-app "Always
+     *  allow" grants, then the signed defaults, then the built-in ones: notifications deny, the rest ask, location
+     *  approximate). */
+    private fun permissionDialog(w: GWindow, t: GTarget, screen: GScreen): Risk? {
+        val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
+        var kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(message) }?.get(0) ?: "other"
+        val role = permRole(t)
+        if (role == null || role in setOf("deny", "deny_forever", "approximate")) return null
+        val name = PERMISSION_APP.find(message)?.groupValues?.get(1) ?: "this app"
+        val what = if (role == "precise") "precise location" else kind.replace('_', ' ')
+        val wording = "Allow $name to use your $what${if (role == "always") " all the time" else ""}?"
+        if (role == "always") return Risk("permission", "permission:always", always = true, wording = wording)
+        if (!sessionAppAsks(w, screen, GateScreen.pageTitle(w))) return Risk("settings", "permission:other_app", always = true, wording = wording)
+        val value: String
+        val ok: Boolean
+        if (role == "precise") {
+            value = "precise"; ok = permSetting("location_accuracy") == "precise"; kind = "location_accuracy"
+        } else if (kind == "notifications") {
+            value = "allow"; ok = permSetting("notifications") == "allow"
+        } else {
+            value = if (role == "one_time") "once" else "while_using"
+            val setting = permSetting(kind)
+            ok = setting == "while_using" || (setting == "once" && role == "one_time")
+        }
+        if (ok) return null
+        return Risk("permission", "permission:$kind", always = true, grant = "$lastApp|$kind|$value", wording = wording)
     }
 
     private fun changingTap(t: GTarget?, label: List<String>): Boolean {
@@ -653,6 +732,11 @@ class Gatekeeper(
             walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.let { j.wording = it.text }
         }
 
+        if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg) &&
+            walk(w.root).any { it.id.endsWith("permission_message") && it.text.isNotEmpty() }) {
+            j.risk = permissionDialog(w, t, screen)
+            return j
+        }
         var tier = "none" to ""
         if (isSettings(w)) {
             tier = settingsTier(w, t, screen, label)

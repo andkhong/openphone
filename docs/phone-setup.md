@@ -144,15 +144,25 @@ screen off and lock it mid-task.
 
 ### Permission dialogs ("Allow Chess.com to …?")
 
-When an app asks for a permission during a task, OpenMob answers by rule, without the AI:
+When an app asks for a permission during a task, OpenMob answers by your settings, without the AI. Set them on
+the dashboard's **Your phones** page under **Permission prompts** (or `permission_prompts` in the phone's
+permission settings):
 
-- **Notifications**: **Don't allow**, unless you set notifications to allow in the phone's permission
-  settings (`notifications_permission: "allow"`).
-- **Camera, microphone, location, contacts, photos and media, phone, SMS, calendar, nearby devices**:
-  you're asked on the phone ("Allow **Chess.com** to use your **camera**?"). A yes picks **Only this
-  time**, else **While using the app**; never **Allow all the time**.
-- A request from an app other than the one the task is using is asked about too.
-- Under **Don't ask**, everything but notifications (which follow your setting) is denied.
+| Permission | Settings | Default |
+|---|---|---|
+| Location, camera, microphone, contacts, photos and media, phone, SMS, calendar, nearby devices | **Ask me** · **Only this time** · **While using the app** · **Don't allow** | Ask me |
+| Location accuracy | **Approximate** · **Precise** | Approximate (OpenMob picks the Approximate card first) |
+| Notifications | **Don't allow** · **Allow** | Don't allow |
+
+- **Ask me** asks you on the phone ("Allow **Kalshi** to use your **location**?"). A yes picks **Only this
+  time**, else **While using the app**. Tick **Always allow for Kalshi** on that prompt to keep that answer for
+  that app.
+- OpenMob **never** picks **Allow all the time** on its own; if that's the only way to grant, you're asked.
+- Allowing more (Only this time, While using the app, Precise, Allow) needs your approval on the phone with its
+  screen lock; asking more applies at once.
+- A request from an app other than the one the task is using is always asked about.
+- Under **Don't ask**, nobody can be asked: anything set to Ask me is denied; Only this time and While using the
+  app still apply.
 
 ## While an agent works
 

@@ -34,6 +34,9 @@ object ModeChange {
         (p["never"] as? String)?.let { NEVER_MS[it] }?.let {
             out.add(mapOf("type" to "never", "duration_ms" to it, "allow_money" to (p["allow_money"] == true)))
         }
+        for ((perm, value) in p["permission_prompts"].obj()) {
+            out.add(mapOf("type" to "permission_default", "perm" to perm, "value" to value.toString()))
+        }
         for (e in p["trusted"].list().map { it.obj() }) {
             val app = e["app"] as? String ?: continue
             for (kind in e["kinds"].strings()) if (kind in GRANT_KINDS) {
@@ -58,6 +61,14 @@ object ModeChange {
                           else "Turn on Don't ask: agents act on this phone without asking for $span? Purchases stay off.")
             }
             "ceiling" -> parts.add("Let agents ask less on this phone (up to “${MODE_NAMES[r["mode"]] ?: r["mode"]}”)?")
+            "permission_default" -> {
+                val what = r["perm"].toString().replace('_', ' ')
+                parts.add(when (r["value"]) {
+                    "precise" -> "Let agents give apps your precise location without asking?"
+                    "once", "while_using", "allow" -> "Let agents allow $what (${r["value"]}) in permission dialogs without asking?"
+                    else -> "Ask before agents allow $what?"
+                })
+            }
             "grant" -> parts.add("Let agents ${r["kind"]} in ${r["binding"]} without asking for ${
                 if (r["kind"] == "pay") "24 hours" else "7 days"}?")
         }

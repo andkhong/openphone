@@ -490,6 +490,7 @@ class Gatekeeper:
         self.credits: list[dict] = []  # {kind, expires}
         self.grants: list[Grant] = []
         self.ceiling = "auto"
+        self.perm_defaults: dict[str, str] = {}  # the owner's signed (or tightened) permission-dialog defaults
         self.never: dict | None = None  # {issued, duration_ms, allow_money}
         self.tokens = float(self.r.limits["act_burst"])
         self.last_refill = self.clock.elapsed
@@ -580,9 +581,16 @@ class Gatekeeper:
                 return False
             self.never = {"issued": now, "duration_ms": duration, "allow_money": bool(record.get("allow_money"))}
             return True
+        if kind == "permission_default":
+            perm, value = record.get("perm"), record.get("value")
+            if value not in self._perm_values(perm):
+                return False
+            self.perm_defaults[perm] = value
+            return True
         if kind == "grant":
             g_kind = record.get("kind")
-            if g_kind not in ("send", "post", "delete", "pay", "share", "settings", "fill") or not record.get("binding"):
+            if g_kind not in ("send", "post", "delete", "pay", "share", "settings", "fill", "permission") \
+                    or not record.get("binding"):
                 return False
             cap = lim["pay_grant_max_ms"] if g_kind == "pay" else lim["grant_max_ms"]
             duration = min(int(record.get("duration_ms", 0)), cap)
@@ -591,6 +599,23 @@ class Gatekeeper:
             self.grants.append(Grant(g_kind, str(record["binding"]), duration, now, canon))
             return True
         return False
+
+    def _perm_values(self, perm) -> list:
+        """The settings a permission takes, tightest first."""
+        v = self.r.d["permission_dialog"]["values"]
+        return v.get(perm, v["default"]) if perm else []
+
+    def perm_setting(self, perm: str) -> str:
+        d = self.r.d["permission_dialog"]["defaults"]
+        return self.perm_defaults.get(perm) or d.get(perm, d["default"])
+
+    def tighten_permission(self, perm: str, value: str) -> bool:
+        """A tightening (deny, ask, approximate…) is taken from anywhere, unsigned; loosening needs a signed record."""
+        values = self._perm_values(perm)
+        if value not in values or values.index(value) >= values.index(self.perm_setting(perm)):
+            return False
+        self.perm_defaults[perm] = value
+        return True
 
     def mode(self, requested: str | None) -> str:
         ceiling = "never" if self.never else self.ceiling
@@ -750,8 +775,11 @@ class Gatekeeper:
                     self.credits.remove(c)
                     return "requested"
         if risk.grant is not None:
+            wanted = {risk.grant}
+            if risk.kind == "permission" and risk.grant.endswith("|once"):
+                wanted.add(risk.grant[:-len("once")] + "while_using")  # "while using" covers "only this time"
             for g in self.grants:
-                if g.kind == risk.kind and g.binding == risk.grant and g.issued + g.duration_ms > now:
+                if g.kind == risk.kind and g.binding in wanted and g.issued + g.duration_ms > now:
                     return "grant"
         return None
 
@@ -905,7 +933,8 @@ class Gatekeeper:
         """An app's own window (what "the task's app" and a purchase flow's app are), not a system surface."""
         r = self.r
         return (w.type == "application" and w.package != r.surf["systemui"] and not self._is_settings(w)
-                and w.package not in r.surf["share_packages"] and w.package not in r.surf["credential_packages"])
+                and w.package not in r.surf["share_packages"] and w.package not in r.surf["credential_packages"]
+                and not re.search(r.s["permission_packages"], w.package or ""))
 
     def _is_settings(self, w: Window) -> bool:
         if self.r.settings_pkg.search(w.package or ""):
@@ -964,6 +993,52 @@ class Gatekeeper:
             below = [x for x in screen.ordered() if x.layer < w.layer and x.type == "application"]
             return bool(below) and below[0].package == self.last_app
         return has_phrase(title, " ".join(session))
+
+    def _perm_role(self, t: Target) -> str | None:
+        pd = self.r.d["permission_dialog"]
+        for n in (t.pressed, t.hit):
+            if n is not None and n.id:
+                for role, rx in pd["button_ids"]:
+                    if re.search(rx, n.id):
+                        return role
+        label = t.label_tokens()
+        for role, text in pd["button_texts"]:
+            if label and " ".join(label) == " ".join(tokens(text)):
+                return role
+        return None
+
+    def _permission_dialog(self, w: Window, t: Target, screen: Screen) -> Risk | None:
+        """A tap in a runtime permission dialog. Denying (and "Approximate") is always fine; "Allow all the time"
+        always asks; another app's request asks; the task's own app follows the owner's settings (signed per-app
+        "Always allow" grants, then the signed defaults, then the built-in ones: notifications deny, the rest ask,
+        location approximate)."""
+        pd = self.r.d["permission_dialog"]
+        message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
+        kind = next((k for k, rx in pd["kinds"] if re.search(rx, message)), "other")
+        role = self._perm_role(t)
+        if role in (None, "deny", "deny_forever", "approximate"):
+            return None
+        m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", message)
+        name = m.group(1) if m else "this app"
+        what = "precise location" if role == "precise" else kind.replace("_", " ")
+        wording = f"Allow {name} to use your {what}{' all the time' if role == 'always' else ''}?"
+        if role == "always":
+            return Risk("permission", "permission:always", always=True, wording=wording)
+        if not self._session_app_asks(w, screen, page_title(w)):
+            return Risk("settings", "permission:other_app", always=True, wording=wording)
+        app = self.last_app
+        if role == "precise":
+            value, ok = "precise", self.perm_setting("location_accuracy") == "precise"
+            kind = "location_accuracy"
+        elif kind == "notifications":
+            value, ok = "allow", self.perm_setting("notifications") == "allow"
+        else:
+            value = "once" if role == "one_time" else "while_using"
+            setting = self.perm_setting(kind)
+            ok = setting == "while_using" or (setting == "once" and role == "one_time")
+        if ok:
+            return None
+        return Risk("permission", f"permission:{kind}", always=True, grant=f"{app}|{kind}|{value}", wording=wording)
 
     def _changing_tap(self, t: Target | None, label: list[str]) -> bool:
         if t is not None and any(n.checked is not None for n in (t.pressed, t.hit) if n is not None):
@@ -1029,6 +1104,10 @@ class Gatekeeper:
         def wording(verb="Allow tapping"):
             return f"{verb} “{shown}” in {app_label}?" if shown else f"{verb} an unlabeled spot in {app_label}?"
 
+        if re.compile(r.s["permission_packages"]).search(w.package or "") and any(
+                n.id.endswith("permission_message") and n.text for n in walk(w.root, [])):
+            j.risk = self._permission_dialog(w, t, screen)
+            return j
         # Settings
         tier = ("none", "")
         if self._is_settings(w):
