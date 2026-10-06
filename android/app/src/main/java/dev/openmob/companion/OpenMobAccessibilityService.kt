@@ -2,6 +2,7 @@ package dev.openmob.companion
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Intent
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 
 /**
@@ -12,10 +13,17 @@ class OpenMobAccessibilityService : AccessibilityService() {
     companion object {
         @Volatile var instance: OpenMobAccessibilityService? = null
             private set
+
+        private const val SYSTEM_UI = "com.android.systemui"
     }
 
     /** Foreground app, from window changes. Keyboards and system overlays are ignored. */
     @Volatile var currentPackage: String? = null
+
+    /** Uptime (ms) of the last window or content change on screen: wait_idle returns once this is
+     *  old enough (PhoneActions.waitIdle). */
+    @Volatile var lastChangeAt: Long = 0L
+        private set
 
     override fun onServiceConnected() {
         instance = this
@@ -33,12 +41,29 @@ class OpenMobAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        noteChange(event)
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val cls = event.className?.toString() ?: return
         // Activities only: IME and dialog windows would otherwise look like "the current app".
         if (cls.endsWith("Activity") || cls.contains(".activities.")) {
             event.packageName?.toString()?.let { currentPackage = it }
         }
+    }
+
+    /** Only a timestamp, so it costs nothing however often the screen changes. Our own windows
+     *  (overlay, notification) and the status bar's ticking content (clock, network speed) don't
+     *  count: they would keep a settled screen looking busy. */
+    private fun noteChange(event: AccessibilityEvent) {
+        val pkg = event.packageName?.toString()
+        if (pkg == packageName) return
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == SYSTEM_UI) return
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> Unit
+            else -> return
+        }
+        lastChangeAt = SystemClock.uptimeMillis()
     }
 
     override fun onInterrupt() {}

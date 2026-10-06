@@ -42,6 +42,7 @@ KEYCODES = {
 }
 
 BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
+FOREGROUND_POLL_SECONDS = 0.15
 FOCUS_RE = re.compile(r"\s([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)/")
 
 
@@ -82,6 +83,10 @@ class UIElement:
     clickable: bool
     checked: bool | None
     bounds: tuple[int, int, int, int]
+    # Optional, from apps that report them (older apps and adb leave the defaults):
+    editable: bool = False  # a text field
+    password: bool = False  # a password field (never typed into)
+    covered: bool = False  # its center is under a higher window (a dialog, the keyboard), so a tap would miss
 
     @property
     def center(self) -> tuple[int, int]:
@@ -126,6 +131,8 @@ def parse_ui_xml(xml_text: str, limit: int = 150) -> list[UIElement]:
                 clickable=clickable,
                 checked=(node.get("checked") == "true") if node.get("checkable") == "true" else None,
                 bounds=(x1, y1, x2, y2),
+                editable="EditText" in (node.get("class") or ""),
+                password=node.get("password") == "true",
             )
         )
         if len(elements) >= limit:
@@ -175,6 +182,8 @@ def format_elements(elements: list[UIElement], shot: Screenshot) -> str:
             parts.append("checked" if el.checked else "unchecked")
         if not el.clickable:
             parts.append("(not clickable)")
+        if el.covered:
+            parts.append("(covered by another window)")
         parts.append(f"@ ({x},{y})")
         lines.append(" ".join(parts))
     return "\n".join(lines)
@@ -257,6 +266,19 @@ class PhoneDriver(CachedScreenshots):
         except AdbError:
             return []
         return parse_ui_xml(out)
+
+    def wait_foreground(self, package: str, timeout: float, cancel=None) -> bool:
+        """After a launch: poll the focused window (`dumpsys window`, ~0.1 s a call) until `package` is
+        in front. True once it is; False at the timeout. adb has no "screen stopped changing" signal,
+        so the agent still waits a short settle after this."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if cancel is not None and cancel.is_set():
+                return False
+            if self.current_app() == package:
+                return True
+            time.sleep(FOREGROUND_POLL_SECONDS)
+        return False
 
     def current_app(self) -> str | None:
         try:

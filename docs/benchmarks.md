@@ -22,6 +22,9 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `total_ms` | The step's wall time. Total minus the phases is bookkeeping, shown as "other" in the report |
 | `jev` | 1 or 0: whether Jev was on for the step |
 | `model` | The model that decided the step |
+| `fast` | 1: the fast path decided the step (Jev's `next_step` plus the small text model), 0: the main model |
+| `variant` | The task's latency features: `fixed` or `adaptive` settle, plus `+fast` when the fast path was on |
+| `settle_idle` | 1 or 0: the adaptive settle before this step saw the screen go quiet, or hit its cap. NULL: a fixed sleep |
 
 When one model response holds several tool calls, the shared observe and model time is on the
 first of them. `latency_ms` keeps its earlier meaning: the tool call alone, from dispatch to
@@ -44,7 +47,9 @@ openmob timings --since all --chat 3f2a9c0d1e4b5a6c
 
 The report reads the `history.sqlite` in the data directory (`OPENMOB_DATA_DIR`, else
 `~/.config/openmob`). For each model and Jev setting, and for all models together when there is
-more than one, it prints the median, p90 and mean of each phase per step, and steps per task.
+more than one, it prints the median, p90 and mean of each phase per step, and steps per task. Groups
+are also split by `variant`, and a group with fast-path steps adds a "fast vs vision steps" table:
+how many steps each took and their mean phases side by side.
 "Agent time" is total minus wait: approvals and loading screens are shown, but they aren't the
 agent's own time.
 
@@ -73,8 +78,60 @@ To switch Jev off anywhere without unsetting the key, set `jev_enabled: false` i
 record `jev = 0`. Comparing ordinary usage with `openmob timings` across the two settings measures
 the same thing on real traffic.
 
-The harness is `openmob/bench.py`. `run_bench(tasks, make_agent)` takes any agent factory, and the
-tests drive it with the fake phone (`tests/test_timings.py`).
+The harness is `openmob/bench.py`. `run_bench(tasks, make_agent, modes)` takes any agent factory,
+and the tests drive it with the fake phone (`tests/test_timings.py`, `tests/test_bench_conditions.py`).
+
+## Comparing the latency features
+
+Two features cut the time a step spends outside the model:
+
+- **Adaptive settle** (`adaptive_settle`, on by default): after an action the server asks the
+  phone's app to `wait_idle` (docs/phone-protocol.md §4.15), which returns once no window or
+  content change has arrived for `settle_quiet_ms` (300 ms). The fixed delays become caps (0.8 s
+  after a tap, 3 s after a launch), so a settle is never longer than before. Apps without
+  `wait_idle` in their hello (older builds) and iOS keep the fixed sleep; an adb phone ends a launch's
+  settle once the app is in front (polling `dumpsys window`), plus the 0.8 s settle.
+- **The fast path** (`fast_path: off | fast_tier | on`, off by default; needs Jev): on a screen with
+  enough labeled elements (`fast_path_min_elements`), one Jev request picks the operation and its
+  target (operation head plus TAP and TYPE_TEXT target heads, the pattern of
+  browser-use/jev-ultrafast). When both clear `fast_path_min_probability` and
+  `fast_path_min_confidence`, the step runs without the main model. TYPE_TEXT and LAUNCH_APP ask
+  `fast_path_text_model` (default `resolver_model`) for the text as tiny JSON. ESCALATE, low
+  scores, no element list, a repeat of the last action, an action that left the screen unchanged,
+  and every DONE go to the vision step. `fast_tier` turns it on only for tasks on the `fast` tier's
+  model.
+
+Three safety checks apply to every step: `tap_element` refuses an element the app marks `covered`
+(under a dialog or the keyboard); on app phones it re-reads the elements just before the tap and
+refuses a target that moved (`verify_taps`, about one `ui_elements` round trip per tap); and typing
+into a search field waits 200 ms longer for suggestions.
+
+On an adb phone, compare them with the harness:
+
+```sh
+openmob bench tasks.yaml --conditions baseline,settle,fast --serial emulator-5554
+```
+
+`baseline` is fixed sleeps and no fast path, `settle` adds adaptive settle, and `fast` adds the
+fast path (it needs `TYPESAFE_API_KEY`). The table shows each condition, its delta from the first
+one, and the mean fast steps per task. adb has no `wait_idle`, so there `settle` only shortens
+launches.
+
+On a phone running the OpenMob app (where `wait_idle` works), run the same tasks through the
+server under each condition and read `openmob timings`, which groups steps by variant:
+
+```sh
+OPENMOB_ADAPTIVE_SETTLE=off openmob run   # baseline: run the tasks, then stop the server
+openmob run                               # adaptive settle
+OPENMOB_FAST_PATH=on openmob run          # adaptive settle + fast path (needs TYPESAFE_API_KEY)
+openmob timings --since 2h                # one group per variant: fixed, adaptive, adaptive+fast
+```
+
+Expected gains on the measured task ("Open Settings and go to Display", 3 steps, about 10.3 s):
+settle was 3.8 to 4.0 s of fixed sleep. With `wait_idle` it should fall to roughly the quiet time
+plus the transition per action (about 0.3 to 0.6 s after a tap, and about 0.5 to 1.5 s after a
+launch). The fast path replaces about 1.5 s of model time on each step it takes with one Jev call
+(about 0.15 s), plus a small-model call when typing. The vision step that confirms DONE remains.
 
 ## What to expect from the code
 
@@ -87,6 +144,6 @@ tests drive it with the fake phone (`tests/test_timings.py`).
 - Jev can also save time. Loading screens it recognises are waited out without a model call
   (polling every 2 s, up to `jev_auto_wait_seconds`). That time shows as `wait_ms`, while the
   model calls it saves show as fewer steps.
-- `settle_ms` is a fixed sleep: `settle_delay` (0.8 s by default) after most actions and
+- `settle_ms` was a fixed sleep: `settle_delay` (0.8 s by default) after most actions and
   `launch_settle_delay` (3 s) after `launch_app` and `open_url`. On a short task, that can be more
-  than the phone actions take.
+  than the phone actions take. With adaptive settle those are caps (see above).

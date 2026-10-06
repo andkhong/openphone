@@ -163,6 +163,8 @@ class DeviceManager:
             session.link = link
             session.online = True
             session.driver.video_available = bool(device.get("video"))
+            caps = device.get("capabilities")
+            session.driver.capabilities = {str(c) for c in caps} if isinstance(caps, list) else set()
         if stale:
             self._stop(stale)
         for old in replaced:  # one live socket per phone: the older one can't act any more

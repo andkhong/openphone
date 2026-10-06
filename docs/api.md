@@ -332,7 +332,7 @@ data: {"id": "e111505afeb9", "status": "succeeded", "steps": 2, "credits": 6, â€
 | `outcome` | The task's result | `success` |
 | `done` | The stream's last event; `data` is the final task | |
 
-`timings` says where the step's time went, in milliseconds: `observe_ms` (reading the screen), `classifier_ms` (screen classification), `model_ms` (the model deciding), `action_ms` (the phone acting), `settle_ms` (waiting for the screen to settle after the previous action), `wait_ms` (waiting for a person or a loading screen) and `total_ms`; `classifier` says whether screen classification was on.
+`timings` says where the step's time went, in milliseconds: `observe_ms` (reading the screen), `classifier_ms` (screen classification), `model_ms` (the model deciding), `action_ms` (the phone acting), `settle_ms` (waiting for the screen to settle after the previous action), `wait_ms` (waiting for a person or a loading screen) and `total_ms`; `classifier` says whether screen classification was on. A simple step that screen classification decided by itself has a `model_ms` of 0, or only the time a small model took to write the text to type.
 
 Event ids increase but aren't consecutive. To resume after a dropped connection, reconnect with
 `Last-Event-ID: <last id you saw>`; most SSE clients do this for you.

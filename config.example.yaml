@@ -36,6 +36,9 @@ aliases: {}
 screenshot_max_side: 1280
 settle_delay: 0.8                  # seconds to let the screen update after each action
 launch_settle_delay: 3.0
+adaptive_settle: true              # wait only until the screen stops changing (capped at the delays above)
+settle_quiet_ms: 300               # how long without screen changes counts as settled
+verify_taps: true                  # re-check a tap target just before tapping (OpenMob app phones)
 ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
 ocr: true                          # Apple Vision OCR for screens without an accessibility tree
 
@@ -46,6 +49,11 @@ jev_min_confidence: 0.6
 jev_risk_threshold: 0.5            # ask before taps Jev rates at least this risky
 jev_auto_wait_seconds: 30          # longest time to wait on screens Jev calls "loading"
 jev_enabled: true                  # false (or OPENMOB_JEV=off) runs without Jev even with TYPESAFE_API_KEY set
+fast_path: "off"                   # off | fast_tier | on: Jev drives labeled screens without the main model
+fast_path_min_probability: 0.7
+fast_path_min_confidence: 0.6
+fast_path_min_elements: 3
+# fast_path_text_model: claude-haiku-4-5-20251001   # writes typed text; default: resolver_model
 
 # Ask before tapping anything that matches these words.
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,

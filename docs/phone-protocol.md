@@ -96,6 +96,7 @@ While connected, run the socket inside a **foreground service** with a **persist
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -204,6 +205,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `open_url` | `url: string` | `null` | 15 s |
 | `wake_unlock` | none | `null` | 10 s |
 | `device_state` | none | `{"interactive": bool, "locked": bool, "secure": bool}` | 5 s |
+| `wait_idle` (optional) | `quiet_ms, max_ms: int` | `{"waited_ms": int, "idle": bool}` | 10 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -257,8 +259,9 @@ Stop after **150** elements. On any failure (no root, timeout), reply `ok:true` 
 | `bounds` | [int ×4] | `[left, top, right, bottom]` from `getBoundsInScreen`, device pixels |
 | `password` | bool, optional | `true` when `isPassword`; omitted otherwise |
 | `editable` | bool, optional | `true` when `isEditable`; omitted otherwise |
+| `covered` | bool, optional | `true` when the centre of `bounds` lies inside a window stacked above the node's own window (a higher `AccessibilityWindowInfo.getLayer()`: a dialog, the keyboard, a system bar), so a tap there would land on that window; omitted otherwise |
 
-`password` and `editable` are optional: servers that don't know them ignore them, and a missing field means `false`. The server uses `password` to keep the model from typing into password fields.
+`password`, `editable` and `covered` are optional: servers that don't know them ignore them, and a missing field means `false`. The server uses `password` to keep the model from typing into password fields, and refuses to `tap_element` a `covered` element (the model is told to deal with what covers it first).
 
 The array order defines the element indices the model uses (`tap_element [3]`), so keep it stable for a given screen. The server taps the centre of `bounds`.
 
@@ -320,6 +323,13 @@ Is the phone usable right now? `{"interactive": PowerManager.isInteractive, "loc
 
 Optional: an app that answers `Unknown method device_state` is simply not checked. An app that omits `secure` is treated as having a secure lock whenever it's `locked`.
 
+### 4.15 `wait_idle` (optional)
+Params: `{"quiet_ms": 300, "max_ms": 800}`. Block until the screen has stopped changing, then reply `{"waited_ms": <ms spent>, "idle": true}`; at `max_ms`, reply with `"idle": false` (an animated screen or a game may never go quiet). The agent calls it after every action instead of sleeping a fixed time: `max_ms` is that fixed time (0.8 s after a tap, 3 s after `launch_app` or `open_url`), so it never waits longer than before.
+
+"Changing" means accessibility events: `TYPE_WINDOW_STATE_CHANGED`, `TYPE_WINDOWS_CHANGED`, `TYPE_WINDOW_CONTENT_CHANGED` and `TYPE_VIEW_SCROLLED` (add the last two to `accessibilityEventTypes`, §5.2). Ignore your own app's events, and content changes from `com.android.systemui` (the status bar's clock and network meters tick on their own). Record only a timestamp per event, then poll it every ~20 ms. Count the quiet time from the later of the last event and the start of the call, so the reply comes at least `quiet_ms` after the call: the events of the action just performed have time to start (a separate minimum isn't needed). Clamp `quiet_ms` to 50–8000 and `max_ms` to 0–8000.
+
+It's optional: list `"wait_idle"` in the hello's `device.capabilities` only if you implement it. The server then uses it; otherwise (and for adb and iOS phones) it sleeps the fixed time. If a call fails with an error anyway, the server stops calling it on that connection.
+
 ---
 
 ## 5. Android implementation guide
@@ -364,7 +374,7 @@ An accessibility service cannot inject arbitrary key events. That is why some ke
 ```xml
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/a11y_description"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged|typeWindowContentChanged|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"

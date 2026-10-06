@@ -71,6 +71,8 @@ DEFAULT_SENSITIVE_APPS = [
     r"\\.keeper", r"authenticator", r"authy",
 ]
 
+FAST_PATH_MODES = ("off", "fast_tier", "on")
+
 REMOVED_KEYS = {"hotkey"}
 SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
 
@@ -94,6 +96,14 @@ class Config:
     keep_screenshots: int = 2
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
+    # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
+    # change for settle_quiet_ms), capped at the delays above. Needs a phone whose app offers wait_idle;
+    # others keep the fixed delays (adb: launches end once the app is in front). OPENMOB_ADAPTIVE_SETTLE=off.
+    adaptive_settle: bool = True
+    settle_quiet_ms: int = 300
+    # Re-read the screen's elements just before tap_element, and don't tap one that moved or vanished
+    # (only on phones whose element list is quick to read: the OpenMob app).
+    verify_taps: bool = True
     ui_tree: str = "auto"  # auto | always | never
     confirm_keywords: list[str] = field(default_factory=lambda: list(DEFAULT_CONFIRM_KEYWORDS))
     # Ask before risky taps (buy/send/delete…): unrequested = only if the request didn't ask for it.
@@ -128,6 +138,14 @@ class Config:
     jev_auto_wait_seconds: float = 30.0  # max time to wait on screens Jev calls "loading"
     # false: run without Jev even when TYPESAFE_API_KEY is set (for comparisons). OPENMOB_JEV=off does the same.
     jev_enabled: bool = True
+    # Fast path (needs Jev): on screens with a usable element list, Jev picks the next operation and its
+    # target in one call and the step runs without the main model (a small text model writes any text).
+    # off | fast_tier (only tasks on the `fast` API tier's model) | on. OPENMOB_FAST_PATH sets it too.
+    fast_path: str = "off"
+    fast_path_min_probability: float = 0.7  # the chosen operation's and target's probability
+    fast_path_min_confidence: float = 0.6  # and Jev's confidence in each
+    fast_path_min_elements: int = 3  # labeled elements a screen needs (fewer: the vision step)
+    fast_path_text_model: str | None = None  # writes text and app names; default: resolver_model
 
     # Phone
     adb_path: str = "adb"
@@ -184,6 +202,10 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
         cfg.jev_enabled = False
+    if os.environ.get("OPENMOB_ADAPTIVE_SETTLE", "").strip().lower() in {"0", "off", "false", "no"}:
+        cfg.adaptive_settle = False
+    if os.environ.get("OPENMOB_FAST_PATH", "").strip():
+        cfg.fast_path = os.environ["OPENMOB_FAST_PATH"].strip().lower()
     cfg.openai_api_key = os.environ.get("OPENAI_API_KEY")
     cfg.google_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     cfg.compatible_api_key = os.environ.get("OPENAI_COMPATIBLE_API_KEY")
@@ -207,6 +229,10 @@ def load_config(path: str | Path | None = None) -> Config:
             if provider not in PROVIDERS:
                 raise ValueError(f"api_tiers.{name}: say which provider serves {tier['model']} (provider: ...)")
             tier["provider"] = provider
+    if isinstance(cfg.fast_path, bool):  # YAML reads a bare off / on as a boolean
+        cfg.fast_path = "on" if cfg.fast_path else "off"
+    if cfg.fast_path not in FAST_PATH_MODES:
+        raise ValueError(f"fast_path must be one of: {', '.join(FAST_PATH_MODES)}")
     if cfg.ui_tree not in {"auto", "always", "never"}:
         raise ValueError("ui_tree must be one of: auto, always, never")
     return cfg

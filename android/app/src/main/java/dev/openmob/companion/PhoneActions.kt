@@ -81,6 +81,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         "key" -> key(params.reqString("name"))
         "open_url" -> openUrl(params.reqString("url"))
         "wake_unlock" -> wakeUnlock()
+        "wait_idle" -> waitIdle(
+            params.optLong("quiet_ms", DEFAULT_QUIET_MS).coerceIn(MIN_QUIET_MS, MAX_IDLE_MS),
+            params.optLong("max_ms", DEFAULT_IDLE_MAX_MS).coerceIn(0, MAX_IDLE_MS),
+        )
         else -> throw IllegalArgumentException("Unknown method $method")
     }
 
@@ -188,6 +192,25 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         else -> "error code $code"
     }
 
+    // --- wait_idle -------------------------------------------------------------------------------
+
+    /** Blocks until no window or content change has arrived for [quietMs] (counted from the later of
+     *  the last change and this call, so it always waits at least [quietMs]: a tap's first events have
+     *  time to arrive), or until [maxMs]. The next screenshot isn't held up by it: captures are
+     *  throttled to one per MIN_CAPTURE_INTERVAL_MS, and the agent's last one is older than that. */
+    private fun waitIdle(quietMs: Long, maxMs: Long): JSONObject {
+        val start = SystemClock.uptimeMillis()
+        while (true) {
+            val now = SystemClock.uptimeMillis()
+            val quietFor = now - max(service.lastChangeAt, start)
+            val waited = now - start
+            if (quietFor >= quietMs || waited >= maxMs) {
+                return JSONObject().put("waited_ms", waited).put("idle", quietFor >= quietMs)
+            }
+            SystemClock.sleep(max(1L, minOf(IDLE_POLL_MS, quietMs - quietFor, maxMs - waited)))
+        }
+    }
+
     // --- ui_elements -----------------------------------------------------------------------------
 
     /** Never errors: any failure yields []. */
@@ -195,9 +218,14 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         val out = JSONArray()
         try {
             val deadline = SystemClock.uptimeMillis() + UI_DEADLINE_MS
-            for (root in windowRoots()) {
+            val windows = service.windows
+            // Windows that can catch a tap meant for a lower one: dialogs, the keyboard, system bars.
+            val catchers = windows.filter { it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
+                .map { it.layer to Rect().also(it::getBoundsInScreen) }
+            for ((root, layer) in windowRoots(windows)) {
+                val above = catchers.filter { it.first > layer }.map { it.second }
                 try {
-                    walk(root, out, deadline)
+                    walk(root, out, deadline, above)
                 } finally {
                     recycle(root)
                 }
@@ -209,34 +237,35 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return out
     }
 
-    /** Roots of the interactive windows: the active one first (so the app's elements get the low indices
-     *  and aren't crowded out by system bars), then the rest in z-order. The keyboard and accessibility
-     *  overlays (including our own) are skipped. */
-    private fun windowRoots(): List<AccessibilityNodeInfo> {
-        val windows = service.windows
+    /** Roots of the interactive windows with their z-order layer: the active one first (so the app's
+     *  elements get the low indices and aren't crowded out by system bars), then the rest in z-order.
+     *  The keyboard and accessibility overlays (including our own) are skipped. */
+    private fun windowRoots(all: List<AccessibilityWindowInfo>): List<Pair<AccessibilityNodeInfo, Int>> {
+        val windows = all
             .filter { it.type != AccessibilityWindowInfo.TYPE_INPUT_METHOD &&
                 it.type != AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY }
             .sortedByDescending { it.isActive }
-        val roots = windows.mapNotNull { it.root }
-        return roots.ifEmpty { listOfNotNull(service.rootInActiveWindow) }
+        val roots = windows.mapNotNull { w -> w.root?.let { it to w.layer } }
+        return roots.ifEmpty { listOfNotNull(service.rootInActiveWindow).map { it to Int.MAX_VALUE } }
     }
 
-    /** Depth-first pre-order walk, same inclusion rules as adb parse_ui_xml (+ isVisibleToUser). */
-    private fun walk(node: AccessibilityNodeInfo, out: JSONArray, deadline: Long) {
+    /** Depth-first pre-order walk, same inclusion rules as adb parse_ui_xml (+ isVisibleToUser).
+     *  [above]: bounds of the windows stacked over this one. */
+    private fun walk(node: AccessibilityNodeInfo, out: JSONArray, deadline: Long, above: List<Rect>) {
         if (out.length() >= MAX_ELEMENTS || SystemClock.uptimeMillis() > deadline) return
-        element(node)?.let { out.put(it) }
+        element(node, above)?.let { out.put(it) }
         for (i in 0 until node.childCount) {
             if (out.length() >= MAX_ELEMENTS) return
             val child = node.getChild(i) ?: continue
             try {
-                walk(child, out, deadline)
+                walk(child, out, deadline, above)
             } finally {
                 recycle(child)
             }
         }
     }
 
-    private fun element(node: AccessibilityNodeInfo): JSONObject? {
+    private fun element(node: AccessibilityNodeInfo, above: List<Rect>): JSONObject? {
         val text = node.text?.toString()?.trim().orEmpty()
         val desc = node.contentDescription?.toString()?.trim().orEmpty()
         val clickable = node.isClickable || node.isLongClickable || node.isCheckable
@@ -255,6 +284,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             // Optional, only when true: lets the server keep the model away from password fields.
             .apply { if (node.isPassword) put("password", true) }
             .apply { if (node.isEditable) put("editable", true) }
+            // Its center is under a higher window (a dialog, the keyboard): a tap there would land on that.
+            .apply { if (above.any { it.contains(r.centerX(), r.centerY()) }) put("covered", true) }
     }
 
     // --- apps ------------------------------------------------------------------------------------
@@ -531,6 +562,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         const val MAX_ELEMENTS = 150
         const val UI_DEADLINE_MS = 10_000L
         const val TAP_MS = 50L
+        const val DEFAULT_QUIET_MS = 300L
+        const val MIN_QUIET_MS = 50L
+        const val DEFAULT_IDLE_MAX_MS = 3_000L
+        const val MAX_IDLE_MS = 8_000L // well inside the server's 10 s timeout
+        const val IDLE_POLL_MS = 20L
         val DIRECT_EXECUTOR = Executor { it.run() }
         val SUPPORTED_KEYS = listOf("BACK", "HOME", "APP_SWITCH", "ENTER", "DELETE", "WAKEUP", "POWER",
             "VOLUME_UP", "VOLUME_DOWN")

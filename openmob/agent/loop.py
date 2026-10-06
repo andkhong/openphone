@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import re
 import threading
 import time
@@ -18,7 +19,8 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from .models import ModelRequest, ModelUnavailable, router_for
+from . import fast
+from .models import ModelError, ModelRequest, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import TOOL_SPECS, system_prompt
 
@@ -29,6 +31,8 @@ RECENT_REQUESTS = 5
 OCR_MIN_CONFIDENCE = 0.3
 REDACTED = "<redacted>"
 POINT_ARGS = {"tap": (("x", "y"),), "long_press": (("x", "y"),), "swipe": (("x1", "y1"), ("x2", "y2"))}
+FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
+SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
@@ -45,6 +49,7 @@ class AgentResult:
     steps: int
     usage: Usage = field(default_factory=Usage)
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
+    fast_steps: int = 0  # tool calls the fast path made (no main model)
 
 
 @dataclass
@@ -61,8 +66,10 @@ class Outcome:
     is_error: bool = False
     done: bool = False
     success: bool = False
-    settle: float | None = None  # None means the default settle delay
+    settle: float | None = None  # None means the default settle delay (the cap, with adaptive settle)
     timings: dict | None = None  # this step's time per phase in ms (set by _execute)
+    launched: str | None = None  # the package launch_app started (adb's launch settle waits for it)
+    quiet_ms: int | None = None  # adaptive settle: a longer quiet time (e.g. search suggestions)
 
 
 @dataclass
@@ -78,6 +85,12 @@ class _TaskState:
     notes_package: str | None = None  # the app whose notes were last shown
     used_notes: list[str] = field(default_factory=list)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
+    settle_idle: bool | None = None  # the last adaptive settle: the screen went quiet (False: hit the cap)
+    fast: bool = False  # the fast path is on for this task
+    vision_next: bool = False  # the next step must be a vision step (the last fast step made no progress)
+    fast_steps: int = 0  # tool calls the fast path made
+    # The actions so far, for the fast path's loop check: {"action", "screen_changed"}.
+    actions: list[dict] = field(default_factory=list)
 
 
 def is_yes(answer: str) -> bool:
@@ -111,6 +124,7 @@ class Agent:
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         self.timer = StepTimer()  # where each step's time goes (measurement only)
+        self._task_variant = self._variant()  # the latency features of the task in progress (steps record it)
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
         if judge is not None:
@@ -146,9 +160,12 @@ class Agent:
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
                            memory=memory if self.memory is not None else "off")
+        state.fast = self._fast_enabled()
+        self._task_variant = self._variant(state.fast)
         result = self._run(state, go_home, isolated)
         result.usage = self.usage
         result.timings = self.timer.task_totals()
+        result.fast_steps = state.fast_steps
         if state.used_notes:
             self.memory.mark_used(state.used_notes)
         if not isolated:
@@ -160,7 +177,7 @@ class Agent:
         self.driver.wake_unlock()
         if go_home:
             self.driver.key("HOME")
-            self.timer.timed("settle", time.sleep, self.config.settle_delay)
+            self._settle(self.config.settle_delay, state)
 
         try:
             route = router_for(self.client, self.config).route(self.task_model)
@@ -181,6 +198,12 @@ class Agent:
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._apply_corrections(state, messages)
+            if state.fast and not state.vision_next:
+                taken = self._fast_step(state, obs)
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages)
+                    continue
+            state.vision_next = False
             self._trim_history(messages)
             with self.timer.phase("model"):
                 response = route.adapter.complete(ModelRequest(
@@ -213,6 +236,8 @@ class Agent:
             results: list[dict] = []
             finished: Outcome | None = None
             settle = self.config.settle_delay
+            launched: str | None = None
+            quiet_ms: int | None = None
             for tool_use in tool_uses:
                 if finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
@@ -222,6 +247,8 @@ class Agent:
                                 {"timings": outcome.timings, "jev": self.judge is not None})
                     if outcome.settle is not None:
                         settle = outcome.settle
+                    launched = outcome.launched or launched
+                    quiet_ms = outcome.quiet_ms or quiet_ms
                     if outcome.done:
                         finished = outcome
                 results.append({
@@ -236,8 +263,8 @@ class Agent:
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step)
 
-            self.timer.timed("settle", self._sleep, settle, state.cancel)
-            obs = self._observe_settled(state)
+            self._settle(settle, state, launched, quiet_ms)
+            obs = self._observe_after_action(state, obs)
             # The new screen goes after the tool results, not inside them: Anthropic rejects images
             # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
             messages.append({"role": "user", "content": results + self._obs_blocks(obs, self._app_notes(state, obs))})
@@ -419,7 +446,7 @@ class Agent:
 
     # --- actions ---------------------------------------------------------
 
-    def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+    def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False) -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
@@ -428,10 +455,12 @@ class Agent:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         outcome.timings = self.timer.take()
         state.step_index += 1
-        self._record_step(state.step_index, name, args, obs, outcome, time.monotonic() - started)
+        state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
+        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step)
         return outcome
 
-    def _record_step(self, index: int, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float) -> None:
+    def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float,
+                     fast_step: bool = False) -> None:
         """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
         Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
         record = getattr(self.io, "record_step", None)
@@ -460,11 +489,12 @@ class Agent:
             # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
             norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4) for i, v in enumerate(points)]
             record({
-                "idx": index, "t": time.time(), "tool": name, "args": safe,
+                "idx": state.step_index, "t": time.time(), "tool": name, "args": safe,
                 "norm_xy": norm or None, "package": obs.package,
                 "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
                 "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
+                "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
             })
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
@@ -488,6 +518,7 @@ class Agent:
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
                 settle=self.config.launch_settle_delay,
+                launched=resolution.package,
             )
 
         if name == "list_apps":
@@ -505,8 +536,14 @@ class Agent:
             if not 0 <= index < len(obs.elements):
                 return Outcome(f"No element [{index}] on the current screen.", is_error=True)
             element = obs.elements[index]
+            if element.covered:
+                return Outcome(f"Element [{index}] {element.label!r} is covered by another window (a dialog or the "
+                               "keyboard), so a tap would land on that. Deal with what covers it first.",
+                               is_error=True, settle=0)
             if blocked := self._guard(f"{args.get('target', '')} {element.label}", state, obs):
                 return blocked
+            if moved := self._target_moved(element):
+                return moved
             self.driver.tap(*element.center)
             return Outcome(f"Tapped [{index}] {element.label!r}.")
 
@@ -547,7 +584,10 @@ class Agent:
             self.driver.type_text(args["text"])
             if args.get("submit"):
                 self.driver.key("ENTER")
-            return Outcome(f"Typed {args['text']!r}.")
+            # A search box: give its suggestions a moment longer to arrive before the next look.
+            search = any(fast.is_search_field(el) for el in obs.elements)
+            return Outcome(f"Typed {args['text']!r}.",
+                           quiet_ms=self.config.settle_quiet_ms + SEARCH_EXTRA_QUIET_MS if search else None)
 
         if name == "press_key":
             self.driver.key(args["key"])
@@ -611,6 +651,199 @@ class Agent:
             settle=0,
         )
 
+    def _target_moved(self, element: UIElement) -> Outcome | None:
+        """Just before a tap_element: re-read the elements and refuse if the target is no longer at the
+        same place (the screen changed since it was read). Only on phones whose element list is quick
+        to read (the OpenMob app); adb and iOS dumps take a second or more."""
+        if not self.config.verify_taps or element.cls == fast.OCR_CLASS or not getattr(self.driver, "fast_ui_tree", False):
+            return None
+        with self.timer.phase("observe"):
+            fresh = self.driver.ui_elements()
+        if not fresh:
+            return None  # nothing to compare with (a tree that's briefly empty): tap as decided
+        same = (element.text, element.desc, element.resource_id, element.cls, element.bounds)
+        if any((el.text, el.desc, el.resource_id, el.cls, el.bounds) == same for el in fresh):
+            return None
+        return Outcome(f"Didn't tap [{element.index}] {element.label!r}: the screen changed and it is no longer "
+                       "where it was. Look at the new screen.", is_error=True, settle=0)
+
     @staticmethod
     def _sleep(seconds: float, cancel: threading.Event) -> None:
         cancel.wait(seconds)
+
+    # --- the fast path (see fast.py) -------------------------------------------------
+
+    def _fast_enabled(self) -> bool:
+        """fast_path is on (or fast_tier and this task runs on the fast tier's model) and the
+        classifier is configured and enabled."""
+        mode = self.config.fast_path
+        if mode == "off" or self.judge is None or not hasattr(self.judge, "next_step"):
+            return False
+        if mode == "fast_tier":
+            return self.task_model == (self.config.api_tiers.get("fast") or {}).get("model")
+        return True
+
+    @staticmethod
+    def _action_text(name: str, args: dict, obs: Observation) -> str:
+        """A short, text-free description of an action (typed text stays out of the classifier)."""
+        if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
+            i = int(args["index"])
+            if 0 <= i < len(obs.elements):
+                return f"tap [{i}] {obs.elements[i].label[:60]!r}"
+        if name in ("scroll", "press_key", "launch_app"):
+            return f"{name} {args.get('direction') or args.get('key') or args.get('app')}"
+        if name == "type_text":
+            return "type text"
+        return name
+
+    def _fast_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """One step without the main model, or None: take the vision step. Returns what ran."""
+        c = self.config
+        if not fast.eligible(obs.elements, c.fast_path_min_elements):
+            return None
+        heads = fast.targets(obs.elements)
+        try:
+            choice = self.timer.timed("jev", self.judge.next_step, state.task, fast.screen_table(obs.package, obs.elements),
+                                      state.actions[-5:], heads)
+        except (JevError, KeyError, TypeError, ValueError) as exc:
+            self.io.event("error", f"Fast step skipped: {exc}")
+            return None
+        op = choice.operation
+
+        def sure(p: float, conf: float) -> bool:
+            return p >= c.fast_path_min_probability and conf >= c.fast_path_min_confidence
+
+        # DONE always goes to the vision model: only it may say the task succeeded.
+        if op in ("DONE", "ESCALATE") or not sure(choice.probability, choice.confidence):
+            return None
+        element = None
+        if op in heads:
+            picked = choice.targets.get(op)
+            if not picked or picked[0] not in heads[op] or not sure(picked[1], picked[2]):
+                return None
+            element = obs.elements[int(picked[0])]
+
+        if op == "TAP":
+            calls = [("tap_element", {"index": element.index, "target": element.label})]
+        elif op == "TYPE_TEXT":
+            text = self._fast_value(state, "text", {"field": fast.describe(element)})
+            if text is None:
+                return None
+            calls = [("tap_element", {"index": element.index, "target": element.label}), ("type_text", {"text": text})]
+        elif op == "LAUNCH_APP":
+            app = self._fast_value(state, "app", {"foreground_app": obs.package or "unknown"})
+            if app is None:
+                return None
+            calls = [("launch_app", {"app": app})]
+        elif op in fast.SIMPLE_OPERATIONS:
+            name, args = fast.SIMPLE_OPERATIONS[op]
+            calls = [(name, dict(args))]
+        else:
+            return None
+
+        # No loops: repeating the last action, or one tried twice lately, is the vision model's call.
+        first = self._action_text(calls[0][0], calls[0][1], obs)
+        recent = [a["action"] for a in state.actions[-4:]]
+        if recent[-1:] == [first] or recent.count(first) >= 2:
+            return None
+
+        taken = []
+        for i, (name, args) in enumerate(calls):
+            if i:  # typing after the tap that focused the field: let the keyboard come up first
+                self._settle(c.settle_delay, state, quiet_ms=FOCUS_QUIET_MS)
+            outcome = self._execute(name, args, obs, state, fast_step=True)
+            state.fast_steps += 1
+            shown = f"{name}: {'Typed ' + REDACTED + '.' if name == 'type_text' and not outcome.is_error else outcome.text}"
+            self._event("error" if outcome.is_error else "action", shown,
+                        {"timings": outcome.timings, "jev": True, "fast": True})
+            taken.append((name, args, outcome))
+            if outcome.is_error:
+                break
+        return taken
+
+    def _fast_value(self, state: _TaskState, key: str, context: dict) -> str | None:
+        """A small, fast text model writes one value ({"text": …} or {"app": …}); None if it can't."""
+        model = self.config.fast_path_text_model or self.config.resolver_model
+        router = router_for(self.client, self.config)
+        try:
+            route = router.route(model)
+            with self.timer.phase("model"):
+                response = route.adapter.complete(ModelRequest(
+                    model=model, system=fast.TEXT_SYSTEM, tools=[], max_tokens=200,
+                    messages=[{"role": "user", "content": json.dumps({"user_request": state.task, "want": key, **context})}],
+                ))
+        except (ModelUnavailable, ModelError) as exc:
+            self.io.event("error", f"Fast step skipped: {exc}")
+            return None
+        self.usage.add_model(response.usage, response.model or model)
+        return fast.parse_value("".join(response.text), key)
+
+    def _after_fast_step(self, state: _TaskState, obs: Observation, taken: list[tuple[str, dict, Outcome]],
+                         messages: list[dict]) -> Observation:
+        """Settle, look again, and tell the main model what happened (as text in the conversation, so
+        any provider takes it), followed by the new screen."""
+        last = taken[-1][2]
+        settle = self.config.settle_delay if last.settle is None else last.settle
+        self._settle(settle, state, last.launched, last.quiet_ms)
+        new = self._observe_after_action(state, obs)
+        if any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False:
+            state.vision_next = True  # no visible progress: the vision model takes the next step
+        lines = []
+        for name, args, outcome in taken:
+            shown = {**args, "text": REDACTED} if name == "type_text" else args
+            text = f"Typed {REDACTED}." if name == "type_text" and not outcome.is_error else outcome.text
+            lines.append(f"- {name} {json.dumps(shown)}: {'Error: ' if outcome.is_error else ''}{text}")
+        note = ("Since your last turn, a quick helper took these steps from the element list "
+                "(no reply needed; carry on from the new screen):\n" + "\n".join(lines))
+        blocks = [{"type": "text", "text": note}, *self._obs_blocks(new, self._app_notes(state, new))]
+        if messages[-1]["role"] == "user" and isinstance(messages[-1]["content"], list):
+            messages[-1]["content"].extend(blocks)
+        else:
+            messages.append({"role": "user", "content": blocks})
+        return new
+
+    def _observe_after_action(self, state: _TaskState, before: Observation) -> Observation:
+        """Observe after an action and note whether it changed the screen (the fast path's loop check)."""
+        obs = self._observe_settled(state)
+        changed = fast.signature(obs.package, obs.elements) != fast.signature(before.package, before.elements)
+        for action in state.actions:
+            if action["screen_changed"] is None:
+                action["screen_changed"] = changed
+        return obs
+
+    # --- settling after an action -------------------------------------------------
+
+    def _variant(self, fast_path: bool = False) -> str:
+        """Which latency features a task runs with, for comparing them in `openmob timings`."""
+        return ("adaptive" if self.config.adaptive_settle else "fixed") + ("+fast" if fast_path else "")
+
+    def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None) -> None:
+        """Let the screen catch up after an action. `seconds` is the most to wait (the fixed delay).
+
+        Adaptive (config.adaptive_settle): a phone whose app offers wait_idle returns as soon as no
+        window or content change has arrived for settle_quiet_ms. An adb phone ends a launch once the
+        app is in front plus the short settle. Anything else (older apps, iOS): the fixed sleep.
+        Recorded as settle time: the real time waited."""
+        state.settle_idle = None
+        if seconds <= 0:
+            return
+        with self.timer.phase("settle"):
+            if self.config.adaptive_settle and not state.cancel.is_set():
+                started = time.monotonic()
+                wait_idle = getattr(self.driver, "wait_idle", None)
+                if wait_idle is not None:
+                    try:
+                        result = wait_idle(int(quiet_ms or self.config.settle_quiet_ms), int(seconds * 1000))
+                    except DeviceError:
+                        result = None  # sleep out the rest; the next observation reports a lost phone
+                    if result is not None:
+                        state.settle_idle = bool(result.get("idle"))
+                        return
+                    seconds -= time.monotonic() - started
+                wait_foreground = getattr(self.driver, "wait_foreground", None)
+                if launched and wait_foreground is not None and seconds > 0:
+                    if wait_foreground(launched, seconds, state.cancel):
+                        left = seconds - (time.monotonic() - started)
+                        self._sleep(max(min(self.config.settle_delay, left), 0), state.cancel)
+                    return
+            self._sleep(max(seconds, 0), state.cancel)

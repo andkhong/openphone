@@ -174,3 +174,10 @@ everything forever; one job deletes all of it every 6 hours):
 - Screenshots are never stored.
 - To carry out a task, the phone's screen content is processed by the AI providers that power
   OpenMob's tiers. The API itself never names them: you choose a tier, not a model.
+- When screen classification is on, a text description of each screen (the foreground app, the
+  on-screen elements' labels and state, and words read from the screen; never a screenshot) goes to
+  a classification service together with the request and a short list of recent actions (never
+  typed text). It judges loading screens and risky taps, and on screens with a clear element list it
+  may choose a simple next step itself (tap, scroll, back, type) without the main model. Text to
+  type is then written by a small, fast model from the same providers. These steps go through the
+  same approval checks as any other, and only the main model can declare a task finished.

@@ -59,7 +59,7 @@ class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
     def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False,
-                 video=False, approve=None, signer=None, approval_key=None):
+                 video=False, approve=None, signer=None, approval_key=None, capabilities=None):
         self.url = f"{url}/phone/ws?t={token}"
         self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
         # signer: an EC private key standing in for the phone's screen-lock-bound Keystore key; its
@@ -72,6 +72,7 @@ class FakePhone:
         self.platform = platform
         self.binary = binary  # answer binary screenshot requests like the current app (else: like an old one)
         self.driver = driver
+        self.capabilities = capabilities  # hello device.capabilities (None: an older app that sends none)
         self.device_id = device_id
         self.events = []
         self.calls = []  # (method, params) of every call received
@@ -88,6 +89,8 @@ class FakePhone:
     def handle(self, method, params):
         if method == "launch_app" and params.get("package") == "bad.pkg":
             raise RuntimeError("boom")
+        if method == "wait_idle" and self.capabilities and "wait_idle" in self.capabilities:
+            return {"waited_ms": min(40, params["max_ms"]), "idle": True}
         if method == "screenshot":
             return protocol.encode_screenshot(self.driver.screenshot())
         if method == "ui_elements":
@@ -108,6 +111,8 @@ class FakePhone:
                     hello["device"]["platform"] = self.platform
                 if self.video:
                     hello["device"]["video"] = True
+                if self.capabilities is not None:
+                    hello["device"]["capabilities"] = self.capabilities
                 await ws.send(json.dumps(hello))
                 async for raw in ws:
                     msg = json.loads(raw)
