@@ -43,6 +43,8 @@ RECHECK_MAX_MS = 800
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 PLAY_STORE = "com.android.vending"
 INSTALL_BUTTON = re.compile(r"install|update|get|install on (this )?(phone|device)", re.I)
+INSTALL_ONLY = re.compile(r"install|install on (this )?(phone|device)", re.I)  # the tap that installs an app
+INSTALL_REQUESTED = re.compile(r"\b(re)?install", re.I)  # a request that asks to install something
 INSTALLED_BUTTON = "Open|Play"  # what the Play Store's button turns into once an install is done
 INSTALL_TAP_GRACE_S = 5.0  # an enabled Install button still there after this long: the tap didn't start one
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
@@ -1225,7 +1227,8 @@ class Agent:
             return False
         if permission_dialogs.request_mentions_permissions(state.task):
             return False
-        dialog = permission_dialogs.detect(obs.package, obs.elements)
+        dialog = permission_dialogs.detect(obs.package, obs.elements,
+                                           gatekeeper=bool(getattr(self.driver, "gatekeeper", False)))
         if dialog is None:
             return False
         mode = state.perms.mode()
@@ -1358,6 +1361,10 @@ class Agent:
             state.last_package = package
         if state.task_app is None and package:
             state.task_app = package
+        # A Play Store Install tap installs an app (design §5): it asks, unless the request asked to install.
+        shown_label = " ".join(((element.text or element.desc) if element is not None else desc).split())
+        if package == PLAY_STORE and INSTALL_ONLY.fullmatch(shown_label) and not INSTALL_REQUESTED.search(state.task):
+            force, kind_hint = True, kind_hint or "install"
         tier = gate.settings_tier(cfg, package, desc, element, obs.elements, self._blocked_label(state))
         if extra:  # the model's words can make a Settings tap refused or asked, never everyday
             hint_tier = gate.settings_tier(cfg, package, extra, None, obs.elements, self._blocked_label(state))

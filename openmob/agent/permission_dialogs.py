@@ -12,6 +12,9 @@ the owner's defaults (config `permission_prompts`; on a gatekeeper build, the ph
 - location accuracy: `approximate` (default: the Approximate card is chosen before granting) | `precise`;
 - photos and media: "Allow limited access" when offered, else "Only this time", else "Don't allow" (never "Allow
   all");
+- contacts, SMS, phone, calendar, body sensors, nearby devices: where the dialog offers no one-time option, the
+  lasting "Allow" asks the owner (`persistent_grants`: `ask` (default) | `allow`);
+- before the task has an app, any request counts as another app's (it asks);
 - **never "Allow all the time"**: if that's the only way to grant, the request is denied (the phone refuses it too);
 - a request that itself talks about permissions ("don't allow notifications") is left to the model;
 - a request from an app other than the task's own: ask (S2 of docs/design/phone-gatekeeper.md);
@@ -112,22 +115,26 @@ class Plan:
     accuracy: str | None = None  # approximate | precise: the location card to choose before granting
 
 
-OCR_MESSAGE_ID = "ocr_permission_message"  # the gatekeeper app's OCR'd dialog title (no package prefix: not an app's id)
+OCR_MESSAGE_ID = "ocr_permission_message"  # the gatekeeper app's OCR'd dialog title (class OCRText)
 TITLE = re.compile(r"^Allow\s+.+?\s+to\s.+\?$", re.I | re.S)
+# Kinds whose grant lasts: where the dialog offers no one-time option, the default "once" doesn't stretch to a lasting
+# "Allow"; the owner is asked (unless they set persistent_grants: allow). The gatekeeper's rules list the same.
+PERSISTENT_ASK = ("contacts", "sms", "phone", "calendar", "body_sensors", "nearby_devices")
 
 
-def _controller_id(rid: str) -> bool:
-    return bool(rid) and PACKAGES.search(rid.split(":", 1)[0]) is not None
-
-
-def detect(package: str | None, elements: list[UIElement]) -> Dialog | None:
-    """A runtime permission dialog on screen, or None. Only the system's: the permission controller's window (its
-    package, or its resource ids), the gatekeeper app's OCR reading of a hidden one (`ocr_permission_message`), or,
-    on an unidentified window (no package), the server's own OCR of an "Allow X to …?" title. An app's own screen
-    that merely looks like one never counts (its ids carry its package)."""
+def detect(package: str | None, elements: list[UIElement], gatekeeper: bool = False) -> Dialog | None:
+    """A runtime permission dialog on screen, or None. Only the system's:
+    - the permission controller's window: the package in front is the controller (never an app's resource ids,
+      which a web page or an app can set to anything);
+    - on a gatekeeper phone, its OCR reading of a hidden dialog (class OCRText, id `ocr_permission_message`; the
+      phone strips both marks from every app's tree), when the package is missing or the controller;
+    - an unidentified window (no package) the server's own OCR reads as an "Allow X to …?" title."""
+    controller = bool(package and PACKAGES.search(package))
+    if package and not controller:
+        return None  # an app's screen, whatever it looks like
     buttons = {}
     message = ""
-    trusted = bool(package and PACKAGES.search(package))
+    trusted = controller
     for e in elements:
         if e.covered:
             continue  # under a higher window: not the dialog's
@@ -138,12 +145,12 @@ def detect(package: str | None, elements: list[UIElement]) -> Dialog | None:
         for role, rx in TEXTS.items():
             if role not in buttons and rx.search((e.text or e.desc or "").strip()):
                 buttons[role] = e
-        if MESSAGE.search(rid) and (e.text or e.desc) and (rid == OCR_MESSAGE_ID or _controller_id(rid)):
+        if controller and MESSAGE.search(rid) and (e.text or e.desc):
             message = e.text or e.desc
-            trusted = True
+        elif gatekeeper and e.cls == "OCRText" and rid == OCR_MESSAGE_ID and (e.text or e.desc):
+            message, trusted = e.text or e.desc, True
         elif not message and package is None and e.cls == "OCRText" and TITLE.match((e.text or "").strip()):
-            message = e.text  # the server's OCR of a window nobody identified
-            trusted = True
+            message, trusted = e.text, True  # the server's OCR of a window nobody identified
     if not trusted:
         return None
     if not buttons or not ("deny" in buttons or "deny_forever" in buttons):
@@ -173,7 +180,8 @@ def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | No
            task_package: str | None = None) -> Plan:
     """What to do by the owner's settings. Denying is always safe, so it never needs the owner."""
     never = mode == "never"
-    own = not task_app_label or same_app(dialog.app, task_app_label, task_package)
+    # The task's own app only: before the task has an app, a request is another app's (it asks).
+    own = bool(task_app_label or task_package) and same_app(dialog.app, task_app_label, task_package)
     accuracy = (prompts.get("location_accuracy") or "approximate") if dialog.kind == "location" else None
     if dialog.kind == "notifications":
         if prompts.get("notifications", "allow") != "allow":
@@ -188,6 +196,9 @@ def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | No
     setting = prompts.get(dialog.kind, "once") if own else "ask"  # another app's request (S2) always asks
     if setting == "deny":
         return Plan("deny")
+    if setting == "once" and dialog.kind in PERSISTENT_ASK and "one_time" not in dialog.buttons \
+            and prompts.get("persistent_grants", "ask") != "allow":
+        return Plan("deny" if never else "ask", "once", accuracy)  # only a lasting grant offered: the owner decides
     if setting in ("once", "while_using"):
         if button(dialog, "allow", setting) is not None:
             precise = dialog.buttons.get("precise")

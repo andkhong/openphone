@@ -128,7 +128,9 @@ PERMISSION_TYPES = ("location", "camera", "microphone", "contacts", "photos", "p
                     "nearby_devices", "physical_activity", "body_sensors")
 # Owner decision: the task's own app gets "Only this time" with no prompt (the narrowest grant that lets the task
 # go on), notifications allowed, location approximate.
-PERMISSION_DEFAULTS = {"notifications": "allow", "location_accuracy": "approximate",
+# persistent_grants: where a dialog of a dangerous kind (contacts, SMS, phone, calendar, body sensors, nearby devices)
+# offers no one-time option, ask (default) or allow its lasting grant.
+PERMISSION_DEFAULTS = {"notifications": "allow", "location_accuracy": "approximate", "persistent_grants": "ask",
                        **{k: "once" for k in PERMISSION_TYPES}}
 PERMISSION_QUESTIONS = {
     "once": "Let agents allow {what} \"only this time\" in permission dialogs without asking?",
@@ -145,6 +147,8 @@ def permission_values(kind: str) -> tuple:
         return ("deny", "allow")
     if kind == "location_accuracy":
         return ("approximate", "precise")
+    if kind == "persistent_grants":
+        return ("ask", "allow")
     return ("deny", "ask", "once", "while_using")
 
 

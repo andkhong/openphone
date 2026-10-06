@@ -49,6 +49,8 @@ auto_permission_dialogs: true
 #   location_accuracy: approximate   # approximate | precise
 #   location: once                   # once ("Only this time") | while_using | ask | deny; same for camera,
 #   camera: once                     # microphone, photos, nearby_devices, contacts, phone, sms, calendar…
+#   persistent_grants: ask           # ask | allow: a lasting Allow for contacts, SMS, phone, calendar, body
+#                                    # sensors, nearby devices when the dialog offers no one-time option
 
 # Vision steps (docs/benchmarks.md, "Vision steps")
 keep_screenshots: 2                # screenshots left in the history after a trim
