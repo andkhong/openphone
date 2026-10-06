@@ -412,6 +412,9 @@
             <label class="check"><input type="checkbox" id="keyConfirmApprove"> <span><b style="color:var(--fg)">Approve risky actions</b>: this key may say yes when a task asks before buying, sending or deleting.</span></label>
             <span class="warn-text">Off by default, and only you can approve those steps, on your phone with its screen lock. An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.</span>
           </div>
+          <div class="field"><label for="keyMaxMode">Loosest permission mode</label>
+            <div class="row"><select class="select" id="keyMaxMode" style="max-width:320px"></select></div>
+            <span class="muted small">The least asking this key's tasks may request (permission_mode). A phone's own setting still applies: looser modes are approved on the phone itself.</span></div>
           <div class="row"><button class="btn btn-primary" type="submit">Create key</button><span class="error" id="keyError" role="alert"></span></div>
         </form>
       </section>
@@ -419,7 +422,7 @@
         <div class="card-head"><h2 id="keysTitle">Your keys <span class="count" id="keyCount">0</span></h2><span class="grow"></span><span class="hint">Up to 20 keys</span></div>
         <div class="table-wrap">
           <table class="table">
-            <thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Created</th><th>Last used</th><th>Risky actions</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+            <thead><tr><th>Name</th><th>Key</th><th>Scopes</th><th>Created</th><th>Last used</th><th>Risky actions</th><th>Max mode</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
             <tbody id="keys"><tr class="empty-row"><td class="empty" colspan="8">Loading…</td></tr></tbody>
           </table>
         </div>
@@ -946,6 +949,26 @@ function approveToggle(k) {
     box, el("span", { textContent: k.confirm_approve ? "Allowed" : "Owner only" }));
 }
 
+// The loosest permission mode a key's tasks may ask for (docs/safety.md#permission-modes).
+const MODE_OPTIONS = [["ask", "Ask every step"], ["plan", "Plan first"], ["auto", "Auto (default)"],
+                      ["trusted", "Trusted apps"], ["never", "Never ask"]];
+const modeOptions = (selected) => MODE_OPTIONS.map(([v, t]) => el("option", { value: v, textContent: t, selected: v === selected }));
+function maxModeSelect(k) {
+  const sel = el("select", { className: "select", style: "min-height:30px;padding:2px 8px;font-size:13px;width:auto" }, ...modeOptions(k.max_mode || "auto"));
+  sel.setAttribute("aria-label", `Loosest permission mode for key ${k.name}`);
+  sel.onchange = async () => {
+    sel.disabled = true;
+    try {
+      await api(`/api/developer/keys/${encodeURIComponent(k.id)}`, { method: "PATCH", body: JSON.stringify({ max_mode: sel.value }) });
+    } catch (e) { $("keyError").textContent = e.message; }
+    sel.disabled = false;
+    await loadCore();
+    renderKeys();
+  };
+  return sel;
+}
+if (!$("keyMaxMode").childElementCount) $("keyMaxMode").replaceChildren(...modeOptions("auto"));
+
 function renderKeys() {
   if (!overview) return;
   buildScopes(overview.scopes);
@@ -967,11 +990,12 @@ function renderKeys() {
       cell("Created", el("span", { className: "muted", textContent: date(k.created) })),
       cell("Last used", el("span", { className: "muted", textContent: ago(k.last_used), title: fullDate(k.last_used) })),
       cell("Risky actions", approveToggle(k)),
+      cell("Max mode", maxModeSelect(k)),
       cell("Status", k.disabled ? el("span", { className: "pill bad dotted", textContent: "Turned off by admin" }) : el("span", { className: "pill ok dotted", textContent: "Active" })),
       cell("", el("div", { className: "actions" }, rotate, revoke)));
-    for (const i of [1, 3, 4, 5, 6, 7]) row.children[i].classList.add("nowrap");
+    for (const i of [1, 3, 4, 5, 6, 7, 8]) row.children[i].classList.add("nowrap");
     return row;
-  }) : [emptyRow(8, "No keys yet.", el("a", { className: "link", href: "#/keys/new", textContent: "Create your first key" }))]));
+  }) : [emptyRow(9, "No keys yet.", el("a", { className: "link", href: "#/keys/new", textContent: "Create your first key" }))]));
 }
 
 $("keyConfirmApprove").onchange = () => $("approveOpt").classList.toggle("on", $("keyConfirmApprove").checked);
@@ -983,7 +1007,7 @@ $("createKey").onsubmit = async (ev) => {
   if ($("keyConfirmApprove").checked && !confirm(`Let this key approve risky actions? ${APPROVE_WARNING}`)) return;
   $("keyError").textContent = "";
   try {
-    const k = await api("/api/developer/keys", { method: "POST", body: JSON.stringify({ name: $("keyName").value, scopes, confirm_approve: $("keyConfirmApprove").checked }) });
+    const k = await api("/api/developer/keys", { method: "POST", body: JSON.stringify({ name: $("keyName").value, scopes, confirm_approve: $("keyConfirmApprove").checked, max_mode: $("keyMaxMode").value }) });
     $("keyName").value = "";
     $("keyConfirmApprove").checked = false;
     $("approveOpt").classList.remove("on");

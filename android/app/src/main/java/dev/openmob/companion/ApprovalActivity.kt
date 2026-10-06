@@ -1,6 +1,7 @@
 package dev.openmob.companion
 
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -17,6 +18,7 @@ import android.view.Window
 import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -28,6 +30,10 @@ import android.widget.Toast
  * own purchase or send. Denying needs nothing.
  *
  * FLAG_SECURE keeps this screen out of screenshots and the live view, so the agent can't read it.
+ *
+ * Kinds (docs/phone-protocol.md): a risky action, a step (ask-every-step mode), a plan (plan-first
+ * mode) or a mode_change (agents would ask less on this phone). "Always allow this" (off by default)
+ * also grants the offered trusted entry; for payments it asks a second time. It is signed too.
  */
 class ApprovalActivity : Activity() {
     private companion object {
@@ -40,6 +46,9 @@ class ApprovalActivity : Activity() {
     private var unsubscribe: (() -> Unit)? = null
     private var prompt: CancellationSignal? = null
 
+    private lateinit var labelText: TextView
+    private lateinit var explainText: TextView
+    private lateinit var alwaysBox: CheckBox
     private lateinit var questionText: TextView
     private lateinit var requesterText: TextView
     private lateinit var statusText: TextView
@@ -92,6 +101,21 @@ class ApprovalActivity : Activity() {
         val request = shown
         val open = Approvals.get(requestId) != null
         questionText.text = request?.shownQuestion ?: getString(R.string.approval_gone)
+        val kind = request?.kind ?: "action"
+        labelText.text = getString(when (kind) {
+            "mode_change" -> R.string.approval_label_mode
+            "plan" -> R.string.approval_label_plan
+            "step" -> R.string.approval_label_step
+            else -> R.string.approval_label
+        })
+        explainText.text = getString(when (kind) {
+            "mode_change" -> R.string.approval_explain_mode
+            "plan" -> R.string.approval_explain_plan
+            else -> R.string.approval_explain
+        })
+        val always = request?.always
+        alwaysBox.visibility = if (always != null && open) View.VISIBLE else View.GONE
+        if (always != null) alwaysBox.text = "${getString(R.string.approval_always)}\n${always.text}"
         requesterText.text = request?.let { getString(R.string.approval_requester, it.requester) }.orEmpty()
         requesterText.visibility = if (request == null) View.GONE else View.VISIBLE
         if (!open && request != null) showStatus(getString(R.string.approval_gone))
@@ -103,6 +127,24 @@ class ApprovalActivity : Activity() {
 
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
+        val always = request.always
+        // "Always allow" for payments needs a second, explicit yes before the screen lock.
+        if (alwaysBox.isChecked && always != null && always.confirmTwice) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.approval_always_confirm_title)
+                .setMessage(getString(R.string.approval_always_confirm_body, always.text))
+                .setPositiveButton(R.string.approval_always_confirm_yes) { _, _ -> authenticate(request, true) }
+                .setNegativeButton(R.string.approval_always_confirm_no) { _, _ ->
+                    alwaysBox.isChecked = false
+                    authenticate(request, false)
+                }
+                .show()
+            return
+        }
+        authenticate(request, alwaysBox.isChecked && always != null)
+    }
+
+    private fun authenticate(request: Approvals.Request, grantAlways: Boolean) {
         val lock = getSystemService(BiometricManager::class.java)?.canAuthenticate(APPROVERS)
         if (lock != BiometricManager.BIOMETRIC_SUCCESS) {
             showStatus(getString(R.string.approval_need_lock))
@@ -114,7 +156,11 @@ class ApprovalActivity : Activity() {
         // trusts, so nothing else on the phone (or holding its device key) can approve.
         val signer = ApprovalKeys.signer()
         val built = BiometricPrompt.Builder(this)
-            .setTitle(getString(R.string.approval_prompt_title))
+            .setTitle(getString(when (request.kind) {
+                "mode_change" -> R.string.approval_prompt_title_mode
+                "plan" -> R.string.approval_prompt_title_plan
+                else -> R.string.approval_prompt_title
+            }))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
             .setDescription(request.shownQuestion)
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
@@ -128,12 +174,14 @@ class ApprovalActivity : Activity() {
                         return
                     }
                     val now = System.currentTimeMillis() / 1000
-                    val signature = runCatching { ApprovalKeys.sign(unlocked, request.id, request.taskId, now) }.getOrNull()
+                    val signature = runCatching {
+                        ApprovalKeys.sign(unlocked, request.id, request.taskId, now, grantAlways)
+                    }.getOrNull()
                     if (signature == null) {
                         showStatus(getString(R.string.approval_not_confirmed))
                         return
                     }
-                    send(approved = true, signature = signature, timestamp = now)
+                    send(approved = true, signature = signature, timestamp = now, always = grantAlways)
                 }
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
@@ -149,8 +197,8 @@ class ApprovalActivity : Activity() {
         }
     }
 
-    private fun send(approved: Boolean, signature: String? = null, timestamp: Long = 0) {
-        if (Approvals.answer(this, requestId, approved, signature, timestamp)) {
+    private fun send(approved: Boolean, signature: String? = null, timestamp: Long = 0, always: Boolean = false) {
+        if (Approvals.answer(this, requestId, approved, signature, timestamp, always)) {
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,
             ).show()
@@ -175,12 +223,24 @@ class ApprovalActivity : Activity() {
             background = rounded(getColor(R.color.om_card), 20, stroke = getColor(R.color.om_question))
             setPadding(dp(20), dp(20), dp(20), dp(20))
         }
-        card.addView(text(getString(R.string.approval_label), 12f, getColor(R.color.om_question), bold = true))
+        labelText = text(getString(R.string.approval_label), 12f, getColor(R.color.om_question), bold = true)
+        card.addView(labelText)
         questionText = text("", 20f, getColor(R.color.om_text), bold = true)
         card.addView(questionText, margins(top = 6))
         requesterText = text("", 14f, getColor(R.color.om_text_secondary))
         card.addView(requesterText, margins(top = 6))
-        card.addView(text(getString(R.string.approval_explain), 13f, getColor(R.color.om_text_tertiary)), margins(top = 12))
+        explainText = text(getString(R.string.approval_explain), 13f, getColor(R.color.om_text_tertiary))
+        card.addView(explainText, margins(top = 12))
+        // Off by default: granting more than this one action is a deliberate choice.
+        alwaysBox = CheckBox(this).apply {
+            isChecked = false
+            setTextColor(getColor(R.color.om_text))
+            setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
+            filterTouchesWhenObscured = true
+            if (Build.VERSION.SDK_INT >= 34) setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
+            visibility = View.GONE
+        }
+        card.addView(alwaysBox, margins(top = 12, width = ViewGroup.LayoutParams.MATCH_PARENT))
 
         approveButton = button(getString(R.string.approval_approve), getColor(R.color.om_accent), getColor(R.color.om_on_accent)) {
             onApprove()

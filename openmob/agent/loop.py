@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import re
 import threading
@@ -19,10 +20,11 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from . import fast
+from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, trusted_for
+from . import fast, gate
 from .models import ModelError, ModelRequest, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import TOOL_SPECS, system_prompt
+from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -35,6 +37,10 @@ FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
+REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
+# Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
+CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key"}
+DECLINE_WORDS = ("no", "nope", "deny", "denied", "stop", "cancel", "reject")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -52,6 +58,8 @@ class AgentResult:
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
     fast_steps: int = 0  # tool calls the fast path made (no main model)
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
+    prompts: int = 0  # approval prompts the owner saw (permission telemetry)
+    mode: str | None = None  # the permission mode the task ran in
 
 
 class Observation:
@@ -127,6 +135,16 @@ class _TaskState:
     escalated: bool = False  # a vision step ran, or the fast path declined or looped
     risky: bool = False  # the risky-tap check fired on some step (keywords or the classifier)
     typed: bool = False  # text was typed
+    # Permission modes (openmob/permissions.py):
+    perms: TaskPermissions = field(default_factory=TaskPermissions)
+    task_app: str | None = None  # the app the task works in: the first it launched, else the first it acted in
+    last_package: str | None = None  # the app of the last guarded action (a switch ends a payment follow-up)
+    exempt_used: set[str] = field(default_factory=set)  # auto: requested words already used once
+    money_followup: dict | None = None  # {package, at}: one follow-up commit tap after an approved payment
+    plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
+    step_approved: bool = False  # ask mode: the owner approved the action now running
+    typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
+    prompts: int = 0
 
 
 def is_yes(answer: str) -> bool:
@@ -186,23 +204,30 @@ class Agent:
         blocked: Callable[[str], bool] | None = None,
         memory: str = "on",
         isolated: bool = False,
+        permissions: TaskPermissions | None = None,
     ) -> AgentResult:
         """`model` and `max_steps` override this phone's settings for one task; `blocked` names
         packages the task must not open or operate (the task stops if one comes to the front).
         `memory`: on | read_only | off. `isolated`: a caller other than the phone's chat (e.g. an
-        API key) that must neither see nor add to the chat's recent requests."""
+        API key) that must neither see nor add to the chat's recent requests. `permissions`: the
+        task's permission mode against the phone's live settings (default: config's mode, ceiling auto)."""
         self.usage = Usage()
         self.timer.reset()
         self.task_model = model or self.model
+        perms = permissions or TaskPermissions(self.config.default_permission_mode)
+        if perms.requested == "never":  # no prompts: sensitive apps are off-limits for every task then
+            blocked = self._with_sensitive(blocked)
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
-                           memory=memory if self.memory is not None else "off")
+                           memory=memory if self.memory is not None else "off", perms=perms)
         state.fast = self._fast_enabled()
         self._task_variant = self._variant(state.fast)
         result = self._run(state, go_home, isolated)
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
+        result.prompts = state.prompts
+        result.mode = perms.mode()
         if state.used_notes:
             self.memory.mark_used(state.used_notes)
         if not isolated:
@@ -225,7 +250,9 @@ class Agent:
         self._show_later(state, messages, obs)
         nudged = False
 
-        system = system_prompt(self.platform) + self._user_notes(state)
+        mode = state.perms.mode()
+        system = system_prompt(self.platform) + mode_notes(mode) + self._user_notes(state)
+        tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
@@ -233,7 +260,7 @@ class Agent:
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._apply_corrections(state, messages)
-            if state.fast and not state.vision_next:
+            if state.fast and not state.vision_next and not self._needs_plan(state):
                 taken = self._fast_step(state, obs)
                 if taken is not None:
                     last = taken[-1][2]
@@ -249,7 +276,7 @@ class Agent:
                 response = route.adapter.complete(ModelRequest(
                     model=self.task_model,
                     system=system,
-                    tools=TOOL_SPECS,
+                    tools=tools,
                     messages=messages,
                     max_tokens=route.spec.max_tokens,
                 ))
@@ -620,6 +647,18 @@ class Agent:
             self.io.event("error", f"Step not recorded: {exc}")
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        state.step_approved = False
+        if name in CHANGING:
+            if self._needs_plan(state) and not (name == "press_key" and args.get("key") != "ENTER"):
+                return Outcome("Plan first: call propose_plan with a short numbered plan for the owner to approve "
+                               "before you change anything on the phone.", is_error=True, settle=0)
+            if state.perms.mode() == "ask":
+                if blocked := self._step_gate(name, args, obs, state):
+                    return blocked
+            if not (name == "type_text" or (name == "press_key" and args.get("key") == "ENTER")):
+                state.typing_approved = False
+        if name == "propose_plan":
+            return self._propose_plan(args, state)
         if name == "launch_app":
             resolution = self.resolver.resolve(args["app"])
             if resolution is None:
@@ -633,7 +672,10 @@ class Agent:
                 )
             if self._is_blocked(state, resolution.package):
                 return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
+            state.money_followup = None  # an app switch ends a payment's follow-up
             self.driver.launch_app(resolution.package)
+            if state.task_app is None and not gate.is_launcher(resolution.package):
+                state.task_app = resolution.package
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
                 settle=self.config.launch_settle_delay,
@@ -647,6 +689,7 @@ class Agent:
             return Outcome("\n".join(f"{n} ({p})" for n, p in apps) or "No apps found.", settle=0)
 
         if name == "open_url":
+            state.money_followup = None  # leaving the app ends a payment's follow-up
             self.driver.open_url(args["url"])
             return Outcome(f"Opened {args['url']}.", settle=self.config.launch_settle_delay)
 
@@ -740,19 +783,41 @@ class Agent:
         return [k for k in self.config.confirm_keywords if re.search(rf"\b{re.escape(k.lower())}\b", target)]
 
     def _guard(self, description: str, state: _TaskState, obs: Observation, element: UIElement | None = None) -> Outcome | None:
-        """Ask before risky taps ('Buy', 'Send', ...) the user didn't ask for.
+        """Before a tap or long-press: refuse it, ask the owner, or let it run (docs/safety.md#permission-modes).
 
-        Risky: matches a confirm keyword, or Jev rates it risky. Requested: Jev judges that the
-        request explicitly asked for it, or (without Jev) the matched keyword appears in the request.
-        For a tap on `element`, the step's one classifier request may already hold its risk (and,
-        when it can matter, its "requested"); otherwise the separate check asks now.
-        """
-        policy = self.config.confirm_actions
-        if policy == "never":
-            return None
-        hits = self._keyword_hits(description)
-        risky = bool(hits)
-        requested = any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower()) for k in hits)
+        Refused in every mode: security-critical Settings pages (and a blocked app's info page); under
+        `never` also money (without a trusted pay entry for the app) and autofill/credential suggestions.
+        Risky: a confirm or money keyword (minus on-the-way phrases like "Add to cart"), an autofill
+        suggestion, a Settings change outside the everyday allowlist, or the classifier's risk.
+        Requested: Jev judges that the request explicitly asked for it, or (without Jev) the matched
+        keyword appears in the request; the classifier may veto "requested", never grant it. Whether a
+        risky action asks then depends on the mode (see _covered). For a tap on `element`, the step's one
+        classifier request may already hold its risk (and, when it can matter, its "requested")."""
+        cfg = self.config
+        mode = state.perms.mode()
+        desc = description.strip()
+        package = obs.package
+        if package and package != state.last_package:
+            state.money_followup = None  # an app switch ends a payment's follow-up
+            state.last_package = package
+        if state.task_app is None and package:
+            state.task_app = package
+        tier = gate.settings_tier(cfg, package, desc, element, obs.elements, self._blocked_label(state))
+        if tier == "refuse":
+            return self._refuse(desc, "this Settings page is security-critical, so agents can't change it.")
+        credential = gate.is_credential(cfg, desc)
+        if credential and mode == "never":
+            return self._refuse(desc, "autofill and saved-credential suggestions are off while agents act "
+                                      "without asking.")
+        target = gate.strip_skips(desc, cfg.confirm_skip_phrases)
+        hits = self._keyword_hits(target)
+        money = gate.words(target, cfg.money_keywords)
+        risky = bool(hits or money or credential)
+        if tier == "allow":
+            risky = False  # everyday Settings (Wi-Fi, Bluetooth, dark mode…) never ask
+        elif tier == "ask":
+            risky = True
+        requested = bool(hits) and any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower()) for k in hits)
         if self.judge:
             try:
                 known = element is not None and element.index in obs.risks and (
@@ -760,9 +825,8 @@ class Agent:
                 if known:
                     risk, asked = obs.risks[element.index], obs.requested.get(element.index, 0.0)
                 else:
-                    risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, description.strip(),
-                                                   self._describe(obs))
-                risky = risky or risk >= self.config.jev_risk_threshold
+                    risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, desc, self._describe(obs))
+                risky = risky or risk >= cfg.jev_risk_threshold
                 # The classifier only ever adds caution. It reads on-screen text, so a screen could
                 # talk it into "the user asked for this"; it may veto "requested", never grant it.
                 requested = requested and asked >= 0.5
@@ -770,23 +834,244 @@ class Agent:
                 self.io.event("error", str(exc))
         if risky:
             state.risky = True
-        if not risky or (policy == "unrequested" and requested):
+        kind = "settings" if tier == "ask" else gate.kind_of(hits, money, credential)
+        share = gate.is_share(hits)
+        settings = state.perms.current_settings()
+        if mode == "never" or cfg.confirm_actions == "never":
+            if money and not trusted_for(settings, package, "pay", cfg.app_categories, False):
+                return self._refuse(desc, "payments are off while agents act without asking (a trusted pay "
+                                          "entry for this app allows them).")
+            return None
+        if mode == "ask" and state.step_approved:
+            return None  # the owner just approved this very action
+        if not risky:
+            return None
+        if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None
         if state.approved:
             state.approved = False
             return None
-        # A separate channel when the IO has one, so callers can tell a risky-action
-        # confirmation apart from an ordinary question.
-        confirm = getattr(self.io, "confirm", self.io.ask)
-        answer = self.timer.timed("wait", confirm, f"I'm about to tap {description.strip()!r}. Should I go ahead?")
+        context = gate.money_context(obs.elements) if money else ""
+        where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
+        question = f"I'm about to tap {desc!r}{where}{f' ({context})' if context else ''}. Should I go ahead?"
+        details = {"kind": "action", "action_kind": kind, "package": package}
+        always = self._always_offer(mode, kind, package, obs, desc if share else None)
+        if always:
+            details["always"] = always
+        answer = self._ask_owner(state, question, details)
         if is_yes(answer):
+            if money and not gate.words(desc, cfg.money_terminal_words):
+                state.money_followup = {"package": package, "at": time.monotonic()}  # a terminal tap mints nothing
             return None
         return Outcome(
-            f"The user did not approve tapping {description.strip()!r} (they said {answer!r}). "
+            f"The user did not approve tapping {desc!r} (they said {answer!r}). "
             "Don't do it. Pick another approach or call done.",
             is_error=True,
             settle=0,
         )
+
+    def _covered(self, state: _TaskState, mode: str, desc: str, hits: list[str], money: list[str], kind: str | None,
+                 share: bool, requested: bool, package: str | None, settings: dict) -> bool:
+        """A risky action that runs without asking in this mode:
+        - money: the one follow-up commit tap after an approved payment (terminal words only, same app,
+          within FOLLOWUP_SECONDS, no app switch since), or a trusted pay entry for this app (auto, trusted);
+        - a live trusted entry for this app and kind (auto, trusted; category entries in trusted only);
+        - plan: an unused approved plan step naming the action (its risky words) in this app;
+        - auto/trusted: a requested action, once per word, in the task's own app (never money)."""
+        cfg = self.config
+        if money:
+            follow = state.money_followup
+            if (follow and follow["package"] == package and time.monotonic() - follow["at"] <= FOLLOWUP_SECONDS
+                    and gate.words(desc, cfg.money_terminal_words) and not gate.words(desc, cfg.money_start_words)):
+                state.money_followup = None
+                return True
+            return mode in ("auto", "trusted") and trusted_for(settings, package, "pay", cfg.app_categories, False)
+        if mode in ("auto", "trusted") and kind and kind != "settings" and trusted_for(
+                settings, package, kind, cfg.app_categories, mode == "trusted", target=desc if share else None):
+            return True
+        if mode == "plan":
+            return self._plan_covers(state, hits, package)
+        if mode in ("auto", "trusted") and cfg.confirm_actions == "unrequested" and requested and kind != "settings":
+            fresh = [h for h in hits if h not in state.exempt_used]
+            if fresh and package == state.task_app:
+                state.exempt_used.update(hits)
+                return True
+        return False
+
+    def _always_offer(self, mode: str, kind: str | None, package: str | None, obs: Observation,
+                      target: str | None) -> dict | None:
+        """The "Always allow this" option a prompt may carry: none for Settings (no page identity), for
+        autofill in browsers or WebViews, in ask mode, or without a kind and an app."""
+        if mode not in ("auto", "trusted", "plan") or kind not in ALWAYS_DAYS or not package:
+            return None
+        if gate.is_launcher(package) or (kind == "fill" and gate.is_browser(package, obs.elements)):
+            return None
+        days = ALWAYS_DAYS[kind]
+        offer = {"app": package, "kind": kind, "days": days,
+                 "text": gate.grant_text(kind, self._app_label(package), days, target),
+                 "confirm_twice": kind == "pay"}
+        if target:
+            offer["target"] = " ".join(target.split()).lower()[:80]
+        return offer
+
+    def _ask_owner(self, state: _TaskState, question: str, details: dict) -> str:
+        """One approval prompt (the owner's screen lock, on an app phone). Counts it, and records its
+        decision and how long the owner took, for the prompt budget (`openmob prompts`)."""
+        confirm = getattr(self.io, "confirm", None)
+        started = time.monotonic()
+        if confirm is None:
+            answer = self.timer.timed("wait", self.io.ask, question)
+        else:
+            try:
+                takes_details = "details" in inspect.signature(confirm).parameters
+            except (TypeError, ValueError):
+                takes_details = False
+            answer = (self.timer.timed("wait", confirm, question, details) if takes_details
+                      else self.timer.timed("wait", confirm, question))
+        state.prompts += 1
+        low = answer.strip().lower()
+        decision = ("always" if is_yes(answer) and "always" in low else "approved" if is_yes(answer)
+                    else "denied" if not low or low.split()[0] in DECLINE_WORDS else "changes")
+        record = getattr(self.io, "record_prompt", None)
+        if record is not None:
+            try:
+                record({"t": time.time(), "kind": details.get("kind", "action"),
+                        "action_kind": details.get("action_kind"), "mode": state.perms.mode(),
+                        "decision": decision, "latency_ms": int((time.monotonic() - started) * 1000),
+                        "package": details.get("package")})
+            except Exception as exc:  # telemetry must never break a task
+                self.io.event("error", f"Prompt not recorded: {exc}")
+        return answer
+
+    def _refuse(self, desc: str, why: str) -> Outcome:
+        self.io.event("status", f"Refused {desc!r}: {why}")
+        return Outcome(REFUSED.format(why=why[0].upper() + why[1:]), is_error=True, settle=0)
+
+    def _blocked_label(self, state: _TaskState):
+        """A Settings app-info page names its app by label: is that an app this task may not touch?"""
+        if not state.blocked:
+            return None
+
+        def check(text: str) -> bool:
+            try:
+                package = self.resolver.exact(text)
+            except Exception:
+                return False
+            return bool(package and state.blocked(package))
+        return check
+
+    def _app_label(self, package: str | None) -> str:
+        if not package:
+            return "this app"
+        try:
+            return self.resolver.display_name(package) or package
+        except Exception:
+            return package
+
+    def _with_sensitive(self, blocked):
+        patterns = [re.compile(p, re.IGNORECASE) for p in self.config.sensitive_apps]
+        return lambda package: any(p.search(package) for p in patterns) or bool(blocked and blocked(package))
+
+    # --- ask every step / plan first ------------------------------------------------
+
+    def _step_gate(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome | None:
+        """Ask mode: the owner approves every changing action. Not asked: tapping a text field (it only
+        focuses it), a long swipe (a scroll), keys other than ENTER, and the ENTER that submits text the
+        owner just approved (typing and its submit are one prompt)."""
+        what = None
+        if name in ("tap_element", "tap", "long_press"):
+            element = None
+            if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
+                i = int(args["index"])
+                element = obs.elements[i] if 0 <= i < len(obs.elements) else None
+                if element is not None and fast.is_text_field(element):
+                    return None
+            label = (element.label if element else "") or args.get("target") or "that point"
+            what = f"{'long-press' if name == 'long_press' else 'tap'} {label.strip()!r}"
+        elif name == "type_text":
+            text = str(args.get("text", ""))
+            shown = text if len(text) <= 80 else text[:79] + "…"
+            what = f"type {shown!r}" + (" and press Enter" if args.get("submit") else "")
+        elif name == "press_key":
+            if args.get("key") != "ENTER":
+                return None
+            if state.typing_approved:
+                state.typing_approved = False
+                return None
+            what = "press Enter"
+        elif name == "swipe":
+            frame = obs.geometry()
+            w, h = (frame.width, frame.height) if frame else (1080, 2400)
+            if not gate.short_swipe(args, w, h):
+                return None
+            what = f"tap {args.get('target') or 'by swiping'}"
+        elif name == "launch_app":
+            what = f"open {args.get('app')!r}"
+        elif name == "open_url":
+            what = f"open {args.get('url')!r}"
+        if what is None:
+            return None
+        answer = self._ask_owner(state, f"Next step: {what}. Should I go ahead?",
+                                 {"kind": "step", "package": obs.package})
+        if not is_yes(answer):
+            return Outcome(f"The user did not approve this step ({what}; they said {answer!r}). Don't do it. "
+                           "Pick another approach or call done.", is_error=True, settle=0)
+        state.step_approved = True
+        state.typing_approved = name == "type_text"
+        return None
+
+    def _needs_plan(self, state: _TaskState) -> bool:
+        return state.plan is None and state.perms.mode() == "plan"
+
+    def _propose_plan(self, args: dict, state: _TaskState) -> Outcome:
+        """Plan mode: show the plan for one approval. Yes: carry it out. No: the task ends. Anything
+        else is the owner's changes: propose again."""
+        if state.perms.mode() != "plan":
+            return Outcome("This task doesn't need a plan approved; carry on.", settle=0)
+        steps = []
+        for raw in (args.get("steps") or [])[:12]:
+            item = raw if isinstance(raw, dict) else {"text": str(raw)}
+            text = " ".join(str(item.get("text", "")).split())[:200]
+            if text:
+                steps.append({"text": text, "app": (str(item.get("app") or "").strip() or None), "used": False})
+        if not steps:
+            return Outcome("A plan needs 1 to 12 steps: [{text, app}].", is_error=True, settle=0)
+        lines = "\n".join(f"{i}. {s['text']}" + (f" ({s['app']})" if s["app"] else "") for i, s in enumerate(steps, 1))
+        answer = self._ask_owner(state, f"Plan for: {state.task}\n{lines}\nApprove this plan?",
+                                 {"kind": "plan", "plan": [s["text"] for s in steps]})
+        if is_yes(answer):
+            state.plan = steps
+            return Outcome("The owner approved the plan. Carry it out step by step; anything risky the plan "
+                           "doesn't name will still ask.", settle=0)
+        low = answer.strip().lower()
+        if not low or low.split()[0] in DECLINE_WORDS:
+            return Outcome("The owner rejected the plan, so the task ends here.", done=True, success=False, settle=0)
+        return Outcome(f"The owner wants changes to the plan: {answer!r}. Call propose_plan again with a revised "
+                       "plan.", settle=0)
+
+    def _plan_covers(self, state: _TaskState, hits: list[str], package: str | None) -> bool:
+        """An approved plan step covers one risky action: every risky word of the action appears in the
+        step's text, and the step's app (if it names one) is the app in front. Each step covers once."""
+        if not state.plan or not hits:
+            return False
+        for step in state.plan:
+            if step["used"]:
+                continue
+            text = step["text"].lower()
+            if not all(re.search(rf"\b{re.escape(h.lower())}\b", text) for h in hits):
+                continue
+            app = step["app"]
+            if app and package:
+                try:
+                    resolved = self.resolver.exact(app)
+                except Exception:
+                    resolved = None
+                if (resolved != package and app.lower() not in package.lower()
+                        and app.lower() != self._app_label(package).lower()):
+                    continue
+            step["used"] = True
+            return True
+        return False
 
     def _target_moved(self, element: UIElement) -> Outcome | None:
         """Just before a tap_element: re-read the elements and refuse if the target is no longer at the

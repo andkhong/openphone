@@ -157,6 +157,8 @@ same data for clients that only read text.
 | [`start_orchestration`](#several-phones-at-once-orchestrations) | Run steps across several phones | `tasks:run`, `tasks:read` | destructive, open-world |
 | [`get_orchestration`](#several-phones-at-once-orchestrations) | Check a run, optionally waiting | `tasks:read` | read-only |
 | [`cancel_orchestration`](#several-phones-at-once-orchestrations) | Stop a run | `tasks:run` | destructive, idempotent |
+| [`get_permissions`](#get_permissions--change_permissions) | A phone's permission settings and your key's `max_mode` | `devices:read` | read-only |
+| [`change_permissions`](#get_permissions--change_permissions) | Tighten a phone's settings, or ask its owner to loosen them | `tasks:run` | open-world |
 
 ### list_devices
 
@@ -180,6 +182,7 @@ pass.
 | `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md) |
 | `wait_seconds` | integer 0–45 | 45 | How long to wait before returning |
 | `idempotency_key` | string, up to 255 characters | none | Retrying with the same key and arguments returns the first task instead of starting another. See [Idempotent retries](api.md#idempotent-retries) |
+| `permission_mode` | string | the phone's default | `auto`, `ask`, `plan`, `trusted` or `never`: when the phone asks its owner. Looser than your key's `max_mode` or the phone's ceiling: tool error `mode_not_allowed`. See [Permission modes and approvals for agents](#permission-modes-and-approvals-for-agents) |
 
 Before starting, it checks both its scopes and that the phone is usable: a screen that's off is
 woken and a swipe lock is swiped away; otherwise the tool error starts with `phone_offline` (not
@@ -244,6 +247,14 @@ its status becomes `cancelled` shortly after.
 Returns a JPEG image block, plus the image's size as structured content. With `max_side: 512`:
 `{"device_id": "app-3f2a9c", "width": 230, "height": 512}`. The screenshot goes straight from the phone to the client and is never stored.
 
+### get_permissions / change_permissions
+
+`get_permissions(device_id?)`: the phone's default mode, ceiling, trusted apps, Never ask expiry and
+your key's `max_mode`. `change_permissions(device_id?, default_mode?, ceiling?, never?)`: returns
+`{"status": "applied", "settings": …}` for a tightening, `{"status": "needs_phone_approval",
+"approval_id": …}` for a loosening. See [Permission modes and approvals for
+agents](#permission-modes-and-approvals-for-agents).
+
 ### list_memory
 
 No arguments. Returns the same object as [`GET /v1/memory`](api.md#get-v1memory).
@@ -294,6 +305,31 @@ revoking the key stops it.
   read malicious text on the screen can't approve its own purchase. It can decline with
   `approve: false`. The owner can allow a key to approve, for headless automations. See
   [Safety & approvals](safety.md).
+
+## Permission modes and approvals for agents
+
+`run_task` and `start_orchestration` take an optional `permission_mode`: `auto` (the default: the
+phone asks its owner at the final step of sends, deletes and payments the instruction didn't ask
+for; payments always ask), `ask`, `plan`, `trusted` or `never`. See
+[Permission modes](safety.md#permission-modes).
+
+- You can't loosen past what the owner allowed. A mode looser than your key's `max_mode` or the
+  phone's ceiling fails with `mode_not_allowed`; tell the user rather than retrying with another mode.
+- `change_permissions` tightens at once. Anything that loosens returns `needs_phone_approval`: the
+  owner gets a prompt on the phone and must approve it with the screen lock. You can't approve it.
+- A task in `needs_confirmation` is waiting for the owner's approval on the phone. Keep polling
+  `get_task` with `wait_seconds`, don't start the task again, and only decline
+  (`answer_question` with `approve: false`) if the user tells you to.
+- Refusals (a blocked app, a payment under `never`, a security-critical Settings page) end up in the
+  task's outcome. Report them; don't try another way around.
+
+**Headless automation.** For unattended runs, the owner grants it once, on the phone: either
+trusted apps (tap **Always allow this** on a prompt, e.g. "send in Slack for 30 days") or a
+dedicated test phone in **Never ask** for up to 7 days (with a key whose `max_mode` is `never`).
+Your agent can ask for these with `change_permissions`, but only the owner's screen lock grants
+them.
+
+`get_permissions` returns a phone's settings and your key's `max_mode`.
 
 ## Untrusted content
 

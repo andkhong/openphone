@@ -26,6 +26,7 @@ import time
 from collections import OrderedDict, deque
 from urllib.parse import urlparse
 
+from .. import permissions as perm
 from ..ledger import day_start
 from ..phone.base import DeviceError, PhoneTimeout
 from ..runner import FINAL_STATUSES
@@ -63,6 +64,7 @@ UNRESPONSIVE = "That phone is connected but isn't answering. Open the OpenMob ap
 # Tasks that ended through OpenMob's own fault are charged 0 (the would-be amount is kept as credits_waived).
 SERVER_FAULTS = {"internal_error", "server_restarted"}
 NOT_WAITING = "This task isn't waiting for an answer."
+REPORT = " Tell the user; don't retry or work around it."
 OWNER_APPROVES = ("Risky actions are approved by the phone's owner, who has been asked on their phone. "
                   'Check the task again later, or send {"approve": false} to decline.')
 
@@ -248,6 +250,7 @@ class V1Service:
                 "id": task_id, "device_id": meta["session_id"], "status": info["status"], "tier": meta["tier"],
                 "instruction": info["request"], "created": info["created"], "started": info["started"],
                 "finished": info["finished"], "steps": info["steps"], "question": clean_text(info["question"]),
+                "permission_mode": meta.get("permission_mode"),
                 "outcome": ({"success": info["success"], "summary": clean_text(info["summary"]),
                              "reason": info.get("reason")}
                             if info["status"] in FINAL_STATUSES else None),
@@ -263,7 +266,7 @@ class V1Service:
             "id": task_id, "device_id": f"app-{row['device_id']}", "status": status, "tier": row["tier"],
             "instruction": turn["request"] if turn else None, "created": row["created"],
             "started": turn["started"] if turn else None, "finished": row["finished"],
-            "steps": row["steps"], "question": None,
+            "steps": row["steps"], "question": None, "permission_mode": None,
             "outcome": {"success": status == "succeeded", "summary": clean_text(turn["summary"]) if turn else None,
                         "reason": row.get("reason") or (None if row["status"] in FINAL_STATUSES else "server_restarted")},
             "credits": row["credits"],
@@ -463,16 +466,31 @@ class V1Service:
             return None  # disconnected meanwhile: the task waits or fails on its own
         return None
 
+    def permission_mode(self, p: Principal, device_id: str, mode: str | None) -> str:
+        """The mode a task of this key runs in on this phone: `mode` if it's no looser than both the key's
+        max_mode and the phone's ceiling (else 403 mode_not_allowed), or by default the phone's default
+        mode tightened to fit."""
+        _, session = self._owned_device(p.account_id, device_id)
+        session_id = "app-" + device_id.removeprefix("app-")
+        try:
+            return self.manager.check_mode(session.info.id if session else session_id, mode, p.max_mode)
+        except perm.ModeNotAllowed as exc:
+            raise Forbidden(str(exc) + REPORT, code="mode_not_allowed") from None
+        except perm.PermissionsInvalid as exc:
+            raise BadRequest(str(exc)) from None
+
     def create_task(self, p: Principal, device_id: str, instruction: str, tier: str | None = None,
                     max_steps: int | None = None, memory: str = "on", check_phone: bool = True,
-                    clean_start: bool = False) -> dict:
+                    clean_start: bool = False, permission_mode: str | None = None) -> dict:
         """`check_phone`: refuse a locked or unresponsive phone up front (orchestrations check it
-        themselves). `clean_start`: press Home before the task (orchestrated steps)."""
+        themselves). `clean_start`: press Home before the task (orchestrated steps). `permission_mode`:
+        when the phone asks its owner (see permission_mode())."""
         self.require(p, "tasks:run")
         account_id, key_id = p.account_id, p.id
         _, session = self._owned_device(account_id, device_id)
         if session is None or not session.online:
             raise Conflict(OFFLINE, code="phone_offline")
+        mode = self.permission_mode(p, device_id, permission_mode)
         if not instruction or len(instruction) > MAX_INSTRUCTION:  # REST validates this before it gets here
             raise BadRequest(f"The instruction must be 1 to {MAX_INSTRUCTION} characters.")
         if memory not in ("on", "read_only", "off"):
@@ -508,16 +526,18 @@ class V1Service:
         meta = {"account_id": account_id, "key_id": key_id, "session_id": session.info.id,
                 "device_id": session.info.id.removeprefix("app-"), "tier": tier,
                 "credits_per_step": int(tier_cfg.get("credits_per_step", 1)),
-                "requester": p.name, "confirm_approve": p.confirm_approve}
+                "requester": p.name, "confirm_approve": p.confirm_approve, "permission_mode": mode}
         with self._lock:
             self.registry[task_id] = meta
             while len(self.registry) > KEEP_REGISTRY:
                 self.registry.popitem(last=False)
             self.active.setdefault(key_id, set()).add(task_id)
         self.ledger.start_task(task_id, account_id, key_id, meta["device_id"], tier, instruction)
-        self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction)
+        self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction,
+                          outcome=f"mode={mode}")
         # isolated: an API caller neither sees nor extends the phone chat's recent requests.
-        options = {"model": tier_cfg["model"], "max_steps": max_steps, "memory": memory, "isolated": True}
+        options = {"model": tier_cfg["model"], "max_steps": max_steps, "memory": memory, "isolated": True,
+                   "permission_mode": mode}
         if clean_start:
             options["go_home"] = True
         if blocked := self._blocker(account_id):
@@ -628,6 +648,51 @@ class V1Service:
         self.ledger.audit("task.cancel", p.account_id, p.id, task["device_id"].removeprefix("app-"),
                           task_id, outcome="cancelled" if cancelled else "already finished")
         return {"ok": True, "cancelled": cancelled}
+
+    # --- a phone's permission settings ----------------------------------------------------
+
+    def _session_for(self, p: Principal, device_id: str):
+        device, session = self._owned_device(p.account_id, device_id)
+        return device, session
+
+    def get_permissions(self, p: Principal, device_id: str) -> dict:
+        self.require(p, "devices:read")
+        device, session = self._session_for(p, device_id)
+        settings = self.manager.permission_settings(f"app-{device.id}")
+        return {"device_id": f"app-{device.id}", **perm.public(settings), "key_max_mode": p.max_mode}
+
+    def change_permissions(self, p: Principal, device_id: str, patch: dict) -> dict:
+        """Tightening applies now. Loosening never applies from the API: it asks the phone's owner to
+        approve on the phone (screen lock) and returns needs_phone_approval with an approval_id to poll."""
+        self.require(p, "tasks:run")
+        device, session = self._session_for(p, device_id)
+        if session is None:
+            raise Conflict(OFFLINE, code="phone_offline")
+        try:
+            result = self.manager.change_permissions(session, patch, requester=p.name, max_mode=p.max_mode)
+        except perm.ModeNotAllowed as exc:
+            self.ledger.audit("permissions.refused", p.account_id, p.id, device.id, outcome="mode_not_allowed")
+            raise Forbidden(str(exc) + REPORT, code="mode_not_allowed") from None
+        except perm.PhoneUnavailable as exc:
+            raise Conflict(str(exc), code="phone_offline") from None
+        except perm.PermissionsInvalid as exc:
+            raise BadRequest(str(exc), code="invalid_permissions") from None
+        self.ledger.audit("permissions." + ("change" if result["status"] == "applied" else "ask_phone"),
+                          p.account_id, p.id, device.id, outcome=",".join(sorted(patch)))
+        if result["status"] == "applied":
+            return {"status": "applied", "settings": self.get_permissions(p, device_id)}
+        return {"status": "needs_phone_approval", "code": "needs_phone_approval", "approval_id": result["approval_id"],
+                "question": result["question"],
+                "detail": "The owner must approve this on the phone, with its screen lock. Poll the approval; "
+                          "an API key can't approve it." + REPORT}
+
+    def permission_approval(self, p: Principal, device_id: str, approval_id: str) -> dict:
+        self.require(p, "devices:read")
+        device, _ = self._session_for(p, device_id)
+        row = self.manager.permission_request(p.account_id, f"app-{device.id}", approval_id)
+        if row is None:
+            raise NotFound(f"Unknown approval {approval_id}")
+        return row
 
     def screenshot(self, p: Principal, device_id: str) -> bytes:
         """The phone's screen as JPEG. Never stored, never cached: straight from the phone to the caller."""

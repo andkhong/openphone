@@ -226,3 +226,45 @@ def system_prompt(platform: str = "android") -> str:
             + IOS_NOTES
         )
     return SYSTEM_PROMPT
+
+
+# Plan first (permission mode "plan"): offered only in that mode, so other tasks' tool lists don't change.
+PLAN_TOOL = {
+    "name": "propose_plan",
+    "description": (
+        "Show the owner a short numbered plan for this request and wait for their one approval. Required "
+        "before any other action in this task. Name each risky step's action in its words (\"Send the message "
+        "to Mom in WhatsApp\") and the app it happens in."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array", "minItems": 1, "maxItems": 12,
+                "items": {"type": "object", "properties": {
+                    "text": {"type": "string", "description": "One step, in plain words"},
+                    "app": {"type": "string", "description": "The app it happens in, if any"},
+                }, "required": ["text"]},
+            },
+        },
+        "required": ["steps"],
+    },
+}
+PLAN_TOOL_SPEC = {"name": PLAN_TOOL["name"], "description": PLAN_TOOL["description"],
+                  "parameters": PLAN_TOOL["input_schema"]}
+
+MODE_NOTES = {
+    "ask": "\nPermission mode: Ask every step. The owner approves each change on their phone, so don't also "
+           "call ask_user to confirm; ask only when the request is ambiguous.\n",
+    "plan": "\nPermission mode: Plan first. Before anything else, call propose_plan with a short numbered plan. "
+            "After the owner approves it, follow it; a risky step the plan doesn't name, or any payment, still "
+            "asks. If the owner asks for changes, propose a revised plan.\n",
+    "auto": "",  # today's behavior: the base prompt's safety rules
+    "trusted": "",
+    "never": "\nPermission mode: Never ask. The owner chose not to be asked: don't call ask_user to confirm. "
+             "Payments, autofill and blocked apps are refused; if one is needed, call done and say so.\n",
+}
+
+
+def mode_notes(mode: str) -> str:
+    return MODE_NOTES.get(mode, "")

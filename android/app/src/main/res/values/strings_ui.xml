@@ -174,4 +174,21 @@
     <string name="ui_setup_show">Show</string>
     <string name="ui_setup_hide">Hide</string>
     <string name="ui_notifications_off_hint">Notifications are off, so approval requests show here only.</string>
+
+    <!-- Permission modes (docs/safety.md#permission-modes) -->
+    <string name="approval_label_mode">CHANGE HOW AGENTS ASK</string>
+    <string name="approval_explain_mode">Agents would ask you less on this phone. This needs your screen lock. If you didn\'t ask for this from your dashboard or an app you trust, deny it.</string>
+    <string name="approval_prompt_title_mode">Allow this permission change?</string>
+    <string name="approval_label_plan">APPROVE A PLAN</string>
+    <string name="approval_explain_plan">Approving lets your agent carry out these steps. Anything risky that isn\'t in the plan, and any payment, will still ask you. To change the plan, deny it and type what to change in the chat.</string>
+    <string name="approval_prompt_title_plan">Approve this plan?</string>
+    <string name="approval_label_step">APPROVE THE NEXT STEP</string>
+    <string name="approval_always">Always allow this</string>
+    <string name="approval_always_confirm_title">Allow payments without asking?</string>
+    <string name="approval_always_confirm_body">%1$s You can turn it off any time in the dashboard\'s phone settings.</string>
+    <string name="approval_always_confirm_yes">Allow payments</string>
+    <string name="approval_always_confirm_no">Just this once</string>
+    <string name="never_banner">Agents can act without asking until %1$s</string>
+    <string name="never_turn_off">Turn off</string>
+    <string name="never_turned_off">Agents will ask you again on this phone.</string>
 </resources>

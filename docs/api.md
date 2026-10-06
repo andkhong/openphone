@@ -201,13 +201,15 @@ curl -s -X POST https://<server>/v1/devices/app-3f2a9c/tasks \
 | `tier` | string | `balanced` | `fast`, `balanced` or `best`. See [Tiers and credits](concepts.md#tiers-and-credits) |
 | `max_steps` | integer ≥ 1 | 40 | Stop after this many steps. Values above the server's maximum are capped |
 | `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md#memory-modes-for-a-task) |
+| `permission_mode` | string | the phone's default, tightened to your key's `max_mode` | When the phone asks its owner: `ask`, `plan`, `auto`, `trusted` or `never`. See [Permission modes](safety.md#permission-modes). Looser than your key's `max_mode` or the phone's ceiling: `403 mode_not_allowed` |
 
 Returns `201` with the new task, usually still `queued`:
 
 ```json
 {"id": "bce01b5f5406", "device_id": "app-3f2a9c", "status": "queued", "tier": "fast",
  "instruction": "open YouTube and search for lo-fi", "created": 1791219561.83, "started": null,
- "finished": null, "steps": 0, "question": null, "outcome": null, "credits": null}
+ "finished": null, "steps": 0, "question": null, "permission_mode": "auto", "outcome": null,
+ "credits": null}
 ```
 
 API tasks never see or extend the dashboard chat's recent requests: each one starts fresh.
@@ -230,8 +232,9 @@ queued only to fail; OpenMob never enters a PIN:
 | `409` `phone_offline` | The OpenMob app on the phone isn't connected |
 | `409` `phone_locked` | The phone has a secure lock (PIN, pattern, password, biometric) showing. Unlock it and retry |
 | `409` `phone_unresponsive` | The phone is connected but didn't answer within 5 s (often: asleep). Wake it and open the OpenMob app |
+| `403` `mode_not_allowed` | `permission_mode` is looser than your key's `max_mode` or the phone's ceiling. Only the owner can allow more: tell your user, don't retry |
 | `409` `idempotency_conflict`, `idempotency_in_progress` | See [Idempotent retries](#idempotent-retries) |
-| `422` | `instruction` is empty, only whitespace or too long, `max_steps` is below 1, or `memory` isn't one of the three values |
+| `422` | `instruction` is empty, only whitespace or too long, `max_steps` is below 1, `memory` isn't one of the three values, or `permission_mode` isn't a mode |
 | `429` | Rate limit, `too_many_tasks`, `daily_quota`, `credits_exhausted`, `account_daily_quota` or `account_credits_exhausted`. See [Errors & limits](errors.md#limits) |
 
 ### GET /v1/limits
@@ -389,6 +392,64 @@ Scope `tasks:run`. Stops a queued or running task.
 `"cancelled": false` means it had already finished. Cancelling is safe to repeat. The task's status
 becomes `cancelled` shortly after.
 
+## Permission settings
+
+A phone's [permission settings](safety.md#permission-modes): its default mode, its ceiling (the
+loosest mode it allows), trusted apps and whether Never ask is on. Tightening applies at once.
+**Loosening never applies from the API**: it asks the owner on that phone, with its screen lock.
+
+### GET /v1/devices/{device_id}/permissions
+
+Scope `devices:read`.
+
+```json
+{"device_id": "app-3f2a9c", "default_mode": "auto", "ceiling": "auto", "standing_ceiling": "auto",
+ "never_until": null, "modes": ["ask", "plan", "auto", "trusted", "never"],
+ "trusted": [{"app": "com.whatsapp", "kinds": ["send"], "expires_at": 1793811561.0, "source": "prompt"}],
+ "key_max_mode": "auto"}
+```
+
+`ceiling` is `never` while Never ask is on (until `never_until`); `standing_ceiling` is what it
+returns to.
+
+### PATCH /v1/devices/{device_id}/permissions
+
+Scope `tasks:run`. Any of:
+
+| Field | Meaning |
+|---|---|
+| `default_mode` | The mode tasks get when they don't say (`ask` … `never`; `never` only while it's on) |
+| `ceiling` | The loosest mode allowed: `ask`, `plan`, `auto` or `trusted` |
+| `trusted` | The whole new list of entries `{app` or `category, kinds, expires_at?}`. Kinds: `send`, `delete`, `post`, `pay`, `fill`. `pay` and `fill` only for one named `app`, never a category; `pay` lasts 7 days at most |
+| `never` | `1h`, `24h` or `7d` to turn on Never ask, `off` to turn it off |
+
+A pure tightening returns `200 {"status": "applied", "settings": {…}}`. Anything that loosens
+(a mode past the ceiling, a new or wider trusted entry, turning Never ask on) returns `202`:
+
+```json
+{"status": "needs_phone_approval", "code": "needs_phone_approval", "approval_id": "9f0c…",
+ "question": "Allow agents to act without asking on this phone for 24 hours?",
+ "detail": "The owner must approve this on the phone, with its screen lock. …"}
+```
+
+The phone shows that question; nothing changes until the owner approves it there. Your key needs a
+`max_mode` at least as loose as what it asks for (else `403 mode_not_allowed`), and the phone's app
+must be able to sign approvals (else `403 mode_not_allowed`). `409 phone_offline` if the phone isn't
+connected. A newer request for the same phone replaces one still pending.
+
+### GET /v1/devices/{device_id}/permissions/approvals/{approval_id}
+
+Scope `devices:read`. Poll a loosening: `{"id", "status", "device_id", "question", "created",
+"decided"}`, where `status` is `pending`, `approved`, `denied`, `expired` (about 2 minutes without an
+answer) or `replaced`.
+
+### Key `max_mode`
+
+Each key has a `max_mode` (default `auto`): the loosest `permission_mode` its tasks may ask for, and
+the loosest change it may ask the phone for. Set it in the developer console (**API keys → Max
+mode**, or when creating the key). It never loosens a phone by itself: the phone's ceiling still
+applies.
+
 ## Screenshots
 
 ### GET /v1/devices/{device_id}/screenshot
@@ -487,7 +548,8 @@ Scope `tasks:run`.
 
 | Field | Meaning |
 |---|---|
-| `steps` | 1–10 of `{id, device_id, instruction, tier?, max_steps?, depends_on?}`. Ids are letters, digits, `-` and `_`. |
+| `steps` | 1–10 of `{id, device_id, instruction, tier?, max_steps?, depends_on?, permission_mode?}`. Ids are letters, digits, `-` and `_`. |
+| `permission_mode` | Every step's mode unless the step sets its own (default: each phone's default). Checked for every step before the run starts: `403 mode_not_allowed` if one is looser than your key's `max_mode` or that phone's ceiling. |
 | `on_failure` | `stop` (default): a failed step cancels the running ones and skips the rest. `continue`: only steps depending on it are skipped. |
 | `max_credits` | Budget for the whole run (optional). A running step is cancelled once the run has spent it. |
 | `wait_for_phone_seconds` | How long a step waits for its phone to be usable: online, and not behind a secure lock (a screen that's off or a swipe lock is handled automatically) (default 60, at most 600). Offline and locked time share this one timer. |

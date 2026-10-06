@@ -54,12 +54,13 @@ object ApprovalKeys {
         null // e.g. the key was invalidated by removing the screen lock: pair again to approve
     }
 
-    fun message(approvalId: String, taskId: String, timestamp: Long): ByteArray =
-        "$approvalId|$taskId|true|$timestamp".toByteArray()
+    /** `always`: "Always allow this" is signed too (`…|always`), so the grant carries the screen lock. */
+    fun message(approvalId: String, taskId: String, timestamp: Long, always: Boolean = false): ByteArray =
+        ("$approvalId|$taskId|true|$timestamp" + if (always) "|always" else "").toByteArray()
 
     /** Sign with a Signature the BiometricPrompt just unlocked. */
-    fun sign(unlocked: Signature, approvalId: String, taskId: String, timestamp: Long): String {
-        unlocked.update(message(approvalId, taskId, timestamp))
+    fun sign(unlocked: Signature, approvalId: String, taskId: String, timestamp: Long, always: Boolean = false): String {
+        unlocked.update(message(approvalId, taskId, timestamp, always))
         return Base64.encodeToString(unlocked.sign(), Base64.NO_WRAP)
     }
 }
