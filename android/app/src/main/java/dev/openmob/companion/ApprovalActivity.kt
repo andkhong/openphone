@@ -197,7 +197,9 @@ class ApprovalActivity : Activity() {
         val cancel = CancellationSignal().also { prompt = it }
         // The approval key only signs once this prompt is passed: that signature is what the server
         // trusts, so nothing else on the phone (or holding its device key) can approve.
-        val signer = ApprovalKeys.signer()
+        // Gate prompts are verified on this phone alone (GateHost), so the key is made here if the phone never got
+        // one: developer-token pairing doesn't create it (only account pairing and its hello do).
+        val signer = ApprovalKeys.signer() ?: if (request.gate && ApprovalKeys.publicKey() != null) ApprovalKeys.signer() else null
         if (signer == null && (request.signatureRequired || request.gate)) {
             // A gate permit is minted only from the screen-lock signature: there is no unsigned fallback (D5).
             // Without the key there is nothing the server would accept: never send an unsigned yes.
