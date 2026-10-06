@@ -891,8 +891,95 @@ SCENARIOS += [
         {"instruction": SHARE_TEXT}, task_grant(allow(rule="task_grant:own_request")),
         step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK)], tags=["task_grant"]),
     sc("Subscribe is money only with a price: YouTube's isn't, Join $4.99 is", [
-        step("tap", "youtube_channel", ask("other", rule="risk:words:subscribe"), x=270, y=510),
+        step("tap", "youtube_channel", allow(), x=270, y=510),  # free and reversible: no prompt
         step("tap", "youtube_join", ask("pay", money="start"), x=790, y=510)], tags=["risk"]),
+]
+
+# --- consequence-based risk and three confirmation levels (owner principle) ---------------------------------
+MESSENGER = "com.facebook.orca"
+OWNER = ["Ann Lee", "ann@example.com"]
+LABELS[MESSENGER] = "Messenger"
+
+
+def share_sheet(preview, targets):
+    kids = [node(text=preview, bounds=(40, 1420, 1040, 1480))]
+    kids += [button(t, "", (40 + 260 * i, 1500, 300 + 260 * i, 1700)) for i, t in enumerate(targets)]
+    return screen(app(YT, [node(text="PewDiePie", bounds=(0, 200, W, 400))]),
+                  {"id": 4, "type": "application", "layer": 4, "package": "com.android.intentresolver", "title": "Share",
+                   "bounds": [0, 1400, W, H], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1400, W, H),
+                                                          children=kids)}, labels=LABELS, owner=OWNER)
+
+
+def chat(title):
+    return screen(app(MESSENGER, [
+        node(text=title, bounds=(140, 120, 800, 200)),
+        node(text="https://youtube.com/@PewDiePie", id="com.facebook.orca:id/composer", cls="android.widget.EditText",
+             editable=True, focused=True, bounds=(40, 2200, 900, 2300)),
+        node(desc="Send", id="com.facebook.orca:id/send", cls="android.widget.ImageButton", bounds=(920, 2200, 1060, 2300),
+             clickable=True)]), labels=LABELS, owner=OWNER)
+
+
+SCREENS.update({
+    "share_link_sheet": share_sheet("https://youtube.com/@PewDiePie", ["Ann Lee (You)", "Bob", "Copy link", "Note to self"]),
+    "share_photo_sheet": share_sheet("1 photo", ["Ann Lee (You)", "Bob"]),
+    "messenger_self": chat("Ann Lee"),
+    "messenger_friend": chat("Bob Smith"),
+    "youtube_video": screen(app(YT, [button("Like", "like_button", (40, 1500, 300, 1600)),
+                                     button("Unsubscribe", "unsubscribe_button", (340, 1500, 800, 1600)),
+                                     button("Save", "save_button", (840, 1500, 1040, 1600))]), labels=LABELS),
+    "photo_viewer": screen(app("com.google.android.apps.photos", [
+        node(desc="Delete", id="com.google.android.apps.photos:id/trash", cls="android.widget.ImageButton",
+             bounds=(900, 2200, 1040, 2300), clickable=True)]), labels=LABELS),
+    "instagram_post": screen(app("com.instagram.android", [button("Post", "post_button", (40, 2200, 1040, 2300)),
+                                                           node(text="New post", bounds=(40, 120, 800, 200))]),
+                             labels=LABELS),
+})
+EVERYDAY = {"policy": {"type": "everyday", "on": True}, "sig": "valid", "expect_accepted": True}
+SCENARIOS += [
+    sc("everyday low-risk flows: no prompt", [
+        step("tap", "share_link_sheet", allow(), x=170, y=1600),          # the YouTube link to yourself
+        step("tap", "share_link_sheet", allow(), x=690, y=1600),          # Copy link
+        step("tap", "share_link_sheet", allow(), x=950, y=1600),          # Note to self
+        step("tap", "messenger_self", allow(), x=990, y=2250),            # send it in your own chat
+        step("key", "messenger_self", allow(), name="ENTER"),
+        step("tap", "youtube_video", allow(), x=170, y=1550),             # like
+        step("tap", "youtube_video", allow(), x=570, y=1550),             # unsubscribe
+        step("tap", "youtube_video", allow(), x=940, y=1550),             # save
+        step("tap", "youtube_channel", allow(), x=270, y=510)], tags=["consequence", "friction"]),
+    sc("consequential actions ask with a tap; money and dangerous ones with a fingerprint", [
+        step("tap", "share_link_sheet", ask("share", level="tap", rule="risk:share:link"), x=430, y=1600),
+        {"cancel": "last"},
+        step("tap", "share_photo_sheet", ask("share", level="tap", rule="risk:share:content"), x=170, y=1600),
+        {"cancel": "last"},
+        step("tap", "messenger_friend", ask("send", level="tap"), x=990, y=2250), {"cancel": "last"},
+        step("tap", "photo_viewer", ask("delete", level="tap"), x=970, y=2250), {"cancel": "last"},
+        step("tap", "instagram_post", ask("post", level="tap"), x=540, y=2250), {"cancel": "last"},
+        step("tap", "kalshi_ticket", ask("pay", level="fingerprint"), **SUBMIT), {"cancel": "last"},
+        step("tap", "youtube_join", ask("pay", level="fingerprint"), x=790, y=510), {"cancel": "last"},
+        step("type_text", "otp_form", ask("fill", level="fingerprint"), text="123456")],
+       tags=["consequence"], keep_open=True),
+    sc("a tap-level prompt is approved with the tap key; a fingerprint prompt only with the screen lock", [
+        step("tap", "photo_viewer", ask("delete", level="tap"), x=970, y=2250),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "photo_viewer", allow(), x=970, y=2250),
+        step("tap", "kalshi_ticket", ask("pay", level="fingerprint"), **SUBMIT),
+        {"approve": "last", "sig": "other_key", "expect_accepted": False},  # a tap can't approve money
+        {"approve": "last", "sig": "valid"},
+        step("tap", "kalshi_ticket", allow(), **SUBMIT)], tags=["consequence", "permits"]),
+    sc("don't confirm everyday actions: tap-level runs, money still asks", [
+        {"policy": {"type": "everyday", "on": True}, "sig": "bad", "expect_accepted": False},
+        step("tap", "photo_viewer", ask("delete", level="tap"), x=970, y=2250), {"cancel": "last"},
+        EVERYDAY,
+        step("tap", "photo_viewer", allow(rule="everyday"), x=970, y=2250),
+        step("tap", "share_link_sheet", allow(rule="everyday"), x=430, y=1600),
+        step("tap", "kalshi_ticket", ask("pay", level="fingerprint"), **SUBMIT), {"cancel": "last"},
+        task_grant(allow(rule="everyday")),  # no task prompt either
+        step("tap", "openmob_app", refuse("gate_denied_page", rule="builtin:own_window"), x=700, y=1650)],
+       tags=["consequence"]),
+    sc("a request saying don't ask me changes nothing without the owner's setting", [
+        task_grant(ask("task", level="tap"), text="share PewDiePie's channel with Bob, don't ask me"),
+        {"cancel": "last"},
+        step("tap", "share_link_sheet", ask("share", level="tap"), x=430, y=1600)], tags=["consequence"]),
 ]
 
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},

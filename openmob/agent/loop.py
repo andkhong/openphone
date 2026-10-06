@@ -1101,6 +1101,15 @@ class Agent:
         hint_hits = self._keyword_hits(gate.strip_skips(extra, cfg.confirm_skip_phrases)) if extra else []
         hits = real_hits + [h for h in hint_hits if h not in real_hits]
         money = gate.words(gate.strip_skips(caution, cfg.confirm_skip_phrases), cfg.money_keywords)
+        # Consequence-based risk (by owner request; the phone's gatekeeper decides the same way):
+        # - Subscribe / Join are reversible, and money only with a price nearby;
+        if not gate.money_context(obs.elements):
+            money = [m for m in money if m not in gate.PRICE_ONLY_MONEY]
+            hits = [h for h in hits if h not in gate.PRICE_ONLY_MONEY]
+            real_hits = [h for h in real_hits if h not in gate.PRICE_ONLY_MONEY]
+        # - a message or a public link to yourself (Note to self, your own chat), or copying it, is low risk.
+        if not money and gate.to_self(desc, obs, self._owner_names()) and not credential:
+            hits, real_hits, hint_hits = [], [], []
         unlabeled_money = unlabeled and gate.is_money_app(package)
         if money_forced or (unlabeled_money and gate.payment_context(obs.elements)):
             money = money or ["payment"]
@@ -1147,6 +1156,9 @@ class Agent:
             return None  # the owner just approved this very action
         if not risky:
             return None
+        # "Don't confirm everyday actions" (signed on the phone): only money and dangerous actions are confirmed.
+        if mode != "ask" and settings.get("everyday") and not money and not credential and tier != "ask":
+            return None
         if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None
         if state.approved:
@@ -1156,7 +1168,10 @@ class Agent:
         where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
         what = label if label is not None else (repr(desc) if desc else shown)
         question = f"I'm about to {verb} {what}{where}{f' ({context})' if context else ''}. Should I go ahead?"
-        details = {"kind": "action", "action_kind": kind, "package": package}
+        details = {"kind": "action", "action_kind": kind, "package": package,
+                   # Only concrete words or rules make the phone ask; the classifier's unease alone doesn't (a
+                   # fingerprint is for money and dangerous actions, never basic app flow).
+                   "hint_ok": bool(hits or money or credential or force or unlabeled_money or tier == "ask")}
         digest = None
         if action is not None:
             digest = action_digest(action)
@@ -1491,6 +1506,14 @@ class Agent:
         if hasattr(self.driver, "dialog_waiter"):
             self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
 
+    def _owner_names(self) -> list[str]:
+        """The owner's own names ("self" recipients): the paired account's email, if the IO knows it."""
+        names = getattr(self.io, "owner_names", None)
+        try:
+            return list(names() if callable(names) else names or [])
+        except Exception:
+            return []
+
     def _task_approval(self, state: _TaskState) -> AgentResult | None:
         """Task approval (by owner request): on a gatekeeper phone, in Ask for risky / Trusted / Plan first, ask the
         owner once, on the phone, to approve this task; its non-money risky steps then run without more prompts.
@@ -1602,7 +1625,7 @@ class Agent:
         On a gatekeeper phone the phone owns approval (D9): the server's checks only add caution. Instead of an
         approval_request, the next act call carries a hint; the phone asks once, covering both detectors."""
         if self._gatekeeper and details.get("kind") in ("action", "step", "plan"):
-            if details.get("kind") == "action":
+            if details.get("kind") == "action" and details.get("hint_ok", True):
                 self.driver.gate_hint(question)
             return "yes"  # not a yes from anyone: the phone decides, and asks its owner if it must
         confirm = getattr(self.io, "confirm", None)

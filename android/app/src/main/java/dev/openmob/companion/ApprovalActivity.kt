@@ -173,6 +173,7 @@ class ApprovalActivity : Activity() {
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
         blocker(request)?.let { return showStatus(it) }
+        if (request.gate && request.level == "tap") return approveWithTap(request)
         // Don't ask including purchases: a second, explicit yes for the money part before the screen lock.
         if (request.allowsMoney) {
             AlertDialog.Builder(this)
@@ -198,6 +199,22 @@ class ApprovalActivity : Activity() {
             return
         }
         authenticate(request, alwaysBox.isChecked && always != null)
+    }
+
+    /** A tap-level gate prompt (three confirmation levels): the owner's tap on Allow, in this window, signed with the
+     *  tap key. No screen lock: agents can't tap OpenMob's windows (the gate refuses them, builtin:own_window), and
+     *  Approve ignores touches through overlays. */
+    private fun approveWithTap(request: Approvals.Request) {
+        val grantAlways = alwaysBox.isChecked && request.always != null
+        val message = dev.openmob.companion.gate.GateHost.approvalMessage(request.id, grantAlways)
+        val signature = message?.let { TapKeys.sign(it) }
+        if (message == null || signature == null || !dev.openmob.companion.gate.GateHost.approve(request.id, message, signature)) {
+            showStatus(getString(if (message == null) R.string.approval_gone else R.string.approval_not_confirmed))
+            return
+        }
+        Approvals.answerGate(this, request.id, true)
+        Toast.makeText(this, R.string.approval_sent_approved, Toast.LENGTH_SHORT).show()
+        finish()
     }
 
     private fun authenticate(request: Approvals.Request, grantAlways: Boolean) {

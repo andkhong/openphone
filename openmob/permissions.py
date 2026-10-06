@@ -173,7 +173,8 @@ def looser(a: str, b: str) -> bool:
 
 def default_settings() -> dict:
     return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
-            "never_money": False, "permission_prompts": dict(PERMISSION_DEFAULTS), "task_approval": True}
+            "never_money": False, "permission_prompts": dict(PERMISSION_DEFAULTS), "task_approval": True,
+            "everyday": False}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -191,6 +192,8 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
         # Purchases without asking last only as long as the never window they were allowed with.
         s["never_money"] = bool(s["never_until"]) and settings.get("never_money") is True
         # Android's runtime permission dialogs (agent/permission_dialogs.py): the owner's defaults per type.
+        if isinstance(settings.get("everyday"), bool):
+            s["everyday"] = settings["everyday"]
         if isinstance(settings.get("task_approval"), bool):
             s["task_approval"] = settings["task_approval"]
         prompts = settings.get("permission_prompts") if isinstance(settings.get("permission_prompts"), dict) else {}
@@ -217,6 +220,7 @@ def public(settings: dict, now: float | None = None) -> dict:
     return {"default_mode": s["default_mode"], "ceiling": effective_ceiling(s, now), "standing_ceiling": s["ceiling"],
             "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
             "permission_prompts": s["permission_prompts"], "task_approval": s["task_approval"],
+            "everyday": s["everyday"],
             "modes": list(MODES)}
 
 
@@ -300,6 +304,12 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
             raise PermissionsInvalid(f"never must be one of: {', '.join(NEVER_DURATIONS)} or off.")
     if allow_money is False:
         new["never_money"] = False
+    if patch.get("everyday") is not None:
+        if not isinstance(patch["everyday"], bool):
+            raise PermissionsInvalid("everyday is true or false.")
+        if patch["everyday"] and not cur["everyday"]:
+            loosens.append("everyday:on")  # stop confirming everyday actions: the phone approves (fingerprint)
+        new["everyday"] = patch["everyday"]
     if patch.get("task_approval") is not None:
         if not isinstance(patch["task_approval"], bool):
             raise PermissionsInvalid("task_approval is true or false.")
@@ -363,6 +373,9 @@ def describe_loosening(loosens: list[str]) -> str:
                          else f"Allow agents to act without asking on this phone for {span}?")
         elif kind == "ceiling":
             parts.append(f"Allow the {LABELS[rest]} mode on this phone?")
+        elif kind == "everyday":
+            parts.append("Stop confirming everyday actions (messages, shares, posts, deletes)? Purchases and "
+                         "dangerous actions still need your fingerprint.")
         elif kind == "task_approval":
             parts.append("Let one approval of a task cover the risky steps it needs (purchases still ask)?")
         elif kind == "permission":

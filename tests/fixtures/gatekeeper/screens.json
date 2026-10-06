@@ -57,7 +57,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -258,7 +259,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "amazon_checkout": {
@@ -372,7 +374,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "amazon_checkout_card": {
@@ -475,7 +478,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "amazon_autofill": {
@@ -593,7 +597,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "slide_to_pay": {
@@ -667,7 +672,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "chase": {
@@ -728,7 +734,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "login_form": {
@@ -819,7 +826,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "otp_form": {
@@ -882,7 +890,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "chrome_url_js": {
@@ -944,7 +953,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "chrome_url_bank": {
@@ -1006,7 +1016,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1074,7 +1085,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "web_checkout_enter": {
@@ -1191,7 +1203,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "whatsapp_chat": {
@@ -1281,7 +1294,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "gmail_list": {
@@ -1383,7 +1397,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_main": {
@@ -1640,7 +1655,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_internet": {
@@ -1801,7 +1817,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_security": {
@@ -1946,7 +1963,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_dev": {
@@ -2051,7 +2069,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_keyboards": {
@@ -2156,7 +2175,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_datetime": {
@@ -2317,7 +2337,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_bluetooth": {
@@ -2462,7 +2483,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_system": {
@@ -2595,7 +2617,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_app_info_amazon": {
@@ -2796,7 +2819,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_app_info_chase": {
@@ -2941,7 +2965,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "samsung_accessibility": {
@@ -3045,7 +3070,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "openmob_app": {
@@ -3106,7 +3132,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "keyguard_secure": {
@@ -3305,7 +3332,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "share_sheet": {
@@ -3406,7 +3434,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "german_shop": {
@@ -3520,7 +3549,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "permission_dialog_session": {
@@ -3648,7 +3678,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "permission_dialog_other": {
@@ -3762,7 +3793,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "whatsapp_chat_busy": {
@@ -3852,7 +3884,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   },
   "quiet_ms": 40
  },
@@ -3912,7 +3945,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "deep_truncated": {
@@ -3987,7 +4021,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "settings_about": {
@@ -4132,7 +4167,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "vpn_consent": {
@@ -4259,7 +4295,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "contacts_app": {
@@ -4333,7 +4370,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4447,7 +4485,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "inapp_webview_autofill": {
@@ -4566,7 +4605,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "native_autofill": {
@@ -4671,7 +4711,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "kalshi_app": {
@@ -4732,7 +4773,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_google": {
@@ -4904,7 +4946,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_approx": {
@@ -5076,7 +5119,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_samsung": {
@@ -5248,7 +5292,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_always_only": {
@@ -5376,7 +5421,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "notifications_kalshi": {
@@ -5504,7 +5550,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "camera_kalshi": {
@@ -5646,7 +5693,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_other_app": {
@@ -5818,7 +5866,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "location_oem_unknown": {
@@ -5932,7 +5981,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "otp_focus_unread": {
@@ -5995,7 +6045,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "focus_unknown_window": {
@@ -6060,7 +6111,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "hidden_permission_dialog": {
@@ -6137,7 +6189,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "hidden_permission_samsung": {
@@ -6227,7 +6280,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "partial_window": {
@@ -6288,7 +6342,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "no_accessibility": {
@@ -6308,7 +6363,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_field": {
@@ -6432,7 +6488,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_password": {
@@ -6556,7 +6613,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_otp": {
@@ -6680,7 +6738,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_blocked": {
@@ -6804,7 +6863,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_unknown_window": {
@@ -6928,7 +6988,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_unlisted_window": {
@@ -7052,7 +7113,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "compose_webview": {
@@ -7162,7 +7224,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "kalshi_market": {
@@ -7276,7 +7339,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   },
   "quiet_ms": 40
  },
@@ -7391,7 +7455,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   },
   "quiet_ms": 40
  },
@@ -7519,7 +7584,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "kalshi_ticket_odds": {
@@ -7646,7 +7712,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "kalshi_ticket_repriced": {
@@ -7773,7 +7840,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "ticker_board": {
@@ -7912,7 +7980,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "youtube_channel": {
@@ -8013,7 +8082,8 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  },
  "youtube_join": {
@@ -8100,7 +8170,717 @@
    "com.kalshi": "Kalshi",
    "com.google.android.apps.messaging": "Messages",
    "com.kalshi.mobile": "Kalshi",
-   "com.google.android.youtube": "YouTube"
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
+ },
+ "share_link_sheet": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.youtube",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "PewDiePie",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 4,
+    "type": "application",
+    "layer": 4,
+    "package": "com.android.intentresolver",
+    "title": "Share",
+    "bounds": [
+     0,
+     1400,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1400,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1420,
+        1040,
+        1480
+       ],
+       "children": []
+      },
+      {
+       "text": "Ann Lee (You)",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        300,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Bob",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        300,
+        1500,
+        560,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Copy link",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        560,
+        1500,
+        820,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Note to self",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        820,
+        1500,
+        1080,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "share_photo_sheet": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.youtube",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "PewDiePie",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 4,
+    "type": "application",
+    "layer": 4,
+    "package": "com.android.intentresolver",
+    "title": "Share",
+    "bounds": [
+     0,
+     1400,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1400,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "1 photo",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1420,
+        1040,
+        1480
+       ],
+       "children": []
+      },
+      {
+       "text": "Ann Lee (You)",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        300,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Bob",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        300,
+        1500,
+        560,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "messenger_self": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.facebook.orca",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Ann Lee",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        800,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "com.facebook.orca:id/composer",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.facebook.orca:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "messenger_friend": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.facebook.orca",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Bob Smith",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        800,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "com.facebook.orca:id/composer",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.facebook.orca:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "youtube_video": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.youtube",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Like",
+       "desc": "",
+       "id": "like_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        300,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Unsubscribe",
+       "desc": "",
+       "id": "unsubscribe_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        340,
+        1500,
+        800,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Save",
+       "desc": "",
+       "id": "save_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        840,
+        1500,
+        1040,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
+ },
+ "photo_viewer": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.photos",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "Delete",
+       "id": "com.google.android.apps.photos:id/trash",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        900,
+        2200,
+        1040,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
+ },
+ "instagram_post": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.instagram.android",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Post",
+       "desc": "",
+       "id": "post_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        2200,
+        1040,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "New post",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        120,
+        800,
+        200
+       ],
+       "children": []
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
   }
  }
 }

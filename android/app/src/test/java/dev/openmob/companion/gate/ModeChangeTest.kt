@@ -13,7 +13,7 @@ import org.junit.Test
 /** A permission change approved on the phone becomes its own signed policy (and nothing else can make one). */
 class ModeChangeTest {
     private val clock = GateScenarioTest.FakeClock()
-    private val gk = Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER))
+    private val gk = Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER), GateScenarioTest.TAP_VERIFIER)
     private val buy = mapOf<String, Any?>("x" to 540L, "y" to 1720L, "mode" to "never")
 
     private fun action(question: String, json: String) =
@@ -42,10 +42,10 @@ class ModeChangeTest {
         assertTrue(gk.admit("tap", buy, SCREENS.getValue("amazon_product")).allowed)
         // Saved and re-verified on load; a record the signed change doesn't contain is dropped.
         val (entries, hwm) = gk.persist()
-        val fresh = Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER))
+        val fresh = Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER), GateScenarioTest.TAP_VERIFIER)
         assertEquals(1, fresh.restore(entries, hwm))
         val forged = entries.map { PolicyEntry(it.record + ("duration_ms" to 86_400_000L), it.proof, it.issued, it.remaining) }
-        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER)).restore(forged, hwm))
+        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev", ModeChange.verifier(VERIFIER), GateScenarioTest.TAP_VERIFIER).restore(forged, hwm))
     }
 
     @Test fun ceilingAndTrustedApps() {

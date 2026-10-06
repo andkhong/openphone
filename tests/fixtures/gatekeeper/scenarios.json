@@ -5514,10 +5514,269 @@
     },
     "screen": "youtube_channel",
     "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 790,
+      "y": 510
+     }
+    },
+    "screen": "youtube_join",
+    "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "other",
-     "rule": "risk:words:subscribe"
+     "kind": "pay",
+     "money": "start"
+    }
+   }
+  ]
+ },
+ {
+  "name": "everyday low-risk flows: no prompt",
+  "tags": [
+   "consequence",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 690,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 950,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_self",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "messenger_self",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 940,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "consequential actions ask with a tap; money and dangerous ones with a fingerprint",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap",
+     "rule": "risk:share:link"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_photo_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap",
+     "rule": "risk:share:content"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2250
+     }
+    },
+    "screen": "instagram_post",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "post",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
     }
    },
    {
@@ -5536,7 +5795,269 @@
      "decision": "ask",
      "code": "gate_needs_approval",
      "kind": "pay",
-     "money": "start"
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a tap-level prompt is approved with the tap key; a fingerprint prompt only with the screen lock",
+  "tags": [
+   "consequence",
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "other_key",
+    "expect_accepted": false
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "don't confirm everyday actions: tap-level runs, money still asks",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 700,
+      "y": 1650
+     }
+    },
+    "screen": "openmob_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_window"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a request saying don't ask me changes nothing without the owner's setting",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with Bob, don't ask me",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap"
     }
    }
   ]

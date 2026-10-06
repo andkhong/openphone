@@ -246,6 +246,9 @@
   .mode-never.on { background: var(--warn-soft); }
   .mode-never .t { font-size: 14px; font-weight: 500; }
   .mode-never .d { font-size: 12px; color: var(--muted); grid-column: 1 / -1; line-height: 1.35; }
+  .mode-legend { display: grid; gap: 4px; padding: 6px 12px; }
+  .mode-legend .d { font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .mode-legend .money { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-top: 4px; }
   .mode-never .spans { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
   .mode-never .money { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
   .mode-never .money input { margin-top: 2px; }
@@ -1354,6 +1357,21 @@ function renderModeMenu() {
     box.append(money);
     if (neverMoney) box.append(el("span", "money-warn", "Agents could buy, pay and subscribe on this phone without asking until Don't ask ends. Your phone asks you to confirm this separately."));
   }
+  // Three confirmation levels: what asks with a tap, what needs a fingerprint, what's never allowed.
+  const legend = el("div", "mode-legend");
+  legend.append(
+    el("span", "d", "No prompt: low-risk steps (a link shared with yourself, copy, like, subscribe, save, menus)."),
+    el("span", "d", "A tap on the phone: messages and shares to others, posts, deletes, filling a saved login in an app."),
+    el("span", "d", "Your fingerprint or PIN: purchases and dangerous steps (saved cards or passwords on a web page, codes, app permissions)."),
+    el("span", "d", "Never: banking and password apps, security settings, password fields."));
+  const everyday = el("label", "money");
+  const evCheck = document.createElement("input");
+  evCheck.type = "checkbox";
+  evCheck.checked = !!(perms && perms.everyday);
+  evCheck.onchange = () => changePerms({ everyday: evCheck.checked }, () => renderModeMenu());
+  everyday.append(evCheck, el("span", "", "Don't confirm everyday actions (sharing, messaging, posting, deleting)"));
+  legend.append(everyday);
+  if (!(perms && perms.everyday)) legend.append(el("span", "d", "Turning this on needs your approval on the phone. Purchases still ask."));
   const status = el("div", "mode-status");
   if (modeStatus) status.append(el("span", `pill ${modeStatus.startsWith("Approve") ? "dotted warn live" : "bad"}`, modeStatus));
   const foot = el("div", "mode-foot");
@@ -1363,7 +1381,7 @@ function renderModeMenu() {
   settings.type = "button";
   settings.onclick = () => { closeModeMenu(); openPerms(); };
   foot.append(settings);
-  menu.replaceChildren(head, ...rows, el("hr"), box, status, foot);
+  menu.replaceChildren(head, ...rows, el("hr"), box, el("hr"), legend, status, foot);
   if (focused) {
     const again = menu.querySelector(`[data-mode="${focused}"]`);
     if (again) again.focus();

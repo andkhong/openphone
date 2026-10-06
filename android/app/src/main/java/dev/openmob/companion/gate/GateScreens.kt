@@ -97,6 +97,8 @@ object GateScreens {
             }.getOrNull().orEmpty(),
             resolve = urls.associateWith { resolve(pm, it) },
             labels = labels(pm, pkgs) + GateHost.blockedLabels(pm),
+            // The owner's own names, for "self" recipients (the paired account's email; Note to self and You are built in).
+            owner = listOfNotNull(dev.openmob.companion.Settings(service).email.takeIf { it.isNotEmpty() }),
             focusExpected = focusPoint != null,
             focusWindow = focusWindow, focusNode = focusNode, focusAncestors = focusAncestors,
             eventPackage = service.lastEventPackage, eventText = service.lastEventText,

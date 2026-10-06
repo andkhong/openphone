@@ -199,6 +199,7 @@ class Screen:
     focus: dict = field(default_factory=dict)  # that focus resolved directly: {window, node, ancestors}
     available: bool = True  # the accessibility service is bound (else the phone can't see the screen at all)
     event: dict = field(default_factory=dict)  # the last window-state event: {package, text}
+    owner: list = field(default_factory=list)  # the owner's own names (profile, paired account): "self" recipients
     labels: dict = field(default_factory=dict)
 
     @classmethod
@@ -210,7 +211,8 @@ class Screen:
                    resolve=d.get("resolve", {}), labels=d.get("labels", {}),
                    focus_expected=bool((d.get("focus") or {}).get("expected")),
                    focus=d.get("focus") or {},
-                   available=d.get("accessibility", True) is not False, event=d.get("event") or {})
+                   available=d.get("accessibility", True) is not False, event=d.get("event") or {},
+                   owner=list(d.get("owner") or []))
 
     def ordered(self) -> list[Window]:
         return sorted(self.windows, key=lambda w: -w.layer)
@@ -394,6 +396,35 @@ def money_amounts(window: Window, target) -> list[str]:
     return sorted(set(a for t in texts for a in amounts(t)))
 
 
+LINK = re.compile(r"(?i)https?://|www\.|youtu\.be/|\b[a-z0-9-]+\.(?:com|be|org|net|io|tv|app|co)/")
+
+
+def shares_link(rules: Rules, window: Window) -> bool:
+    """The share sheet shares a link or text with a link (its preview shows a URL), not a photo, file or contact."""
+    return any(LINK.search(f"{n.text} {n.desc}") for n in walk(window.root, []))
+
+
+def is_self(rules: Rules, label: list[str], screen: Screen) -> bool:
+    """A recipient that is the owner: "Note to self", "Saved messages", "You", "Ann (You)", or the owner's own name."""
+    if not label:
+        return False
+    if any(label == tokens(p) for p in rules.w["self"]):
+        return True
+    if len(label) > 1 and label[-1] == "you":  # "Ann Lee (You)"
+        return True
+    return any(tokens(name) and label == tokens(name) for name in screen.owner)
+
+
+def to_self(rules: Rules, window: Window, screen: Screen) -> bool:
+    """The open conversation is with the owner (its title near the top says so). Unknown: not self."""
+    top = window.bounds[1] + (window.bounds[3] - window.bounds[1]) * 0.16
+    for n in walk(window.root, []):
+        if n.bounds[1] < top and not n.editable and (n.text or n.desc):
+            if is_self(rules, tokens(n.text or n.desc), screen):
+                return True
+    return False
+
+
 def priced(screen: Screen, window: Window) -> bool:
     """A price or currency on the target's window, or a Google Play billing sheet on screen."""
     if any(w.package == "com.android.vending" and w.type in ("application", "system") and w is not window
@@ -489,6 +520,7 @@ class Admission:
     params: dict = field(default_factory=dict)
     money: str | None = None
     plain: str = ""  # the binding with every number blanked (tells a price change from a moved target)
+    level: str = ""  # an ask's confirmation level: tap (Allow/Deny) | fingerprint (the screen lock)
 
 
 @dataclass
@@ -510,7 +542,8 @@ class Pending:
     task: str
     grant_offer: dict | None
     counted: bool = False
-    digest: str = ""  # a task prompt: the request text's digest  # shown to the owner (only shown prompts count toward the prompt limit)
+    digest: str = ""  # a task prompt: the request text's digest
+    level: str = "fingerprint"  # tap: an on-phone Allow/Deny signed with the tap key; fingerprint: the screen lock  # shown to the owner (only shown prompts count toward the prompt limit)
 
 
 class TestVerifier:
@@ -522,6 +555,14 @@ class TestVerifier:
 
     def verify(self, message: str, signature: str) -> bool:
         return bool(signature) and signature == self.sign(message)
+
+
+class TapVerifier(TestVerifier):
+    """The tap key (not bound to the screen lock): only OpenMob's own Allow button signs with it."""
+
+    @staticmethod
+    def sign(message: str) -> str:
+        return sha256("test-tap-key:" + message)
 
 
 class Clock:
@@ -546,6 +587,8 @@ class Gatekeeper:
         self.r = rules or Rules.load()
         self.clock = clock or Clock()
         self.verifier = verifier or TestVerifier()
+        self.tap_verifier = TapVerifier()
+        self.everyday = False  # "Don't confirm everyday actions": signed by the owner; tap-level steps then run
         self.device = device
         self.permits: dict[str, int] = {}  # binding -> expiry (monotonic ms)
         self.pending: dict[str, Pending] = {}
@@ -648,6 +691,9 @@ class Gatekeeper:
                 return False
             self.never = {"issued": now, "duration_ms": duration, "allow_money": bool(record.get("allow_money"))}
             return True
+        if kind == "everyday":
+            self.everyday = bool(record.get("on"))
+            return True
         if kind == "permission_default":
             perm, value = record.get("perm"), record.get("value")
             if value not in self._perm_values(perm):
@@ -675,6 +721,10 @@ class Gatekeeper:
     def perm_setting(self, perm: str) -> str:
         d = self.r.d["permission_dialog"]["defaults"]
         return self.perm_defaults.get(perm) or d.get(perm, d["default"])
+
+    def everyday_off(self) -> None:
+        """A tightening, from anywhere: everyday actions are confirmed again."""
+        self.everyday = False
 
     def tighten_permission(self, perm: str, value: str) -> bool:
         """A tightening (deny, ask, approximate…) is taken from anywhere, unsigned; loosening needs a signed record."""
@@ -802,6 +852,8 @@ class Gatekeeper:
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule=why, money=risk.money, **base)
         if mode != "ask" and self._task_covers(risk, params, j.package):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
+        if mode != "ask" and self.everyday and self.level(risk) == "tap":
+            return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
         window = self.r.limits["ask_window_ms"]
         self.asks = [t for t in self.asks if now - t < window]
         if len(self.asks) >= self.r.limits["asks_per_window"]:
@@ -811,10 +863,12 @@ class Gatekeeper:
                                 method, params, j.package)
         aid = "gk" + uuid.uuid4().hex  # gate prompts are "gk…"; the legacy approval path refuses such ids
         offer = self._offer(risk, mode)
-        self.pending[aid] = Pending(aid, bind, now, risk, j.package, str(params.get("task") or ""), offer)
+        self.pending[aid] = Pending(aid, bind, now, risk, j.package, str(params.get("task") or ""), offer,
+                                    level=self.level(risk))
         self.events.append({"state": "pending", "approval_id": aid})
         return Admission("ask", code="gate_needs_approval", rule=f"risk:{risk.reason}", kind=risk.kind,
                          approval_id=aid, wording=risk.wording, grant_offer=offer, binding=bind, money=risk.money,
+                         level=self.level(risk),
                          message="Waiting for the owner's approval on the phone.", **base)
 
     # --- task approval (by owner request): one prompt for the task, its non-money risky steps then run --------
@@ -835,6 +889,8 @@ class Gatekeeper:
         g = self.task_grants.get(task)
         if g is not None and g["digest"] == digest and now < g["expires"]:
             return Admission("allow", rule="task_grant", kind="task", method=method, params=params, binding=bind)
+        if self.everyday:  # everyday steps run unconfirmed anyway: no task prompt
+            return Admission("allow", rule="everyday", kind="task", method=method, params=params, binding=bind)
         if any(o["digest"] == digest and o["expires"] > now for o in self.own_requests):
             self._mint_task(task, digest)
             return Admission("allow", rule="task_grant:own_request", kind="task", method=method, params=params,
@@ -855,16 +911,26 @@ class Gatekeeper:
         wording = f"Agent wants to: {text}. Allow the steps this needs?"
         risk = Risk("task", "task", wording=wording)
         aid = "gk" + uuid.uuid4().hex
-        self.pending[aid] = Pending(aid, bind, now, risk, "", task, None)
+        self.pending[aid] = Pending(aid, bind, now, risk, "", task, None, level="tap")
         self.pending[aid].digest = digest
         self.events.append({"state": "pending", "approval_id": aid})
         return Admission("ask", code="gate_needs_approval", rule="risk:task", kind="task", approval_id=aid,
-                         wording=wording, binding=bind, method=method, params=params,
+                         wording=wording, binding=bind, method=method, params=params, level="tap",
                          message="Waiting for the owner's approval of this task on the phone.")
 
     def _mint_task(self, task: str, digest: str) -> None:
         self.task_grants[task] = {"digest": digest, "expires": self.now() + self.r.limits["task_grant_ms"],
                                   "used": 0, "apps": set()}
+
+    @staticmethod
+    def level(risk: Risk) -> str:
+        """Three confirmation levels (owner principle): a fingerprint only for money and dangerous actions (saved
+        cards and passwords in a browser or web page, OTP or card fields, permission grants); a simple on-phone
+        Allow/Deny for everyday-but-consequential ones (messages and shares to others, posts, deletes, native
+        autofill, unrecognized Settings changes, menus the server worries about). Low-risk actions never get here."""
+        if risk.money or risk.reason.startswith("permission:") or (risk.kind == "fill" and risk.grant is None):
+            return "fingerprint"
+        return "tap"
 
     def _task_covers(self, risk: Risk, params: dict, package: str) -> bool:
         """Under the task's grant: every non-money risky step, except browser or WebView autofill and permission
@@ -872,9 +938,7 @@ class Gatekeeper:
         g = self.task_grants.get(str(params.get("task") or ""))
         if g is None or self.now() >= g["expires"] or g["used"] >= self.r.limits["task_grant_steps"]:
             return False
-        if risk.money or risk.kind in ("task", "step") or risk.reason.startswith("permission:"):
-            return False
-        if risk.kind == "fill" and risk.grant is None:
+        if risk.kind in ("task", "step") or self.level(risk) != "tap":
             return False
         g["used"] += 1
         if package:
@@ -971,7 +1035,8 @@ class Gatekeeper:
 
     def approval_message(self, approval_id: str, grant: bool = False) -> str:
         p = self.pending[approval_id]
-        msg = f"gk1|{self.device}|{approval_id}|{p.binding}"
+        msg = (f"gk1|tap|{self.device}|{approval_id}|{p.binding}" if p.level == "tap"
+               else f"gk1|{self.device}|{approval_id}|{p.binding}")
         if grant and p.grant_offer:
             msg += "|grant:" + policy_canon({"type": "grant", **{k: p.grant_offer[k] for k in
                                                                  ("kind", "binding", "duration_ms")}})
@@ -986,13 +1051,15 @@ class Gatekeeper:
         if p is None:
             return False
         self.mark_shown(approval_id)  # answered, so it was seen
-        plain = f"gk1|{self.device}|{approval_id}|{p.binding}"
+        plain = self.approval_message(approval_id)
         grant = None
         if message != plain:
             if not (p.grant_offer and message == self.approval_message(approval_id, grant=True)):
                 return False
             grant = p.grant_offer
-        if not self.verifier.verify(message, signature):
+        # A tap-level prompt is signed with the tap key, a fingerprint one with the screen-lock key: neither
+        # signature can approve the other kind (the messages are domain-separated too).
+        if not (self.tap_verifier if p.level == "tap" else self.verifier).verify(message, signature):
             return False
         del self.pending[approval_id]
         if p.risk.kind == "task":  # the owner approved the task: a grant, not a one-shot permit
@@ -1259,7 +1326,7 @@ class Gatekeeper:
     def _word_risk(self, label: list[str], ids: list[str], package: str, payment: bool,
                    priced: bool = True) -> Risk | None:
         r = self.r
-        words = strip_phrases(label, r.w["pre_commit"])
+        words = strip_phrases(label, r.w["pre_commit"] + r.w["reversible"])
         id_words = []
         for rid in ids:
             toks = id_tokens(rid)
@@ -1270,8 +1337,9 @@ class Gatekeeper:
         flow = any_phrase(words, r.w["flow_start"]) or next((w for w in id_words if w in ("buy", "purchase",
                                                                                           "transfer")), None)
         if flow in ("subscribe", "join") and not priced:
-            # YouTube's free Subscribe, a free group's Join: money only with a price nearby or a billing sheet.
-            return Risk("other", f"words:{flow}")
+            # YouTube's free Subscribe, a free group's Join: reversible, and money only with a price nearby or a
+            # billing sheet.
+            flow = None
         if flow:
             return Risk("pay", f"words:{flow}", money="start", grant=package)
         terminal = any_phrase(words, r.w["terminal"]) or next(
@@ -1350,10 +1418,13 @@ class Gatekeeper:
             j.risk = Risk("fill", "autofill", always=True, grant=grant,
                           wording=f"Fill your saved card or password into {self.label(screen, filled or source)}?")
             return j
-        # Share sheets
+        # Share sheets: what is shared, to whom. A public link to yourself, or copying it, is low risk.
         if w.package in r.surf["share_packages"] and (re.compile(r.surf["share_titles"]).search(w.title or "")
                                                        or w.package != "android"):
-            j.risk = Risk("share", "share_sheet", grant=f"{source}>{' '.join(label)}",
+            link = shares_link(r, w)
+            if any_phrase(label, r.w["copy"]) or (link and is_self(r, label, screen)):
+                return j
+            j.risk = Risk("share", "share:" + ("link" if link else "content"), grant=f"{source}>{' '.join(label)}",
                           wording=f"Share to “{shown or 'this target'}”?")
             return j
         # Notification action buttons
@@ -1362,6 +1433,8 @@ class Gatekeeper:
             j.risk = Risk("other", "notification_action", wording=wording())
             return j
         risk = self._word_risk(label, ids, w.package, j.payment, priced=priced(screen, w))
+        if risk is not None and risk.kind == "send" and not risk.money and to_self(r, w, screen):
+            risk = None  # a message to yourself ("Note to self", your own chat): nobody else receives it
         if risk is None:
             slider = any(re.compile(r.d["slider_class"]).search(n.cls or "") for n in (pressed, t.hit) if n)
             if slider or any_phrase(label, r.w["slide"]):
@@ -1498,7 +1571,8 @@ class Gatekeeper:
             j.risk = Risk("pay", "enter:payment", money="terminal", grant=w.package,
                           wording=f"Allow pressing Enter on a checkout in {app}?")
         elif any(r.is_cat(c, w.package) for c in ("messaging", "email", "social")):
-            j.risk = Risk("send", "enter:messaging", grant=w.package, wording=f"Allow sending with Enter in {app}?")
+            if not to_self(r, w, screen):
+                j.risk = Risk("send", "enter:messaging", grant=w.package, wording=f"Allow sending with Enter in {app}?")
         elif (browser or webview) and not search:
             j.risk = Risk("other", "enter:form", wording=f"Allow submitting a form with Enter in {app}?")
         return j
@@ -1558,7 +1632,7 @@ def load_screens() -> dict:
 
 def check(expect: dict, adm: Admission) -> list[str]:
     problems = []
-    for key in ("decision", "code", "kind", "money"):
+    for key in ("decision", "code", "kind", "money", "level"):
         if key in expect and getattr(adm, key) != expect[key]:
             problems.append(f"{key}: expected {expect[key]!r}, got {getattr(adm, key)!r} ({adm.rule})")
     if "rule" in expect and not adm.rule.startswith(expect["rule"]):
@@ -1586,7 +1660,9 @@ def run_step(gk: Gatekeeper, s: dict, screens: dict, state: dict) -> list[str]:
             message = gk.approval_message(aid, grant=bool(s.get("grant")))
             if s.get("binding") == "other":
                 message = message.replace(gk.pending[aid].binding, sha256("another action"))
-            sig = TestVerifier.sign(message) if s.get("sig") == "valid" else "00"
+            own, other = (TapVerifier, TestVerifier) if gk.pending[aid].level == "tap" else (TestVerifier, TapVerifier)
+            # valid: the level's own key; other_key: the other level's key (a tap can't approve a fingerprint prompt)
+            sig = {"valid": own.sign(message), "other_key": other.sign(message)}.get(s.get("sig"), "00")
             accepted = gk.approve(aid, message, sig)
         if accepted != s.get("expect_accepted", True):
             return [f"approve: expected accepted={s.get('expect_accepted', True)}, got {accepted}"]

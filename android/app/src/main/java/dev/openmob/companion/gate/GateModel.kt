@@ -184,12 +184,14 @@ class GScreen(
     val available: Boolean = true,
     /** The last window-state event: its package and text (they arrive even for windows Android hides). */
     val eventPackage: String = "", val eventText: String = "",
+    /** The owner's own names (paired account, profile): "self" recipients. */
+    val owner: List<String> = emptyList(),
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
 
     /** The same screen with [ms] of quiet: how long the target itself has been still (GateHost.reverify). */
     fun withQuiet(ms: Long) = GScreen(windows, keyguardLocked, keyguardSecure, ms, activity, autofillService, resolve, labels,
-        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText)
+        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner)
 
     companion object {
         fun of(d: Map<String, Any?>): GScreen {
@@ -210,6 +212,7 @@ class GScreen(
                 focusAncestors = d["focus"].obj()["ancestors"].list().map { GNode.of(it.obj()) },
                 available = d["accessibility"] != false,
                 eventPackage = d["event"].obj().str("package"), eventText = d["event"].obj().str("text"),
+                owner = d["owner"].strings(),
             )
         }
     }
@@ -352,6 +355,28 @@ object GateScreen {
             if (GateText.amounts(line).isNotEmpty() && GateText.anyPhrase(GateText.tokens(line), GateText.MONEY_LABELS) != null) texts.add(line)
         }
         return texts.flatMap { GateText.amounts(it) }.toSortedSet().toList()
+    }
+
+    private val LINK = Regex("(?i)https?://|www\\.|youtu\\.be/|\\b[a-z0-9-]+\\.(?:com|be|org|net|io|tv|app|co)/")
+
+    /** The share sheet shares a link or text with a link (its preview shows a URL), not a photo, file or contact. */
+    fun sharesLink(window: GWindow): Boolean = walk(window.root).any { LINK.containsMatchIn("${it.text} ${it.desc}") }
+
+    /** A recipient that is the owner: "Note to self", "Saved messages", "You", "Ann (You)", or the owner's name. */
+    fun isSelf(rules: GateRules, label: List<String>, screen: GScreen): Boolean {
+        if (label.isEmpty()) return false
+        if (rules.w.getValue("self").any { label == GateText.tokens(it) }) return true
+        if (label.size > 1 && label.last() == "you") return true
+        return screen.owner.any { val t = GateText.tokens(it); t.isNotEmpty() && label == t }
+    }
+
+    /** The open conversation is with the owner (its title near the top says so). Unknown: not self. */
+    fun toSelf(rules: GateRules, window: GWindow, screen: GScreen): Boolean {
+        val top = window.bounds[1] + (window.bounds[3] - window.bounds[1]) * 0.16
+        return walk(window.root).any { n ->
+            n.bounds[1] < top && !n.editable && (n.text.isNotEmpty() || n.desc.isNotEmpty()) &&
+                isSelf(rules, GateText.tokens(n.text.ifEmpty { n.desc }), screen)
+        }
     }
 
     /** A price or currency on the target's window, or a Google Play billing sheet on screen. */

@@ -668,7 +668,8 @@ class DeviceManager:
                   "who": {"name": requester, "human": True}, "sent": set(), "kind": "mode_change", "details": {},
                   "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
                                                                           if k in ("default_mode", "ceiling", "never",
-                                                                                   "allow_money", "permission_prompts")}}}
+                                                                                   "allow_money", "permission_prompts",
+                                                                                   "everyday")}}}
         with self._approvals_lock:
             older = [(a, r) for a, r in self.approvals.items()
                      if r.get("kind") == "mode_change" and r["session"] is session]
@@ -737,7 +738,8 @@ class DeviceManager:
                              "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"],
                              "never_money": settings["never_money"],
                              # The phone takes only the tightenings from this (its loosenings are signed on it).
-                             "permission_prompts": settings.get("permission_prompts") or {}})
+                             "permission_prompts": settings.get("permission_prompts") or {},
+                             "everyday": bool(settings.get("everyday"))})
 
     def phone_turned_off_never(self, session: Session) -> None:
         """"Turn off" on the phone: back to auto. A tightening, so it needs no signature."""

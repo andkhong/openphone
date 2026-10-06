@@ -34,6 +34,7 @@ object ModeChange {
         (p["never"] as? String)?.let { NEVER_MS[it] }?.let {
             out.add(mapOf("type" to "never", "duration_ms" to it, "allow_money" to (p["allow_money"] == true)))
         }
+        if (p["everyday"] == true) out.add(mapOf("type" to "everyday", "on" to true))
         for ((perm, value) in p["permission_prompts"].obj()) {
             out.add(mapOf("type" to "permission_default", "perm" to perm, "value" to value.toString()))
         }
@@ -61,6 +62,7 @@ object ModeChange {
                           else "Turn on Don't ask: agents act on this phone without asking for $span? Purchases stay off.")
             }
             "ceiling" -> parts.add("Let agents ask less on this phone (up to “${MODE_NAMES[r["mode"]] ?: r["mode"]}”)?")
+            "everyday" -> parts.add("Stop confirming everyday actions (messages, shares, posts, deletes)? Purchases and dangerous actions still need your fingerprint.")
             "permission_default" -> {
                 val what = r["perm"].toString().replace('_', ' ')
                 parts.add(when (r["value"]) {

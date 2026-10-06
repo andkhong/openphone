@@ -617,6 +617,21 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   inside an approved task a compromised server chooses the steps (recipients, texts) within the approved
   request's wording, which the phone can't check; the owner accepted this for friction. "Subscribe"/"Join" are
   money only with a price nearby or a Play billing sheet.
+- **Decision D24 (consequence-based risk, by owner request, 2026-10-06):** risk is judged by content (public link
+  vs private content), recipient (self vs others, unknown = others), visibility (private vs public),
+  reversibility (toggles vs permanent) and money, instead of keywords, in both engines and the server's `_guard`.
+  A link shared or sent to yourself, copying, like/subscribe/save are no prompt; Subscribe/Join are money only
+  with a price nearby. Self is recognized by "Note to self"-style labels, "(You)", and the owner's names the
+  phone knows (the paired account email); no contacts profile is read. The server's classifier no longer hints
+  the phone on its own.
+- **Decision D25 (three confirmation levels, owner principle, 2026-10-06):** none / tap / fingerprint. Tap-level
+  asks are OpenMob's own Allow/Deny with no screen lock, signed by a separate non-auth Keystore key in a
+  separate domain (`gk1|tap|…`); the security basis is that agents can't tap OpenMob's windows and Allow filters
+  obscured touches. Fingerprint: money, browser/web autofill, OTP/card fields, permission grants. "Don't confirm
+  everyday actions" (signed, loosening via the phone) skips tap-level asks and the task prompt; the task
+  approval itself is tap-level. This relaxes D5's "screen lock for every gated action" for tap-level actions:
+  a malicious app on the phone (out of scope) or an accessibility overlay that defeats
+  filterTouchesWhenObscured could approve tap-level asks.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

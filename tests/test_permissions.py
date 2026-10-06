@@ -117,7 +117,7 @@ def test_one_prompt_per_purchase_then_one_terminal_follow_up(tmp_path):
 
 
 def test_start_flow_words_and_terminal_approvals_mint_nothing(tmp_path):
-    a, driver, io, perms, _ = agent([tap("Buy now"), tap("Subscribe", "b")], tmp_path, IO(["yes", "no"]),
+    a, driver, io, perms, _ = agent([tap("Buy now"), tap("Subscribe $4.99/month", "b")], tmp_path, IO(["yes", "no"]),
                                     package=SHOP)
     a.run("buy the cable", permissions=perms)
     assert len(io.questions) == 2  # a new flow (subscribe) asks again
@@ -417,6 +417,35 @@ def test_prompt_report_summarizes_the_budget():
     s = summarize(prompts, tasks)
     assert s["median_prompts_per_task"] == 1 and s["fast_approval_share"] == 0.5
     assert "OVER" in format_report(s) and "Median prompts per task: 1" in format_report(s)
+
+
+def test_low_risk_flows_dont_ask_on_any_phone(tmp_path):
+    # YouTube's free Subscribe; a link sent in your own chat ("Note to self" at the top); someone else asks.
+    a, driver, io, perms, _ = agent([tap("Subscribe")], tmp_path, package="com.google.android.youtube")
+    a.run("subscribe to pewdiepie", permissions=perms)
+    assert not io.questions and len(taps(driver)) == 1
+    title = UIElement(0, "Note to self", "", "", "TextView", False, None, (0, 50, 1000, 120))
+    link = UIElement(1, "https://youtube.com/@PewDiePie", "", "", "TextView", False, None, (0, 1200, 1000, 1280))
+    a, driver, io, perms, _ = agent([tap("Send")], tmp_path, elements=[title, link])
+    a.run("share his channel with myself", permissions=perms)
+    assert not io.questions and len(taps(driver)) == 1
+    title = UIElement(0, "Bob Smith", "", "", "TextView", False, None, (0, 50, 1000, 120))
+    a, driver, io, perms, _ = agent([tap("Send")], tmp_path, IO(["no"]), elements=[title, link])
+    a.run("share his channel", permissions=perms)
+    assert len(io.questions) == 1
+
+
+def test_everyday_setting_skips_everyday_confirmations_but_not_money(tmp_path):
+    settings = {**perm.default_settings(), "everyday": True}
+    a, driver, io, perms, _ = agent([tap("Send")], tmp_path, settings=settings)
+    a.run("message Bob", permissions=perms)
+    assert not io.questions and len(taps(driver)) == 1
+    a, driver, io, perms, _ = agent([tap("Buy now")], tmp_path, IO(["no"]), package=SHOP, settings=settings)
+    a.run("buy it", permissions=perms)
+    assert len(io.questions) == 1 and not taps(driver)
+    new, loosens = perm.apply_patch(perm.default_settings(), {"everyday": True}, {})
+    assert loosens == ["everyday:on"] and "everyday actions" in perm.describe_loosening(loosens)
+    assert perm.apply_patch(new, {"everyday": False}, {})[1] == []  # turning it off is free
 
 
 def test_permission_prompt_defaults_loosen_only_with_the_phone():

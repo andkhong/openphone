@@ -44,6 +44,11 @@
                    "fill password", "use saved card", "saved card", "use saved payment", "sign in as", "continue as",
                    "use this account", "choose an account"],
     "slide": ["slide to", "swipe to"],
+    "self": ["note to self", "notes to self", "message yourself", "saved messages", "you", "myself", "me"],
+    "copy": ["copy", "copy link", "copy to clipboard", "copy text"],
+    "reversible": ["remove from watch later", "remove from playlist", "remove from library", "remove from queue",
+                   "remove from downloads", "unsubscribe", "unfollow", "unlike", "like", "follow", "save",
+                   "watch later", "bookmark", "subscribed", "joined"],
     "navigation": ["back", "navigate up", "up", "search", "home", "menu", "close", "more", "tab", "cancel"]
   },
   "resource_id_risky": ["buy", "checkout", "purchase", "pay", "place order", "placeorder", "send", "submit", "delete",

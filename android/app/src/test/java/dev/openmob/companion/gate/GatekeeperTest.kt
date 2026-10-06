@@ -14,7 +14,7 @@ import org.junit.Test
 /** Engine details the scenario fixtures don't pin down directly. */
 class GatekeeperTest {
     private val clock = GateScenarioTest.FakeClock()
-    private val gk = Gatekeeper(RULES, clock, VERIFIER, "dev")
+    private val gk = Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
     private val buy = mapOf<String, Any?>("x" to 540L, "y" to 1720L)
     private val send = mapOf<String, Any?>("x" to 990L, "y" to 2250L)
 
@@ -75,10 +75,10 @@ class GatekeeperTest {
         val ask = gk.admit("tap", send, screen)
         assertEquals("ask", ask.decision)
         val m = gk.approvalMessage(ask.approvalId)!!
-        assertFalse(gk.approve(ask.approvalId, m, sign(m + "x")))
-        assertFalse(gk.approve(ask.approvalId, m.replace(ask.binding, "0".repeat(64)), sign(m.replace(ask.binding, "0".repeat(64)))))
-        assertTrue(gk.approve(ask.approvalId, m, sign(m)))
-        assertFalse(gk.approve(ask.approvalId, m, sign(m))) // one answer per prompt
+        assertFalse(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m + "x")))
+        assertFalse(gk.approve(ask.approvalId, m.replace(ask.binding, "0".repeat(64)), GateScenarioTest.tapSign(m.replace(ask.binding, "0".repeat(64)))))
+        assertTrue(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m)))
+        assertFalse(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m))) // one answer per prompt
         clock.elapsed += 1000
         // A different point on the same button is a different action: the permit doesn't cover it.
         assertEquals("ask", gk.admit("tap", mapOf("x" to 991L, "y" to 2250L), screen).decision)
@@ -95,16 +95,16 @@ class GatekeeperTest {
         val ask = gk.admit("tap", send, screen)
         val m = gk.approvalMessage(ask.approvalId, grant = true)!!
         assertTrue(m.contains("|grant:binding=com.whatsapp;duration_ms=604800000;kind=send;type=grant"))
-        assertTrue(gk.approve(ask.approvalId, m, sign(m)))
+        assertTrue(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m)))
         clock.elapsed += 3 * 86_400_000L
         val (entries, hwm) = gk.persist()
         assertEquals(4 * 86_400_000L, entries.single().remaining)
         // Same boot (the app restarted): the issue time still holds.
-        val again = Gatekeeper(RULES, clock, VERIFIER, "dev")
+        val again = Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         assertEquals(1, again.restore(entries, hwm))
         // Rebooted: elapsed restarted. 4 days remain, whatever the wall clock says.
         val boot = GateScenarioTest.FakeClock(60_000)
-        val after = Gatekeeper(RULES, boot, VERIFIER, "dev")
+        val after = Gatekeeper(RULES, boot, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         assertEquals(1, after.restore(entries, hwm))
         boot.elapsed += 4 * 86_400_000L - 120_000
         assertEquals(1, after.grantsSummary().size)
@@ -112,20 +112,20 @@ class GatekeeperTest {
         assertEquals(0, after.grantsSummary().size)
         assertEquals(0, after.persist().first.size)
         // A grant whose remaining time wasn't saved expires at a reboot (fail closed).
-        val lost = Gatekeeper(RULES, GateScenarioTest.FakeClock(5_000), VERIFIER, "dev")
+        val lost = Gatekeeper(RULES, GateScenarioTest.FakeClock(5_000), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         assertEquals(0, lost.restore(entries.map { PolicyEntry(it.record, it.proof, it.issued, null) }, hwm))
     }
 
     @Test fun aTamperedSavedGrantIsDroppedOnLoad() {
         val ask = gk.admit("tap", send, SCREENS.getValue("whatsapp_chat"))
         val m = gk.approvalMessage(ask.approvalId, grant = true)!!
-        gk.approve(ask.approvalId, m, sign(m))
+        gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m))
         val (entries, hwm) = gk.persist()
         val e = entries.single()
         val forged = PolicyEntry(e.record + ("binding" to "com.chase.sig.android"), e.proof, e.issued, e.remaining)
-        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev").restore(listOf(forged), hwm))
+        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER).restore(listOf(forged), hwm))
         val longer = PolicyEntry(e.record + ("duration_ms" to 30 * 86_400_000L), e.proof, e.issued, e.remaining)
-        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev").restore(listOf(longer), hwm))
+        assertEquals(0, Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER).restore(listOf(longer), hwm))
     }
 
     @Test fun requestedWordsAreOneShotAndNeverMoney() {

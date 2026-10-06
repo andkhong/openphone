@@ -48,6 +48,8 @@ object Approvals {
         val canApprove: Boolean = true, val cannotApproveReason: String = "",
         /** `gate`: the gatekeeper's own prompt (worded by this phone from what it sees; [crop] shows the target). */
         val gate: Boolean = false, val crop: ByteArray? = null, val serverSays: String = "",
+        /** A gate prompt's confirmation level: tap (Allow/Deny, no screen lock) or fingerprint. */
+        val level: String = "fingerprint",
     ) {
         /** The phone's own words: a gate prompt as worded by the gatekeeper, a permission change described from the
          *  signed change itself (the server's question is only "Server says"), else the question. */
@@ -170,12 +172,13 @@ object Approvals {
      * the server but a `gate_event`. The prompt opens right away (the accessibility service may start it), with a
      * notification as well.
      */
-    fun requestGate(context: Context, id: String, wording: String, serverSays: String, crop: ByteArray?, always: Always?) {
+    fun requestGate(context: Context, id: String, wording: String, serverSays: String, crop: ByteArray?, always: Always?,
+                    level: String = "fingerprint") {
         if (id in pending || id in finished) return
         val app = context.applicationContext
         val request = Request(
             id = id, taskId = "", question = wording, requester = app.getString(R.string.gate_requester),
-            kind = "gate", always = always, gate = true, crop = crop, serverSays = serverSays.take(200),
+            kind = "gate", always = always, gate = true, crop = crop, serverSays = serverSays.take(200), level = level,
         )
         pending[id] = request
         main.postDelayed({ expire(app, id); dev.openmob.companion.gate.GateHost.cancel(id) }, id, EXPIRY_MS)

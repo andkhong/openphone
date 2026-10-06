@@ -50,7 +50,7 @@ class AndroidGlueTest {
         val root = F(b = intArrayOf(0, 0, 1080, 2400), kids = listOf(
             F(b = intArrayOf(0, 1500, 1080, 1800), kids = listOf(F("Pay", intArrayOf(0, 1500, 1080, 1800), gone = true)))))
         val tree = TreeWalk(Fake, listOf(540.0 to 1650.0)).read(root)!!
-        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
+        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         val adm = gk.admit("tap", mapOf("x" to 540L, "y" to 1650L), screenOf(tree))
         assertEquals("ask", adm.decision)
         assertEquals("risk:truncated", adm.rule)
@@ -59,7 +59,7 @@ class AndroidGlueTest {
     }
 
     @Test fun anUnreadableWindowIsRefusedAndBlackedOut() {
-        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
+        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         val screen = GScreen(listOf(GWindow(3, "application", 3, "", "", intArrayOf(0, 0, 1080, 2400), null)))
         assertEquals("gate_screen_unstable", gk.admit("tap", mapOf("x" to 5L, "y" to 5L), screen).code)
         assertEquals("redact", gk.admit("screenshot", emptyMap(), screen).decision)
@@ -111,7 +111,7 @@ class AndroidGlueTest {
             assertEquals("code $code", dev.openmob.companion.PromptOutcome.Kind.INTERRUPTED, p.classify(code))
         }
         // An interrupted prompt that times out is "expired" (no answer), and doesn't count toward the suspension.
-        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
+        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         val events = mutableListOf<String>()
         gk.onEvent = { _, state -> events.add(state) }
         repeat(3) {
@@ -124,13 +124,13 @@ class AndroidGlueTest {
     }
 
     @Test fun permitsAreVoidedByAnyOtherAction() {
-        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
+        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         val chat = GateScenarioTest.SCREENS.getValue("whatsapp_chat")
         val send = mapOf<String, Any?>("x" to 990L, "y" to 2250L)
         val ask = gk.admit("tap", send, chat)
         val m = gk.approvalMessage(ask.approvalId)!!
         assertTrue(ask.approvalId.startsWith("gk"))
-        assertTrue(gk.approve(ask.approvalId, m, GateScenarioTest.sign(m)))
+        assertTrue(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m)))
         assertTrue(gk.admit("key", mapOf("name" to "DELETE"), chat).allowed)
         assertEquals("ask", gk.admit("tap", send, chat).decision)
     }

@@ -167,6 +167,33 @@ SAFE_SCHEMES = {"http", "https", "mailto", "tel", "geo", "sms", "smsto", "market
 DANGEROUS_SCHEMES = ("javascript", "vbscript", "intent", "file", "content", "data", "android-app", "jar")
 
 
+PRICE_ONLY_MONEY = ("subscribe", "join")  # money only with a price nearby (YouTube's Subscribe is free)
+SELF_NAMES = ["note to self", "notes to self", "message yourself", "saved messages", "you", "myself", "me"]
+LINK = re.compile(r"(?i)https?://|www\.|youtu\.be/|\b[a-z0-9-]+\.(?:com|be|org|net|io|tv|app|co)/")
+
+
+def is_self_label(text: str, owner: list[str] | None = None) -> bool:
+    toks = re.findall(r"[a-z0-9]+", (text or "").lower())
+    if not toks:
+        return False
+    if any(toks == re.findall(r"[a-z0-9]+", s) for s in SELF_NAMES) or (len(toks) > 1 and toks[-1] == "you"):
+        return True
+    return any(toks == re.findall(r"[a-z0-9]+", n.lower()) for n in owner or [] if n)
+
+
+def to_self(target: str, obs, owner: list[str] | None = None) -> bool:
+    """The target sends to the owner: a share target that is the owner while a link is shared, or Send in a
+    conversation whose title (top of the screen) is the owner. Unknown: not self."""
+    elements = getattr(obs, "elements", None) or []
+    if is_self_label(target, owner):
+        return any(LINK.search(f"{e.text} {e.desc}") for e in elements)
+    if not elements:
+        return False
+    height = max(e.bounds[3] for e in elements) or 1
+    return any(e.bounds[1] < height * TITLE_BAND and not e.editable and is_self_label(e.text or e.desc, owner)
+               for e in elements)
+
+
 VOLATILE = re.compile(r"\d+(?:[.,:]\d+)*")
 
 

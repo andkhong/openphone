@@ -45,7 +45,8 @@ object GateHost {
             app = context.applicationContext
             val verifier = GateVerifier { m, s -> ApprovalKeys.verify(m, s) }
             val g = Gatekeeper(GateRules.builtIn(), { SystemClock.elapsedRealtime() }, verifier,
-                               Settings(app).deviceId, ModeChange.verifier(verifier))
+                               Settings(app).deviceId, ModeChange.verifier(verifier),
+                               GateVerifier { m, s -> dev.openmob.companion.TapKeys.verify(m, s) })
             g.onEvent = { id, state -> onEvent(id, state) }
             load(g)
             gate = g
@@ -212,7 +213,7 @@ object GateHost {
             else adm.params["hint"]?.toString()?.trim().orEmpty()
         val offer = adm.grantOffer
         main.post {
-            Approvals.requestGate(app, adm.approvalId, adm.wording, hint, crop, offer?.let { grantText(it, adm) })
+            Approvals.requestGate(app, adm.approvalId, adm.wording, hint, crop, offer?.let { grantText(it, adm) }, adm.level)
         }
     }
 
@@ -296,6 +297,7 @@ object GateHost {
     }
 
     fun resume() = gate?.resume()
+    fun everydayOff() { gate?.let { if (it.everyday) { it.everydayOff(); save() } } }
 
     /** A permission-dialog default from the server: taken only if it tightens (loosening is signed on the phone). */
     fun tightenPermission(perm: String, value: String) { if (gate?.tightenPermission(perm, value) == true) save() }

@@ -15,6 +15,8 @@ class GateScenarioTest {
     companion object {
         fun sign(message: String) = GateText.sha256("test-key:$message")
         val VERIFIER = GateVerifier { m, s -> s.isNotEmpty() && s == sign(m) }
+        fun tapSign(message: String) = GateText.sha256("test-tap-key:$message")
+        val TAP_VERIFIER = GateVerifier { m, s -> s.isNotEmpty() && s == tapSign(m) }
         val RULES: GateRules by lazy { GateRules.builtIn() }
 
         fun fixture(name: String): Any? = GateScenarioTest::class.java.getResourceAsStream("/$name")!!
@@ -22,7 +24,7 @@ class GateScenarioTest {
 
         val SCREENS: Map<String, GScreen> by lazy { fixture("screens.json").obj().mapValues { GScreen.of(it.value.obj()) } }
 
-        fun newGate(clock: FakeClock) = Gatekeeper(RULES, clock, VERIFIER, "dev")
+        fun newGate(clock: FakeClock) = Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = TAP_VERIFIER)
 
         /** Runs one scenario; returns the problems (empty: it passed). */
         fun run(scenario: Map<String, Any?>, screens: Map<String, GScreen> = SCREENS): List<String> {
@@ -44,7 +46,7 @@ class GateScenarioTest {
                         if (adm.allowed) adm = gk.reverify(adm, screens.getValue(s.str("reverify_screen", s.str("screen"))))
                         saved = gk.persist()
                         val e = s["expect"].obj()
-                        for ((k, v) in listOf("decision" to adm.decision, "code" to adm.code, "kind" to adm.kind, "money" to adm.money)) {
+                        for ((k, v) in listOf("decision" to adm.decision, "code" to adm.code, "kind" to adm.kind, "money" to adm.money, "level" to adm.level)) {
                             if (k in e && e[k] != v) fail("$k: expected ${e[k]}, got $v (${adm.rule})")
                         }
                         if ("rule" in e && !adm.rule.startsWith(e.str("rule"))) fail("rule: expected ${e["rule"]}, got ${adm.rule}")
@@ -55,7 +57,13 @@ class GateScenarioTest {
                         if (p != null) {
                             var m = gk.approvalMessage(last, s.bool("grant"))!!
                             if (s["binding"] == "other") m = m.replace(p.binding, GateText.sha256("another action"))
-                            accepted = gk.approve(last, m, if (s["sig"] == "valid") sign(m) else "00")
+                            val tap = p.level == "tap"
+                            val sig = when (s["sig"]) {
+                                "valid" -> if (tap) tapSign(m) else sign(m)
+                                "other_key" -> if (tap) sign(m) else tapSign(m)
+                                else -> "00"
+                            }
+                            accepted = gk.approve(last, m, sig)
                         }
                         val want = s["expect_accepted"] as? Boolean ?: true
                         if (accepted != want) fail("approve: expected accepted=$want, got $accepted")

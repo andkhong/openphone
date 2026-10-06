@@ -113,6 +113,43 @@ non-risky actions at any time (sessions come in Phase 2); quick-settings toggles
 icon-only sends with obfuscated ids in languages other than English; and a blocked app opened from the
 launcher or recents (everything inside it is still refused and blacked out).
 
+## How OpenMob decides what's risky
+
+By owner request, risk is judged by **consequences**, not keywords, on the phone (the gatekeeper) and on the
+server alike. An action is risky if **any** of these applies; money and the hard denies keep their own rules.
+
+| Factor | Low risk: no prompt | Risky: asks (or covered by a task approval) |
+|---|---|---|
+| Content | A public link or text with a link ("Copy link", sharing a YouTube URL) | Private content: photos, videos, files, contacts, location |
+| Recipient | You: "Note to self", "Saved messages", "Message yourself", "You", your own chat (your account's email or name), or the clipboard | Anyone else, or a recipient the phone can't tell |
+| Visibility | Private (a DM, save, copy) | Public (post, publish, comment) |
+| Reversibility | Toggles and undoable steps: like, subscribe and unsubscribe, follow, save, watch later, add to cart | Permanent: deleting messages, photos, files or accounts |
+| Money | — | Any price or currency amount, or a Google Play billing sheet: the money rule (asks at the final commit unless "Also allow purchases") |
+
+Unknown factors fail closed: if the phone can't tell who receives something or what is shared, it asks (or the
+task approval covers it). "Subscribe" and "Join" are money only with a price on or near them. The server's own
+classifier can no longer make the phone ask on its own: only concrete words or rules do.
+
+## Three confirmation levels
+
+Owner principle: a fingerprint is for money and dangerous requests, never for basic app flow.
+
+1. **None:** low-risk steps (above), navigation and menus.
+2. **A tap on the phone:** messages and shares to others, posts, deleting your content, filling a saved login in
+   an app, unrecognized Settings changes. OpenMob shows its own Allow / Deny, worded by the phone, with no
+   fingerprint. The security basis: it is OpenMob's own window, and the gatekeeper never lets an agent tap
+   OpenMob's windows (`builtin:own_window`); Allow ignores touches through overlays; and the tap is signed with a
+   separate key that doesn't need the screen lock and only ever signs tap-level prompts (`gk1|tap|…`), so it
+   can't approve anything that needs a fingerprint.
+3. **Your fingerprint or PIN:** purchases (a price, a billing sheet) and dangerous steps: saved cards or
+   passwords on a web page, OTP and card fields, app permission grants.
+
+Hard denies are unchanged. **"Don't confirm everyday actions"** (off by default; turning it on is approved on
+the phone with your fingerprint, turning it off is immediate) makes level 2 run without a tap; money still asks
+unless "Also allow purchases". A task request that says "…don't ask me" has an effect only through this setting:
+the phone can't tell such a request from a forged one, so the words alone change nothing. With the setting on,
+tasks don't need a task approval either; otherwise the task approval is a tap-level prompt.
+
 ## Phones and their connections
 
 - **One live connection per phone.** If a second connection logs in as the same phone, the older

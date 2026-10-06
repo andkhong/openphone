@@ -89,6 +89,7 @@ class PermissionsPatch(BaseModel):
     # Android permission dialogs (answered by rule): {type: setting}; a loosening is approved on the phone
     permission_prompts: dict[str, str] | None = None
     task_approval: bool | None = None  # one phone approval per task covers its non-money risky steps
+    everyday: bool | None = None  # don't confirm everyday actions (turning it on is approved on the phone)
 
 
 class SettingsIn(BaseModel):

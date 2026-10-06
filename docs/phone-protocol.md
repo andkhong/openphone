@@ -770,3 +770,14 @@ commits (unless "Also allow purchases"), browser or WebView autofill and runtime
 refused: every hard deny. Declining stops the task (`task_declined`); an unanswered task prompt ends it with
 `task_no_answer`. The server asks in Ask for risky, Trusted apps and Plan first, not in Ask every step or Don't
 ask, and not when the owner turned `task_approval` off; turning it back on is a loosening approved on the phone.
+
+### 9.8 Consequence-based risk and confirmation levels
+
+A gate ask (`gate_needs_approval`) has a confirmation level the phone chooses: `tap` (OpenMob's own Allow /
+Deny, signed with a tap key that needs no screen lock, message `gk1|tap|<device>|<approval id>|<binding>`) or
+`fingerprint` (the screen-lock key, message `gk1|<device>|<approval id>|<binding>…`). Each key verifies only its
+own level. Low-risk actions (a link to yourself, copy, toggles such as like or subscribe) don't ask at all; see
+docs/safety.md, "How OpenMob decides what's risky". The owner's signed "Don't confirm everyday actions"
+(`everyday` in the permission settings; the `permissions` push carries `everyday: false` as a tightening) lets
+tap-level actions run unconfirmed. The task approval (§9.7) is a tap-level prompt and isn't asked at all with
+that setting on. The server sends `hint` only for concrete risky words or rules, never for its classifier alone.

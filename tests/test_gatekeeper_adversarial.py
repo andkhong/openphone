@@ -15,7 +15,7 @@ here and not on the phone (or the other way round) fails one of the two suites.
 import json
 
 import pytest
-from gatekeeper_ref import Gatekeeper, Screen, TestVerifier, load_fixtures, load_screens, run_scenario
+from gatekeeper_ref import Gatekeeper, Screen, TapVerifier, TestVerifier, load_fixtures, load_screens, run_scenario
 
 SCREENS = load_screens()
 ATTACKS = load_fixtures("adversarial.json")
@@ -64,7 +64,8 @@ class SimulatedPhone:
         if approval_id not in self.gk.pending:  # nothing on screen to approve
             return False
         message = self.gk.approval_message(approval_id)
-        return self.gk.approve(approval_id, message, TestVerifier.sign(message))
+        key = TapVerifier if self.gk.pending[approval_id].level == "tap" else TestVerifier  # Allow button, or screen lock
+        return self.gk.approve(approval_id, message, key.sign(message))
 
 
 class EvilServer:

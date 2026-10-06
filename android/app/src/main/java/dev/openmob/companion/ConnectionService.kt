@@ -561,6 +561,7 @@ class ConnectionService : Service() {
                     // server's claim. A server saying `never` is off is a tightening, taken from anywhere.
                     if (message.optString("ceiling") != "never") GateHost.dropNever() else GateHost.refreshBanner()
                     // Permission-dialog defaults: only tightenings are taken from the server (loosening is signed here).
+                    if (message.has("everyday") && !message.optBoolean("everyday")) GateHost.everydayOff() // a tightening
                     message.optJSONObject("permission_prompts")?.let { p ->
                         p.keys().forEach { GateHost.tightenPermission(it, p.optString(it)) }
                     }
