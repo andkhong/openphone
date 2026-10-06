@@ -7,7 +7,7 @@ import org.junit.Test
 /**
  * The shared gatekeeper fixtures (tests/fixtures/gatekeeper: scenarios.json and the adversarial suite's
  * adversarial.json) run through the phone's own engine. pytest runs the same files through the Python
- * reference (tests/test_gatekeeper_conformance.py, tests/test_gatekeeper_adversarial.py), so the two can't drift.
+ * reference (tests/test_gatekeeper_conformance.py, tests/test_gatekeeper_adversarial.py), and a differential fuzz fixture compares the two on random screens.
  */
 class GateScenarioTest {
     class FakeClock(var elapsed: Long = 10_000) : MonoClock { override fun elapsed() = elapsed }

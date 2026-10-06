@@ -529,11 +529,15 @@ re-send), `devices.py` (`gate_event`, `device_lock`, D10), `agent/loop.py` and `
 
 **Testing approach.** One JSON rule file, read by the Kotlin engine and by a Python reference engine
 (`tests/gatekeeper_ref.py`); shared fixtures (`tests/fixtures/gatekeeper/`: screens, scenarios, attacks) run in
-both JUnit (`GateScenarioTest`) and pytest (`test_gatekeeper_conformance.py`), so the two can't drift. The
+both JUnit (`GateScenarioTest`) and pytest (`test_gatekeeper_conformance.py`), and a differential fuzz fixture
+(`fuzz.json`: 400 random screens and calls with the reference engine's answers) runs through the Kotlin engine.
+That catches drift on the fixtures and the fuzzed space; it can't prove the two agree everywhere. The
 adversarial suite (`test_gatekeeper_adversarial.py`) puts a fake compromised server in front of a simulated
 gatekeeper phone running the reference engine over raw protocol messages; every attack is also a fixture the
-Kotlin engine runs. This replaces §8's emulator-based `evil_server.py` for Phase 1: there are no instrumented
-tests or captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
+Kotlin engine runs. The pure Android pieces (tree reading, live-view gating, keep-awake) have JVM tests. §8's
+emulator suite is written (`tests/adversarial/evil_server.py`, docs/testing.md) but not yet run: no emulator
+image on the build machine, and its stand-in bank and shop apps are still to be written. That is a release
+gate. There are no captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
 
 **Where it differs from the text above:**
 - **Settings, unrecognized pages:** only *changing* taps ask (a switch or checkbox, or a change word such as
@@ -567,6 +571,15 @@ tests or captured OEM Settings dumps yet (the Settings fixtures are hand-built t
   Resume.
 - **New:** code `phone_locked` (act calls while a secure lock is up, checked before the keyguard hard deny) and
   the `device_lock` message; the app keeps the screen on only while working (owner report).
+- **Review round 1 additions:** a window whose tree can't be read refuses taps and blacks out reads; nodes
+  under the touched point are always read in full, and a branch that still can't be read asks; any other
+  admitted action voids outstanding permits; the purchase follow-up starts only when the approved tap runs and
+  ends at cart/checkout words, BACK/HOME/recents, launches, links or after 3 other actions; fill grants bind
+  to the focused field's app (never a browser or WebView field); the live view drops every frame while a
+  protected app is visible (250 ms hold-back, restart from a keyframe); keep-awake holds only after admitted
+  actions and for at most 10 minutes after the owner last used the phone; a screen-off mid-task pauses rather
+  than unlocking; Build number and the VPN consent dialog ask; permission-change prompts are limited to 2 an
+  hour; gate prompt ids start with `gk` and the legacy path refuses them.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

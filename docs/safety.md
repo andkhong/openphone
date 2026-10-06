@@ -58,7 +58,8 @@ Unknown methods are refused.
 **Refused in every mode, on the phone:**
 - **Blocked apps**: banking, payments, wallets, crypto, password managers and authenticators, and OpenMob
   itself. Launching them, links into them, acting in them and their app-info page are refused; screenshots
-  are black and the element list is empty while one is visible anywhere on screen.
+  are black, the element list is empty and the live view sends no frames while one (or an app the phone
+  can't identify yet) is visible anywhere on screen.
 - **Security-critical Settings**: screen lock and security, accounts and users, accessibility, notification
   access and special app access, default apps, developer options and wireless debugging, VPN and Private DNS,
   language and region, and **enabling a keyboard**. Recognized by page title, activity and package across
@@ -73,7 +74,8 @@ Unknown methods are refused.
 "Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
 notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
 "slide to pay", unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
-manual date and time, pairing a new Bluetooth device, app-info actions other than Force stop and Clear cache,
+manual date and time, Build number (turning on developer options), the VPN consent dialog, pairing a new
+Bluetooth device, app-info actions other than Force stop and Clear cache,
 any change on a Settings page the phone doesn't recognize, and a permission dialog for an app other than the
 one the task is using. Swipes that are really taps and long presses are judged as taps. Steps on the way
 ("Add to cart", "Proceed to checkout", search, scrolling, everyday Settings such as Wi-Fi, Bluetooth, dark mode
