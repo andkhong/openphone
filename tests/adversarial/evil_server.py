@@ -873,26 +873,58 @@ async def g_flood(phone: Phone, dev: Device) -> None:
     dev.home()
 
 
+async def g_promptrate(phone: Phone, dev: Device) -> None:
+    """Prompt flooding with an owner who approves (and a server that never uses the approvals): at most 6 asks in
+    10 minutes, then refusals with no prompt."""
+    G = "flood"
+    await shop_open(dev)
+    buy = await dev.find("Buy now")
+    asked, last = 0, {}
+    for i in range(8):
+        last = await phone.call("tap", x=buy[0], y=buy[1])
+        if not asks(last):
+            break
+        asked += 1
+        await dev.approve(f"promptrate-{i}")
+        await phone.gate_state(last["approval_id"])
+        await phone.call("swipe", x1=540, y1=1800, x2=540, y2=1700, duration_ms=300)  # voids the permit
+    shown = await dev.prompt(3)
+    check(G, "at most 6 prompts in 10 minutes, then refused without a prompt",
+          asked == 6 and refused(last, "gate_rate_limited") and shown is None, f"asked={asked} then {short(last)[:200]}")
+    dev.home()
+
+
 async def g_keepawake(phone: Phone, dev: Device) -> None:
     G = "keepawake"
     dev.unlock()
     dev.home()
+    stay = dev.sh("settings get global stay_on_while_plugged_in").strip()
+    dev.sh("settings put global stay_on_while_plugged_in 0")  # the emulator is "plugged in": stay-awake would win
     dev.sh("settings put system screen_off_timeout 15000")
-    time.sleep(22)  # past the 20 s idle window after any admitted act
+    # One admitted act (it may hold the screen on for 20 s), then nothing but reads, as fast as the server likes.
+    act = await phone.call("swipe", x1=540, y1=1500, x2=540, y2=1000, duration_ms=300)
     t0 = time.time()
-    off_at = None
-    while time.time() - t0 < 45:
+    off_at, reads = None, 0
+    while time.time() - t0 < 70:
         await phone.call("screenshot")
         await phone.call("ui_elements")
         await phone.call("device_state")
-        if off_at is None and not dev.awake():
+        reads += 3
+        if not dev.awake():
             off_at = time.time() - t0
-        await asyncio.sleep(2)
-    check(G, "server reads alone don't keep the screen on (B3)", off_at is not None,
-          f"screen off after {off_at and round(off_at, 1)} s of polling (timeout 15 s)")
+            break
+        await asyncio.sleep(0.5)
+    check(G, "server reads alone don't keep the screen on (B3)", off_at is not None and off_at < 45,
+          f"act={act.get('ok')}; screen off {off_at and round(off_at, 1)} s after the last act, through {reads} reads "
+          f"(timeout 15 s, act hold 20 s)")
+    for _ in range(30):  # Android locks a few seconds after the screen goes off ("lock after timeout")
+        if "mIsShowing=true" in dev.sh("dumpsys window | grep -A1 KeyguardStateMonitor"):
+            break
+        await asyncio.sleep(0.5)
     r = await phone.call("tap", x=540, y=1200)
     check(G, "acts while the phone is locked are refused", refused(r, "phone_locked"), short(r))
     dev.sh("settings put system screen_off_timeout 1800000")
+    dev.sh(f"settings put global stay_on_while_plugged_in {stay or 0}")
     dev.unlock()
 
 
@@ -945,7 +977,7 @@ async def g_probe(phone: Phone, dev: Device) -> None:
 
 
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
-          "shop": g_shop, "webview": g_webview, "flood": g_flood, "keepawake": g_keepawake, "friction": g_friction, "probe": g_probe}
+          "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction, "probe": g_probe}
 
 
 async def main() -> None:
