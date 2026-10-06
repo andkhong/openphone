@@ -1,7 +1,8 @@
 """`openmob timings`: where agent steps spend their time, from the steps table.
 
-Per group (model × Jev on/off, plus all models together): median / p90 / mean of each phase per
-step, and steps per task. "Agent time" is total minus wait: waits are human or loading-screen time
+Per group (model × Jev on/off × latency variant, plus all models together): median / p90 / mean of
+each phase per step, and steps per task. The variant (fixed | adaptive settle, +fast for the fast
+path) is shown when steps recorded one; groups with fast steps also split fast and vision steps. "Agent time" is total minus wait: waits are human or loading-screen time
 (approvals, ask_user answers, loading screens), shown but kept out of the agent's own time.
 """
 
@@ -64,28 +65,45 @@ def _derived(row: dict) -> dict:
     return out
 
 
+SPLIT_ROWS = (("observe", "observe_ms"), ("jev", "jev_ms"), ("model", "model_ms"), ("action", "action_ms"),
+              ("settle", "settle_ms"), ("agent time", "agent_ms"))
+
+
+def _phases(members: list[dict], rows=PHASE_ROWS) -> dict:
+    return {key: stats([float(r[key]) for r in members if r.get(key) is not None]) for _, key in rows}
+
+
 def summarize(rows: list[dict]) -> list[dict]:
-    """Groups of steps by (model, jev), then by jev over all models. Each group: its label,
-    tasks, steps, steps-per-task stats and per-phase stats (ms per step)."""
+    """Groups of steps by (model, jev, variant), then by (jev, variant) over all models. Each group:
+    its label, tasks, steps, steps-per-task stats, per-phase stats (ms per step) and, when it has
+    fast-path steps, the same stats for its fast and its vision steps apart ("split")."""
     groups: dict[tuple, list[dict]] = defaultdict(list)
     for row in rows:
         row = _derived(row)
         jev = None if row.get("jev") is None else bool(row["jev"])
-        groups[(row.get("model") or "?", jev)].append(row)
-        groups[(ALL_MODELS, jev)].append(row)
-    models = {m for m, _ in groups if m != ALL_MODELS}
+        variant = row.get("variant")
+        groups[(row.get("model") or "?", jev, variant)].append(row)
+        groups[(ALL_MODELS, jev, variant)].append(row)
+    models = {m for m, _, _ in groups if m != ALL_MODELS}
     out = []
-    for (model, jev), members in sorted(groups.items(), key=lambda kv: (kv[0][0] == ALL_MODELS, kv[0][0], kv[0][1] is not True)):
+    order = lambda kv: (kv[0][0] == ALL_MODELS, kv[0][0], kv[0][1] is not True, kv[0][2] or "")  # noqa: E731
+    for (model, jev, variant), members in sorted(groups.items(), key=order):
         if model == ALL_MODELS and len(models) < 2:
             continue  # the same as the one model's group
         per_task: dict[str, int] = defaultdict(int)
         for row in members:
             per_task[row["turn_id"]] += 1
-        out.append({
-            "model": model, "jev": jev, "steps": len(members), "tasks": len(per_task),
+        group = {
+            "model": model, "jev": jev, "variant": variant, "steps": len(members), "tasks": len(per_task),
             "steps_per_task": stats([float(n) for n in per_task.values()]),
-            "phases": {key: stats([float(r[key]) for r in members if r.get(key) is not None]) for _, key in PHASE_ROWS},
-        })
+            "phases": _phases(members),
+        }
+        if any(r.get("fast") for r in members):
+            fast = [r for r in members if r.get("fast")]
+            vision = [r for r in members if not r.get("fast")]
+            group["split"] = {"fast": {"steps": len(fast), "phases": _phases(fast, SPLIT_ROWS)},
+                              "vision": {"steps": len(vision), "phases": _phases(vision, SPLIT_ROWS)}}
+        out.append(group)
     return out
 
 
@@ -99,6 +117,8 @@ def format_report(groups: list[dict]) -> str:
     lines = []
     for g in groups:
         jev = {True: "jev on", False: "jev off", None: "jev unknown"}[g["jev"]]
+        if g.get("variant"):
+            jev += f" · {g['variant']}"
         spt = g["steps_per_task"]
         lines.append(f"{g['model']} · {jev} · {g['tasks']} tasks · {g['steps']} steps · steps/task "
                      f"median {spt['median']:.1f}, p90 {spt['p90']:.1f}, mean {spt['mean']:.1f}")
@@ -109,6 +129,13 @@ def format_report(groups: list[dict]) -> str:
             share = "" if key in ("agent_ms", "wait_ms", "total_ms") or not agent_mean or s["mean"] is None \
                 else f"{100 * s['mean'] / agent_mean:.0f}%"
             lines.append(f"  {label:<14}{_ms(s['median']):>9}{_ms(s['p90']):>9}{_ms(s['mean']):>9}{share:>9}")
+        if split := g.get("split"):
+            f, v = split["fast"], split["vision"]
+            share = 100 * f["steps"] / max(f["steps"] + v["steps"], 1)
+            lines.append(f"  fast vs vision steps: {f['steps']} fast ({share:.0f}%), {v['steps']} vision")
+            lines.append(f"  {'mean ms/step':<14}{'fast':>9}{'vision':>9}")
+            for label, key in SPLIT_ROWS:
+                lines.append(f"  {label:<14}{_ms(f['phases'][key]['mean']):>9}{_ms(v['phases'][key]['mean']):>9}")
         lines.append("")
     lines.append("agent time = total − wait (approvals, answers, loading screens). "
                  "settle is counted on the step after the action that caused it.")

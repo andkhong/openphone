@@ -375,3 +375,30 @@ def test_harness_keeps_going_when_a_run_breaks(tmp_path):
     runs = bench.run_bench([task], make_agent)
     assert len(runs) == 2 and all(r.error and not r.success for r in runs)
     assert "ERR" in bench.format_comparison(runs)
+
+
+def test_report_splits_fast_and_vision_steps_and_groups_by_variant():
+    rows = [
+        row("a", 1, variant="adaptive+fast", fast=1, jev_ms=150, model_ms=0, total_ms=600),
+        row("a", 1, variant="adaptive+fast", fast=0, jev_ms=150, model_ms=1500, total_ms=2200),
+        row("b", 1, variant="fixed", fast=0, model_ms=1500, settle_ms=800, total_ms=3000),
+    ]
+    groups = {g["variant"]: g for g in summarize(rows)}
+    assert set(groups) == {"adaptive+fast", "fixed"} and "split" not in groups["fixed"]
+    split = groups["adaptive+fast"]["split"]
+    assert split["fast"]["steps"] == 1 and split["vision"]["steps"] == 1
+    assert split["fast"]["phases"]["model_ms"]["mean"] == 0 and split["vision"]["phases"]["model_ms"]["mean"] == 1500
+    text = format_report(summarize(rows))
+    assert "m1 · jev on · adaptive+fast · 1 tasks" in text and "fast vs vision steps: 1 fast (50%), 1 vision" in text
+
+
+def test_fast_settle_and_variant_columns_are_stored(tmp_path):
+    h = History(tmp_path / "h.sqlite")
+    chat = h.create_chat(None, "p", "Pixel", "hi")
+    h.record_step(chat, "t1", {"idx": 1, "tool": "tap_element", "is_error": False, "jev": True, "model": "m",
+                               "fast": True, "settle_idle": False, "variant": "adaptive+fast",
+                               **dict.fromkeys(PHASE_KEYS, 5)})
+    step = h.steps(None, "t1")[0]
+    assert step["fast"] is True and step["settle_idle"] is False and step["variant"] == "adaptive+fast"
+    timed = h.step_timings()[0]
+    assert timed["fast"] == 1 and timed["variant"] == "adaptive+fast"
