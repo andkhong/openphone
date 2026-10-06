@@ -421,6 +421,7 @@ class V1Service:
                 "busy": bool(live and snap.get("state") != "idle"),
                 "last_seen": d.last_seen,
                 "paired_at": d.paired_at,
+                "trusted_for_approvals": d.trusted,
             })
         return {"devices": out}
 

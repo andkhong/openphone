@@ -592,27 +592,40 @@ function showNewPhone(devices) {
   const box = $("newPhone");
   const now = Date.now() / 1000;
   const seen = seenPairings();
-  const fresh = accounts && devices.find((d) => d.paired_at && now - d.paired_at < 900 && !seen.includes(`${d.id}:${d.paired_at}`));
+  const fresh = accounts && ([...devices].sort((a, b) => (b.paired_at || 0) - (a.paired_at || 0)).find((d) => d.trusted_for_approvals === false) ||
+    devices.find((d) => d.paired_at && now - d.paired_at < 900 && !seen.includes(`${d.id}:${d.paired_at}`)));
   if (!fresh) { box.hidden = true; return; }
-  const tag = `${fresh.id}:${fresh.paired_at}`;
+  const untrusted = fresh.trusted_for_approvals === false;
+  const tag = `${fresh.id}:${fresh.paired_at}:${untrusted}`;
   if (box.dataset.tag === tag && !box.hidden) return;
   box.dataset.tag = tag;
   const mins = Math.round((now - fresh.paired_at) / 60);
   const text = el("div", "np-text");
   text.append(el("b", "", `New phone added: ${fresh.name || fresh.model}`),
-              el("span", "", `Paired ${mins < 1 ? "just now" : `${mins} min ago`}. If this wasn't you, remove it.`));
+              el("span", "", `Paired ${mins < 1 ? "just now" : mins < 120 ? `${mins} min ago` : "earlier"}. ` +
+                (untrusted ? "It can't approve actions on your other phones until you trust it. Not yours? Remove it."
+                           : "If this wasn't you, remove it.")));
   const remove = el("button", "btn btn-sm btn-danger", "Remove");
   remove.type = "button";
   remove.setAttribute("aria-label", `Remove ${fresh.name || fresh.model} from your account`);
   remove.onclick = async () => {
     remove.disabled = true;
-    try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/revoke`, { method: "POST" }); markPairingSeen(tag); box.hidden = true; }
+    try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/revoke`, { method: "POST" }); box.hidden = true; }
     catch (e) { remove.disabled = false; alert(e.message); }
     loadDevices();
   };
-  const ok = el("button", "btn btn-sm", "It's mine");
+  const ok = el("button", untrusted ? "btn btn-sm btn-primary" : "btn btn-sm", untrusted ? "Trust for approvals" : "It's mine");
   ok.type = "button";
-  ok.onclick = () => { markPairingSeen(tag); box.hidden = true; };
+  ok.onclick = async () => {
+    if (untrusted) {
+      ok.disabled = true;
+      try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/trust`, { method: "POST" }); }
+      catch (e) { ok.disabled = false; alert(e.message); return; }
+    }
+    markPairingSeen(`${fresh.id}:${fresh.paired_at}:false`);
+    box.hidden = true;
+    loadDevices();
+  };
   const actions = el("div", "np-actions");
   actions.append(ok, remove);
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");

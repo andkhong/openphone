@@ -81,6 +81,7 @@ class Device:
     last_seen: float
     revoked: bool
     paired_at: float = 0.0  # the latest pairing (a re-pair moves it; `created` stays the first)
+    trusted: bool = True  # may answer approvals for the owner's other phones (see trust_device)
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -318,6 +319,12 @@ class AccountStore:
                 existing = None  # previously revoked by another account: start a fresh record
             pairing["used"] = True
             pairing["device_id"] = device_id
+            # A new pairing may approve only its own actions until the owner trusts it, since a leaked
+            # code or devices:add key mustn't yield a phone that approves purchases on the others.
+            # The account's first phone has nothing to compare against, so it's trusted. A re-pair
+            # starts over: device ids aren't secret, so trust can't ride along with one.
+            first = not any(i != device_id and d["account_id"] == owner and not d["revoked"]
+                            for i, d in self._data["devices"].items())
 
             key = secrets.token_urlsafe(32)
             now = time.time()
@@ -332,6 +339,7 @@ class AccountStore:
                 # The phone's screen-lock-bound public key: its approvals must be signed with it.
                 # Pairing again replaces it (or clears it, for an app too old to send one).
                 "approval_key": approval_key or None,
+                "trusted": first,
             }
             self._save()
             return key
@@ -348,6 +356,27 @@ class AccountStore:
             if p["used"] or p["expires"] < time.time():
                 return {"status": "expired", "device_id": None}
             return {"status": "pending", "device_id": None}
+
+    def trusted_for_approvals(self, device_id: str) -> bool:
+        """May this phone answer approvals for its owner's other phones? Pairings from before trust
+        existed count as trusted (they were paired with a signed-in session)."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id or "")
+            return bool(d and not d["revoked"] and d.get("trusted", True))
+
+    def trust_device(self, account_id: str, device_id: str) -> bool:
+        """The owner trusts one of their phones for approvals. False if not theirs (or revoked)."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id or "")
+            if not d or d["revoked"] or d["account_id"] != account_id:
+                return False
+            if not d.get("trusted", True):
+                d["trusted"] = True
+                d["trusted_at"] = time.time()
+                self._save()
+            return True
 
     def is_paired(self, account_id: str, device_id: str) -> bool:
         """This phone is paired (and not revoked) to this account."""
@@ -403,7 +432,7 @@ class AccountStore:
         with self._lock:
             self._refresh()
             return [
-                Device(id=device_id, paired_at=d.get("paired_at") or d["created"],
+                Device(id=device_id, paired_at=d.get("paired_at") or d["created"], trusted=d.get("trusted", True),
                        **{k: d[k] for k in ("account_id", "model", "created", "last_seen", "revoked")})
                 for device_id, d in self._data["devices"].items()
                 if d["account_id"] == account_id and not d["revoked"]

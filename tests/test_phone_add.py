@@ -145,6 +145,7 @@ def test_phone_add_runs_every_step_then_is_idempotent(srv, apk):  # noqa: F811
     assert adb.appops == "allow"
     assert any("Connect this phone to" in line for line in lines) and "is ready" in lines[-1]
     assert srv.store.is_paired(srv.store.account_id_for("dev@example.com"), "uuid-1")
+    assert srv.store.trusted_for_approvals("uuid-1")  # the account's first phone: trusted automatically
 
     # Second run: nothing to install, grant, enable or pair; no second confirmation on the phone.
     before, ran = len(adb.links), len(adb.commands)

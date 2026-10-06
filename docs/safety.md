@@ -65,6 +65,20 @@ app older than this keep working as before until they update.)
 - **Every phone shows.** The dashboard lists every paired phone, connected or not, and shows **New
   phone added** with one-click **Remove** after a pairing. Pairings, removals and unpairs go in
   the audit log (`device.paired`, `device.removed`, `device.unpaired`, `pairing.code_created`).
+- **A new phone can't approve for your other phones until you trust it.** Approval requests go
+  to every online phone of the owner, so a phone added with a stolen QR code or a leaked
+  `devices:add` key could otherwise approve purchases on the others. A newly paired phone can be
+  operated, and it can approve its **own** actions (that's the same exposure as the phone itself),
+  but it isn't sent approval requests for your other phones, and its answers to them are rejected
+  by the server. You trust it in one click: **Trust for approvals** in the "New phone added" banner
+  or under **Your phones**, or from an already-trusted phone signed with that phone's screen lock
+  (`POST /api/phone/trust`). An API key, even with `devices:add`, can't trust a phone. Your
+  account's **first** phone is trusted automatically (there's nothing to compare it with), including
+  one added with `openmob phone add`. Pairing a phone again resets its trust, because device ids
+  aren't secret. Trusting is recorded as `device.trusted` in the audit log. The phone-gatekeeper
+  design's cross-signing ceremony (D7/D11 in `docs/design/phone-gatekeeper.md`: a QR or 6-digit
+  code between two phones, each confirmed with its own screen lock) is the planned replacement for
+  the dashboard click.
 - **Unpairing** works from the dashboard (Remove), from the phone (with its device key, no session),
   or from the API's admin tools; each closes the phone's connections at once.
 - **Sign-up doesn't reveal accounts.** `POST /api/auth/signup` gives the same reply whether or not

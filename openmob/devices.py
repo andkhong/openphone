@@ -84,6 +84,9 @@ class DeviceManager:
         # (answering session, approval record, approved, message) -> bool: is this approval genuine
         # (signed with the phone's screen-lock key)? None: no check (local mode).
         self.approval_verifier = None
+        # (session) -> bool: may this phone answer approvals for the owner's OTHER phones? A newly
+        # paired phone may not until the owner trusts it. None: every phone may (local mode).
+        self.approval_trust = None
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -281,8 +284,19 @@ class DeviceManager:
     # holding another. The first answer wins (screen lock on that phone); the others are told to
     # dismiss their prompt with approval_cancel.
 
+    def _may_answer(self, answering: Session, acting: Session) -> bool:
+        """A phone may always answer for its own actions (the owner is holding it); for another
+        phone's, only once the owner has trusted it for approvals."""
+        if answering is acting or self.approval_trust is None:
+            return True
+        try:
+            return bool(self.approval_trust(answering))
+        except Exception:
+            return False  # fail closed
+
     def _approval_targets(self, acting: Session) -> list[Session]:
-        return [s for s in list(self.sessions.values()) if s.link and s.account_id == acting.account_id]
+        return [s for s in list(self.sessions.values())
+                if s.link and s.account_id == acting.account_id and self._may_answer(s, acting)]
 
     def _ask_owner(self, acting: Session, task_id: str, question: str, who: dict | None) -> None:
         approval_id = uuid.uuid4().hex
@@ -333,6 +347,10 @@ class DeviceManager:
             record = self.approvals.get(str(approval_id or ""))
             if record is None or record["session"].account_id != session.account_id:
                 return False
+        if not self._may_answer(session, record["session"]):
+            session.coordinator.event("status", "This phone isn't trusted for approvals on your other phones yet, "
+                                                "so its answer was ignored. Trust it on your dashboard.", task=None)
+            return False
         if approved and self.approval_verifier is not None and not self.approval_verifier(
                 session, approval_id, record, message or {}):
             session.coordinator.event("status", "An approval wasn't signed with this phone's screen lock, "
@@ -403,7 +421,7 @@ class DeviceManager:
             pending = [(a, r) for a, r in self.approvals.items() if r["session"].account_id == session.account_id]
         for approval_id, record in pending:
             info = record["session"].coordinator.task(record["task_id"])
-            if info and info["status"] == "needs_confirmation":
+            if info and info["status"] == "needs_confirmation" and self._may_answer(session, record["session"]):
                 self._send_approval(session, approval_id, record)  # same id: phones ignore ones they answered
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:

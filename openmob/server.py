@@ -107,6 +107,13 @@ class PhoneUnpairIn(BaseModel):
     device_id: str
 
 
+class PhoneTrustIn(BaseModel):
+    device_id: str  # the trusted phone signing
+    target: str  # the phone to trust (raw id or "app-<id>")
+    timestamp: int
+    signature: str
+
+
 class EnrollIn(BaseModel):
     device_id: str | None = None  # the app's id, when the CLI could read it: already paired → no new code
 
@@ -369,7 +376,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         audit("device.paired", owner, device_id=raw_id, outcome=" ".join(body.model.split())[:80] or None)
         print(f"📱 New phone paired: {body.model or raw_id}", flush=True)
         return {"key": key, "server": public_base(request), "email": store.account_email(owner),
-                "device_id": raw_id}
+                "device_id": raw_id, "trusted_for_approvals": store.trusted_for_approvals(raw_id)}
 
     @app.post("/api/pair/check")
     def pair_check(body: CodeIn, request: Request) -> dict:
@@ -420,6 +427,49 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         manager.remove(f"app-{raw_id}")
         audit("device.unpaired", owner, device_id=raw_id, outcome="from the phone")
         return {"ok": True}
+
+    def trusted(account_id: str, raw_id: str, how: str) -> dict:
+        audit("device.trusted", account_id, device_id=raw_id, outcome=how)
+        s = manager.get(f"app-{raw_id}")
+        if s is not None and s.link is not None:
+            manager.resume(s)  # it can answer the approvals still waiting on the other phones now
+        return {"ok": True, "trusted_for_approvals": True}
+
+    @app.post("/api/devices/{device_id}/trust", dependencies=[Depends(require_auth)])
+    def trust(device_id: str, request: Request) -> dict:
+        """The owner, signed in on the dashboard, trusts a phone for approvals on their other phones.
+        Only a dashboard session can do this (an API key can't reach /api), or a trusted phone's
+        screen-lock signature (/api/phone/trust)."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        raw_id = device_id.removeprefix("app-")
+        if not store.trust_device(account(request), raw_id):
+            raise HTTPException(status_code=404, detail="Not your phone.")
+        return trusted(account(request), raw_id, "from the dashboard")
+
+    @app.post("/api/phone/trust")
+    def phone_trust(body: PhoneTrustIn, request: Request) -> dict:
+        """A trusted phone vouches for another of the owner's phones, signing "trust|<target>|<time>"
+        with its screen-lock approval key (X-OpenMob-Device-Key authenticates the phone itself)."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        from .accounts import AuthError
+        from .phone.approval_keys import verify_trust
+
+        signer = body.device_id.strip()
+        target = body.target.removeprefix("app-").strip()
+        try:
+            owner = store.verify_device(signer, request.headers.get("x-openmob-device-key") or "")
+        except AuthError:
+            raise HTTPException(status_code=401, detail="This phone isn't paired, or its key is wrong.") from None
+        auth = store.device_auth(signer)
+        if not store.trusted_for_approvals(signer) or not auth or not auth["approval_key"]:
+            raise HTTPException(status_code=403, detail="Only a phone trusted for approvals can trust another.")
+        if not verify_trust(auth["approval_key"], target, body.timestamp, body.signature):
+            raise HTTPException(status_code=403, detail="The trust wasn't signed with this phone's screen lock.")
+        if not store.trust_device(owner, target):
+            raise HTTPException(status_code=404, detail="Not your phone.")
+        return trusted(owner, target, f"by phone {signer}")
 
     @app.post("/api/devices/{device_id}/revoke", dependencies=[Depends(require_auth)])
     def revoke(device_id: str, request: Request) -> dict:
@@ -500,7 +550,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 "online": False, "reconnecting": False, "state": "offline", "current": None,
             }
             rows.append({**row, "paired": True, "session": live, "name": d.model, "last_seen": d.last_seen,
-                         "paired_at": d.paired_at})
+                         "paired_at": d.paired_at, "trusted_for_approvals": d.trusted})
         return rows
 
     @app.get("/api/devices", dependencies=[Depends(require_auth)])
@@ -836,7 +886,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             s = manager.get(f"app-{device_id}") if device_id else None
             online = bool(s and s.account_id == p.account_id and s.online)
             return {"status": status["status"], "device_id": f"app-{device_id}" if device_id else None,
-                    "online": online, "model": s.info.model if s else None}
+                    "online": online, "model": s.info.model if s else None,
+                    # devices:add can't change this: trusting needs the dashboard or a trusted phone.
+                    "trusted_for_approvals": bool(device_id and store.trusted_for_approvals(device_id))}
 
         @app.get("/developer", response_class=HTMLResponse)
         def developer_page() -> str:
@@ -884,8 +936,13 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         return verify_approval(auth["approval_key"], str(approval_id), record["task_id"], True,
                                message.get("timestamp"), message.get("signature"))
 
+    def may_approve_for_others(session) -> bool:
+        return store.trusted_for_approvals(session.info.id.removeprefix("app-"))
+
     if hasattr(manager, "replaced_listeners"):  # (test doubles may not have these)
         manager.approval_verifier = verify_phone_approval
+        if store is not None:
+            manager.approval_trust = may_approve_for_others
 
     def phone_reconnected_elsewhere(session, old, new) -> None:
         service = getattr(app.state, "v1_service", None)

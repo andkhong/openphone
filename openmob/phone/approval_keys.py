@@ -40,9 +40,23 @@ def valid_public_key(public_key: str | None) -> bool:
         return False
 
 
+def trust_message(target_device_id: str, timestamp: int) -> bytes:
+    """What a trusted phone signs (with its screen lock) to trust another phone for approvals."""
+    return f"trust|{target_device_id}|{int(timestamp)}".encode()
+
+
+def verify_trust(public_key: str, target_device_id: str, timestamp, signature: str | None,
+                 now: float | None = None) -> bool:
+    return _verify(public_key, lambda ts: trust_message(target_device_id, ts), timestamp, signature, now)
+
+
 def verify_approval(public_key: str, approval_id: str, task_id: str, approved: bool,
                     timestamp, signature: str | None, now: float | None = None) -> bool:
     """True only for a fresh, valid signature by this phone's approval key."""
+    return _verify(public_key, lambda ts: approval_message(approval_id, task_id, approved, ts), timestamp, signature, now)
+
+
+def _verify(public_key: str, message, timestamp, signature: str | None, now: float | None = None) -> bool:
     if not signature or not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         return False
     now = time.time() if now is None else now
@@ -56,7 +70,7 @@ def verify_approval(public_key: str, approval_id: str, task_id: str, approved: b
 
         key = load_der_public_key(base64.b64decode(public_key, validate=True))
         key.verify(base64.b64decode(signature, validate=True),
-                   approval_message(approval_id, task_id, approved, int(timestamp)), ec.ECDSA(hashes.SHA256()))
+                   message(int(timestamp)), ec.ECDSA(hashes.SHA256()))
         return True
     except (InvalidSignature, ValueError, TypeError, binascii.Error):
         return False

@@ -270,3 +270,89 @@ def test_pairing_rejects_a_malformed_approval_key(h):
     r = httpx.post(f"{h.base}/api/pair/redeem", headers={"X-OpenMob-Session": h.alice.session_token},
                    json={"code": code, "device_id": "x", "model": "Pixel", "approval_key": "not-a-key"})
     assert r.status_code == 400
+
+
+# --- a newly paired phone is untrusted for approvals until the owner trusts it ----------------------
+
+
+def test_first_phone_is_trusted_and_a_second_one_is_not(h):
+    assert h.store.trusted_for_approvals(h.ids.a1) is True  # Alice's first phone
+    assert h.store.trusted_for_approvals(h.ids.a2) is False  # added later: untrusted
+    rows = {d["id"]: d for d in h.alice.get("/api/devices").json()}
+    assert rows[f"app-{h.ids.a1}"]["trusted_for_approvals"] and not rows[f"app-{h.ids.a2}"]["trusted_for_approvals"]
+
+
+def test_an_untrusted_phone_gets_no_requests_for_other_phones_and_cant_approve_them(h):
+    start_cart(h, h.ids.a1)  # risky task on the trusted phone
+    assert wait_for(lambda: h.pa1.approval_requests)
+    assert not wait_for(lambda: h.pa2.approval_requests, timeout=1.0)  # not fanned out to the new phone
+    # Even knowing the request id, its signed yes is rejected server-side.
+    request = h.pa1.approval_requests[-1]
+    h.pa2.send(h.pa2.approval(request["id"], request["task_id"], True))
+    assert not wait_for(lambda: h.status(h.ids.a1) == "succeeded", timeout=1.0)
+    assert not any(a[0] == "tap" for a in h.pa1.driver.actions)
+    h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True))  # the trusted phone still can
+    assert wait_for(lambda: h.status(h.ids.a1) == "succeeded")
+
+
+def test_an_untrusted_phone_can_approve_its_own_actions(h):
+    start_cart(h, h.ids.a2)
+    assert wait_for(lambda: h.pa2.approval_requests)
+    request = h.pa2.approval_requests[-1]
+    h.pa2.send(h.pa2.approval(request["id"], request["task_id"], True))
+    assert wait_for(lambda: h.status(h.ids.a2) == "succeeded")
+
+
+def test_one_click_on_the_dashboard_trusts_it(h):
+    assert h.alice.post(f"/api/devices/app-{h.ids.a2}/trust").json() == {"ok": True, "trusted_for_approvals": True}
+    assert h.bob.post(f"/api/devices/app-{h.ids.a2}/trust").status_code == 404  # not Bob's phone
+    start_cart(h, h.ids.a1)
+    assert wait_for(lambda: h.pa2.approval_requests)  # now it's asked too…
+    request = h.pa2.approval_requests[-1]
+    h.pa2.send(h.pa2.approval(request["id"], request["task_id"], True))  # …and its yes counts
+    assert wait_for(lambda: h.status(h.ids.a1) == "succeeded")
+    acct = h.store.account_id_for("alice@example.com")
+    assert any(r["action"] == "device.trusted" for r in h.ledger.audit_log(account_id=acct))
+
+
+def test_a_devices_add_key_cant_trust_a_phone(h):
+    acct = h.store.account_id_for("alice@example.com")
+    _, key = h.store.create_api_key(acct, "cli", ["devices:add", "devices:read"])
+    bearer = {"Authorization": f"Bearer {key}"}
+    assert httpx.post(f"{h.base}/api/devices/app-{h.ids.a2}/trust", headers=bearer).status_code == 401
+    for path in (f"/v1/devices/app-{h.ids.a2}/trust", f"/v1/enrollments/{h.ids.a2}/trust"):
+        assert httpx.post(f"{h.base}{path}", headers=bearer).status_code in (404, 405)
+    assert h.store.trusted_for_approvals(h.ids.a2) is False
+
+
+def test_a_trusted_phone_can_trust_another_with_its_screen_lock(h):
+    import base64
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from openmob.phone.approval_keys import trust_message
+
+    def body(signer, device_id, target, ts=None):
+        ts = int(time.time()) if ts is None else ts
+        sig = base64.b64encode(signer.sign(trust_message(target, ts), ec.ECDSA(hashes.SHA256()))).decode()
+        return {"device_id": device_id, "target": target, "timestamp": ts, "signature": sig}
+
+    def post(key, payload):
+        return httpx.post(f"{h.base}/api/phone/trust", headers={"X-OpenMob-Device-Key": key}, json=payload)
+
+    assert post(h.keys.a2, body(h.signers.a2, h.ids.a2, h.ids.a2)).status_code == 403  # can't vouch for itself
+    assert post(h.keys.a1, body(h.signers.b1, h.ids.a1, h.ids.a2)).status_code == 403  # another phone's key
+    assert post(h.keys.a1, body(h.signers.a1, h.ids.a1, h.ids.a2, int(time.time()) - 3600)).status_code == 403  # stale
+    assert post("wrong", body(h.signers.a1, h.ids.a1, h.ids.a2)).status_code == 401
+    assert h.store.trusted_for_approvals(h.ids.a2) is False
+    assert post(h.keys.a1, body(h.signers.a1, h.ids.a1, h.ids.a2)).status_code == 200
+    assert h.store.trusted_for_approvals(h.ids.a2) is True
+
+
+def test_re_pairing_resets_trust_unless_it_is_the_only_phone(h):
+    h.alice.post(f"/api/devices/app-{h.ids.a2}/trust")
+    h.pair(h.alice, h.ids.a2, new_signer())  # device ids aren't secret: trust doesn't ride along
+    assert h.store.trusted_for_approvals(h.ids.a2) is False
+    h.pair(h.bob, h.ids.b1, new_signer())  # Bob's only phone, paired again
+    assert h.store.trusted_for_approvals(h.ids.b1) is True

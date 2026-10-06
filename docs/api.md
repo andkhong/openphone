@@ -188,6 +188,7 @@ aren't listed).
 | `busy` | It's running a task right now |
 | `last_seen` | When it last connected |
 | `paired_at` | When it was last paired |
+| `trusted_for_approvals` | It may answer approvals for your other phones. A phone added after your first is `false` until you trust it on the dashboard (**Your phones** › Trust for approvals) or from a trusted phone; it can still run tasks and approve its own actions. No API key can change this |
 
 The owner removes a phone on the dashboard (account button → **Your phones** → Remove, which
 revokes its key and closes its connections at once); the phone can unpair itself with its own key
@@ -218,8 +219,10 @@ account are limited (30 an hour, `429`).
 
 ### GET /v1/enrollments/{id}
 
-Scope `devices:add`. `{"status": "pending" | "paired" | "expired", "device_id", "online", "model"}`:
-`paired` once the phone confirmed, `online` once its app connected. Another account's enrollment is
+Scope `devices:add`. `{"status": "pending" | "paired" | "expired", "device_id", "online", "model",
+"trusted_for_approvals"}`: `paired` once the phone confirmed, `online` once its app connected. A
+phone enrolled this way is trusted for approvals only if it's the account's first phone; otherwise
+the owner trusts it on the dashboard (a `devices:add` key can't). Another account's enrollment is
 a `404`.
 
 ## Tasks

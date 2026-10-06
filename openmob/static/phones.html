@@ -35,7 +35,7 @@
     <div class="head-row">
       <div class="page-head" style="margin:0">
         <h1>Your phones</h1>
-        <p>Every phone paired to your account, connected or not. Remove one you don't recognise: it disconnects at once and can't reconnect without pairing again.</p>
+        <p>Every phone paired to your account, connected or not. Remove one you don't recognise: it disconnects at once and can't reconnect without pairing again. A phone added after your first can approve only its own actions until you trust it.</p>
       </div>
       <a class="btn btn-primary" href="/connect">Connect a phone</a>
     </div>
@@ -71,6 +71,13 @@ async function remove(d, btn) {
   load();
 }
 
+async function trust(d, btn) {
+  btn.disabled = true;
+  try { await api(`/api/devices/${encodeURIComponent(d.id)}/trust`, { method: "POST" }); $("err").textContent = ""; }
+  catch (e) { $("err").textContent = e.message; btn.disabled = false; }
+  load();
+}
+
 async function load() {
   try {
     const phones = (await api("/api/devices")).filter((d) => d.connection === "app");
@@ -78,12 +85,21 @@ async function load() {
       const li = el("li");
       const info = el("div", "info");
       info.append(el("div", "name", d.name || d.model),
-                  el("div", "meta", `${d.online ? "Online" : `Offline · last seen ${ago(d.last_seen)}`} · paired ${ago(d.paired_at)}`));
+                  el("div", "meta", `${d.online ? "Online" : `Offline · last seen ${ago(d.last_seen)}`} · paired ${ago(d.paired_at)}` +
+                     (d.trusted_for_approvals === false ? " · can approve only its own actions" : "")));
       const btn = el("button", "btn btn-sm btn-danger", "Remove");
       btn.type = "button";
       btn.setAttribute("aria-label", `Remove ${d.name || d.model} from your account`);
       btn.onclick = () => remove(d, btn);
-      li.append(Object.assign(el("span", `dot ${d.online ? "on" : ""}`), { title: d.online ? "Online" : "Offline" }), info, btn);
+      li.append(Object.assign(el("span", `dot ${d.online ? "on" : ""}`), { title: d.online ? "Online" : "Offline" }), info);
+      if (d.trusted_for_approvals === false) {
+        const t = el("button", "btn btn-sm btn-primary", "Trust for approvals");
+        t.type = "button";
+        t.title = "Let this phone approve risky actions on your other phones too";
+        t.onclick = () => trust(d, t);
+        li.append(t);
+      }
+      li.append(btn);
       return li;
     }) : [el("li", "empty", "No phones paired yet.")]));
   } catch (e) { $("err").textContent = e.message; }

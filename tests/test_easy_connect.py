@@ -75,7 +75,7 @@ def test_claim_needs_no_session_and_the_phone_never_gets_one(srv):
     r = srv.claim(p["code"], "phone-1", approval_key=public_key_b64(new_signer()))  # no cookie, no header
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body) == {"key", "server", "email", "device_id"} and body["email"] == "alice@example.com"
+    assert set(body) == {"key", "server", "email", "device_id", "trusted_for_approvals"} and body["email"] == "alice@example.com"
     assert "set-cookie" not in r.headers and "session" not in r.text.lower()
     assert srv.store.verify_device("phone-1", body["key"]) == srv.store.account_id_for("alice@example.com")
     assert len(srv.store._data["sessions"]) == 1  # only the dashboard's own sign-in
@@ -250,7 +250,7 @@ def test_enrollment_needs_devices_add_and_pairs_only_after_the_phone_confirms(sr
     e = api.post("/v1/enrollments", json={}).json()
     assert e["already_paired"] is False and e["app_link"].startswith("openmob://connect?server=")
     status = api.get(f"/v1/enrollments/{e['enrollment_id']}").json()
-    assert status == {"status": "pending", "device_id": None, "online": False, "model": None}
+    assert status == {"status": "pending", "device_id": None, "online": False, "model": None, "trusted_for_approvals": False}
     assert alice.get("/api/devices").json() == []  # nothing is paired until the phone redeems
     phone_key = srv.claim(e["code"], "usb-phone").json()["key"]
     assert api.get(f"/v1/enrollments/{e['enrollment_id']}").json()["status"] == "paired"
