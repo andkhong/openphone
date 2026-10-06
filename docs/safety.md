@@ -371,6 +371,12 @@ rule: if it's the only grant offered, the owner is asked. A request from an app 
 asks; under Don't ask anything that would ask is denied. Allowing more is a loosening: it needs the phone's
 screen-lock approval, and on gatekeeper phones the phone keeps these settings as signed policy and enforces
 them itself (a per-app "Always allow for <app>" on its prompt is a signed grant); asking more is free.
+**On Android 14 and later these defaults can't be applied automatically:** the system hides permission
+dialogs (and Safety Center and default-apps screens) from accessibility services, so the phone can't read or
+safely tap them. The task pauses with "Kalshi is asking for location: choose on your phone, then the task
+continues" (on the phone and in the task's events), the owner answers the dialog, and the task carries on; if
+nobody answers within `owner_dialog_wait_seconds` (5 minutes), it ends with reason `needs_owner_dialog`. The
+defaults apply on Android 11–13.
 
 ## Sensitive apps are off-limits by default
 

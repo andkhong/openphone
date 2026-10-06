@@ -313,8 +313,13 @@ class Gatekeeper(
         if (method !in rules.act) return refuse("gate_unknown_method", "builtin:methods", "Unknown method $method.", method, params)
         if (pending.isNotEmpty()) return refuse("gate_prompt_open", "builtin:prompt_open",
             "Waiting for the owner to answer a prompt on the phone.", method, params)
+        if (!screen.available) return refuse("gate_unavailable", "builtin:no_accessibility",
+            "OpenMob's accessibility service is off, so the phone can't check this. Turn it on.", method, params)
         if (method != "wake_unlock" && screen.keyguardLocked && screen.keyguardSecure) {
             return refuse("phone_locked", "builtin:keyguard", "The phone is locked. Unlock it to continue.", method, params)
+        }
+        if (method != "wake_unlock") ownerDialog(screen)?.let {
+            return refuse("needs_owner_dialog", "builtin:owner_dialog", it, method, params)
         }
         val j = judge(method, params, screen)
         j.refuse?.let { return refuse(it.first, it.second, it.third, method, params, j.pkg) }
@@ -382,6 +387,22 @@ class Gatekeeper(
         }
         f.acts++
         if (f.acts > 3) followup = null
+    }
+
+    /** A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and
+     *  default-apps screens from accessibility): only the owner can answer it. Returns what to tell them, or null. */
+    fun ownerDialog(screen: GScreen): String? {
+        val perm = rules.rx(rules.sStr("permission_packages"))
+        val hidden = screen.windows.any { w ->
+            w.type == "application" && (w.root == null || walk(w.root).none { it.text.isNotEmpty() || it.desc.isNotEmpty() }) &&
+                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage)))
+        }
+        if (!hidden) return null
+        val m = PERMISSION_APP.find(screen.eventText)
+            ?: return "A system dialog needs your answer: choose on your phone, then the task continues."
+        val kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(screen.eventText) }?.get(0)
+        val what = kind?.replace('_', ' ') ?: "a permission"
+        return "${m.groupValues[1]} is asking for $what: choose on your phone, then the task continues."
     }
 
     private fun refuse(code: String, rule: String, message: String, method: String, params: Map<String, Any?>, pkg: String = "") =
@@ -747,7 +768,9 @@ class Gatekeeper(
     }
 
     private fun judgePoint(x: Double, y: Double, screen: GScreen): Judgement {
-        val t = GateScreen.hitTest(rules, screen, x, y) ?: return Judgement(changing = true)
+        // No window there that the phone knows of: it can't judge the touch.
+        val t = GateScreen.hitTest(rules, screen, x, y) ?: return Judgement(changing = true,
+            refuse = Triple("gate_screen_unstable", "builtin:no_window", "The phone can't see what's there. Look again."))
         val w = t.window
         val j = Judgement(pkg = w.pkg, fp = t.fp(false), strictFp = t.fp(true), changing = true, app = appWindow(w))
         surfaceRefusal(w)?.let { j.refuse = it; return j }

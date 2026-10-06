@@ -593,6 +593,13 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   (default) | `allow`, kept as signed `permission_default` records (tightening unsigned), with per-app
   overrides as signed `permission` grants from the prompt's "Always allow for <app>". "Allow all the time"
   always asks; denying and Approximate never do.
+- **After the B7 emulator run:** Android 14+ hides permission dialogs, Safety Center and default-apps screens
+  from accessibility. The phone detects such a dialog (an application window with no readable tree, plus the
+  window-state event's package or the window's own package) and refuses acts with `needs_owner_dialog`; the
+  task pauses until the owner answers it (`owner_dialog`), so the per-permission defaults apply only on Android
+  11–13. A tap where no window is under the point is refused (`builtin:no_window`), and every act is refused
+  with `gate_unavailable` while the accessibility service is unbound. Not done: checking the screenshot for a
+  dialog (the detection uses windows and events only).
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

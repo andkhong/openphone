@@ -664,6 +664,8 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt) | Report to the agent; never retried automatically |
 | `gate_screen_unstable` | The screen didn't settle within a second for a risky action | Report; look again |
 | `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
+| `needs_owner_dialog` | A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and default-apps screens from accessibility); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
+| `gate_unavailable` | OpenMob's accessibility service is off, so the phone can't see the screen: every act is refused | Report; the owner turns it on |
 | `gate_no_session`, `gate_policy_invalid` | Reserved (Phase 2) | Report |
 
 ### 9.3 Approvals on the phone
@@ -714,3 +716,23 @@ and show "Unlock your phone to continue". Act calls get `phone_locked` meanwhile
 sends `{"type": "device_lock", "locked": false}`. The server pauses the task for up to `locked_wait_seconds`
 (default 300), then lets the agent look again; if the phone stays locked, the task fails with reason
 `phone_locked`. The agent never taps or swipes at a lock screen.
+
+### 9.5 System dialogs the phone can't read
+
+On Android 14 and later the system hides runtime permission dialogs (and Safety Center and default-apps
+screens) from accessibility services: the phone sees the window, but not what's in it (or only the window-state
+event's package and text). It never taps such a dialog blindly. Act calls get `needs_owner_dialog`, the phone
+shows "Kalshi is asking for location: choose on your phone, then the task continues" (or "A system dialog needs
+your answer") in a notification, and tells the server:
+
+```json
+{"type": "owner_dialog", "open": true, "message": "Kalshi is asking for location: choose on your phone, then the task continues."}
+```
+
+and `{"type": "owner_dialog", "open": false}` once the dialog is gone. The server pauses the task (its events
+show the same message) for up to `owner_dialog_wait_seconds` (default 300), then lets the agent look again; if
+it's never answered, the task fails with reason `needs_owner_dialog`. So on Android 14+ the owner's
+per-permission defaults can't be applied automatically: the owner answers the dialog. On Android 11–13 they
+apply as described in docs/safety.md.
+
+A tap where the phone sees no window under the point is refused as `gate_screen_unstable` (`builtin:no_window`).

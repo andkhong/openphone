@@ -17,7 +17,7 @@ from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
-from ..phone.base import DeviceError, GateRefused, PhoneLocked
+from ..phone.base import DeviceError, GateRefused, OwnerDialog, PhoneLocked
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
@@ -42,6 +42,7 @@ RECHECK_MAX_MS = 800
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 LOCKED_MESSAGE = "The phone stayed locked, so I stopped. Unlock it and ask again."
+DIALOG_MESSAGE = "A system dialog on the phone wasn't answered, so I stopped. Answer it and ask again."
 REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
 # Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
 CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key"}
@@ -164,6 +165,7 @@ class _TaskState:
     plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
     step_approved: bool = False  # ask mode: the owner approved the action now running
     locked_out: bool = False  # the phone stayed locked past locked_wait_seconds
+    dialog_out: bool = False  # a system dialog only the owner can answer stayed open past owner_dialog_wait_seconds
     app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
     prompts: int = 0
@@ -260,6 +262,8 @@ class Agent:
             self._gate_setup(None)
         if state.locked_out and not result.success:
             result.reason = "phone_locked"
+        elif state.dialog_out and not result.success:
+            result.reason = "needs_owner_dialog"
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
@@ -299,6 +303,11 @@ class Agent:
                     obs = self._observe_settled(state)
             if state.locked_out:
                 return AgentResult(False, LOCKED_MESSAGE, step - 1)
+            if getattr(self.driver, "owner_dialog", None) and not state.dialog_out:
+                if self._dialog_wait(state):  # a system dialog only the owner can answer: pause, then look again
+                    obs = self._observe_settled(state)
+            if state.dialog_out:
+                return AgentResult(False, DIALOG_MESSAGE, step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
             if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
@@ -757,6 +766,9 @@ class Agent:
         try:
             with self.timer.phase("action"):
                 outcome = self._dispatch(name, args, obs, state)
+        except OwnerDialog:
+            state.dialog_out = True  # the dialog stayed open past owner_dialog_wait_seconds (the wait happened)
+            outcome = Outcome(DIALOG_MESSAGE, is_error=True)
         except PhoneLocked:
             state.locked_out = True  # stayed locked past locked_wait_seconds (the wait already happened)
             outcome = Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
@@ -1471,6 +1483,8 @@ class Agent:
         self.driver.gate_task = str(getattr(self.io, "current_task", "") or "") if state else ""
         self.driver.gate_approver = self._gate_approval if state else None
         self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
+        if hasattr(self.driver, "dialog_waiter"):
+            self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
 
     def _gate_approval(self, refusal) -> bool:
         """The phone asked its owner (gate_needs_approval): the task waits for that answer, worded by the phone.
@@ -1483,6 +1497,26 @@ class Agent:
                                  {"kind": "gate", "approver": "phone", "approval_id": refusal.approval_id,
                                   "package": refusal.package, "action_kind": refusal.kind})
         return is_yes(answer)
+
+    def _dialog_wait(self, state: _TaskState | None) -> bool:
+        """A system dialog the phone can't read is up (Android 14+ permission dialogs): the task pauses with the
+        phone's message ("Kalshi is asking for location: choose on your phone…") until the owner answers it (True)
+        or owner_dialog_wait_seconds pass (False: the task ends with reason needs_owner_dialog). Never tapped."""
+        wait = float(getattr(self.config, "owner_dialog_wait_seconds", 0) or 0)
+        waiter = getattr(self.driver, "wait_owner_dialog", None)
+        message = getattr(self.driver, "owner_dialog", None) or "A system dialog needs your answer on the phone."
+        self.io.event("status", message)
+        closed = False
+        if waiter is not None and wait > 0:
+            deadline = time.monotonic() + wait
+            while not closed and time.monotonic() < deadline and not (state and state.cancel.is_set()):
+                closed = self.timer.timed("wait", waiter, min(5.0, deadline - time.monotonic()))
+        if closed:
+            self.io.event("status", "The dialog was answered on the phone. Carrying on.")
+            return True
+        if state is not None:
+            state.dialog_out = True
+        return False
 
     def _lock_wait(self, state: _TaskState | None) -> bool:
         """A secure lock screen came up mid-task: pause with "Unlock your phone to continue" until the owner

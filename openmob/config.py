@@ -168,6 +168,9 @@ class Config:
     # A secure lock screen mid-task pauses the task ("Unlock your phone to continue") for up to this long,
     # then it fails with reason phone_locked. 0: fail at once.
     locked_wait_seconds: float = 300.0
+    # A system dialog the phone can't read (Android 14+ permission dialogs) pauses the task while the owner answers
+    # it on the phone, for up to this long; then it fails with reason needs_owner_dialog.
+    owner_dialog_wait_seconds: float = 300.0
     api_max_steps: int = 40  # the most steps a developer may ask for
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
     # Retention: task text (chats, orchestration plans and results, webhook bodies) older than this

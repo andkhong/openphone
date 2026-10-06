@@ -163,6 +163,9 @@ permission settings):
 - A request from an app other than the one the task is using is always asked about.
 - Under **Don't ask**, nobody can be asked: anything set to Ask me is denied; Only this time and While using the
   app still apply.
+- **Android 14 and later:** the system doesn't let OpenMob read permission dialogs, so these settings can't be
+  applied there. The task pauses and your phone shows "**Kalshi** is asking for **location**: choose on your
+  phone, then the task continues"; answer the dialog yourself and the task carries on.
 
 ## While an agent works
 

@@ -53,6 +53,7 @@ class ConnectionService : Service() {
         private const val ACTION_RESUME = "dev.openmob.GATE_RESUME"
         private const val LOCK_ID = 4 // "Unlock your phone to continue"
         private const val RESUME_ID = 5 // "Paused after repeated denials"
+        private const val DIALOG_ID = 6 // "Kalshi is asking for location: choose on your phone"
         private const val CHANNEL = "agent"
         private const val NOTIFICATION_ID = 1
         private const val OFFER_ID = 3 // "Share your screen for the live view?"
@@ -140,6 +141,7 @@ class ConnectionService : Service() {
         settings = Settings(this)
         GateHost.init(this)
         GateHost.sink = { message -> if (running === this) send(message) }
+        GateHost.onOwnerDialogClosed = { main.post { ownerDialogClosed() } }
         registerReceiver(lockWatcher, android.content.IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON)
         })
@@ -397,6 +399,7 @@ class ConnectionService : Service() {
             gate.put("kind", a.kind).put("question", a.wording)
         }
         if (a.code == "phone_locked") main.post { lockedMidTask() }
+        if (a.code == "needs_owner_dialog") main.post { ownerDialogOpened(a.message) }
         return reply.put("gate", gate)
     }
 
@@ -453,6 +456,28 @@ class ConnectionService : Service() {
         send(JSONObject().put("type", "device_lock").put("locked", false).put("secure", true))
         getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         AppState.addEvent("status", getString(R.string.lock_resumed_event))
+    }
+
+    // --- system dialogs the phone can't read (Android 14+ hides permission dialogs) ------------------------
+
+    private fun ownerDialogOpened(message: String) {
+        if (GateHost.ownerDialog != null) return
+        GateHost.ownerDialogOpened(message)
+        send(JSONObject().put("type", "owner_dialog").put("open", true).put("message", message))
+        AppState.addEvent("status", message)
+        getSystemService(NotificationManager::class.java).notify(DIALOG_ID, Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(getString(R.string.owner_dialog_title))
+            .setContentText(message)
+            .setStyle(Notification.BigTextStyle().bigText(message))
+            .build())
+        // It may already have closed between the refusal and now.
+        OpenMobAccessibilityService.instance?.let { GateHost.refreshOwnerDialog(it) }
+    }
+
+    private fun ownerDialogClosed() {
+        send(JSONObject().put("type", "owner_dialog").put("open", false))
+        getSystemService(NotificationManager::class.java).cancel(DIALOG_ID)
     }
 
     private fun postResume() {

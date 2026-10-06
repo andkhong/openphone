@@ -3811,6 +3811,198 @@
   ]
  },
  {
+  "name": "a system dialog the phone can't read pauses for the owner",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1500
+     }
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog",
+     "rule": "builtin:owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "wake_unlock",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a touch where the phone sees no window is refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2000
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:no_window"
+    }
+   },
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "x": 540,
+      "y": 2000,
+      "duration_ms": 800
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 200
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "without the accessibility service every act is refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 200
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.example.app"
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "device_state",
+     "params": {}
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
   "name": "an unreadable app window: taps refused, reads blacked out, no live view",
   "tags": [
    "hard_deny"

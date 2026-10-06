@@ -21,6 +21,9 @@ class OpenMobAccessibilityService : AccessibilityService() {
     @Volatile var currentPackage: String? = null
     /** Its activity class (e.g. com.android.settings.SubSettings). */
     @Volatile var currentActivity: String? = null
+    /** The last window-state event from another app: its package and text (GScreen.eventPackage/eventText). */
+    @Volatile var lastEventPackage: String = ""
+    @Volatile var lastEventText: String = ""
     private var keepAwake: android.view.View? = null
 
     /**
@@ -68,10 +71,18 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         noteChange(event)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Android 14+ hides some system dialogs' trees, but their state events (package, text) still arrive.
+            event.packageName?.toString()?.takeIf { it != packageName }?.let {
+                lastEventPackage = it
+                lastEventText = event.text.joinToString(" ") { t -> t?.toString().orEmpty() }.trim()
+            }
+        }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
             // A blocked app may have just come up: the live view stops sending frames at once (StreamGate).
             dev.openmob.companion.gate.GateHost.refreshProtected(this)
+            dev.openmob.companion.gate.GateHost.refreshOwnerDialog(this) // a hidden system dialog came or went
         }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val cls = event.className?.toString() ?: return

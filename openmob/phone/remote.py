@@ -14,7 +14,7 @@ import time
 import uuid
 
 from .adb import Screenshot, UIElement
-from .base import CachedScreenshots, DeviceError, GateRefused, PhoneLocked, PhoneTimeout
+from .base import CachedScreenshots, DeviceError, GateRefused, OwnerDialog, PhoneLocked, PhoneTimeout
 from .protocol import METHODS, decode_element, decode_screenshot
 
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
@@ -93,6 +93,8 @@ class PhoneLink:
             code = reply.get("code")
             if code == "phone_locked":
                 raise PhoneLocked.from_reply(reply)
+            if code == "needs_owner_dialog":
+                raise OwnerDialog.from_reply(reply)
             if isinstance(code, str) and code:  # the gatekeeper refused it, with a stable code
                 raise GateRefused.from_reply(reply)
             raise DeviceError(reply.get("error") or f"{method} failed on the phone")
@@ -146,6 +148,9 @@ class RemoteDriver(CachedScreenshots):
         self.gate_approver = None
         # (PhoneLocked) -> bool: pause until the owner unlocks (the agent sets it). True: unlocked in time.
         self.lock_waiter = None
+        # (OwnerDialog) -> bool: pause until the owner answers a system dialog the phone can't read. True: it closed.
+        self.dialog_waiter = None
+        self.owner_dialog: str | None = None  # the open dialog's message, as the phone pushed it (owner_dialog)
         self.lock_state: dict | None = None  # {"locked", "secure"} as the phone last pushed it (device_lock)
         self._lock_changed = threading.Condition()
 
@@ -163,6 +168,24 @@ class RemoteDriver(CachedScreenshots):
         with self._lock_changed:
             self.lock_state = {"locked": bool(message.get("locked")), "secure": bool(message.get("secure", True))}
             self._lock_changed.notify_all()
+
+    def on_owner_dialog(self, message: dict) -> None:
+        """The phone pushed owner_dialog: a system dialog it can't read is waiting for the owner, or it closed."""
+        with self._lock_changed:
+            self.owner_dialog = str(message.get("message") or "A system dialog needs your answer on the phone.") \
+                if message.get("open") else None
+            self._lock_changed.notify_all()
+
+    def wait_owner_dialog(self, timeout: float) -> bool:
+        """Block until the phone says the dialog closed (True), or `timeout`."""
+        deadline = time.monotonic() + timeout
+        with self._lock_changed:
+            while self.owner_dialog is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._lock_changed.wait(min(remaining, 2.0))
+        return True
 
     @property
     def locked(self) -> bool:
@@ -231,6 +254,15 @@ class RemoteDriver(CachedScreenshots):
                 params["hint"], self._gate_hint = self._gate_hint, ""
         try:
             return self._call_once(method, _wait, **params)
+        except OwnerDialog as exc:
+            if self.dialog_waiter is None:
+                raise
+            if self.owner_dialog is None:
+                self.on_owner_dialog({"open": True, "message": str(exc)})
+            if self.dialog_waiter(exc):
+                raise DeviceError("A system dialog was up, so this didn't happen. The owner answered it: look at "
+                                  "the screen again before acting.") from None
+            raise
         except PhoneLocked as exc:
             if self.lock_waiter is None:
                 raise

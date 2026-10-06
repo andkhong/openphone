@@ -69,7 +69,7 @@ def gen_screen(rng, words):
     windows = []
     for i in range(rng.choice([1, 1, 1, 2])):
         pkg = rng.choice(PACKAGES)
-        top = 0 if i == 0 else rng.randrange(800, 1600)
+        top = 0 if i == 0 and rng.random() < 0.85 else rng.randrange(800, 1600)
         kids = [gen_node(rng, words, rng.randrange(top, H - 300)) for _ in range(rng.randrange(1, 7))]
         w = {"id": i + 1, "type": rng.choice(["application"] * 4 + ["system", "input_method"]), "layer": i + 1,
              "package": pkg, "title": rng.choice(["", "", "Keyguard", "Autofill", "Share", "Security", "Internet"]),
@@ -99,6 +99,9 @@ def gen_screen(rng, words):
     return {"windows": windows, "quiet_ms": rng.choice([1000, 1000, 40]),
             "keyguard": {"locked": rng.random() < 0.05, "secure": True},
             "autofill_service": rng.choice(["", "com.google.android.gms"]), "focus": {"expected": rng.random() < 0.3},
+            "accessibility": rng.random() > 0.05,
+            "event": rng.choice([{}, {"package": "com.google.android.permissioncontroller", "text": rng.choice(
+                ["", "Allow Example to access your contacts?"])}]),
             "resolve": {"https://x.example/": {"package": rng.choice(PACKAGES)},
                         "tel:1": {"package": rng.choice(["com.google.android.dialer", "com.evil"])}},
             "labels": {"com.whatsapp": "WhatsApp", "com.example.app": "Example", "com.chase.sig.android": "Chase"}}

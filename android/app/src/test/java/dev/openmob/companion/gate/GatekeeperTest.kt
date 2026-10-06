@@ -175,6 +175,19 @@ class GatekeeperTest {
         assertTrue(gk.tightenPermission("location_accuracy", "approximate"))
     }
 
+    @Test fun aHiddenSystemDialogIsDetectedFromItsNullRootWindowAndEvent() {
+        assertEquals("Kalshi is asking for location: choose on your phone, then the task continues.",
+            gk.ownerDialog(SCREENS.getValue("hidden_permission_dialog")))
+        assertEquals("A system dialog needs your answer: choose on your phone, then the task continues.",
+            gk.ownerDialog(SCREENS.getValue("hidden_permission_samsung")))
+        assertNull(gk.ownerDialog(SCREENS.getValue("permission_dialog_session"))) // readable (Android 11-13)
+        assertNull(gk.ownerDialog(SCREENS.getValue("loading_unknown"))) // an app starting, no dialog event
+        val window = GWindow(5, "application", 5, "", "", intArrayOf(0, 0, 1080, 2400), null)
+        assertNull(gk.ownerDialog(GScreen(listOf(window), eventPackage = "com.example.app", eventText = "Allow x to y")))
+        assertEquals("needs_owner_dialog", gk.admit("tap", mapOf("x" to 5L, "y" to 5L),
+            GScreen(listOf(window), eventPackage = "com.android.permissioncontroller")).code)
+    }
+
     @Test fun theRunnerReportsAWrongExpectation() {
         val scenario = mapOf<String, Any?>("name" to "x", "steps" to listOf(mapOf(
             "call" to mapOf("method" to "tap", "params" to buy), "screen" to "amazon_product",

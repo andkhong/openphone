@@ -50,7 +50,7 @@ PROTOCOL_VERSION = 1
 GATE_CODES = (
     "gate_no_session", "gate_blocked_app", "gate_denied_page", "gate_rate_limited", "gate_needs_approval",
     "gate_denied", "gate_screen_changed", "gate_screen_unstable", "gate_prompt_open", "gate_password_field",
-    "gate_unknown_method", "gate_policy_invalid", "phone_locked",
+    "gate_unknown_method", "gate_policy_invalid", "phone_locked", "gate_unavailable", "needs_owner_dialog",
 )
 
 # method -> (parameters, result, timeout in seconds)

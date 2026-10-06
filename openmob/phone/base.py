@@ -46,6 +46,11 @@ class PhoneLocked(GateRefused):
     """The phone has a secure lock up: only its owner can open it. The task pauses until they do."""
 
 
+class OwnerDialog(GateRefused):
+    """A system dialog the phone can't read is up (Android 14+ hides permission dialogs from accessibility): only
+    its owner can answer it. The task pauses until it closes (needs_owner_dialog)."""
+
+
 class Device(Protocol):
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot: ...
     def capture_preview(self, max_side: int, quality: int) -> Screenshot: ...

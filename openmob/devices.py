@@ -536,6 +536,11 @@ class DeviceManager:
             if state == "denied":
                 self.phone_stopped(session, [task_id], "denied")
 
+    def owner_dialog(self, session: Session, message: dict) -> None:
+        """A system dialog the phone can't read is waiting for the owner (the task pauses), or it closed."""
+        if hasattr(session.driver, "on_owner_dialog"):
+            session.driver.on_owner_dialog(message)
+
     def device_lock(self, session: Session, message: dict) -> None:
         """The phone locked mid-task (a secure lock: only the owner can open it), or the owner unlocked it."""
         driver = session.driver

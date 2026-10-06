@@ -84,6 +84,25 @@ object GateHost {
     @Volatile private var lastProtectedCheck = 0L
 
     /** For the live view's encoder thread: the flag, re-read from the windows at most every 150 ms. */
+    /** A system dialog the phone can't read that a task is waiting on (its message), or null. */
+    @Volatile var ownerDialog: String? = null
+        private set
+    /** Told when that dialog closes (ConnectionService: owner_dialog closed, drop the notification). */
+    @Volatile var onOwnerDialogClosed: (() -> Unit)? = null
+
+    /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
+    fun ownerDialogOpened(message: String) { ownerDialog = message }
+
+    /** On window events: has the dialog a task is waiting on gone? */
+    fun refreshOwnerDialog(service: OpenMobAccessibilityService) {
+        val g = gate ?: return
+        if (ownerDialog == null) return
+        if (runCatching { g.ownerDialog(GateScreens.dialogScreen(service)) }.getOrNull() == null) {
+            ownerDialog = null
+            onOwnerDialogClosed?.invoke()
+        }
+    }
+
     fun protectedNow(): Boolean {
         val now = SystemClock.uptimeMillis()
         if (now - lastProtectedCheck >= 150) {
@@ -97,7 +116,8 @@ object GateHost {
 
     fun admit(service: OpenMobAccessibilityService?, method: String, params: Map<String, Any?>): Admission {
         val g = gk()
-        if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList()))
+        // Without the accessibility service the phone sees nothing: every act is refused (gate_unavailable).
+        if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList(), available = service != null))
         if (method in g.rules.read || method.startsWith("stream_")) {
             val screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
                 GateScreens.windowPackages(service) else GScreen(emptyList())
@@ -145,7 +165,7 @@ object GateHost {
                 val url = if (GateText.urlScheme(text) == null) "https://$text" else text
                 screen = GScreen(screen.windows, screen.keyguardLocked, screen.keyguardSecure, screen.quietMs,
                     screen.activity, screen.autofillService, mapOf(url to GateScreens.resolve(service.packageManager, url)),
-                    screen.labels, screen.focusExpected)
+                    screen.labels, screen.focusExpected, eventPackage = screen.eventPackage, eventText = screen.eventText)
             }
         }
         return screen

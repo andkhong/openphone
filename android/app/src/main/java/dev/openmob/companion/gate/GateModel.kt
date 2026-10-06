@@ -167,6 +167,10 @@ class GScreen(
     val resolve: Map<String, Pair<String, List<String>>> = emptyMap(), val labels: Map<String, String> = emptyMap(),
     /** The phone has a live input focus (typing and ENTER go there), read or not. */
     val focusExpected: Boolean = false,
+    /** The accessibility service is bound (else the phone can't see the screen at all). */
+    val available: Boolean = true,
+    /** The last window-state event: its package and text (they arrive even for windows Android hides). */
+    val eventPackage: String = "", val eventText: String = "",
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
 
@@ -184,6 +188,8 @@ class GScreen(
                 },
                 labels = d["labels"].obj().mapValues { it.value.toString() },
                 focusExpected = d["focus"].obj().bool("expected"),
+                available = d["accessibility"] != false,
+                eventPackage = d["event"].obj().str("package"), eventText = d["event"].obj().str("text"),
             )
         }
     }

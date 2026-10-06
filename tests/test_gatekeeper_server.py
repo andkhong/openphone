@@ -18,10 +18,11 @@ from conftest import FakeDriver
 class GatekeeperPhone(FakePhone):
     """A FakePhone whose app has the gatekeeper: taps on "Buy now" ask the owner on the phone."""
 
-    def __init__(self, *args, owner=None, refuse=None, locked=None, **kw):
+    def __init__(self, *args, owner=None, refuse=None, locked=None, dialog=None, **kw):
         kw.setdefault("capabilities", ["wait_idle", "resolve_url", "gatekeeper", "device_lock"])
         self.owner = owner  # "approve" | "deny" | None (never answers)
         self.refuse = refuse  # a refusal code every tap gets
+        self.dialog = dialog  # seconds an unreadable system dialog stays up (None: none; -1: forever)
         self.locked = locked  # seconds the phone stays locked (None: never locked; -1: forever)
         self.prompts = []  # approval ids the phone asked its owner about
         self.permits = set()
@@ -29,6 +30,14 @@ class GatekeeperPhone(FakePhone):
 
     def handle(self, method, params):
         if method == "tap":
+            if self.dialog is not None:
+                up, self.dialog = self.dialog, None
+                message = "Kalshi is asking for location: choose on your phone, then the task continues."
+                threading.Timer(0, self.send, ({"type": "owner_dialog", "open": True, "message": message},)).start()
+                if up >= 0:
+                    threading.Timer(up, self.send, ({"type": "owner_dialog", "open": False},)).start()
+                raise PhoneReply({"ok": False, "code": "needs_owner_dialog", "error": message,
+                                  "gate": {"rule": "builtin:owner_dialog"}})
             if self.locked is not None:
                 lock_for, self.locked = self.locked, None
                 threading.Timer(0, self.send, ({"type": "device_lock", "locked": True, "secure": True},)).start()
@@ -195,6 +204,25 @@ def test_a_denied_or_changed_gate_is_reported_not_retried():
     with pytest.raises(GateRefused):
         driver.tap(1, 2)
     assert len(driver.link.calls) == 1
+
+
+def test_an_unreadable_system_dialog_pauses_then_resumes(api):
+    api.cfg.owner_dialog_wait_seconds = 5
+    phone, driver = gatekeeper(api, owner="approve", dialog=0.5)
+    task = run_task(api.alice, "check the cart")
+    wait_status(api.alice, task["id"], "succeeded", timeout=12)
+    messages = [e["message"] for e in api.manager.get(api.alice.device).coordinator.log]
+    assert any("Kalshi is asking for location: choose on your phone" in m for m in messages)
+    assert any("answered on the phone" in m for m in messages)
+
+
+def test_an_unanswered_system_dialog_ends_the_task_as_needs_owner_dialog(api):
+    api.cfg.owner_dialog_wait_seconds = 0.5
+    phone, driver = gatekeeper(api, owner="approve", dialog=-1)
+    task = run_task(api.alice, "check the cart")
+    done = wait_status(api.alice, task["id"], "failed", timeout=10)
+    assert done["outcome"]["reason"] == "needs_owner_dialog"
+    assert not any(a[0] == "tap" for a in driver.actions)  # never tapped blindly
 
 
 def test_any_pushed_lock_pauses_even_a_swipe_lock():

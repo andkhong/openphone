@@ -182,6 +182,8 @@ class Screen:
     autofill_service: str = ""
     resolve: dict = field(default_factory=dict)
     focus_expected: bool = False  # the phone has a live input focus (typing and ENTER go there)
+    available: bool = True  # the accessibility service is bound (else the phone can't see the screen at all)
+    event: dict = field(default_factory=dict)  # the last window-state event: {package, text}
     labels: dict = field(default_factory=dict)
 
     @classmethod
@@ -191,7 +193,8 @@ class Screen:
                    keyguard_secure=bool(kg.get("secure", True)), quiet_ms=int(d.get("quiet_ms", 1000)),
                    activity=d.get("activity", ""), autofill_service=d.get("autofill_service", ""),
                    resolve=d.get("resolve", {}), labels=d.get("labels", {}),
-                   focus_expected=bool((d.get("focus") or {}).get("expected")))
+                   focus_expected=bool((d.get("focus") or {}).get("expected")),
+                   available=d.get("accessibility", True) is not False, event=d.get("event") or {})
 
     def ordered(self) -> list[Window]:
         return sorted(self.windows, key=lambda w: -w.layer)
@@ -671,9 +674,15 @@ class Gatekeeper:
         if self.pending:
             return self._refuse("gate_prompt_open", "builtin:prompt_open",
                                 "Waiting for the owner to answer a prompt on the phone.", method, params)
+        if not screen.available:
+            return self._refuse("gate_unavailable", "builtin:no_accessibility",
+                                "OpenMob's accessibility service is off, so the phone can't check this. Turn it on.",
+                                method, params)
         if method != "wake_unlock" and screen.keyguard_locked and screen.keyguard_secure:
             return self._refuse("phone_locked", "builtin:keyguard", "The phone is locked. Unlock it to continue.",
                                 method, params)
+        if method != "wake_unlock" and (dialog := self.owner_dialog(screen)):
+            return self._refuse("needs_owner_dialog", "builtin:owner_dialog", dialog, method, params)
         j = self.judge(method, params, screen)
         if j.refuse:
             return self._refuse(*j.refuse, method, params, package=j.package)
@@ -736,6 +745,28 @@ class Gatekeeper:
         if any(not w.package and w.type == "application" for w in screen.windows):
             return "builtin:unknown_window"
         return ""
+
+    def owner_dialog(self, screen: Screen) -> str | None:
+        """A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and
+        default-apps screens from accessibility): only the owner can answer it. Returns what to tell them."""
+        perm = re.compile(self.r.s["permission_packages"])
+        event_pkg = str(screen.event.get("package") or "")
+        hidden = False
+        for w in screen.windows:
+            if w.type != "application":
+                continue
+            unread = w.root is None or not any(n.text or n.desc for n in walk(w.root, []))
+            if unread and (perm.search(w.package or "") or (not w.package and perm.search(event_pkg))):
+                hidden = True
+        if not hidden:
+            return None
+        text = str(screen.event.get("text") or "")
+        m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", text)
+        if not m:
+            return "A system dialog needs your answer: choose on your phone, then the task continues."
+        kind = next((k for k, rx in self.r.d["permission_dialog"]["kinds"] if re.search(rx, text)), "")
+        what = kind.replace("_", " ") if kind else "a permission"
+        return f"{m.group(1)} is asking for {what}: choose on your phone, then the task continues."
 
     def _refuse(self, code, rule, message, method, params, package="") -> Admission:
         return Admission("refuse", code=code, rule=rule, message=message, method=method, params=params, package=package)
@@ -1100,8 +1131,9 @@ class Gatekeeper:
     def _judge_point(self, method: str, x: float, y: float, screen: Screen) -> Judgement:
         r = self.r
         t = hit_test(r, screen, x, y)
-        if t is None:
-            return Judgement(changing=True)
+        if t is None:  # no window there that the phone knows of: it can't judge the touch
+            return Judgement(changing=True, refuse=("gate_screen_unstable", "builtin:no_window",
+                                                    "The phone can't see what's there. Look again."))
         w = t.window
         j = Judgement(package=w.package, fp=t.fp(False), strict_fp=t.fp(True), changing=True,
                       app=self._app_window(w))

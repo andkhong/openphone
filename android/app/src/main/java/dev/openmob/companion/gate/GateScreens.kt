@@ -40,6 +40,18 @@ object GateScreens {
         },
     )
 
+    /** What the owner-dialog check needs, cheaply: every window with a shallow read of its tree, and the last
+     *  window-state event. */
+    fun dialogScreen(service: OpenMobAccessibilityService): GScreen = GScreen(
+        windows = runCatching { service.windows }.getOrDefault(emptyList()).map { w ->
+            val root = w.root
+            val pkg = root?.packageName?.toString().orEmpty()
+            val tree = root?.let { TreeWalk(ADAPTER, emptyList(), budget = 80, maxDepth = 12).read(it) }
+            GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), tree)
+        },
+        eventPackage = service.lastEventPackage, eventText = service.lastEventText,
+    )
+
     /** [points]: where the call touches; nodes under them are always read in full (TreeWalk). */
     fun capture(service: OpenMobAccessibilityService, urls: List<String> = emptyList(),
                 labelsFor: Collection<String> = emptyList(), points: List<Pair<Double, Double>> = emptyList()): GScreen {
@@ -74,6 +86,7 @@ object GateScreens {
             resolve = urls.associateWith { resolve(pm, it) },
             labels = labels(pm, pkgs) + GateHost.blockedLabels(pm),
             focusExpected = focusPoint != null,
+            eventPackage = service.lastEventPackage, eventText = service.lastEventText,
         )
     }
 

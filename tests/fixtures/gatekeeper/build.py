@@ -674,6 +674,49 @@ SCENARIOS += [
         step("key", "otp_focus_unread", allow(), name="BACK")], tags=["hard_deny"]),
 ]
 
+# --- B7 follow-ups: dialogs Android 14+ hides, touches on nothing, no accessibility service ----------------
+HIDDEN_PERMISSION_EVENT = {"package": "com.google.android.permissioncontroller",
+                           "text": "Allow Kalshi to access this device's location?"}
+SCREENS.update({
+    # Android 14+: the permission dialog's window is listed with no readable root (no package either).
+    "hidden_permission_dialog": screen(
+        app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
+        {"id": 5, "type": "application", "layer": 5, "package": "", "title": "", "bounds": [0, 1000, W, 2000]},
+        event=HIDDEN_PERMISSION_EVENT, labels=LABELS),
+    # Samsung: the window names its package, but its tree has no text.
+    "hidden_permission_samsung": screen(
+        app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
+        {"id": 5, "type": "application", "layer": 5, "package": "com.samsung.android.permissioncontroller",
+         "title": "", "bounds": [0, 1000, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1000, W, 2000))},
+        event={"package": "com.samsung.android.permissioncontroller", "text": ""}, labels=LABELS),
+    # A small window only partly covering the screen: nothing the phone knows of is under the bottom.
+    "partial_window": {"windows": [{"id": 1, "type": "application", "layer": 1, "package": "com.example.app",
+                                    "title": "", "bounds": [0, 0, W, 1200],
+                                    "root": node(cls="android.widget.FrameLayout", bounds=(0, 0, W, 1200),
+                                                 children=[button("Home", "home", (0, 100, W, 300))])}],
+                       "labels": LABELS},
+    "no_accessibility": {"windows": [], "accessibility": False, "labels": LABELS},
+})
+SCENARIOS += [
+    sc("a system dialog the phone can't read pauses for the owner", [
+        step("tap", "hidden_permission_dialog",
+             refuse("needs_owner_dialog", rule="builtin:owner_dialog"), x=540, y=1500),
+        step("key", "hidden_permission_dialog", refuse("needs_owner_dialog"), name="BACK"),
+        step("wake_unlock", "hidden_permission_dialog", allow()),
+        step("screenshot", "hidden_permission_dialog", {"decision": "redact"}),
+        step("tap", "hidden_permission_samsung", refuse("needs_owner_dialog"), x=540, y=300),
+        step("tap", "kalshi_app", allow(), x=540, y=300)], tags=["hard_deny"]),
+    sc("a touch where the phone sees no window is refused", [
+        step("tap", "partial_window", refuse("gate_screen_unstable", rule="builtin:no_window"), x=540, y=2000),
+        step("long_press", "partial_window", refuse("gate_screen_unstable"), x=540, y=2000, duration_ms=800),
+        step("tap", "partial_window", allow(), x=540, y=200)], tags=["hard_deny"]),
+    sc("without the accessibility service every act is refused", [
+        step("tap", "no_accessibility", refuse("gate_unavailable"), x=540, y=200),
+        step("key", "no_accessibility", refuse("gate_unavailable"), name="BACK"),
+        step("launch_app", "no_accessibility", refuse("gate_unavailable"), package="com.example.app"),
+        step("device_state", "no_accessibility", allow())], tags=["hard_deny"]),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap
