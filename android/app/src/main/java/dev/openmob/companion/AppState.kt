@@ -21,6 +21,9 @@ object AppState {
     /** Who the server says is driving the phone right now (e.g. "Claude"); "" for nobody. */
     @Volatile var controller: String = ""
         private set
+    /** Agents may act without asking until this unix time (seconds); 0: they ask as usual. */
+    @Volatile var neverUntil: Long = 0
+        private set
 
     private val events = ArrayDeque<Event>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -36,6 +39,11 @@ object AppState {
 
     fun setController(who: String) {
         controller = who
+        notifyListeners()
+    }
+
+    fun setNeverUntil(until: Long) {
+        neverUntil = until
         notifyListeners()
     }
 

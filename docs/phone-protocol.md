@@ -177,6 +177,34 @@ How the Android app handles it:
 * After **2 minutes** with no answer, the request expires: the notification is dismissed and **nothing is sent**. The server should time out on its own (about 2 minutes) and treat it as denied.
 * A repeated `approval_request` with an `id` already pending, answered or expired is ignored. An answer is only sent while connected. If sending fails, the request stays pending so the person can try again. When the person disconnects, pending requests are dropped unanswered.
 
+**Approval kinds** (newer servers). An `approval_request` may carry more fields; an app that doesn't
+know them shows the `question` as before.
+
+| Field | Meaning |
+|---|---|
+| `kind` | `action` (a risky tap, the default), `step` (Ask-every-step mode: the next change), `plan` (Plan-first mode: the numbered plan is in `question`, its steps in `plan`) or `mode_change` (agents would ask less on **this** phone; only sent to that phone) |
+| `plan` | For `kind: "plan"`: the steps, as strings |
+| `change` | For `kind: "mode_change"`: `{loosens, default_mode?, ceiling?, never?}`, informational. The `question` says it in words, e.g. "Allow agents to act without asking on this phone for 1 hour?" |
+| `always` | Offered only on the phone that would act: `{app, kind, days, text, confirm_twice, target?}`. Shown as an **Always allow this** checkbox, off by default, labelled with `text` ("Agents could send any WhatsApp message as you for 30 days"). With `confirm_twice` (payments) the app asks a second time before the screen lock |
+
+Approving with **Always allow this** adds `"always": true` to the `approval`, and the signature
+covers it: the signed text is `<approval id>|<task id>|true|<timestamp>|always`. A `mode_change` is
+signed like any approval; its `task_id` names the change (`mode_change:…`). Both loosen the phone's
+permissions, so the server accepts them only with a valid signature by that phone's approval key
+(never from an app without one).
+
+**`permissions`** (server to phone): the phone's permission mode, after the `welcome` and whenever it
+changes.
+```json
+{"type": "permissions", "default_mode": "never", "ceiling": "never", "never_until": 1791223200}
+```
+While `ceiling` is `never` and `never_until` (unix seconds) is in the future, the app shows a banner
+in its connection notification ("Agents can act without asking until 21:00") with a **Turn off**
+action, and clears it at `never_until`.
+
+**`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
+Never ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
+
 **`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
 ```json
 {"type": "event", "kind": "controller", "message": "Claude"}

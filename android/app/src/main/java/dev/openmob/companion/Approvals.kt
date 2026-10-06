@@ -22,9 +22,20 @@ import org.json.JSONObject
  * Everything here runs on the main thread.
  */
 object Approvals {
-    /** `deviceName`: the phone that would act, when the server says (it may be another of the owner's phones). */
+    /**
+     * "Always allow this": the trusted grant an approval may also make (only offered on the phone that
+     * would act). `text` says what it allows ("Agents could send any WhatsApp message as you for 30
+     * days"); `confirmTwice` (payments) asks a second time before granting.
+     */
+    data class Always(val app: String, val kind: String, val days: Double, val text: String, val confirmTwice: Boolean)
+
+    /**
+     * `deviceName`: the phone that would act, when the server says (it may be another of the owner's phones).
+     * `kind`: action (a risky tap) | step (ask-every-step mode) | plan | mode_change (agents would ask less).
+     */
     data class Request(
         val id: String, val taskId: String, val question: String, val requester: String, val deviceName: String = "",
+        val kind: String = "action", val plan: List<String> = emptyList(), val always: Always? = null,
     ) {
         /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
         val shownQuestion: String get() = if (deviceName.isEmpty()) question else "On $deviceName: $question"
@@ -56,6 +67,12 @@ object Approvals {
             question = message.optString("question").trim().ifEmpty { app.getString(R.string.approval_no_question) },
             requester = message.optString("requester").trim().ifEmpty { app.getString(R.string.approval_unknown_requester) },
             deviceName = message.optString("device_name").trim(),
+            kind = message.optString("kind").ifEmpty { "action" },
+            plan = message.optJSONArray("plan")?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList(),
+            always = message.optJSONObject("always")?.let {
+                Always(it.optString("app"), it.optString("kind"), it.optDouble("days", 30.0), it.optString("text"),
+                       it.optBoolean("confirm_twice"))
+            }?.takeIf { it.app.isNotEmpty() && it.kind.isNotEmpty() && it.text.isNotEmpty() },
         )
         pending[id] = request
         main.postDelayed({ expire(app, id) }, id, EXPIRY_MS)
@@ -67,9 +84,12 @@ object Approvals {
      * Sends the owner's answer, once. False if the request is gone (answered or expired) or the
      * phone is offline; in the offline case it stays pending so the owner can try again.
      */
-    fun answer(context: Context, id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0): Boolean {
+    fun answer(
+        context: Context, id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0,
+        always: Boolean = false,
+    ): Boolean {
         val request = pending[id] ?: return false
-        if (!ConnectionService.sendApproval(id, approved, signature, timestamp)) return false
+        if (!ConnectionService.sendApproval(id, approved, signature, timestamp, always && approved)) return false
         finish(context, id)
         val app = context.applicationContext
         AppState.addEvent(
