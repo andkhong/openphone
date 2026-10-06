@@ -124,8 +124,11 @@ class FakePhone:
                     hello["device"]["platform"] = self.platform
                 if self.video:
                     hello["device"]["video"] = True
-                if self.capabilities is not None:
-                    hello["device"]["capabilities"] = self.capabilities
+                caps = None if self.capabilities is None else list(self.capabilities)
+                if self.signer and not self.legacy_signing:  # a current app: it signs action digests
+                    caps = (caps or []) + ["approval_digest"]
+                if caps is not None:
+                    hello["device"]["capabilities"] = caps
                 await ws.send(json.dumps(hello))
                 async for raw in ws:
                     msg = json.loads(raw)
