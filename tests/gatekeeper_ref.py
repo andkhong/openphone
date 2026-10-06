@@ -181,6 +181,7 @@ class Screen:
     activity: str = ""
     autofill_service: str = ""
     resolve: dict = field(default_factory=dict)
+    focus_expected: bool = False  # the phone has a live input focus (typing and ENTER go there)
     labels: dict = field(default_factory=dict)
 
     @classmethod
@@ -189,7 +190,8 @@ class Screen:
         return cls(windows=[Window.of(w) for w in d.get("windows", [])], keyguard_locked=bool(kg.get("locked")),
                    keyguard_secure=bool(kg.get("secure", True)), quiet_ms=int(d.get("quiet_ms", 1000)),
                    activity=d.get("activity", ""), autofill_service=d.get("autofill_service", ""),
-                   resolve=d.get("resolve", {}), labels=d.get("labels", {}))
+                   resolve=d.get("resolve", {}), labels=d.get("labels", {}),
+                   focus_expected=bool((d.get("focus") or {}).get("expected")))
 
     def ordered(self) -> list[Window]:
         return sorted(self.windows, key=lambda w: -w.layer)
@@ -1016,10 +1018,16 @@ class Gatekeeper:
         message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
         kind = next((k for k, rx in pd["kinds"] if re.search(rx, message)), "other")
         role = self._perm_role(t)
-        if role in (None, "deny", "deny_forever", "approximate"):
-            return None
         m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", message)
         name = m.group(1) if m else "this app"
+        if role is None:
+            # A button the phone doesn't recognize (other ids, another language) may grant: ask.
+            changing = t.pressed is not None and (t.pressed.clickable or t.pressed.long_clickable
+                                                  or t.pressed.checked is not None)
+            return Risk("permission", "permission:unknown", always=True,
+                        wording=f"Allow {name}'s permission request?") if changing else None
+        if role in ("deny", "deny_forever", "approximate"):
+            return None
         what = "precise location" if role == "precise" else kind.replace("_", " ")
         wording = f"Allow {name} to use your {what}{' all the time' if role == 'always' else ''}?"
         if role == "always":
@@ -1036,9 +1044,20 @@ class Gatekeeper:
             value = "once" if role == "one_time" else "while_using"
             setting = self.perm_setting(kind)
             ok = setting == "while_using" or (setting == "once" and role == "one_time")
+        if ok and kind == "location" and self.perm_setting("location_accuracy") != "precise" and \
+                self._precise_selected(w):
+            # Android pre-selects Precise: granting now would give precise location against the owner's setting.
+            return Risk("permission", "permission:location_accuracy", always=True,
+                        wording=f"Allow {name} to use your precise location?")
         if ok:
             return None
         return Risk("permission", f"permission:{kind}", always=True, grant=f"{app}|{kind}|{value}", wording=wording)
+
+    def _precise_selected(self, w: Window) -> bool:
+        for n in walk(w.root, []):
+            if n.checked is True and self._perm_role(Target(w, [n])) == "precise":
+                return True
+        return False
 
     def _changing_tap(self, t: Target | None, label: list[str]) -> bool:
         if t is not None and any(n.checked is not None for n in (t.pressed, t.hit) if n is not None):
@@ -1204,6 +1223,14 @@ class Gatekeeper:
                 return j
         return j
 
+    @staticmethod
+    def _focus_unread(screen: Screen) -> tuple | None:
+        """The phone has an input focus it couldn't read: typing or ENTER would go somewhere unjudged."""
+        if screen.focus_expected:
+            return ("gate_screen_unstable", "builtin:focus_unread",
+                    "The field that has focus couldn't be read. Look again.")
+        return None
+
     def _judge_typing(self, text: str, screen: Screen) -> Judgement:
         r = self.r
         scheme = url_scheme(text)
@@ -1212,7 +1239,7 @@ class Gatekeeper:
                                                     f"{scheme}: text is never typed by agents."))
         found = focused_field(screen)
         if found is None:
-            return Judgement(changing=True)
+            return Judgement(changing=True, refuse=self._focus_unread(screen))
         w, node, path = found
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}/{int(node.password)}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)), changing=True,
@@ -1243,7 +1270,7 @@ class Gatekeeper:
             return Judgement(changing=False)
         found = focused_field(screen)
         if found is None:
-            return Judgement(changing=name == "ENTER")
+            return Judgement(changing=name == "ENTER", refuse=self._focus_unread(screen))
         w, node, path = found
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)),

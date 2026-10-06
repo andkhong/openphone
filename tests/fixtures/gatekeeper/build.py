@@ -535,16 +535,16 @@ LABELS["com.kalshi"] = "Kalshi"
 
 
 def location_dialog(vendor="com.google.android.permissioncontroller", message=None, buttons=("foreground", "one_time", "deny"),
-                    cards=True, prefix="com.android.permissioncontroller:id/"):
+                    cards=True, prefix="com.android.permissioncontroller:id/", approx_selected=False):
     """A runtime permission dialog over Kalshi (Google, or Samsung with its own package and ids)."""
     kids = [node(text=message or "Allow Kalshi to access this device's location?", id=prefix + "permission_message",
                  bounds=(40, 1050, 1040, 1150))]
     if cards:
         kids += [node(cls="android.widget.RadioButton", text="Precise", id=prefix + "permission_location_accuracy_radio_fine",
-                      bounds=(40, 1170, 520, 1400), clickable=True, checked=True),
+                      bounds=(40, 1170, 520, 1400), clickable=True, checked=not approx_selected),
                  node(cls="android.widget.RadioButton", text="Approximate",
                       id=prefix + "permission_location_accuracy_radio_coarse", bounds=(560, 1170, 1040, 1400),
-                      clickable=True, checked=False)]
+                      clickable=True, checked=approx_selected)]
     labels = {"foreground": ("permission_allow_foreground_only_button", "While using the app"),
               "one_time": ("permission_allow_one_time_button", "Only this time"),
               "always": ("permission_allow_always_button", "Allow all the time"),
@@ -561,7 +561,8 @@ def location_dialog(vendor="com.google.android.permissioncontroller", message=No
 
 SCREENS.update({
     "kalshi_app": screen(app("com.kalshi", [button("Markets", "markets", (0, 200, W, 400))]), labels=LABELS),
-    "location_google": location_dialog(),
+    "location_google": location_dialog(),  # Android 12+ pre-selects Precise
+    "location_approx": location_dialog(approx_selected=True),
     "location_samsung": location_dialog(vendor="com.samsung.android.permissioncontroller",
                                         prefix="com.samsung.android.permissioncontroller:id/"),
     "location_always_only": location_dialog(buttons=("always", "deny"), cards=False),
@@ -600,8 +601,17 @@ SCENARIOS += [
         step("tap", "location_google", allow(), **ONCE)], tags=["permissions"]),
     sc("signed default once: only this time passes, while using asks", [
         KALSHI, perm_default("location", "once"),
-        step("tap", "location_google", allow(), **ONCE),
-        step("tap", "location_google", ask("permission"), **WHILE_USING)], tags=["permissions"]),
+        step("tap", "location_approx", allow(), **ONCE),
+        step("tap", "location_approx", ask("permission"), **WHILE_USING)], tags=["permissions"]),
+    sc("a pre-selected Precise is not granted against an approximate setting", [
+        KALSHI, perm_default("location", "while_using"),
+        step("tap", "location_google", ask("permission", rule="risk:permission:location_accuracy"), **WHILE_USING),
+        step("tap", "location_google", allow(), **APPROX),
+        step("tap", "location_approx", allow(), **WHILE_USING)], tags=["permissions"]),
+    sc("a permission button the phone doesn't recognize asks", [
+        KALSHI, perm_default("location", "while_using"),
+        step("tap", "location_oem_unknown", ask("permission", rule="risk:permission:unknown"), x=540, y=1505),
+        step("tap", "location_oem_unknown", allow(), x=540, y=1100)], tags=["permissions"]),
     sc("an unsigned default changes nothing", [
         KALSHI, perm_default("location", "while_using", sig="bad"),
         step("tap", "location_google", ask("permission"), **WHILE_USING)], tags=["permissions"]),
@@ -629,12 +639,39 @@ SCENARIOS += [
         step("tap", "location_other_app", ask("settings", rule="risk:permission:other_app"), **WHILE_USING)],
        tags=["permissions"]),
     sc("Always allow for Kalshi: a per-app override", [
-        KALSHI, step("tap", "location_google", ask("permission"), **WHILE_USING),
+        KALSHI, step("tap", "location_approx", ask("permission"), **WHILE_USING),
         {"approve": "last", "sig": "valid", "grant": True},
-        step("tap", "location_google", allow(), **WHILE_USING),
-        step("tap", "location_google", allow(rule="grant"), **ONCE),
-        step("tap", "location_google", allow(rule="grant"), **WHILE_USING),
+        step("tap", "location_approx", allow(), **WHILE_USING),
+        step("tap", "location_approx", allow(rule="grant"), **ONCE),
+        step("tap", "location_approx", allow(rule="grant"), **WHILE_USING),
         step("tap", "location_google", ask("permission"), **PRECISE)], tags=["permissions", "grants"]),
+]
+
+SCREENS.update({
+    # An OEM dialog with its own ids and a non-English grant button.
+    "location_oem_unknown": screen(app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
+        {"id": 5, "type": "application", "layer": 5, "package": "com.google.android.permissioncontroller",
+         "title": "", "bounds": [0, 1000, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1000, W, 2000),
+         children=[node(text="Allow Kalshi to access this device's location?",
+                        id="com.android.permissioncontroller:id/permission_message", bounds=(40, 1050, 1040, 1150)),
+                   button("Zulassen", "com.oem.perm:id/btn_positive", (40, 1450, 1040, 1560))])}, labels=LABELS),
+    # The phone has an input focus it couldn't read (deep in a WebView, past the walk's limits).
+    "otp_focus_unread": screen(app("com.example.shop", [node(cls="android.webkit.WebView", bounds=(0, 200, W, H))]),
+                               focus={"expected": True}, labels=LABELS),
+    # A focused field in a window the phone can't identify.
+    "focus_unknown_window": screen({"id": 6, "type": "application", "layer": 6, "package": "", "title": "",
+                                    "bounds": FULL, "root": node(cls="android.widget.FrameLayout", bounds=FULL, children=[
+                                        node(id="otp", cls="android.widget.EditText", editable=True, focused=True,
+                                             bounds=(40, 400, 1040, 500))])}, focus={"expected": True}, labels=LABELS),
+})
+SCENARIOS += [
+    sc("typing and ENTER into a focus the phone couldn't read are refused", [
+        step("type_text", "otp_focus_unread", refuse("gate_screen_unstable", rule="builtin:focus_unread"), text="123456"),
+        step("key", "otp_focus_unread", refuse("gate_screen_unstable", rule="builtin:focus_unread"), name="ENTER"),
+        step("type_text", "focus_unknown_window", refuse("gate_screen_unstable", rule="builtin:unknown_window"),
+             text="123456"),
+        step("key", "focus_unknown_window", refuse("gate_screen_unstable"), name="ENTER"),
+        step("key", "otp_focus_unread", allow(), name="BACK")], tags=["hard_deny"]),
 ]
 
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},

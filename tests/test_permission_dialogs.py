@@ -231,6 +231,13 @@ def test_dont_ask_mode_denies_the_camera_without_asking(tmp_path):
     assert len(taps) == 1 and taps[0][2] > 1850
 
 
+def test_a_preselected_precise_without_an_approximate_card_asks():
+    els = [e for e in location_elements() if e.text != "Approximate"]
+    d = pd.detect(GOOGLE, els)
+    assert decide(d, location="while_using").answer == "ask"
+    assert decide(d, location="while_using", location_accuracy="precise").answer == "allow"
+
+
 class LocationPhone(DialogPhone):
     """Kalshi asks for location with Precise/Approximate cards; tapping a card selects it, a button answers."""
 

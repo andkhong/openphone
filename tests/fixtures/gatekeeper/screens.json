@@ -4778,6 +4778,175 @@
    "com.kalshi": "Kalshi"
   }
  },
+ "location_approx": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access this device's location?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Precise",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_fine",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        40,
+        1170,
+        520,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": false
+      },
+      {
+       "text": "Approximate",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_location_accuracy_radio_coarse",
+       "cls": "android.widget.RadioButton",
+       "bounds": [
+        560,
+        1170,
+        1040,
+        1400
+       ],
+       "children": [],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Only this time",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_one_time_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1580,
+        1040,
+        1690
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1710,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
  "location_samsung": {
   "windows": [
    {
@@ -5491,6 +5660,239 @@
     }
    }
   ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "location_oem_unknown": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Kalshi to access this device's location?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1050,
+        1040,
+        1150
+       ],
+       "children": []
+      },
+      {
+       "text": "Zulassen",
+       "desc": "",
+       "id": "com.oem.perm:id/btn_positive",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1450,
+        1040,
+        1560
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "otp_focus_unread": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": []
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi"
+  }
+ },
+ "focus_unknown_window": {
+  "windows": [
+   {
+    "id": 6,
+    "type": "application",
+    "layer": 6,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "otp",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true
+  },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
    "com.whatsapp": "WhatsApp",

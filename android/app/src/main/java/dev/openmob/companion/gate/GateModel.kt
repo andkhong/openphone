@@ -165,6 +165,8 @@ class GScreen(
     val windows: List<GWindow>, val keyguardLocked: Boolean = false, val keyguardSecure: Boolean = true,
     val quietMs: Long = 1000, val activity: String = "", val autofillService: String = "",
     val resolve: Map<String, Pair<String, List<String>>> = emptyMap(), val labels: Map<String, String> = emptyMap(),
+    /** The phone has a live input focus (typing and ENTER go there), read or not. */
+    val focusExpected: Boolean = false,
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
 
@@ -181,6 +183,7 @@ class GScreen(
                     o.str("package") to o["candidates"].strings()
                 },
                 labels = d["labels"].obj().mapValues { it.value.toString() },
+                focusExpected = d["focus"].obj().bool("expected"),
             )
         }
     }

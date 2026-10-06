@@ -44,11 +44,19 @@ object GateScreens {
     fun capture(service: OpenMobAccessibilityService, urls: List<String> = emptyList(),
                 labelsFor: Collection<String> = emptyList(), points: List<Pair<Double, Double>> = emptyList()): GScreen {
         val windows = mutableListOf<GWindow>()
+        // The live input focus (where typing and ENTER go) is pinned like a tap point, so its field and its
+        // ancestors are always read, however deep (review R1). If it still isn't read, the gate refuses.
+        val focus = runCatching { service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) }.getOrNull()
+        val focusPoint = focus?.let { f ->
+            Rect().also(f::getBoundsInScreen).let { r -> r.exactCenterX().toDouble() to r.exactCenterY().toDouble() }
+        }
+        @Suppress("DEPRECATION") focus?.recycle()
+        val pinned = points + listOfNotNull(focusPoint)
         for (w in runCatching { service.windows }.getOrDefault(emptyList())) {
             val root = w.root
             val bounds = Rect().also(w::getBoundsInScreen)
             val pkg = root?.packageName?.toString().orEmpty()
-            val tree = root?.let { TreeWalk(ADAPTER, points, budget = MAX_NODES, maxDepth = MAX_DEPTH).read(it) }
+            val tree = root?.let { TreeWalk(ADAPTER, pinned, budget = MAX_NODES, maxDepth = MAX_DEPTH).read(it) }
             windows.add(GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(),
                 intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree))
         }
@@ -65,6 +73,7 @@ object GateScreens {
             }.getOrNull().orEmpty(),
             resolve = urls.associateWith { resolve(pm, it) },
             labels = labels(pm, pkgs) + GateHost.blockedLabels(pm),
+            focusExpected = focusPoint != null,
         )
     }
 

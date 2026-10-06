@@ -118,6 +118,10 @@ def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | No
         return Plan("deny")
     if setting in ("once", "while_using"):
         if button(dialog, "allow", setting) is not None:
+            precise = dialog.buttons.get("precise")
+            if accuracy == "approximate" and precise is not None and precise.checked is True \
+                    and "approximate" not in dialog.buttons:
+                return Plan("deny" if never else "ask", "once", accuracy)  # can't step down from a pre-selected Precise
             return Plan("allow", setting, accuracy)
         # Only a looser grant is offered (e.g. "Allow all the time"): the owner decides.
     return Plan("deny" if never else "ask", "once", accuracy)

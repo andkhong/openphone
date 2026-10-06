@@ -650,8 +650,15 @@ class Gatekeeper(
         val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
         var kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(message) }?.get(0) ?: "other"
         val role = permRole(t)
-        if (role == null || role in setOf("deny", "deny_forever", "approximate")) return null
         val name = PERMISSION_APP.find(message)?.groupValues?.get(1) ?: "this app"
+        if (role == null) {
+            // A button the phone doesn't recognize (other ids, another language) may grant: ask.
+            val p = t.pressed
+            val changing = p != null && (p.clickable || p.longClickable || p.checked != null)
+            return if (changing) Risk("permission", "permission:unknown", always = true,
+                wording = "Allow $name's permission request?") else null
+        }
+        if (role in setOf("deny", "deny_forever", "approximate")) return null
         val what = if (role == "precise") "precise location" else kind.replace('_', ' ')
         val wording = "Allow $name to use your $what${if (role == "always") " all the time" else ""}?"
         if (role == "always") return Risk("permission", "permission:always", always = true, wording = wording)
@@ -667,9 +674,22 @@ class Gatekeeper(
             val setting = permSetting(kind)
             ok = setting == "while_using" || (setting == "once" && role == "one_time")
         }
+        if (ok && kind == "location" && permSetting("location_accuracy") != "precise" && preciseSelected(w)) {
+            // Android pre-selects Precise: granting now would give precise location against the owner's setting.
+            return Risk("permission", "permission:location_accuracy", always = true,
+                wording = "Allow $name to use your precise location?")
+        }
         if (ok) return null
         return Risk("permission", "permission:$kind", always = true, grant = "$lastApp|$kind|$value", wording = wording)
     }
+
+    private fun preciseSelected(w: GWindow): Boolean =
+        walk(w.root).any { it.checked == true && permRole(GTarget(w, listOf(it))) == "precise" }
+
+    /** The phone has an input focus it couldn't read: typing or ENTER would go somewhere unjudged (review R1). */
+    private fun focusUnread(screen: GScreen): Triple<String, String, String>? =
+        if (screen.focusExpected) Triple("gate_screen_unstable", "builtin:focus_unread",
+            "The field that has focus couldn't be read. Look again.") else null
 
     private fun changingTap(t: GTarget?, label: List<String>): Boolean {
         if (t != null && listOfNotNull(t.pressed, t.hit).any { it.checked != null }) return true
@@ -825,7 +845,7 @@ class Gatekeeper(
         if (scheme != null && scheme in rules.schemesTypedRefused) {
             return Judgement(changing = true, refuse = Triple("gate_denied", "builtin:typed_scheme", "$scheme: text is never typed by agents."))
         }
-        val f = GateScreen.focusedField(screen) ?: return Judgement(changing = true)
+        val f = GateScreen.focusedField(screen) ?: return Judgement(changing = true, refuse = focusUnread(screen))
         val w = f.window
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}/${if (node.password) 1 else 0}"
@@ -853,7 +873,7 @@ class Gatekeeper(
 
     private fun judgeKey(name: String, screen: GScreen): Judgement {
         if (name != "ENTER" && name != "DELETE") return Judgement(changing = false)
-        val f = GateScreen.focusedField(screen) ?: return Judgement(changing = name == "ENTER")
+        val f = GateScreen.focusedField(screen) ?: return Judgement(changing = name == "ENTER", refuse = focusUnread(screen))
         val w = f.window
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}"

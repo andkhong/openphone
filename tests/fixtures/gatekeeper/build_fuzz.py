@@ -84,7 +84,8 @@ def gen_screen(rng, words):
         prefix = rng.choice(["com.android.permissioncontroller:id/", "com.samsung.android.permissioncontroller:id/"])
         roles = rng.sample(["permission_allow_foreground_only_button", "permission_allow_one_time_button",
                             "permission_allow_always_button", "permission_allow_button", "permission_deny_button",
-                            "permission_location_accuracy_radio_fine", "permission_location_accuracy_radio_coarse"],
+                            "permission_location_accuracy_radio_fine", "permission_location_accuracy_radio_coarse",
+                            "btn_positive"],
                            rng.randrange(1, 5))
         kids = [{"text": rng.choice(NEUTRAL[-8:-5] + ["Allow Spyware to access your contacts?"]),
                  "id": prefix + "permission_message", "bounds": [40, 1050, 1040, 1150], "children": []}]
@@ -97,7 +98,7 @@ def gen_screen(rng, words):
                         "root": {"cls": "android.widget.FrameLayout", "bounds": [0, 1000, W, 2000], "children": kids}})
     return {"windows": windows, "quiet_ms": rng.choice([1000, 1000, 40]),
             "keyguard": {"locked": rng.random() < 0.05, "secure": True},
-            "autofill_service": rng.choice(["", "com.google.android.gms"]),
+            "autofill_service": rng.choice(["", "com.google.android.gms"]), "focus": {"expected": rng.random() < 0.3},
             "resolve": {"https://x.example/": {"package": rng.choice(PACKAGES)},
                         "tel:1": {"package": rng.choice(["com.google.android.dialer", "com.evil"])}},
             "labels": {"com.whatsapp": "WhatsApp", "com.example.app": "Example", "com.chase.sig.android": "Chase"}}

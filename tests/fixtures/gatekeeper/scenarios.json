@@ -3142,10 +3142,55 @@
       "y": 1635
      }
     },
-    "screen": "location_google",
+    "screen": "location_approx",
     "expect": {
      "decision": "allow"
     }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a pre-selected Precise is not granted against an approximate setting",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
    },
    {
     "call": {
@@ -3159,7 +3204,99 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "permission"
+     "kind": "permission",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permission button the phone doesn't recognize asks",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_oem_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1100
+     }
+    },
+    "screen": "location_oem_unknown",
+    "expect": {
+     "decision": "allow"
     }
    }
   ]
@@ -3528,7 +3665,7 @@
       "y": 1505
      }
     },
-    "screen": "location_google",
+    "screen": "location_approx",
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
@@ -3548,7 +3685,7 @@
       "y": 1505
      }
     },
-    "screen": "location_google",
+    "screen": "location_approx",
     "expect": {
      "decision": "allow"
     }
@@ -3561,7 +3698,7 @@
       "y": 1635
      }
     },
-    "screen": "location_google",
+    "screen": "location_approx",
     "expect": {
      "decision": "allow",
      "rule": "grant"
@@ -3575,7 +3712,7 @@
       "y": 1505
      }
     },
-    "screen": "location_google",
+    "screen": "location_approx",
     "expect": {
      "decision": "allow",
      "rule": "grant"
@@ -3594,6 +3731,81 @@
      "decision": "ask",
      "code": "gate_needs_approval",
      "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "typing and ENTER into a focus the phone couldn't read are refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "focus_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "focus_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "allow"
     }
    }
   ]
