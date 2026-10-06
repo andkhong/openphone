@@ -184,6 +184,10 @@
     <string name="approval_prompt_title_plan">Approve this plan?</string>
     <string name="approval_label_step">APPROVE THE NEXT STEP</string>
     <string name="approval_always">Always allow this</string>
+    <string name="approval_action">Exactly: %1$s</string>
+    <string name="approval_cannot">This phone can\'t approve yet. Update the OpenMob app and reconnect; until then you can only deny.</string>
+    <string name="approval_mismatch">This request doesn\'t match the action it describes, so it can\'t be approved. Deny it.</string>
+    <string name="approval_no_key">This phone has no approval key (it goes away if the screen lock is removed), so it can\'t approve. Reconnect or pair again to approve; you can still deny.</string>
     <string name="approval_always_confirm_title">Allow payments without asking?</string>
     <string name="approval_always_confirm_body">%1$s You can turn it off any time in the dashboard\'s phone settings.</string>
     <string name="approval_always_confirm_yes">Allow payments</string>
