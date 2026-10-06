@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A fake shop: product page (quantity +, Add to cart, Buy now), cart (Proceed to checkout), native checkout
+     (card number, Place your order) and a deep WebView checkout. Every order placed is logged:
+     logcat tag ShopStandIn, "ORDER PLACED". -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Example Shop" android:theme="@android:style/Theme.DeviceDefault.Light">
+        <activity android:name=".ProductActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".CartActivity" android:exported="true" />
+        <activity android:name=".CheckoutActivity" android:exported="true" />
+        <activity android:name=".DeepCheckoutActivity" android:exported="true" />
+    </application>
+</manifest>
