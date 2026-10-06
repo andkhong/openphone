@@ -31,7 +31,8 @@ DIALOG = [el(0, "Allow Chess.com to send you notifications?", "ocr_permission_me
 
 
 class GateLink:
-    """The phone's side: com.chess in front (current_app keeps naming it while the package-less dialog is up)."""
+    """The phone's side: com.chess in front; while the phone shows a hidden dialog it OCR'd, current_app names the
+    permission controller (the phone strips the OCR marks from apps' trees)."""
 
     closed = False
 
@@ -43,8 +44,8 @@ class GateLink:
 
     def call(self, method, params):
         self.calls.append((method, dict(params)))
-        if method == "current_app":
-            return "com.chess"
+        if method == "current_app":  # the phone names the controller while it shows the dialog it read
+            return "com.android.permissioncontroller" if self.screen is DIALOG and not self.blind_reads else "com.chess"
         if method == "ui_elements":
             if self.blind_reads > 0:
                 self.blind_reads -= 1

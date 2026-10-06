@@ -159,6 +159,15 @@ class DialogPhone(FakeDriver):
         super().tap(x, y)
         self.elements = []
 
+    def later(self):
+        """The dialog comes up only after the task has been in Chess.com (BACK shows it): the task's own app."""
+        self.held, self.elements = self.elements, []
+        return self
+
+    def key(self, name):
+        super().key(name)
+        self.elements = getattr(self, "held", self.elements)
+
 
 class StepIO(RecordingIO):
     def __init__(self, answers=None):
@@ -169,9 +178,14 @@ class StepIO(RecordingIO):
         self.steps.append(row)
 
 
-def run(tmp_path, message, answers=None, mode="auto", phone=None, **prompts):
+def run(tmp_path, message, answers=None, mode="auto", phone=None, in_app_first=False, **prompts):
     driver = (phone or DialogPhone)(message)
-    client = ScriptedClient([[tool_use("done", "d", summary="ok", success=True)]])
+    # A dialog on the very first screen has no task app yet: it counts as another app's (it asks). in_app_first: the
+    # task is in Chess.com first (one model step), then the dialog comes up.
+    client = ScriptedClient(([[tool_use("press_key", "k", key="BACK")]] if in_app_first else [])
+                            + [[tool_use("done", "d", summary="ok", success=True)]])
+    if in_app_first:
+        driver.later()
     io = StepIO(answers)
     agent = Agent(client, driver, AppResolver(driver, label_cache=tmp_path / "l.json"),
                   Config(settle_delay=0, launch_settle_delay=0), io, use_ocr=False)
@@ -259,23 +273,29 @@ class LocationPhone(DialogPhone):
 
 
 def test_location_while_using_picks_approximate_first(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="while_using")
+    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="while_using",
+                             in_app_first=True)
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 2 and taps[0][1] > 540  # the Approximate card, then…
     assert driver.answered == "While using the app"
-    assert io.questions == [] and len(client.requests) == 1
+    assert io.questions == [] and len(client.requests) == 2  # BACK, then done: none for the dialog
     assert all(r.get("handled_by") == "permission_rule" for r in io.steps if r["tool"] == "tap_element")
 
 
 def test_location_precise_when_the_owner_says_so(tmp_path):
     driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="once",
-                             location_accuracy="precise")
+                             location_accuracy="precise", in_app_first=True)
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and driver.answered == "Only this time"  # Precise was already selected
 
 
+def test_a_dialog_before_the_task_has_an_app_asks(tmp_path):
+    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["no"])
+    assert io.questions and "camera" in io.questions[0]
+
+
 def test_by_default_the_tasks_app_gets_only_this_time_without_asking(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"])
+    driver, client, io = run(tmp_path, MESSAGES["camera"], in_app_first=True)
     assert io.questions == []
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time"
