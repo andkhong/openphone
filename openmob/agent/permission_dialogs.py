@@ -1,4 +1,13 @@
-"""Android's runtime permission dialogs, handled by rule with no model call.
+"""Android's runtime permission dialogs, handled with no model call.
+
+**Now: every recognized dialog is dismissed with BACK** (Agent._permission_dialog). A real Samsung (Android 15/16)
+ignored every injected tap on one: Android 14+ marks these dialogs accessibility-data-sensitive and drops touches from
+an accessibility service that isn't an accessibility tool; BACK closes it at once. The app doesn't get the permission;
+the owner grants it on the phone if wanted. `detect` (which dialogs are the system's) is what the loop uses; `decide`,
+`button` and the defaults below describe the answer policy for when taps work again (the gatekeeper phone judges taps
+by the same policy).
+
+The answer policy:
 
 "Allow Chess.com to send you notifications? · Allow · Don't allow" used to cost a vision step each (3-6 s), and
 the model flip-flopped between Allow and Don't allow (a real run: two "Don't allow" taps and a BACK, ~20 s). The
@@ -48,6 +57,15 @@ TALKS_PERMISSIONS = re.compile(rf"\bpermissions?\b|\b{_ANSWERS}\W+(?:\w+\W+){{0,
 
 def request_mentions_permissions(task: str) -> bool:
     return bool(TALKS_PERMISSIONS.search(task or ""))
+
+
+_DENIES = re.compile(r"don['’]?t allow|do not allow|disallow|\bdeny|\bblock|\brefuse|\breject|\bdecline|turn off", re.I)
+_ALLOWS = re.compile(rf"\b(?:allow|grant|enable|turn on|give)\W+(?:\w+\W+){{0,4}}?{_KINDS}|\bpermissions?\b", re.I)
+
+
+def request_wants_permission(task: str) -> bool:
+    """The request asks to allow a permission ("allow notifications", "turn on location for Maps")."""
+    return bool(_ALLOWS.search(task or "")) and not _DENIES.search(task or "")
 
 
 PACKAGES = re.compile(r"^(com\.google\.android|com\.android|com\.samsung\.android)\.permissioncontroller$"

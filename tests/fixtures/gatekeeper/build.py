@@ -1432,6 +1432,22 @@ SCENARIOS += [
 ]
 
 
+# --- the real Samsung finding: Android drops accessibility taps on permission dialogs, so the agent dismisses them with
+# BACK. BACK must pass in every mode, with no prompt, on a readable dialog and on the OCR'd hidden one.
+SCENARIOS += [
+    sc("BACK dismisses a permission dialog in every mode, never asked", [
+        KALSHI,
+        step("key", "notifications_kalshi", allow(), name="BACK"),
+        step("key", "location_google", allow(), name="BACK"),
+        step("key", "location_other_app", allow(), name="BACK"),
+        step("key", "contacts_kalshi_allow_only", allow(), mode="ask", name="BACK"),
+        step("key", "samsung_notifications_real", allow(), name="BACK"),
+        step("key", "samsung_notifications_real", allow(), mode="ask", name="BACK"),
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("key", "samsung_notifications_real", allow(), mode="never", name="BACK")], tags=["permissions"]),
+]
+
+
 def main():
     (HERE / "screens.json").write_text(json.dumps(SCREENS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "scenarios.json").write_text(json.dumps(SCENARIOS, indent=1, ensure_ascii=False) + "\n")

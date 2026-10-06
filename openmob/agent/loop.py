@@ -73,6 +73,9 @@ READABLE_WAIT_S = 1.5
 READABLE_POLL_S = 0.15
 # A refusal that means "the phone can't read what's there yet", not "no" (the gatekeeper's code).
 UNREADABLE_CODES = {"gate_screen_unstable"}
+DIALOG_TAP_REFUSED = ("Android doesn't let OpenMob press buttons in permission dialogs (the tap would be ignored), so "
+                      "nothing was tapped. Press BACK (press_key BACK) to dismiss it; the app won't get the permission. "
+                      "If the request needs the permission, tell the owner to allow it on the phone themselves.")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -189,6 +192,7 @@ class _TaskState:
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
     tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
     unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
+    dialogs_given_up: set = field(default_factory=set)  # permission dialogs BACK didn't close: (package, message)
 
 
 def is_yes(answer: str) -> bool:
@@ -336,7 +340,7 @@ class Agent:
             if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
                 state.app_in_front = obs.package
             for _ in range(3):  # Android's permission dialogs: answered by rule, before any model sees them
-                if not self._permission_dialog(state, obs):
+                if not self._permission_dialog(state, obs, messages):
                     break
                 self._settle(self.config.settle_delay, state)
                 obs = self._observe_settled(state)
@@ -800,7 +804,8 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False,
-                 done_via: str = "vision", handled_by: str | None = None, source: str | None = None) -> Outcome:
+                 done_via: str = "vision", handled_by: str | None = None, source: str | None = None,
+                 note: str | None = None) -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
@@ -826,6 +831,8 @@ class Agent:
                               "or call done.", is_error=True, settle=0)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
+        if note and not outcome.is_error:
+            outcome.text = note
         if outcome.done:
             outcome.done_via = done_via
         outcome.timings = self.timer.take()
@@ -941,6 +948,9 @@ class Agent:
                 return backed
             return Outcome(f"Opened {url}.", settle=self.config.launch_settle_delay, until="loading_done")
 
+        if name in ("tap_element", "tap", "long_press") and self._dialog_on(obs.package, obs.elements) is not None:
+            # Android drops OpenMob's touches on permission dialogs (accessibility-data-sensitive): don't send one.
+            return Outcome(DIALOG_TAP_REFUSED, is_error=True, settle=0)
         if name == "tap_element":
             index = int(args["index"])
             if not 0 <= index < len(obs.elements):
@@ -1204,73 +1214,83 @@ class Agent:
         return Outcome(tapped + note, settle=0 if result.met else None,
                        wait=self._wait_record(cond, result, auto=True))
 
-    # --- Android permission dialogs, by rule (agent/permission_dialogs.py) -----------------------------
+    # --- Android permission dialogs: dismissed with Back (agent/permission_dialogs.py) ----------------------
 
-    def _permission_prompts(self, state: _TaskState) -> dict:
-        """The owner's answers per permission type: the phone's permission settings (signed loosening, the dashboard's
-        "Permission prompts"), else config permission_prompts, over the defaults."""
-        try:
-            settings = state.perms.current_settings() or {}
-        except Exception:
-            settings = {}
-        return {**permission_dialogs.DEFAULTS, **(getattr(self.config, "permission_prompts", None) or {}),
-                **(settings.get("permission_prompts") or {})}
+    def _dialog_on(self, package: str | None, elements: list[UIElement]):
+        """The system runtime-permission dialog on screen (B1-safe recognition), or None."""
+        return permission_dialogs.detect(package, elements, gatekeeper=bool(getattr(self.driver, "gatekeeper", False)))
 
-    def _permission_dialog(self, state: _TaskState, obs: Observation) -> bool:
-        """Answer a runtime permission dialog on screen by the owner's defaults, with no model call: notifications
-        Allow, location Approximate then "Only this time", camera, microphone, nearby devices and the like "Only
-        this time", photos "Allow limited access", never "Allow all the time"; another app's request asks the owner.
-        Left to the model when the request itself says how to answer ("don't allow notifications"), or before an
-        approved plan. Each tap goes through the usual checks (and, on a gatekeeper phone, the phone's own) and is
-        recorded as a step with source "auto_dialog". True: one was answered (the caller looks again)."""
-        if not getattr(self.config, "auto_permission_dialogs", True) or self._needs_plan(state):
+    def _permission_dialog(self, state: _TaskState, obs: Observation, messages: list[dict]) -> bool:
+        """A runtime permission dialog on screen is dismissed with BACK, with no model call. Android 14+ marks these
+        dialogs accessibility-data-sensitive and drops touches injected by an accessibility service that isn't an
+        accessibility tool, so their buttons can't be pressed (a real Samsung ignored 11 taps over 24 s); BACK closes
+        one at once. The app doesn't get the permission. The step is recorded with source "auto_dialog", and the
+        model is told. If BACK twice doesn't close it, the loop stops handling that dialog and tells the model.
+        True: one was dismissed (the caller looks again)."""
+        if not getattr(self.config, "auto_permission_dialogs", True):
             return False
-        if permission_dialogs.request_mentions_permissions(state.task):
-            return False
-        dialog = permission_dialogs.detect(obs.package, obs.elements,
-                                           gatekeeper=bool(getattr(self.driver, "gatekeeper", False)))
+        dialog = self._dialog_on(obs.package, obs.elements)
         if dialog is None:
             return False
-        mode = state.perms.mode()
-        task_app = state.app_in_front
-        plan = permission_dialogs.decide(dialog, mode=mode, prompts=self._permission_prompts(state),
-                                         task_app_label=self._app_label(task_app) if task_app else None,
-                                         task_package=task_app)
-        asked = plan.answer == "ask"
-        answer = plan.answer
-        if asked:
-            reply = self._ask_owner(state, permission_dialogs.question(dialog),
-                                    {"kind": "action", "action_kind": "permission", "package": obs.package})
-            answer = "allow" if is_yes(reply) else "deny"
-        target = permission_dialogs.button(dialog, answer, plan.grant, asked=asked)
-        if target is None:
+        key = (obs.package or "", dialog.message)
+        if key in state.dialogs_given_up:
             return False
-        self.io.event("status", f"Permission dialog ({dialog.kind}, {dialog.app or 'an app'}): "
-                                f"{'asked the owner, ' if asked else ''}{answer}"
-                                f"{f' ({plan.accuracy})' if answer == 'allow' and plan.accuracy else ''}.")
-
         if state.task_app is None and state.app_in_front and not gate.is_launcher(state.app_in_front):
             state.task_app = state.app_in_front  # the dialog is not the task's app
-
-        def tap(element) -> bool:
-            # Decided above by the owner's defaults (and, for a yes, the owner): the server's own risky-tap check
-            # doesn't ask again. Refusals still apply, and a gatekeeper phone checks each tap itself.
-            state.approved = True
-            try:
-                outcome = self._execute("tap_element", {"index": element.index, "target": element.text},
-                                        obs, state, fast_step=True, handled_by="permission_rule", source="auto_dialog")
-            finally:
-                state.approved = False
+        app = dialog.app or (self._app_label(state.app_in_front) if state.app_in_front else "The app")
+        what = permission_dialogs.WORDS.get(dialog.kind, "data")
+        request = (f"{app}'s {what} request" if dialog.kind == "notifications"
+                   else f"{app}'s request to use your {what}")
+        text = (f"Dismissed {request} with Back (Android doesn't let OpenMob press permission buttons; the app didn't "
+                "get the permission).")
+        self.io.event("status", f"Permission dialog ({dialog.kind}, {app}): dismissed with Back.")
+        closed = False
+        for attempt in range(2):
+            outcome = self._execute("press_key", {"key": "BACK"}, obs, state, fast_step=True,
+                                    handled_by="permission_rule", source="auto_dialog",
+                                    note=text if attempt == 0 else f"{text} (Back again: the first didn't close it.)")
             state.fast_steps += 1
-            return not outcome.is_error
-
-        if answer == "allow" and (card := permission_dialogs.accuracy_card(dialog, plan.accuracy)) is not None:
-            tap(card)  # Approximate unless the owner chose Precise, before the grant
-        if not tap(target) and answer == "allow":  # e.g. the owner said no on the phone's own prompt
-            deny = permission_dialogs.button(dialog, "deny")
-            if deny is not None:
-                tap(deny)
+            if outcome.is_error:
+                break
+            if self._dialog_closed(state, key):
+                closed = True
+                break
+        note = f"(The phone: {text}"
+        if permission_dialogs.request_wants_permission(state.task):
+            note += (" The request asks to allow a permission, but Android requires the owner to tap Allow "
+                     "themselves: say so in your summary.")
+        if not closed:
+            state.dialogs_given_up.add(key)
+            note += (" Back didn't close the dialog, so it's still up and OpenMob can't answer it: tell the owner to "
+                     "answer it on the phone.")
+        self._note_for_model(messages, note + ")")
         return True
+
+    def _dialog_closed(self, state: _TaskState, key: tuple) -> bool:
+        """After BACK: poll (no model calls) up to READABLE_WAIT_S for that dialog to be gone."""
+        deadline = time.monotonic() + READABLE_WAIT_S
+        while True:
+            try:
+                package, elements = self.driver.current_app(), self.driver.ui_elements()
+            except DeviceError:
+                return False
+            dialog = self._dialog_on(package, elements)
+            if dialog is None or (package or "", dialog.message) != key:
+                return True
+            if time.monotonic() >= deadline or state.cancel.is_set():
+                return False
+            with self.timer.phase("settle"):
+                state.cancel.wait(READABLE_POLL_S)
+
+    @staticmethod
+    def _note_for_model(messages: list[dict], text: str) -> None:
+        last = messages[-1]
+        if last["role"] != "user":
+            messages.append({"role": "user", "content": []})
+            last = messages[-1]
+        if isinstance(last["content"], str):
+            last["content"] = [{"type": "text", "text": last["content"]}]
+        last["content"].append({"type": "text", "text": text})
 
     # --- a screen that can't be read yet -------------------------------------------------------------
 

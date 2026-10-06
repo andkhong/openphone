@@ -41,8 +41,8 @@ settle_quiet_ms: 300               # how long without screen changes counts as s
 verify_taps: true                  # re-check a tap target just before tapping (OpenMob app phones)
 ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
 ocr: true                          # Apple Vision OCR for screens without an accessibility tree
-# Android permission dialogs are answered by the loop (no model call) with these owner defaults. Never
-# "Allow all the time". A request that says how to answer ("don't allow notifications") is left to the model.
+# Android permission dialogs are dismissed with Back by the loop (no model call): Android ignores OpenMob's taps on
+# their buttons, so the app doesn't get the permission. The policy below is for when taps work again.
 auto_permission_dialogs: true
 # permission_prompts:
 #   notifications: allow             # allow | deny

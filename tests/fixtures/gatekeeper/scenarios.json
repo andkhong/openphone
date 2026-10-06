@@ -8576,5 +8576,121 @@
     }
    }
   ]
+ },
+ {
+  "name": "BACK dismisses a permission dialog in every mode, never asked",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "location_other_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "never",
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
  }
 ]

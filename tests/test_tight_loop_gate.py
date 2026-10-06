@@ -65,6 +65,10 @@ class GateLink:
             return {"com.chess": "Chess"}
         if method == "wake_unlock":
             return None
+        if method == "key":
+            if params["name"] == "BACK" and self.screen is DIALOG:
+                self.screen = GAME
+            return None
         if method == "tap":
             if self.unstable:
                 self.unstable -= 1
@@ -89,13 +93,13 @@ def make(link, responses, tmp_path):
     return agent, client, io_
 
 
-def test_an_ocrd_dialog_is_answered_through_the_gate_with_no_model_call(tmp_path):
+def test_an_ocrd_dialog_is_dismissed_with_back_through_the_gate_with_no_model_call(tmp_path):
     link = GateLink(DIALOG)
     agent, client, io_ = make(link, [[tool_use("done", "a", summary="ok", success=True)]], tmp_path)
     agent.run("install chess and play 5 moves against a bot")
-    taps = [p for m, p in link.calls if m == "tap"]
-    assert len(taps) == 1 and taps[0]["mode"] == "auto"  # an ordinary act: the phone's gate judges it
-    assert 1200 + 150 <= taps[0]["y"] <= 1320 + 150  # "Allow"
+    assert not [p for m, p in link.calls if m == "tap"]  # Android would drop it
+    keys = [p for m, p in link.calls if m == "key"]
+    assert len(keys) == 1 and keys[0]["name"] == "BACK" and keys[0]["mode"] == "auto"  # an ordinary gated act
     assert io_.steps[0]["source"] == "auto_dialog" and io_.steps[0]["handled_by"] == "permission_rule"
     assert len(client.requests) == 1 and "Play Bots" in str(client.requests[0]["messages"])
     assert not io_.questions  # the server asked nobody

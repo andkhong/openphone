@@ -219,8 +219,10 @@ the text you expect. Use wait (fixed seconds) only when nothing observable will 
 boards (chess, cards) wait_until screen_changes for the opponent's move rather than guessing at text that may never \
 appear; a text wait on a still screen ends early, not met.
 - If a request needs an app that isn't installed, launch_app with install_if_missing opens its Play Store page.
-- Android's permission dialogs (notifications, location, camera…) are answered for you by the owner's defaults \
-before you see the screen. Answer one yourself only when the request says how (e.g. "don't allow notifications").
+- Android's permission dialogs (notifications, location, camera…) can't be tapped: Android ignores OpenMob's \
+taps on their buttons. They are dismissed for you with BACK before you see the screen, so the app doesn't get that \
+permission. If the request needs a permission granted, carry on without it and say in your summary that the owner \
+must tap Allow on the phone themselves.
 - After launching a game, wait through loading screens, and close announcements, pop-ups, or "tap to start" \
 screens that are in the way.
 - If an action didn't change the screen as expected, try something different. Don't repeat the same action \

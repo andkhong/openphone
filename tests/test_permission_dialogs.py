@@ -196,28 +196,10 @@ def run(tmp_path, message, answers=None, mode="auto", phone=None, in_app_first=F
     return driver, client, io
 
 
-def test_notifications_are_denied_without_a_model_call(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["notifications"], notifications="deny")
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and taps[0][2] > 1850  # "Don't allow"
-    assert len(client.requests) == 1  # only the step after the dialog (the model's "done")
-    row = next(r for r in io.steps if r.get("handled_by") == "permission_rule")
-    assert row["fast"] is True and row["tool"] == "tap_element"
-    assert any("Permission dialog (notifications" in m for k, m in io.events)
-    assert io.questions == []
 
 
-def test_camera_asks_the_owner_and_prefers_one_time(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["yes"], camera="ask")
-    assert io.questions and "Chess.com" in io.questions[0] and "camera" in io.questions[0]
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time" (second button)
 
 
-def test_camera_denied_by_the_owner(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["no"], camera="ask")
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and taps[0][2] > 1850  # "Don't allow"
 
 
 class GatekeeperDialogPhone(DialogPhone):
@@ -232,19 +214,8 @@ class GatekeeperDialogPhone(DialogPhone):
         self.hints.append(text)
 
 
-def test_on_a_gatekeeper_phone_the_phone_asks(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], phone=GatekeeperDialogPhone, camera="ask")
-    assert io.questions == []  # no server-side prompt: one prompt, on the phone
-    assert driver.hints and "camera" in driver.hints[0]
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time"
 
 
-def test_dont_ask_mode_denies_the_camera_without_asking(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], mode="never", camera="ask")
-    assert io.questions == []
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and taps[0][2] > 1850
 
 
 def test_a_preselected_precise_without_an_approximate_card_asks():
@@ -272,33 +243,12 @@ class LocationPhone(DialogPhone):
             self.elements = []
 
 
-def test_location_while_using_picks_approximate_first(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="while_using",
-                             in_app_first=True)
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 2 and taps[0][1] > 540  # the Approximate card, then…
-    assert driver.answered == "While using the app"
-    assert io.questions == [] and len(client.requests) == 2  # BACK, then done: none for the dialog
-    assert all(r.get("handled_by") == "permission_rule" for r in io.steps if r["tool"] == "tap_element")
 
 
-def test_location_precise_when_the_owner_says_so(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["location"], phone=LocationPhone, location="once",
-                             location_accuracy="precise", in_app_first=True)
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and driver.answered == "Only this time"  # Precise was already selected
 
 
-def test_a_dialog_before_the_task_has_an_app_asks(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["no"])
-    assert io.questions and "camera" in io.questions[0]
 
 
-def test_by_default_the_tasks_app_gets_only_this_time_without_asking(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], in_app_first=True)
-    assert io.questions == []
-    taps = [a for a in driver.actions if a[0] == "tap"]
-    assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time"
 
 
 def test_an_ocr_read_dialog_is_recognized_by_its_text():
@@ -315,3 +265,23 @@ def test_an_ocr_read_dialog_is_recognized_by_its_text():
     plan = decide(d, app="Kalshi")
     assert plan.answer == "allow" and pd.accuracy_card(d, plan.accuracy).text == "Approximate"
     assert pd.button(d, plan.answer, plan.grant).text == "Only this time"
+
+
+# The loop no longer taps these dialogs (Android drops accessibility taps on them): it dismisses them with BACK, in
+# every mode and whatever the settings (tests/test_tight_loop.py has the rest). The policy above is the phone gate's.
+
+class BackPhone(DialogPhone):
+    def key(self, name):
+        super().key(name)
+        if name == "BACK":
+            self.elements = []
+
+
+@pytest.mark.parametrize("mode,prompts", [("auto", {}), ("auto", {"camera": "ask"}), ("never", {"camera": "ask"}),
+                                          ("auto", {"notifications": "deny"})])
+def test_every_dialog_is_dismissed_with_back_without_a_model_call(tmp_path, mode, prompts):
+    driver, client, io = run(tmp_path, MESSAGES["camera"], mode=mode, phone=BackPhone, **prompts)
+    assert not [a for a in driver.actions if a[0] == "tap"] and ("key", "BACK") in driver.actions
+    assert io.questions == [] and len(client.requests) == 1
+    row = next(r for r in io.steps if r.get("source") == "auto_dialog")
+    assert row["tool"] == "press_key" and row["handled_by"] == "permission_rule"
