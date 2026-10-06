@@ -163,6 +163,26 @@ def test_a_target_without_a_risk_head_gets_the_separate_check(tmp_path):
     assert io.questions  # 'delete' is a confirm keyword either way
 
 
+def test_a_failed_or_malformed_request_goes_to_the_vision_step(tmp_path):
+    from openmob.jev import JevError
+
+    class Broken(FakeJev):
+        def __init__(self, error):
+            super().__init__([("TAP", 1, 0.99)])
+            self.error = error
+
+        def ask(self, state, questions):
+            if "operation" in questions:
+                raise self.error
+            return super().ask(state, questions)
+
+    for error in (JevError("timeout"), KeyError("operation")):
+        driver = Phone(SETTINGS)
+        agent, client, steps = make([DONE], driver, Broken(error), tmp_path)
+        result = agent.run("open display settings")
+        assert result.success and len(client.requests) == 1 and not any(a[0] == "tap" for a in driver.actions)
+
+
 def test_the_separate_requests_return_when_the_feature_is_off(tmp_path):
     driver = Phone(SETTINGS, {"Display": DISPLAY})
     jev = FakeJev([("TAP", 1, 0.95), ("DONE", None, 0.95)])

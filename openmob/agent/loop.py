@@ -369,7 +369,10 @@ class Agent:
         if self.judge:
             try:
                 if self._one_request(state, obs):
-                    self._classify_step(state, obs)
+                    try:
+                        self._classify_step(state, obs)
+                    except (KeyError, TypeError, ValueError) as exc:  # a malformed answer: the vision step
+                        self.io.event("error", f"Fast step skipped: {exc}")
                 else:
                     obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
             except JevError as exc:
