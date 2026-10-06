@@ -215,6 +215,60 @@
   .send.stop { background: var(--fg); color: var(--bg); }
   .disclaimer { text-align: center; color: var(--faint); font-size: 12px; margin-top: 8px; }
 
+  /* Permission mode picker, next to the model picker (like Claude Code's mode menu): when the phone
+     asks you before acting. One mode per chat; the phone's default comes from its settings. */
+  .mode-wrap { position: relative; flex: none; }
+  .mode-chip { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--muted); padding: 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; white-space: nowrap; }
+  .mode-chip:hover, .mode-chip[aria-expanded="true"] { background: var(--surface-2); color: var(--fg); }
+  .mode-chip svg { width: 14px; height: 14px; flex: none; }
+  .mode-chip.never { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
+  .mode-menu { position: absolute; bottom: calc(100% + 8px); right: 0; width: 340px; max-width: calc(100vw - 2 * var(--gutter)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 6px; z-index: 40; }
+  .mode-menu .mm-head { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px 6px; }
+  .mode-menu .mm-head b { font-size: 13px; }
+  .mode-menu .mm-head span { color: var(--faint); font-size: 12px; margin-left: auto; }
+  .mode-item { display: grid; grid-template-columns: 1fr auto 18px; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--fg); font: inherit; }
+  .mode-item:hover, .mode-item:focus-visible { background: var(--surface-2); outline: 0; }
+  .mode-item .t { font-size: 14px; font-weight: 500; grid-column: 1; grid-row: 1; }
+  .mode-item .d { font-size: 12px; color: var(--muted); grid-column: 1 / 3; grid-row: 2; line-height: 1.35; }
+  .mode-item .k { font-size: 12px; color: var(--faint); grid-column: 3; grid-row: 1; text-align: right; font-variant-numeric: tabular-nums; }
+  .mode-item .side { grid-column: 2; grid-row: 1; display: inline-flex; align-items: center; gap: 6px; }
+  .mode-item .ck { width: 16px; height: 16px; color: var(--accent); }
+  .mode-item .tag { font-size: 11px; color: var(--faint); border: 1px solid var(--line-strong); border-radius: var(--r-pill); padding: 0 6px; }
+  .mode-menu hr { border: 0; border-top: 1px solid var(--line); margin: 6px 4px; }
+  .mode-never { display: grid; grid-template-columns: 1fr auto; column-gap: 10px; row-gap: 6px; align-items: center; padding: 8px 10px; border-radius: 8px; }
+  .mode-never.on { background: var(--warn-soft); }
+  .mode-never .t { font-size: 14px; font-weight: 500; }
+  .mode-never .d { font-size: 12px; color: var(--muted); grid-column: 1 / -1; line-height: 1.35; }
+  .mode-never .spans { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+  .mode-never .spans button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
+  .mode-status { margin: 6px 4px 2px; font-size: 13px; }
+  .mode-status:empty { display: none; }
+  .mode-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px 4px; color: var(--faint); font-size: 12px; }
+  .mode-foot button { border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
+  .text.ask { white-space: pre-line; }
+  #neverChip { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; order: 9; width: 100%; justify-content: center; min-height: 26px; }
+  .panel-head { flex-wrap: wrap; flex: none; }
+  .panel-head h2 { white-space: nowrap; }
+  .mode-foot button { white-space: nowrap; }
+  /* Phone permission settings (from the mode menu or the live panel). */
+  .perm-dialog { width: min(560px, 100%); }
+  .perm-body { overflow-y: auto; padding: 16px 20px 20px; display: grid; gap: 16px; }
+  .perm-body h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+  .perm-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .perm-row .select { width: auto; flex: 1; min-width: 160px; }
+  .trusted-list { display: grid; gap: 6px; }
+  .trusted-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: 13px; }
+  .trusted-item .grow { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .trusted-item .sub { color: var(--muted); font-size: 12px; display: block; }
+  .trusted-add { display: grid; gap: 8px; }
+  .trusted-add .kinds { display: flex; gap: 12px; flex-wrap: wrap; }
+  @media (max-width: 560px) {
+    .mode-menu { position: fixed; left: var(--gutter); right: var(--gutter); bottom: 96px; width: auto; max-height: 70vh; overflow-y: auto; }
+    .taskbar { flex-wrap: wrap; }
+    .taskbar .task-now { order: 9; flex-basis: 100%; }
+    .taskbar .task-meta { margin-left: auto; }
+  }
+
   /* Live screen panel */
   .panel { width: 340px; flex: none; border-left: 1px solid var(--line); background: var(--surface); padding: 14px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
   .panel.hidden { display: none; }
@@ -343,6 +397,45 @@
       <div class="search-results" id="searchResults" role="listbox" aria-label="Chats"></div>
     </div>
   </div>
+  <div class="search-overlay" id="permOverlay" hidden>
+    <div class="search-dialog perm-dialog" role="dialog" aria-modal="true" aria-labelledby="permTitle">
+      <div class="search-head">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>
+        <b id="permTitle" style="flex:1;font-size:16px">Permissions on this phone</b>
+        <button class="btn btn-ghost icon-btn" id="permClose" type="button" aria-label="Close permissions">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="perm-body">
+        <p class="muted small" style="margin:0">Making agents ask less needs your approval on the phone itself, with its screen lock. Asking more takes effect at once.</p>
+        <div>
+          <h3><label for="permDefault">Default mode for new chats</label></h3>
+          <div class="perm-row"><select class="select" id="permDefault"></select></div>
+        </div>
+        <div>
+          <h3><label for="permCeiling">Loosest mode allowed</label></h3>
+          <div class="perm-row"><select class="select" id="permCeiling"></select></div>
+          <p class="muted small" id="permNever" style="margin:6px 0 0"></p>
+        </div>
+        <div>
+          <h3>Trusted apps</h3>
+          <div class="trusted-list" id="trustedList"></div>
+          <form class="trusted-add" id="trustedAdd">
+            <div class="perm-row">
+              <input class="input" id="trustedApp" placeholder="App package (com.whatsapp) or category (messaging)" aria-label="App package or category" required>
+            </div>
+            <div class="kinds" id="trustedKinds"></div>
+            <div class="perm-row"><button class="btn btn-sm" type="submit">Trust (approve on phone)</button><span class="muted small">Lasts 30 days; payments 7 days at most, one app only.</span></div>
+          </form>
+        </div>
+        <div class="callout warn" id="permPending" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>
+          <div><b>Approve on your phone</b><span id="permPendingText"></span></div>
+        </div>
+        <div class="error" id="permError" role="alert"></div>
+      </div>
+    </div>
+  </div>
   <section class="chat" aria-label="Conversation">
     <div class="thread" id="thread" aria-live="polite"><div class="column" id="column"></div></div>
     <div class="composer-wrap">
@@ -359,6 +452,12 @@
           <button class="queue-toggle" id="queueToggle" type="button" aria-pressed="false" hidden title="Off: your message corrects the running task. On: it runs as a new task afterwards.">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>Queue as new task
           </button>
+          <div class="mode-wrap" id="modeWrap">
+            <button class="mode-chip" id="modeChip" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="modeMenu" title="Permission mode: when your phone asks you before acting">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg><span id="modeLabel">Auto</span>
+            </button>
+            <div class="mode-menu" id="modeMenu" role="menu" aria-label="Permission mode" hidden></div>
+          </div>
           <select class="model" id="model" aria-label="Model for this phone" title="Model for this phone's next task"></select>
           <!-- Dictation mic hidden for now: delete style="display:none" to bring it back. -->
           <button class="mic" id="mic" type="button" aria-label="Dictate" title="Dictate (Whisper)" style="display:none">
@@ -374,7 +473,7 @@
 </div>
 </div>
   <aside class="panel" id="panel" aria-label="Phone screen">
-    <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
+    <div class="panel-head"><h2>Live screen</h2><button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
     <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
     <div class="phone">
       <div class="phone-screen blank" id="phoneScreen">
@@ -571,7 +670,9 @@ async function send(text, mode = "auto") {
   text = text.trim();
   if (!text || !deviceId) return;
   try {
-    await api(`/api/devices/${deviceId}/command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, mode }) });
+    // The chat's permission mode, when one was picked (else the phone's default applies).
+    const body = { text, mode, ...(chatMode() ? { permission_mode: effectiveMode() } : {}) };
+    await api(`/api/devices/${deviceId}/command`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     stickToBottom = true;
     pollNow();
   } catch (e) { setHint(e.message); }
@@ -697,7 +798,9 @@ function renderTurn(turn, s) {
         if (confirm) {
           const call = el("div", "callout warn confirm");
           const txt = el("div");
-          txt.append(el("b", "", "Approve on your phone"), document.createTextNode("Your phone shows this step for you to approve. Nothing happens until you do."));
+          const isPlan = !!(e.data && e.data.approval && e.data.approval.kind === "plan");
+          txt.append(el("b", "", isPlan ? "Approve the plan on your phone" : "Approve on your phone"), document.createTextNode(isPlan
+            ? "Nothing runs until you approve it there. To change it, type what to change below." : "Your phone shows this step for you to approve. Nothing happens until you do."));
           call.append(icon("phone"), txt);
           body.append(call);
         }
@@ -937,13 +1040,14 @@ function render(s) {
   last = s;
   const reconnecting = !!(s && s.device && s.device.reconnecting);
   const state = !s ? "offline" : reconnecting ? "asking" : (s.device && s.device.online === false ? "offline" : s.state);
-  const confirming = s && s.state === "asking" && s.question_kind === "confirm";
+  const confirming = s && s.state === "asking" && (s.question_kind === "confirm" || s.question_kind === "plan");
   $("state").textContent = reconnecting ? "Reconnecting to your phone…" : confirming ? "Approve on your phone" : ({ idle: "Ready", running: "Working", asking: "Waiting for your answer", offline: deviceId ? "Phone offline" : "No phone connected" }[state] || state);
   const sess = s && s.usage && s.usage.session;
   const selected = (s && s.model) || $("model").value;
   const sessionText = modelTokens(sess, selected);
   $("sessionTokens").textContent = sessionText ? `This session: ${sessionText}` : "";
   if (s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
+  syncPerms(s);
   renderTaskBar(s);
   renderScreenState();
   updateComposer();
@@ -988,6 +1092,7 @@ function updateComposer() {
   const running = !!(last && last.state === "running");
   const asking = !!(last && last.state === "asking");
   const phoneOnly = asking && last.question_kind === "confirm" && !!last.confirm_on_phone;  // only the phone can approve
+  const planning = asking && last.question_kind === "plan";  // approve on the phone, or type changes
   const busy = running && !hasText;  // empty box while working: the button stops
   const btn = $("send");
   const kind = busy ? "stop" : "up";
@@ -1001,12 +1106,13 @@ function updateComposer() {
   $("queueToggle").hidden = !taskOn;
   $("queueToggle").setAttribute("aria-pressed", String(queueNext));
   $("text").placeholder = !deviceId ? "Connect a phone to start" : queueNext && taskOn ? "Describe the next task…"
-    : phoneOnly ? "Approve or decline on your phone…" : asking ? "Type your answer…" : running ? "Correct or add to the current task…" : "Tell your phone what to do…";
+    : phoneOnly ? "Approve or decline on your phone…" : planning ? "Type changes to the plan, or approve it on your phone…" : asking ? "Type your answer…" : running ? "Correct or add to the current task…" : "Tell your phone what to do…";
   const offline = !last || (last.device && last.device.online === false);
   $("hint").textContent = recorder ? $("hint").dataset.note : !deviceId ? "" : offline ? "Phone is offline." :
     $("hint").dataset.note ? $("hint").dataset.note :
     queueNext && taskOn ? "Runs after the current task finishes." :
     phoneOnly ? "Approve on your phone, or press Stop." :
+    planning ? "Approve the plan on your phone, say no to drop it, or type what to change." :
     asking ? "Answer the question above, or say stop." :
     running ? "Messages now correct the running task." : "";
 }
@@ -1049,6 +1155,297 @@ $("model").onchange = async (e) => {
     updateComposer();
   } catch (err) { setHint(err.message); }
 };
+
+// ---------- permission modes: when the phone asks you before acting ----------
+// Tightening (asking more) applies at once. Loosening past what the phone allows needs your approval
+// on the phone itself, with its screen lock: the dashboard asks for it and waits.
+
+const MODE_ORDER = ["ask", "plan", "auto", "trusted", "never"];
+const MODE_TEXT = {
+  ask: ["Ask every step", "Ask", "Approve every tap, typed text and app launch on your phone."],
+  plan: ["Plan first", "Plan", "Approve a short plan once; asks again only off-plan or to pay."],
+  auto: ["Auto", "Auto", "Asks at the final step of sends, deletes and payments you didn't ask for."],
+  trusted: ["Trusted apps", "Trusted", "Like Auto, and apps you trust act without asking."],
+  never: ["Never ask", "Never ask", "No prompts for a while. Payments and blocked apps stay off."],
+};
+const KIND_TEXT = { send: "send", delete: "delete", post: "post", pay: "pay", fill: "autofill" };
+const rankOf = (m) => MODE_ORDER.indexOf(m);
+const tightestMode = (...ms) => ms.filter((m) => rankOf(m) >= 0).sort((a, b) => rankOf(a) - rankOf(b))[0];
+let perms = null;            // the phone's permission settings (from each status poll)
+let permView = null;         // GET /permissions: plus categories and whether the phone can approve
+let neverSpan = "1h";
+let modeStatus = "";         // a line in the menu: "Approve on your phone…", "Not approved."
+let modeChatSeen = null;     // the chat the mode menu last saw (a new chat's pick moves to its id)
+const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+const untilText = (t) => (t - Date.now() / 1000 > 86400 ? new Date(t * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) : clock(t));
+
+const modeKey = (chat) => `openmob.mode.${deviceId}.${chat || "new"}`;
+function chatMode() { try { return localStorage.getItem(modeKey(last && last.chat_id)); } catch { return null; } }
+function setChatMode(m) {
+  try { m ? localStorage.setItem(modeKey(last && last.chat_id), m) : localStorage.removeItem(modeKey(last && last.chat_id)); } catch {}
+  renderMode();
+}
+// The mode the next message runs in: this chat's pick, else the phone's default, never looser than allowed.
+function effectiveMode() {
+  const ceiling = (perms && perms.ceiling) || "auto";
+  return tightestMode(chatMode() || (perms && perms.default_mode) || "auto", ceiling);
+}
+
+function syncPerms(s) {
+  const p = s && s.permissions;
+  // A new chat got its id: its picked mode moves with it.
+  const chat = (s && s.chat_id) || null;
+  if (chat && modeChatSeen === null) {
+    try {
+      const pending = localStorage.getItem(modeKey(null));
+      if (pending && !localStorage.getItem(modeKey(chat))) localStorage.setItem(modeKey(chat), pending);
+      localStorage.removeItem(modeKey(null));
+    } catch {}
+  }
+  modeChatSeen = chat;
+  if (p) perms = p;
+  renderMode();
+}
+
+function renderMode() {
+  const m = effectiveMode();
+  const never = m === "never" && perms && perms.never_until;
+  $("modeLabel").textContent = never ? `Never ask · until ${clock(perms.never_until)}` : MODE_TEXT[m][1];
+  $("modeChip").classList.toggle("never", !!never);
+  $("modeChip").title = `Permission mode: ${MODE_TEXT[m][0]}. ${MODE_TEXT[m][2]}`;
+  const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
+  $("neverChip").hidden = !neverOn;
+  if (neverOn) $("neverChip").textContent = `Never ask · until ${clock(perms.never_until)}`;
+  if (!$("modeMenu").hidden) renderModeMenu();
+}
+
+function modeRow(m, n) {
+  const [title, , desc] = MODE_TEXT[m];
+  const current = effectiveMode() === m;
+  const ceiling = (perms && perms.ceiling) || "auto";
+  const row = el("button", "mode-item");
+  row.type = "button";
+  row.setAttribute("role", "menuitemradio");
+  row.setAttribute("aria-checked", String(current));
+  row.dataset.mode = m;
+  const side = el("span", "side");
+  if (rankOf(m) > rankOf(ceiling)) side.append(el("span", "tag", "Approve on phone"));
+  if (current) {
+    const ck = el("span", "ck");
+    ck.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';  // static icon
+    side.append(ck);
+  }
+  row.append(el("span", "t", title), side, el("span", "k", String(n)), el("span", "d", desc));
+  row.onclick = () => pickMode(m);
+  return row;
+}
+
+function renderModeMenu() {
+  const menu = $("modeMenu");
+  const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.mode : null;
+  const head = el("div", "mm-head");
+  head.append(el("b", "", "When should your phone ask you?"), el("span", "", "1–5"));
+  const rows = ["ask", "plan", "auto", "trusted"].map((m, i) => modeRow(m, i + 1));
+  const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
+  const box = el("div", `mode-never${neverOn ? " on" : ""}`);
+  box.append(el("span", "t", neverOn ? `Never ask · on until ${untilText(perms.never_until)}` : "Never ask"));
+  const action = el("button", `btn btn-sm${neverOn ? "" : " btn-primary"}`, neverOn ? "Turn off" : "Enable");
+  action.type = "button";
+  action.dataset.mode = "never";
+  action.onclick = () => (neverOn ? turnOffNever() : enableNever());
+  box.append(action);
+  box.append(el("span", "d", neverOn ? "Agents act without asking on this phone. Payments, autofill and blocked apps stay off. Use it on a test phone."
+    : "No prompts for 1 hour, 24 hours or 7 days. Needs your approval on the phone. Payments and blocked apps stay off."));
+  if (!neverOn) {
+    const spans = el("div", "spans");
+    for (const [v, label] of [["1h", "1 hour"], ["24h", "24 hours"], ["7d", "7 days"]]) {
+      const b = el("button", "btn btn-sm", label);
+      b.type = "button";
+      b.setAttribute("aria-pressed", String(neverSpan === v));
+      b.onclick = () => { neverSpan = v; renderModeMenu(); };
+      spans.append(b);
+    }
+    box.append(spans);
+  }
+  const status = el("div", "mode-status");
+  if (modeStatus) status.append(el("span", `pill ${modeStatus.startsWith("Approve") ? "dotted warn live" : "bad"}`, modeStatus));
+  const foot = el("div", "mode-foot");
+  const def = perms ? MODE_TEXT[perms.default_mode][0] : "Auto";
+  foot.append(el("span", "", `This chat${chatMode() ? "" : " (phone default)"} · default ${def}`));
+  const settings = el("button", "", "Phone settings");
+  settings.type = "button";
+  settings.onclick = () => { closeModeMenu(); openPerms(); };
+  foot.append(settings);
+  menu.replaceChildren(head, ...rows, el("hr"), box, status, foot);
+  if (focused) {
+    const again = menu.querySelector(`[data-mode="${focused}"]`);
+    if (again) again.focus();
+  }
+}
+
+function openModeMenu() {
+  if (!deviceId) return;
+  modeStatus = modeStatus.startsWith("Approve") ? modeStatus : "";
+  $("modeMenu").hidden = false;
+  $("modeChip").setAttribute("aria-expanded", "true");
+  renderModeMenu();
+  const current = $("modeMenu").querySelector('[aria-checked="true"]') || $("modeMenu").querySelector(".mode-item");
+  if (current) current.focus();
+}
+function closeModeMenu(focusChip) {
+  $("modeMenu").hidden = true;
+  $("modeChip").setAttribute("aria-expanded", "false");
+  if (focusChip) $("modeChip").focus();
+}
+$("modeChip").onclick = () => ($("modeMenu").hidden ? openModeMenu() : closeModeMenu());
+$("neverChip").onclick = () => openPerms();
+document.addEventListener("click", (e) => { if (!$("modeWrap").contains(e.target)) closeModeMenu(); });
+$("modeMenu").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.stopPropagation(); closeModeMenu(true); return; }
+  if (/^[1-5]$/.test(e.key)) {
+    e.preventDefault();
+    const m = MODE_ORDER[Number(e.key) - 1];
+    if (m === "never") { const on = perms && perms.ceiling === "never"; on ? pickMode("never") : enableNever(); } else pickMode(m);
+    return;
+  }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const items = [...$("modeMenu").querySelectorAll("button")];
+    const i = items.indexOf(document.activeElement);
+    const next = items[(i + (e.key === "ArrowDown" ? 1 : -1) + items.length) % items.length];
+    if (next) next.focus();
+  }
+});
+
+async function patchPerms(patch) {
+  return api(`/api/devices/${deviceId}/permissions`, {
+    method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch),
+  });
+}
+
+// A change: applied now (tightening), or sent to the phone and waited for (loosening).
+async function changePerms(patch, then, show = (t) => { modeStatus = t; renderMode(); }) {
+  try {
+    const r = await patchPerms(patch);
+    if (r.status === "applied") { show(""); await refreshPerms(); then && then(); return; }
+    show("Approve on your phone…");
+    const device = deviceId;
+    const deadline = Date.now() + 130000;
+    while (Date.now() < deadline && device === deviceId) {
+      await new Promise((ok) => setTimeout(ok, 1000));
+      const a = await api(`/api/devices/${device}/permissions/approvals/${r.approval_id}`);
+      if (a.status === "pending") continue;
+      perms = a.settings;
+      if (a.status === "approved") { show(""); then && then(); renderMode(); return; }
+      show(a.status === "expired" ? "No answer on the phone." : "Not approved on the phone.");
+      return;
+    }
+  } catch (err) { show(err.message); }
+}
+
+function pickMode(m) {
+  const ceiling = (perms && perms.ceiling) || "auto";
+  if (m === "never" && ceiling !== "never") { enableNever(); return; }
+  if (rankOf(m) <= rankOf(ceiling)) {
+    setChatMode(m);
+    closeModeMenu(true);
+    setHint(`${MODE_TEXT[m][0]} for this chat.`);
+    return;
+  }
+  changePerms({ ceiling: m }, () => { setChatMode(m); setHint(`${MODE_TEXT[m][0]} for this chat.`); });
+}
+const enableNever = () => changePerms({ never: neverSpan }, () => { setChatMode("never"); setHint("Never ask for this chat, until it expires."); });
+const turnOffNever = () => changePerms({ never: "off" }, () => { if (chatMode() === "never") setChatMode(null); setHint("Agents ask again on this phone."); });
+
+async function refreshPerms() {
+  if (!deviceId) return;
+  try { permView = await api(`/api/devices/${deviceId}/permissions`); perms = permView; renderMode(); } catch {}
+}
+
+// --- the phone settings dialog ---
+function permShow(text) {
+  $("permPending").hidden = !text.startsWith("Approve");
+  $("permPendingText").textContent = text.startsWith("Approve") ? " Your phone shows the change. Nothing changes until you approve it there." : "";
+  $("permError").textContent = text && !text.startsWith("Approve") ? text : "";
+}
+function renderPerms() {
+  const p = permView;
+  if (!p) return;
+  const device = $("device").selectedOptions[0];
+  $("permTitle").textContent = `Permissions on ${device ? device.textContent.replace(/ · offline$/, "") : "this phone"}`;
+  const defaults = MODE_ORDER.filter((m) => m !== "never" || p.ceiling === "never");
+  $("permDefault").replaceChildren(...defaults.map((m) => {
+    const o = el("option", "", `${MODE_TEXT[m][0]}${rankOf(m) > rankOf(p.ceiling) ? " (approve on phone)" : ""}`);
+    o.value = m;
+    return o;
+  }));
+  $("permDefault").value = p.default_mode;
+  $("permCeiling").replaceChildren(...["ask", "plan", "auto", "trusted"].map((m) => {
+    const o = el("option", "", `${MODE_TEXT[m][0]}${rankOf(m) > rankOf(p.standing_ceiling) ? " (approve on phone)" : ""}`);
+    o.value = m;
+    return o;
+  }));
+  $("permCeiling").value = p.standing_ceiling;
+  $("permNever").replaceChildren();
+  if (p.never_until) {
+    $("permNever").append(document.createTextNode(`Never ask is on until ${untilText(p.never_until)}. `));
+    const off = el("button", "btn btn-sm", "Turn off");
+    off.type = "button";
+    off.onclick = () => changePerms({ never: "off" }, renderPerms, permShow);
+    $("permNever").append(off);
+  } else if (p.can_loosen === false) {
+    $("permNever").textContent = "This phone's app can't sign approvals yet, so it stays at Auto or stricter. Update the OpenMob app.";
+  }
+  const list = $("trustedList");
+  list.replaceChildren(...(p.trusted.length ? p.trusted.map((t, i) => {
+    const row = el("div", "trusted-item");
+    const what = el("div", "grow");
+    what.append(document.createTextNode(t.app || `${t.category} apps`));
+    const sub = `${t.kinds.map((k) => KIND_TEXT[k] || k).join(", ")}${t.target ? ` · to ${t.target}` : ""} · until ${new Date(t.expires_at * 1000).toLocaleDateString()}${t.source === "prompt" ? " · from a prompt" : ""}`;
+    what.append(el("span", "sub", sub));
+    const rm = el("button", "btn btn-sm btn-danger", "Remove");
+    rm.type = "button";
+    rm.onclick = () => changePerms({ trusted: p.trusted.filter((_, j) => j !== i) }, renderPerms, permShow);
+    row.append(what, rm);
+    return row;
+  }) : [el("div", "muted small", "None yet. Tap \"Always allow\" on a prompt, or add one here.")]));
+  if (!$("trustedKinds").childElementCount) {
+    for (const k of ["send", "post", "delete", "fill", "pay"]) {
+      const label = el("label", "check");
+      const box = el("input");
+      box.type = "checkbox";
+      box.value = k;
+      box.checked = k === "send";
+      label.append(box, document.createTextNode(KIND_TEXT[k]));
+      $("trustedKinds").append(label);
+    }
+  }
+}
+async function openPerms() {
+  if (!deviceId) return;
+  permShow("");
+  $("permOverlay").hidden = false;
+  await refreshPerms();
+  renderPerms();
+  $("permDefault").focus();
+}
+const closePerms = () => { $("permOverlay").hidden = true; $("modeChip").focus(); };
+$("permClose").onclick = closePerms;
+$("permOverlay").addEventListener("click", (e) => { if (e.target === $("permOverlay")) closePerms(); });
+$("permOverlay").addEventListener("keydown", (e) => { if (e.key === "Escape") { e.stopPropagation(); closePerms(); } });
+$("permDefault").onchange = (e) => {
+  const m = e.target.value;
+  changePerms({ default_mode: m }, async () => { await refreshPerms(); renderPerms(); }, permShow);
+};
+$("permCeiling").onchange = (e) => changePerms({ ceiling: e.target.value }, async () => { await refreshPerms(); renderPerms(); }, permShow);
+$("trustedAdd").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const value = $("trustedApp").value.trim();
+  const kinds = [...$("trustedKinds").querySelectorAll("input:checked")].map((x) => x.value);
+  if (!value || !kinds.length || !permView) return;
+  const entry = value.includes(".") ? { app: value, kinds } : { category: value.toLowerCase(), kinds };
+  changePerms({ trusted: [...permView.trusted, entry] }, async () => { $("trustedApp").value = ""; await refreshPerms(); renderPerms(); }, permShow);
+});
 
 // ---------- mic: record in the browser, Whisper transcribes on the server ----------
 
@@ -1306,7 +1703,7 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- header ----------
 
-$("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); resetScreen(); pollNow(); };
+$("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); perms = null; modeStatus = ""; resetScreen(); pollNow(); };
 $("newChat").onclick = async () => {
   if (!deviceId) return;
   try {
