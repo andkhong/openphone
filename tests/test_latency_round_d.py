@@ -131,22 +131,23 @@ def test_merged_risk_alone_makes_a_tap_risky(tmp_path):
 
 
 def test_merged_requested_can_veto_but_never_grant(tmp_path):
-    screen = [el(0, "Gems"), el(1, "Buy now", cls="Button"), el(2, "Back"), el(3, "Help")]
+    # A send, not a purchase: money asks in auto even when requested (see test_permissions.py).
+    screen = [el(0, "Gems"), el(1, "Send gift", cls="Button"), el(2, "Back"), el(3, "Help")]
     # Asked for, and the classifier agrees: no question.
     io = RecordingIO(answers=["no"])
-    jev = FakeJev([("TAP", 1, 0.99), ("DONE", None, 0.99)], requested={"Buy now": 0.9})
+    jev = FakeJev([("TAP", 1, 0.99), ("DONE", None, 0.99)], requested={"Send gift": 0.9})
     agent, _, _ = make([DONE], Phone(screen), jev, tmp_path, io=io)
-    agent.run("buy the gems")
+    agent.run("send the gift")
     assert not io.questions and ("tap", 500, 140) in agent.driver.actions
     # Asked for, but the classifier doubts it: ask (a veto).
     io = RecordingIO(answers=["no"])
-    jev = FakeJev([("TAP", 1, 0.99)], requested={"Buy now": 0.1})
+    jev = FakeJev([("TAP", 1, 0.99)], requested={"Send gift": 0.1})
     agent, _, _ = make([DONE], Phone(screen), jev, tmp_path, io=io)
-    agent.run("buy the gems")
+    agent.run("send the gift")
     assert io.questions
     # Not asked for: the classifier's "requested" can't grant it.
     io = RecordingIO(answers=["no"])
-    jev = FakeJev([("TAP", 1, 0.99)], requested={"Buy now": 1.0})
+    jev = FakeJev([("TAP", 1, 0.99)], requested={"Send gift": 1.0})
     agent, _, _ = make([DONE], Phone(screen), jev, tmp_path, io=io)
     agent.run("open the shop")
     assert io.questions and jev.requests("tap") == 0

@@ -113,6 +113,23 @@ CREATE TABLE IF NOT EXISTS model_runs (
     finished REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS model_runs_by_model ON model_runs (model, account_id);
+
+-- One row per approval prompt the owner saw (permission telemetry, `openmob prompts`). No text: the
+-- prompt's kind, the mode, the decision and how long the owner took from shown to answered.
+CREATE TABLE IF NOT EXISTS prompts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    turn_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    device_id TEXT,
+    t REAL NOT NULL,
+    kind TEXT,                        -- action | step (ask mode) | plan
+    action_kind TEXT,                 -- send | delete | post | pay | fill | settings | NULL
+    mode TEXT,                        -- the permission mode then
+    decision TEXT,                    -- approved | always | denied | changes
+    latency_ms INTEGER,
+    package TEXT
+);
+CREATE INDEX IF NOT EXISTS prompts_by_time ON prompts (t);
 """
 
 # Columns added after the first release, for databases created before them.
@@ -120,7 +137,8 @@ TIMING_COLUMNS = ("observe_ms", "jev_ms", "wait_ms", "model_ms", "action_ms", "s
 MIGRATIONS = [("turns", "package", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TIMING_COLUMNS + ("jev",)
 ] + [("steps", "model", "TEXT"), ("steps", "settle_idle", "INTEGER"), ("steps", "fast", "INTEGER"),
-      ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT")]
+      ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT"),
+      ("turns", "prompts", "INTEGER"), ("turns", "mode", "TEXT")]
 
 
 class History:
@@ -209,8 +227,10 @@ class History:
             elif data.get("final"):
                 summary = entry["message"].rsplit(" (", 1)[0] if entry["message"].endswith(" steps)") else entry["message"]
                 db.execute(
-                    "UPDATE turns SET finished = ?, success = ?, summary = ?, steps = ? WHERE id = ?",
-                    (now, 1 if data.get("success") else 0, summary, data.get("steps"), task),
+                    "UPDATE turns SET finished = ?, success = ?, summary = ?, steps = ?, prompts = ?, mode = ? "
+                    "WHERE id = ?",
+                    (now, 1 if data.get("success") else 0, summary, data.get("steps"), data.get("prompts"),
+                     data.get("mode"), task),
                 )
             elif kind == "usage":
                 models = list((data.get("by_model") or {}).keys())
@@ -244,6 +264,24 @@ class History:
             )
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
+
+    def record_prompt(self, turn_id: str, prompt: dict, account_id: str | None = None, device_id: str = "") -> None:
+        """One approval prompt (Agent._ask_owner): its kind, mode, decision and latency. No text."""
+        self._q(
+            "INSERT INTO prompts (turn_id, account_id, device_id, t, kind, action_kind, mode, decision, latency_ms, "
+            "package) VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (turn_id, account_id or LOCAL_ACCOUNT, device_id, prompt.get("t", time.time()), prompt.get("kind"),
+             prompt.get("action_kind"), prompt.get("mode"), prompt.get("decision"), prompt.get("latency_ms"),
+             prompt.get("package")),
+        )
+
+    def prompt_rows(self, since: float = 0.0) -> tuple[list[dict], list[dict]]:
+        """(prompts since then, finished tasks since then with their prompt count and mode)."""
+        prompts = [dict(r) for r in self._q("SELECT * FROM prompts WHERE t >= ? ORDER BY t", (since,))]
+        tasks = [dict(r) for r in self._q(
+            "SELECT id, prompts, mode, success FROM turns WHERE finished IS NOT NULL AND started >= ? "
+            "AND prompts IS NOT NULL ORDER BY started", (since,))]
+        return prompts, tasks
 
     def record_model_run(self, account_id: str | None, turn_id: str, model: str, success: bool, steps: int | None) -> None:
         self._q(

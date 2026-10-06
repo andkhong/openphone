@@ -108,6 +108,10 @@ def cmd_run(cfg: Config, args) -> None:
 
     from .server import create_app, lan_ip, local_hostname, serve_in_background
 
+    from .accounts import DATA_DIR
+    from .permissions import PermissionStore
+
+    manager.permissions = PermissionStore(DATA_DIR / "permissions.json")  # hosted: on each phone's pairing
     store = None
     if args.accounts:
         from .accounts import AccountStore
@@ -429,6 +433,18 @@ def cmd_timings(cfg: Config, args) -> None:
     print(format_report(summarize(rows)))
 
 
+def cmd_prompts(cfg: Config, args) -> None:
+    from . import history
+    from .prompt_report import format_report, summarize
+    from .timing_report import parse_since
+
+    try:
+        since = parse_since(args.since)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    print(format_report(summarize(*history.History(history.DEFAULT_PATH).prompt_rows(since))))
+
+
 def cmd_bench(cfg: Config, args) -> None:
     from .bench import main as bench_main
 
@@ -506,6 +522,9 @@ def main(argv: list[str] | None = None) -> None:
     p_timings.add_argument("--chat", help="only this chat's steps")
     p_timings.add_argument("--model", help="only steps decided by this model")
 
+    p_prompts = sub.add_parser("prompts", help="approval prompts: per task, decisions and time to answer (the budget)")
+    p_prompts.add_argument("--since", default="7d", help="e.g. 7d, 24h, 30m, or all (default: 7d)")
+
     p_bench = sub.add_parser("bench", help="internal: run tasks under several conditions and compare (docs/benchmarks.md)")
     p_bench.add_argument("tasks", help="YAML file of task instructions")
     p_bench.add_argument("--serial", help="adb serial of the phone (default: adb_serial or the only connected phone)")
@@ -520,7 +539,8 @@ def main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
     {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
-     "key": cmd_key, "mcp": cmd_mcp, "timings": cmd_timings, "bench": cmd_bench}[args.command](cfg, args)
+     "key": cmd_key, "mcp": cmd_mcp, "timings": cmd_timings, "prompts": cmd_prompts,
+     "bench": cmd_bench}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

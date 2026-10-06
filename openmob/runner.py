@@ -12,7 +12,7 @@ import time
 from collections import OrderedDict, deque
 
 from .agent import Agent
-from .agent.loop import is_yes
+from .agent.loop import DECLINE_WORDS, is_yes
 from .phone.base import DeviceError, PhoneTimeout
 from .usage import Usage
 from .voice.tts import Speaker
@@ -80,7 +80,11 @@ class Coordinator:
         self._seq = itertools.count(1)
         self.current: str | None = None
         self.question: str | None = None
-        self.question_kind: str | None = None  # "question" (ask_user) or "confirm" (risky action)
+        self.question_kind: str | None = None  # "question" (ask_user), "confirm" (risky action) or "plan"
+        # (mode or None) -> TaskPermissions for a task on this phone (set by the DeviceManager);
+        # None: the agent's default (config's mode, ceiling auto).
+        self.permissions_for = None
+        self.current_mode: str | None = None  # the permission mode the running task asked for
         self.question_timeout = 300.0  # seconds a question may wait for an answer (0: forever)
         # Whether a risky action may be approved by typing or saying "yes" (submit). False for app
         # phones, which approve only through the screen-lock prompt (DeviceManager.resolve_approval).
@@ -97,11 +101,12 @@ class Coordinator:
 
     # --- inputs ----------------------------------------------------------
 
-    def submit(self, text: str, source: str, mode: str = "auto") -> str:
+    def submit(self, text: str, source: str, mode: str = "auto", permission_mode: str | None = None) -> str:
         """Handle one utterance. Returns what happened: queued, steered, answered, stopped, or ignored.
 
         mode "auto": while a task runs (and isn't asking anything), anything but "stop" corrects
-        that task. mode "queue": it's a new task, queued behind the running one."""
+        that task. mode "queue": it's a new task, queued behind the running one. `permission_mode`:
+        the new task's mode (checked against the phone's ceiling by the caller); None: the phone's default."""
         text = text.strip()
         if not text:
             return "ignored"
@@ -113,19 +118,25 @@ class Coordinator:
                     # Never approved by text: anyone (or the agent itself, typing into the app) could
                     # send "yes". A "no" still declines; approving takes the screen-lock prompt.
                     kind = "approval_required" if is_yes(text) else "decline"
+                elif kind == "answer" and self.question_kind == "plan" and not self.text_approvals:
+                    # A plan: yes takes the prompt, no rejects it, anything else is the owner's changes.
+                    low = text.lower().split()
+                    kind = ("approval_required" if is_yes(text)
+                            else "decline" if not low or low[0] in DECLINE_WORDS else "answer")
             elif is_stop(text):
                 kind = "stop" if (self.current is not None or not self.tasks.empty()) else "ignore"
             elif running is not None and mode == "auto":
                 kind = "steer"
             else:
                 kind = "task"
+        options = {"permission_mode": permission_mode} if permission_mode else None
         if kind == "task":
-            self.enqueue(text, source)
+            self.enqueue(text, source, options)
             return "queued"
         if kind == "steer":
             if self.steer(text, source):
                 return "steered"
-            self.enqueue(text, source)  # the task finished in the meantime: it's a new request
+            self.enqueue(text, source, options)  # the task finished in the meantime: it's a new request
             return "queued"
         if kind == "approval_required":  # not an answer: the pending approval prompt stays open
             self.event("status", APPROVE_ON_PROMPT, task=running)
@@ -254,11 +265,14 @@ class Coordinator:
 
     # --- UserIO ----------------------------------------------------------
 
-    def ask(self, question: str, kind: str = "question") -> str:
+    def ask(self, question: str, kind: str = "question", details: dict | None = None) -> str:
         with self._lock:
             self.question = question
             self.question_kind = kind
-        self.event("question", question, data={"confirm": True} if kind == "confirm" else None)
+        data = None
+        if kind in ("confirm", "plan"):  # both wait for the owner's approval prompt
+            data = {"confirm": True, **({"approval": details} if details else {})}
+        self.event("question", question, data=data)
         self.speaker.say(question)
         deadline = time.monotonic() + self.question_timeout if self.question_timeout else None
         try:
@@ -277,9 +291,19 @@ class Coordinator:
                 self.question_kind = None
             self._set_status(self.current_task, "running")
 
-    def confirm(self, question: str) -> str:
-        """The agent wants approval for a risky action (buy, send, delete…)."""
-        return self.ask(question, kind="confirm")
+    def confirm(self, question: str, details: dict | None = None) -> str:
+        """The agent wants approval for a risky action (buy, send, delete…), a step (ask mode) or a
+        plan. `details` ({kind, action_kind, package, always, plan}) go with the phone's prompt."""
+        return self.ask(question, kind="plan" if (details or {}).get("kind") == "plan" else "confirm", details=details)
+
+    def record_prompt(self, prompt: dict) -> None:
+        """One approval prompt's decision and latency (Agent._ask_owner) → history, for `openmob prompts`."""
+        if self.history is None or self.current_task is None:
+            return
+        try:
+            self.history.record_prompt(self.current_task, prompt, account_id=self.account_id, device_id=self.device_id)
+        except Exception as exc:  # telemetry must never break the agent
+            print(format_event("error", f"Prompt not saved: {exc}"), flush=True)
 
     def event(self, kind: str, message: str, task=_CURRENT, data: dict | None = None) -> None:
         """Log one entry. `task` defaults to the running task; `data` carries structured details
@@ -370,8 +394,12 @@ class Coordinator:
                 # orchestrated steps ask for it too, so each starts from a clean screen.
                 go_home = options.pop("go_home", source == "phone") or self._own_app_in_front()
                 self._block_own_app(options)
+                self._permissions(options)
                 result = self.agent.run(text, self.cancel, go_home=go_home, **options)
                 data = {"final": True, "success": result.success, "steps": result.steps}
+                if isinstance(getattr(result, "mode", None), str):  # the agent ran under a permission mode
+                    data["mode"] = result.mode
+                    data["prompts"] = result.prompts  # approval prompts the owner saw (telemetry)
                 if getattr(result, "done_via", None):
                     data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
                 summary = result.summary
@@ -406,6 +434,7 @@ class Coordinator:
                 with self._lock:
                     self.current = None
                     self.current_task = None
+                    self.current_mode = None
                     self._unanswered = None
                     self._stop_reason = None
 
@@ -427,6 +456,23 @@ class Coordinator:
             return
         other = options.get("blocked")
         options["blocked"] = lambda package, other=other: package in OWN_PACKAGES or bool(other and other(package))
+
+    def _permissions(self, options: dict) -> None:
+        """The task's permission mode → a TaskPermissions bound to this phone's live settings. The
+        caller already checked the mode against the phone's ceiling (and an API key's max_mode)."""
+        mode = options.pop("permission_mode", None)
+        try:
+            accepts = "permissions" in inspect.signature(self.agent.run).parameters
+        except (TypeError, ValueError):
+            accepts = False
+        if not accepts:
+            options.pop("permissions", None)
+            return
+        if "permissions" not in options and self.permissions_for is not None:
+            options["permissions"] = self.permissions_for(mode)
+        perms = options.get("permissions")
+        with self._lock:
+            self.current_mode = perms.mode() if perms is not None else None
 
     def _record_model_run(self, task_id: str, success: bool, steps: int | None) -> None:
         """Per-model success stats (History.model_stats): which model ran this task, and how it went."""
@@ -485,6 +531,7 @@ class Coordinator:
                     "session": self.session_usage.as_dict(),
                 },
                 "task_id": self.current_task,
+                "permission_mode": self.current_mode,
                 "chat_id": self.chat_id,
                 "log": list(self.log)[-400:],
             }
