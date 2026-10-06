@@ -41,8 +41,8 @@
   </div>
 
   <div class="step">
-    <h2><span class="num">3</span>Turn on Accessibility, then Connect</h2>
-    <p>In the app, follow the checklist: turn on OpenMob under Accessibility (so the agent can see the screen and tap), then tap <b>Connect</b>. You can disconnect any time from the notification.</p>
+    <h2><span class="num">3</span>Follow the app's checklist</h2>
+    <p>Turn on OpenMob under Accessibility (so the agent can see the screen and tap), allow notifications and background use. You can disconnect any time from the notification.</p>
   </div>
   <p class="err" id="err" role="alert" hidden></p>
 </main>
@@ -57,7 +57,7 @@ const server = encodeURIComponent(location.origin);
 if (code) {
   document.getElementById("open").href = `openmob://connect?server=${server}&code=${encodeURIComponent(code)}`;
   document.querySelector("#open").closest(".step").querySelector("p").textContent =
-    `Opens the app with your one-time code. It asks you to confirm the server (${location.host}), then you sign in and confirm with your screen lock.`;
+    `Opens the app with your one-time code (it works for 2 minutes). The app asks once, with your fingerprint or PIN, to connect this phone to ${location.host} as your account. No sign-in needed.`;
 } else if (token) {
   // Links can't set a developer token (a web page could hijack the phone that way): type it in the app.
   document.getElementById("open").hidden = true;

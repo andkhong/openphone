@@ -266,6 +266,12 @@ def test_enrollment_needs_devices_add_and_pairs_only_after_the_phone_confirms(sr
                      headers={"Authorization": f"Bearer {bob_key}"}).status_code == 404
 
 
+def test_phone_pages_are_served(srv):
+    alice = srv.user("alice@example.com")
+    assert "Your phones" in alice.get("/phones").text and "/api/devices" in alice.get("/phones").text
+    assert 'id="newPhone"' in alice.get("/").text and 'href="/phones"' in alice.get("/").text
+
+
 def test_devices_add_is_never_a_default_scope():
     assert "devices:add" in accounts.SCOPES and "devices:add" not in accounts.DEFAULT_SCOPES
 

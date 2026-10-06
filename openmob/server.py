@@ -211,6 +211,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     def connect_page() -> str:
         return (STATIC / "connect.html").read_text()
 
+    @app.get("/phones", response_class=HTMLResponse)
+    def phones_page() -> str:
+        return (STATIC / "phones.html").read_text()  # all data comes from /api/devices
+
     @app.get("/pair", response_class=HTMLResponse)
     def pair_page() -> str:
         return (STATIC / "pair.html").read_text()
