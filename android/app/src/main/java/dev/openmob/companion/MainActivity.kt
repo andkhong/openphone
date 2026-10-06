@@ -7,6 +7,7 @@ import android.app.AlertDialog
 import android.app.AppOpsManager
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
@@ -927,12 +928,36 @@ class MainActivity : Activity() {
         )
     }
 
+    /**
+     * Straight to OpenMob's own switch where Android allows it (13+), else the Accessibility list
+     * scrolled to and highlighting OpenMob, else Settings. Once the switch is on, the service brings
+     * the app back by itself (AppState.returnAfterAccessibility).
+     */
     private fun openAccessibilitySettings() {
         sentToA11ySettings = true
-        try {
-            startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
-        } catch (e: ActivityNotFoundException) {
-            startActivity(Intent(AndroidSettings.ACTION_SETTINGS))
+        AppState.returnAfterAccessibility = true
+        val service = ComponentName(this, OpenMobAccessibilityService::class.java)
+        val key = service.flattenToString()
+        val attempts = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Not in the public SDK constants, but Settings answers it on Android 13+.
+                add(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                    .putExtra(Intent.EXTRA_COMPONENT_NAME, service))
+            }
+            add(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)
+                .putExtra(":settings:fragment_args_key", key)
+                .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", key) }))
+            add(Intent(AndroidSettings.ACTION_SETTINGS))
+        }
+        for (intent in attempts) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                // this phone's Settings doesn't have that screen: try the next one
+            } catch (e: SecurityException) {
+                // some phones keep the per-service screen to themselves
+            }
         }
     }
 

@@ -10,6 +10,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 object AppState {
     data class Event(val kind: String, val message: String)
 
+    /** The app sent the owner to Accessibility settings: once the service is on, bring the app back
+     *  (OpenMobAccessibilityService.onServiceConnected) instead of making them navigate back. */
+    @Volatile var returnAfterAccessibility: Boolean = false
+
     @Volatile var connection: String = "Disconnected"
         private set
     @Volatile var connected: Boolean = false

@@ -20,6 +20,16 @@ class OpenMobAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         instance = this
         AppState.notifyListeners()
+        if (AppState.returnAfterAccessibility) {
+            // The owner just turned us on from the app's setup screen: take them back to it.
+            AppState.returnAfterAccessibility = false
+            try {
+                startActivity(Intent(this, MainActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT))
+            } catch (e: RuntimeException) {
+                // Android declined to switch apps: they come back themselves, nothing lost
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
