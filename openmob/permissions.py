@@ -151,7 +151,7 @@ def looser(a: str, b: str) -> bool:
 
 def default_settings() -> dict:
     return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
-            "never_money": False}
+            "never_money": False, "notifications_permission": "deny"}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -168,6 +168,9 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
         s["never_until"] = float(until) if isinstance(until, (int, float)) and until > now else None
         # Purchases without asking last only as long as the never window they were allowed with.
         s["never_money"] = bool(s["never_until"]) and settings.get("never_money") is True
+        # Android's "Allow X to send you notifications?" (agent/permission_dialogs.py): deny unless the owner says allow.
+        if settings.get("notifications_permission") in ("allow", "deny"):
+            s["notifications_permission"] = settings["notifications_permission"]
         s["trusted"] = [e for e in (settings.get("trusted") or [])
                         if isinstance(e, dict) and (e.get("expires_at") or 0) > now]
     if s["default_mode"] == "never" and not s["never_until"]:
@@ -188,6 +191,7 @@ def public(settings: dict, now: float | None = None) -> dict:
     s = normalize(settings, now)
     return {"default_mode": s["default_mode"], "ceiling": effective_ceiling(s, now), "standing_ceiling": s["ceiling"],
             "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
+            "notifications_permission": s["notifications_permission"],
             "modes": list(MODES)}
 
 
@@ -271,6 +275,10 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
             raise PermissionsInvalid(f"never must be one of: {', '.join(NEVER_DURATIONS)} or off.")
     if allow_money is False:
         new["never_money"] = False
+    if "notifications_permission" in patch and patch["notifications_permission"] is not None:
+        if patch["notifications_permission"] not in ("allow", "deny"):
+            raise PermissionsInvalid("notifications_permission is allow or deny.")
+        new["notifications_permission"] = patch["notifications_permission"]  # deny or allow: no approval needed
     if "trusted" in patch and patch["trusted"] is not None:
         if not isinstance(patch["trusted"], list) or len(patch["trusted"]) > MAX_ENTRIES:
             raise PermissionsInvalid(f"trusted is a list of at most {MAX_ENTRIES} entries.")

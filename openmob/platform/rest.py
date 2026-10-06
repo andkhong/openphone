@@ -86,6 +86,8 @@ class PermissionsPatch(BaseModel):
     trusted: list[dict] | None = None
     never: Literal["1h", "24h", "7d", "off"] | None = None
     allow_money: bool | None = None  # with never: purchases too (a loosening: 202 needs_phone_approval)
+    # Android "Allow X to send you notifications?" dialogs (answered by rule): deny (default) or allow
+    notifications_permission: Literal["allow", "deny"] | None = None
 
 
 class SettingsIn(BaseModel):

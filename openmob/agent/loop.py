@@ -23,7 +23,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate
+from . import fast, gate, permission_dialogs
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
@@ -164,6 +164,7 @@ class _TaskState:
     plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
     step_approved: bool = False  # ask mode: the owner approved the action now running
     locked_out: bool = False  # the phone stayed locked past locked_wait_seconds
+    app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
     prompts: int = 0
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
@@ -300,6 +301,14 @@ class Agent:
                 return AgentResult(False, LOCKED_MESSAGE, step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
+            if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
+                state.app_in_front = obs.package
+            for _ in range(3):  # Android's permission dialogs: answered by rule, before any model sees them
+                if not self._permission_dialog(state, obs):
+                    break
+                self._settle(self.config.settle_delay, state)
+                obs = self._observe_settled(state)
+                self._show_later(state, messages, obs)
 
             self._apply_corrections(state, messages)
             if state.fast and not state.vision_next and not self._needs_plan(state):
@@ -743,7 +752,7 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False,
-                 done_via: str = "vision") -> Outcome:
+                 done_via: str = "vision", handled_by: str | None = None) -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
@@ -766,7 +775,7 @@ class Agent:
         if name in MOVES_SCREEN and not outcome.is_error:
             state.acted_on = obs
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
-        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step)
+        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, handled_by)
         return outcome
 
     def _note_tokens(self, tokens, image_side: int | None = None) -> None:
@@ -784,7 +793,7 @@ class Agent:
         self._step_tokens = step
 
     def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float,
-                     fast_step: bool = False) -> None:
+                     fast_step: bool = False, handled_by: str | None = None) -> None:
         """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
         Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
         record = getattr(self.io, "record_step", None)
@@ -822,6 +831,7 @@ class Agent:
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
                 "done_via": outcome.done_via, **(outcome.tokens or {}),
+                **({"handled_by": handled_by} if handled_by else {}),
             }
             record(row)
         except Exception as exc:  # the trajectory record must never break a task
@@ -1393,6 +1403,50 @@ class Agent:
         if target:
             offer["target"] = " ".join(target.split()).lower()[:80]
         return offer
+
+    # --- Android permission dialogs, by rule (agent/permission_dialogs.py) -----------------------------
+
+    def _permission_dialog(self, state: _TaskState, obs: Observation) -> bool:
+        """Answer a runtime permission dialog on screen by the owner's policy, with no model call: deny
+        notifications (unless the owner allows them), ask the owner for camera, location and the like (and for
+        another app's request), deny everything under Don't ask. The tap goes through the usual checks (on a
+        gatekeeper phone, the phone's own). True: one was answered (the caller looks at the screen again)."""
+        dialog = permission_dialogs.detect(obs.package, obs.elements)
+        if dialog is None:
+            return False
+        mode = state.perms.mode()
+        try:
+            settings = state.perms.current_settings() or {}
+        except Exception:
+            settings = {}
+        task_app = state.app_in_front
+        decision = permission_dialogs.decide(dialog, mode=mode, task_app_label=self._app_label(task_app) if task_app
+                                             else None, notifications=settings.get("notifications_permission", "deny"))
+        asked = decision == "ask"
+        if asked:
+            answer = self._ask_owner(state, permission_dialogs.question(dialog),
+                                     {"kind": "action", "action_kind": "permission", "package": obs.package})
+            decision = "allow" if is_yes(answer) else "deny"
+        target = permission_dialogs.button(dialog, decision)
+        if target is None:
+            return False
+        self.io.event("status", f"Permission dialog ({dialog.kind}, {dialog.app or 'an app'}): "
+                                f"{'asked the owner, ' if asked else ''}{decision}.")
+        # Decided above by the owner's policy (and, for a yes, the owner): the server's own Settings check doesn't
+        # ask again. On a gatekeeper phone the phone still checks the tap, with the hint _ask_owner left.
+        state.approved = True
+        outcome = self._execute("tap_element", {"index": target.index}, obs, state, fast_step=True,
+                                handled_by="permission_rule")
+        state.approved = False
+        state.fast_steps += 1
+        if outcome.is_error and decision == "allow":  # e.g. the owner said no on the phone's own prompt
+            deny = permission_dialogs.button(dialog, "deny")
+            if deny is not None:
+                state.approved = True
+                self._execute("tap_element", {"index": deny.index}, obs, state, fast_step=True,
+                              handled_by="permission_rule")
+                state.approved = False
+        return True
 
     # --- gatekeeper phones (docs/design/phone-gatekeeper.md) and the lock screen ---------------------
 

@@ -72,6 +72,7 @@ class PermissionsIn(BaseModel):
     trusted: list[dict] | None = None  # the whole new list: [{app | category, kinds, expires_at}]
     never: Literal["1h", "24h", "7d", "off"] | None = None
     allow_money: bool | None = None  # "Also allow purchases" with never (off by default; the phone approves)
+    notifications_permission: Literal["allow", "deny"] | None = None  # Android notification permission dialogs
 
 
 class Credentials(BaseModel):

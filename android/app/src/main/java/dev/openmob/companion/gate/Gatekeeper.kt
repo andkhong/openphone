@@ -28,6 +28,8 @@ class Judgement(
     var refuse: Triple<String, String, String>? = null, var pkg: String = "", var fp: String = "",
     var strictFp: String = "", var risk: Risk? = null, var changing: Boolean = false, var payment: Boolean = false,
     var app: Boolean = false,
+    /** How a prompt names this action from what the phone sees (used when only the server's hint makes it ask). */
+    var wording: String = "",
 )
 
 class GrantOffer(val kind: String, val binding: String, val durationMs: Long, val confirmTwice: Boolean) {
@@ -287,7 +289,7 @@ class Gatekeeper(
         val mode = mode(params["mode"] as? String)
         var risk = j.risk
         val hint = params["hint"]?.toString()?.trim().orEmpty()
-        if (risk == null && hint.isNotEmpty() && mode != "never") risk = Risk("other", "server_hint", wording = wording(method, params, j, screen))
+        if (risk == null && hint.isNotEmpty() && mode != "never") risk = Risk("other", "server_hint", wording = j.wording.ifEmpty { wording(method, params, j, screen) })
         if (mode == "ask" && j.changing && risk == null) risk = Risk("step", "mode:ask", wording = wording(method, params, j, screen))
         val bind = GateScreen.binding(method, params, j.strictFp)
         if (risk == null) return Admission("allow", strict = j.payment, binding = bind, method = method, params = params, pkg = j.pkg)
@@ -586,6 +588,11 @@ class Gatekeeper(
         val source = lastApp.ifEmpty { w.pkg }
         val inBrowser = rules.isCat("browser", source) || t.inWebView()
         fun wording() = if (shown.isNotEmpty()) "Allow tapping “$shown” in $appLabel?" else "Allow tapping an unlabeled spot in $appLabel?"
+        j.wording = wording()
+        if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)) {
+            // A runtime permission dialog: its own question ("Allow Chess.com to take pictures and record video?").
+            walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.let { j.wording = it.text }
+        }
 
         var tier = "none" to ""
         if (isSettings(w)) {

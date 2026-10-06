@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS steps (
     fast INTEGER,                     -- 1: decided by the fast path (classifier + small text model), 0: by the main model
     variant TEXT,                     -- the latency features the agent ran with: fixed | adaptive | adaptive+fast …
     done_via TEXT,                    -- on a done step: vision (the main model) | classifier (fast_path_done)
+    handled_by TEXT,                  -- a step no model decided: permission_rule (agent/permission_dialogs.py)
     -- The main model call(s) that decided this step (NULL on fast steps without one, and older rows).
     input_tokens INTEGER,             -- uncached input
     output_tokens INTEGER,
@@ -144,7 +145,7 @@ TOKEN_COLUMNS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_wr
 MIGRATIONS = [("turns", "package", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TIMING_COLUMNS + ("jev",)
 ] + [("steps", "model", "TEXT"), ("steps", "settle_idle", "INTEGER"), ("steps", "fast", "INTEGER"),
-      ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT"),
+      ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT"), ("steps", "handled_by", "TEXT"),
       ("turns", "prompts", "INTEGER"), ("turns", "mode", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TOKEN_COLUMNS
 ]
@@ -259,8 +260,8 @@ class History:
                    package, screen_w, screen_h, anchor, outcome, is_error, latency_ms, source,
                    observe_ms, jev_ms, wait_ms, model_ms, action_ms, settle_ms, total_ms, jev, model,
                    settle_idle, fast, variant, done_via, input_tokens, output_tokens, cache_read_tokens,
-                   cache_write_tokens, vision_image_side)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   cache_write_tokens, vision_image_side, handled_by)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (turn_id, step["idx"], chat_id, account_id or LOCAL_ACCOUNT, device_id, step.get("t", time.time()),
                  step["tool"], json.dumps(step.get("args") or {}, default=str), js(step.get("norm_xy")),
                  step.get("package"), step.get("screen_w"), step.get("screen_h"), js(step.get("anchor")),
@@ -270,7 +271,7 @@ class History:
                  None if step.get("jev") is None else int(bool(step["jev"])), step.get("model"),
                  None if step.get("settle_idle") is None else int(bool(step["settle_idle"])),
                  None if step.get("fast") is None else int(bool(step["fast"])), step.get("variant"),
-                 step.get("done_via"), *(step.get(c) for c in TOKEN_COLUMNS)),
+                 step.get("done_via"), *(step.get(c) for c in TOKEN_COLUMNS), step.get("handled_by")),
             )
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))

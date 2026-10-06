@@ -145,6 +145,17 @@ class GatekeeperTest {
         assertEquals("gate_rate_limited", gk.admit("key", mapOf("name" to "BACK"), screen).code)
     }
 
+    @Test fun aHintedPermissionDialogIsWordedFromTheDialog() {
+        val screen = SCREENS.getValue("permission_dialog_session")
+        gk.admit("tap", mapOf("x" to 540L, "y" to 300L), screen) // the task's app (Chess.com) in front
+        clock.elapsed += 500
+        assertTrue(gk.admit("tap", mapOf("x" to 540L, "y" to 1550L), screen).allowed) // its own dialog: allowlisted
+        clock.elapsed += 500
+        val asked = gk.admit("tap", mapOf("x" to 540L, "y" to 1550L, "hint" to "Allow Chess.com to use your camera?"), screen)
+        assertEquals("ask", asked.decision)
+        assertEquals("Allow Chess.com to take pictures and record video?", asked.wording)
+    }
+
     @Test fun theRunnerReportsAWrongExpectation() {
         val scenario = mapOf<String, Any?>("name" to "x", "steps" to listOf(mapOf(
             "call" to mapOf("method" to "tap", "params" to buy), "screen" to "amazon_product",

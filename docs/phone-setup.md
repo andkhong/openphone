@@ -134,7 +134,25 @@ A task needs the phone **awake and unlocked**:
 - A **swipe-only** lock (no PIN) is dismissed automatically, and OpenMob wakes the screen if needed.
 
 For a phone that agents use often, set the screen timeout to a few minutes so it doesn't lock in
-the middle of your work.
+the middle of your work. The app also keeps the screen on while an agent is working (only then).
+If the phone locks anyway, a task **pauses** with "Unlock your phone to continue" and carries on once
+you unlock it.
+
+**Test-phone tip:** on Samsung phones turn off **Settings › Display › Accidental touch protection**,
+and keep the phone **face-up** during tasks: face-down or in a pocket, the proximity sensor can turn the
+screen off and lock it mid-task.
+
+### Permission dialogs ("Allow Chess.com to …?")
+
+When an app asks for a permission during a task, OpenMob answers by rule, without the AI:
+
+- **Notifications**: **Don't allow**, unless you set notifications to allow in the phone's permission
+  settings (`notifications_permission: "allow"`).
+- **Camera, microphone, location, contacts, photos and media, phone, SMS, calendar, nearby devices**:
+  you're asked on the phone ("Allow **Chess.com** to use your **camera**?"). A yes picks **Only this
+  time**, else **While using the app**; never **Allow all the time**.
+- A request from an app other than the one the task is using is asked about too.
+- Under **Don't ask**, everything but notifications (which follow your setting) is denied.
 
 ## While an agent works
 

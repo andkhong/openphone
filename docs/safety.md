@@ -356,8 +356,16 @@ Typed text that goes through the clipboard (some fields only accept a paste) doe
 app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
 previous clipboard back, or clears it.
 
-These are server-side checks. The [phone gatekeeper design](design/phone-gatekeeper.md) moves the
-same rules onto the phone itself.
+These are server-side checks. On phones with the gatekeeper the phone runs the same rules itself
+([above](#the-phone-enforces-it-too-gatekeeper); [design](design/phone-gatekeeper.md)).
+
+**Android permission dialogs** ("Allow Chess.com to send you notifications?") are answered by rule at
+observation time, before any model sees the screen, and recorded as a fast step (`handled_by:
+"permission_rule"`): notifications are denied unless the owner set `notifications_permission` to
+`allow`; camera, microphone, location, contacts, photos and media, phone, SMS, calendar, nearby devices
+(and anything else) ask the owner ("Allow Chess.com to use your camera?"), and a yes taps the narrowest
+grant ("Only this time", else "While using the app", never "Allow all the time"); a request from an app
+other than the task's asks; under Don't ask everything but notifications is denied.
 
 ## Sensitive apps are off-limits by default
 
