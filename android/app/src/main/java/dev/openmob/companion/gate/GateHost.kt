@@ -36,6 +36,7 @@ object GateHost {
     @Volatile private var blockedLabelCache: Pair<Long, Map<String, String>>? = null
 
     val rulesVersion: Long get() = gk().rules.version
+    val actMethods: Set<String> get() = gk().rules.act
 
     fun init(context: Context): Gatekeeper {
         gate?.let { return it }
@@ -68,13 +69,38 @@ object GateHost {
         return GateScreens.labels(pm, blocked).also { blockedLabelCache = SystemClock.elapsedRealtime() to it }
     }
 
+    /** A blocked or unidentified app is in some window right now: reads and the live view must not see the screen.
+     *  Kept current by window events (OpenMobAccessibilityService) and checked again around every capture. */
+    @Volatile var protectedVisible = false
+        private set
+
+    fun refreshProtected(service: OpenMobAccessibilityService?): Boolean {
+        val g = gate ?: return false
+        // No accessibility service: the phone can't see what's on screen, so it fails closed.
+        protectedVisible = service == null || g.hidden(GateScreens.windowPackages(service)).isNotEmpty()
+        return protectedVisible
+    }
+
+    @Volatile private var lastProtectedCheck = 0L
+
+    /** For the live view's encoder thread: the flag, re-read from the windows at most every 150 ms. */
+    fun protectedNow(): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (now - lastProtectedCheck >= 150) {
+            lastProtectedCheck = now
+            runCatching { refreshProtected(OpenMobAccessibilityService.instance) }.onFailure { protectedVisible = true }
+        }
+        return protectedVisible
+    }
+
     // --- the checkpoint -------------------------------------------------------------------------
 
     fun admit(service: OpenMobAccessibilityService?, method: String, params: Map<String, Any?>): Admission {
         val g = gk()
         if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList()))
         if (method in g.rules.read || method.startsWith("stream_")) {
-            val screen = if (method == "screenshot" || method == "ui_elements") GateScreens.windowPackages(service) else GScreen(emptyList())
+            val screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
+                GateScreens.windowPackages(service) else GScreen(emptyList())
             return g.admit(method, params, screen)
         }
         val adm = g.admit(method, params, screen(service, method, params))
@@ -99,7 +125,12 @@ object GateHost {
         val urls = mutableListOf<String>()
         if (method == "open_url") params["url"]?.toString()?.let(urls::add)
         val launch = if (method == "launch_app") listOfNotNull(params["package"]?.toString()) else emptyList()
-        var screen = GateScreens.capture(service, urls, launch)
+        fun n(k: String) = (params[k] as? Number)?.toDouble() ?: params[k]?.toString()?.toDoubleOrNull()
+        val points = listOf("x" to "y", "x1" to "y1", "x2" to "y2").mapNotNull { (a, b) ->
+            val x = n(a); val y = n(b)
+            if (x != null && y != null) x to y else null
+        }
+        var screen = GateScreens.capture(service, urls, launch, points)
         if (method == "key" && params["name"]?.toString()?.uppercase() == "ENTER") {
             // ENTER in a browser's URL bar opens what's typed there: resolve it like open_url.
             GateScreen.focusedField(screen)?.node?.text?.trim()?.takeIf { GateText.looksLikeUrl(it) }?.let { text ->
@@ -153,7 +184,7 @@ object GateHost {
 
     /** The owner passed the screen lock: [signature] was made by the auth-bound key over [message]. */
     fun approve(id: String, message: String, signature: String): Boolean = gk().approve(id, message, signature).also {
-        if (it) save()
+        if (it) { save(); dev.openmob.companion.ScreenKeeper.ownerActive() }
     }
 
     fun deny(id: String) = gk().deny(id)

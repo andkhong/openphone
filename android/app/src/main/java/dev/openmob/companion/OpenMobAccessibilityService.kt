@@ -68,6 +68,11 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         noteChange(event)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            // A blocked app may have just come up: the live view stops sending frames at once (StreamGate).
+            dev.openmob.companion.gate.GateHost.refreshProtected(this)
+        }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val cls = event.className?.toString() ?: return
         // Activities only: IME and dialog windows would otherwise look like "the current app".

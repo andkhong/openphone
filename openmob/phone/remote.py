@@ -166,8 +166,10 @@ class RemoteDriver(CachedScreenshots):
 
     @property
     def locked(self) -> bool:
+        # Any lock the phone reports mid-task pauses the task: a secure one only the owner can open, and a swipe one
+        # after the owner pressed power (the phone doesn't wake and unlock behind their back).
         state = self.lock_state
-        return bool(state and state["locked"] and state["secure"])
+        return bool(state and state["locked"])
 
     def wait_unlocked(self, timeout: float) -> bool:
         """Block until the phone says it's unlocked (or, for a phone that doesn't push, device_state says so)."""

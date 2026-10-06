@@ -197,6 +197,17 @@ def test_a_denied_or_changed_gate_is_reported_not_retried():
     assert len(driver.link.calls) == 1
 
 
+def test_any_pushed_lock_pauses_even_a_swipe_lock():
+    """N5: after the owner presses power the phone reports the (swipe) lock and doesn't unlock itself."""
+    from openmob.phone.remote import RemoteDriver
+
+    driver = RemoteDriver(_Link([]))
+    driver.on_device_lock({"locked": True, "secure": False})
+    assert driver.locked
+    driver.on_device_lock({"locked": False})
+    assert not driver.locked and driver.wait_unlocked(0.1)
+
+
 def test_old_apps_keep_server_side_approvals(api):
     """No gatekeeper capability: today's behaviour (approval_request to the phone, signed approval)."""
     task = run_task(api.alice, "check the cart")

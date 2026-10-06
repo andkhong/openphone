@@ -61,7 +61,9 @@ object Approvals {
         val shownQuestion: String get() = if (deviceName.isEmpty()) asked else "On $deviceName: $asked"
 
         /** A permission change that also allows purchases without asking: confirmed a second time. */
-        val allowsMoney: Boolean get() = ActionDigest.allowsMoney(action)
+        // Read from the change exactly as the phone will apply it (N2), and from the raw text as before.
+        val allowsMoney: Boolean get() = ActionDigest.allowsMoney(action) ||
+            (kind == "mode_change" && ModeChange.allowsMoney(action["input"].orEmpty()))
 
         /** What exactly will happen, from the action's own fields (empty for an older server). */
         val actionLine: String get() = if (action.isEmpty()) "" else ActionDigest.describe(action)
@@ -93,6 +95,7 @@ object Approvals {
 
     private val pending = LinkedHashMap<String, Request>()
     private val finished = LinkedHashSet<String>() // answered or expired: never shown or sent again
+    private val modeChangePrompts = mutableListOf<Long>() // when permission-change prompts were shown (N1)
     private val main = Handler(Looper.getMainLooper())
 
     fun pending(): List<Request> = pending.values.toList()
@@ -105,7 +108,16 @@ object Approvals {
         // phishing, so only permission changes are taken, and those are worded from the signed change itself.
         if (message.optString("kind") != "mode_change") return
         val id = message.optString("id")
-        if (id.isEmpty() || id in pending || id in finished) return
+        // "gk…" ids are the gatekeeper's own prompts: the server can never raise or answer one through this path.
+        if (id.isEmpty() || id.startsWith("gk") || id in pending || id in finished) return
+        // N1: at most 2 permission-change prompts an hour (a route toward Don't ask by wearing the owner down).
+        val now = android.os.SystemClock.elapsedRealtime()
+        modeChangePrompts.removeAll { now - it >= 3_600_000L }
+        if (modeChangePrompts.size >= 2) {
+            AppState.addEvent("status", context.getString(R.string.gate_mode_change_limited))
+            return
+        }
+        modeChangePrompts.add(now)
         val app = context.applicationContext
         val request = Request(
             id = id,

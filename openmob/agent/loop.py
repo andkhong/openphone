@@ -1507,7 +1507,7 @@ class Agent:
             lock = None
         if not lock or not lock.get("locked"):
             return None
-        if not lock.get("secure"):
+        if not lock.get("secure") and not getattr(self.driver, "locked", False):  # not after the owner's power press
             self.driver.wake_unlock()
             return Outcome("The lock screen was up; the phone dismissed it. Look at the screen again.", is_error=True)
         if self._lock_wait(state):

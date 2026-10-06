@@ -29,24 +29,26 @@ object GateScreens {
         else -> "magnification_overlay"
     }
 
-    /** Just the packages showing in any window (for reads: is a blocked app visible anywhere?). */
+    /** Just the packages showing in any window (for reads: is a blocked app visible anywhere?). A window whose
+     *  root can't be read yet (an app still starting) is kept with an empty package: reads treat it as unknown. */
     fun windowPackages(service: OpenMobAccessibilityService): GScreen = GScreen(
-        windows = runCatching { service.windows }.getOrDefault(emptyList()).mapNotNull { w ->
-            val root = w.root ?: return@mapNotNull null
-            val pkg = root.packageName?.toString().orEmpty()
-            @Suppress("DEPRECATION") root.recycle()
+        windows = runCatching { service.windows }.getOrDefault(emptyList()).map { w ->
+            val root = w.root
+            val pkg = root?.packageName?.toString().orEmpty()
+            @Suppress("DEPRECATION") root?.recycle()
             GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), null)
         },
     )
 
-    fun capture(service: OpenMobAccessibilityService, urls: List<String> = emptyList(), labelsFor: Collection<String> = emptyList()): GScreen {
+    /** [points]: where the call touches; nodes under them are always read in full (TreeWalk). */
+    fun capture(service: OpenMobAccessibilityService, urls: List<String> = emptyList(),
+                labelsFor: Collection<String> = emptyList(), points: List<Pair<Double, Double>> = emptyList()): GScreen {
         val windows = mutableListOf<GWindow>()
-        val budget = intArrayOf(MAX_NODES)
         for (w in runCatching { service.windows }.getOrDefault(emptyList())) {
             val root = w.root
             val bounds = Rect().also(w::getBoundsInScreen)
             val pkg = root?.packageName?.toString().orEmpty()
-            val tree = root?.let { node(it, budget, 0, service) }
+            val tree = root?.let { TreeWalk(ADAPTER, points, budget = MAX_NODES, maxDepth = MAX_DEPTH).read(it) }
             windows.add(GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(),
                 intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree))
         }
@@ -66,27 +68,25 @@ object GateScreens {
         )
     }
 
-    private fun node(n: AccessibilityNodeInfo, budget: IntArray, depth: Int, service: OpenMobAccessibilityService): GNode? {
-        if (budget[0] <= 0 || depth > MAX_DEPTH) return null
-        if (!n.isVisibleToUser) return null
-        budget[0]--
-        val r = Rect().also(n::getBoundsInScreen)
-        val kids = mutableListOf<GNode>()
-        for (i in 0 until n.childCount) {
-            val c = n.getChild(i) ?: continue
-            try { node(c, budget, depth + 1, service)?.let(kids::add) } finally { @Suppress("DEPRECATION") c.recycle() }
+    private val ADAPTER = object : TreeWalk.Adapter<AccessibilityNodeInfo> {
+        override fun bounds(n: AccessibilityNodeInfo) = Rect().also(n::getBoundsInScreen).let { intArrayOf(it.left, it.top, it.right, it.bottom) }
+        override fun visible(n: AccessibilityNodeInfo) = n.isVisibleToUser
+        override fun childCount(n: AccessibilityNodeInfo) = n.childCount
+        override fun child(n: AccessibilityNodeInfo, i: Int): AccessibilityNodeInfo? = n.getChild(i)
+        @Suppress("DEPRECATION") override fun release(n: AccessibilityNodeInfo) = n.recycle()
+        override fun leaf(n: AccessibilityNodeInfo, children: List<GNode>, truncated: Boolean): GNode {
+            val acceptsText = n.isEditable || n.actionList.any {
+                it.id == AccessibilityNodeInfo.ACTION_SET_TEXT || it.id == AccessibilityNodeInfo.ACTION_PASTE
+            }
+            return GNode(
+                text = n.text?.toString().orEmpty(), desc = n.contentDescription?.toString().orEmpty(),
+                id = n.viewIdResourceName.orEmpty(), cls = n.className?.toString().orEmpty(),
+                bounds = bounds(n), clickable = n.isClickable,
+                longClickable = n.isLongClickable, editable = acceptsText, password = n.isPassword,
+                hint = n.hintText?.toString().orEmpty(), checked = if (n.isCheckable) n.isChecked else null,
+                focused = n.isFocused && (acceptsText || n.isPassword), children = children, truncated = truncated,
+            )
         }
-        val acceptsText = n.isEditable || n.actionList.any {
-            it.id == AccessibilityNodeInfo.ACTION_SET_TEXT || it.id == AccessibilityNodeInfo.ACTION_PASTE
-        }
-        return GNode(
-            text = n.text?.toString().orEmpty(), desc = n.contentDescription?.toString().orEmpty(),
-            id = n.viewIdResourceName.orEmpty(), cls = n.className?.toString().orEmpty(),
-            bounds = intArrayOf(r.left, r.top, r.right, r.bottom), clickable = n.isClickable,
-            longClickable = n.isLongClickable, editable = acceptsText, password = n.isPassword,
-            hint = n.hintText?.toString().orEmpty(), checked = if (n.isCheckable) n.isChecked else null,
-            focused = n.isFocused && (acceptsText || n.isPassword), children = kids,
-        )
     }
 
     @Suppress("DEPRECATION")

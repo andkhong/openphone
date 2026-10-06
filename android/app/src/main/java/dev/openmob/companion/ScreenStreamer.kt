@@ -33,6 +33,8 @@ class ScreenStreamer(
     private val projection: MediaProjection,
     private val sink: Sink,
     private val onStopped: () -> Unit,
+    /** A blocked or unidentified app is on screen now: no frame goes out (StreamGate). */
+    private val protectedNow: () -> Boolean = { false },
 ) {
     interface Sink {
         /** Send one packet: [header] is {"type": "video", "key", "config", "pts"}. */
@@ -176,9 +178,16 @@ class ScreenStreamer(
         var dropping = false // upload fell behind: skip frames until a keyframe
         var lastDrop = 0L
         var lastRaise = SystemClock.uptimeMillis()
+        val gate = StreamGate<Pair<JSONObject, ByteArray>>()
         try {
             while (codec === encoder) {
                 val index = encoder.dequeueOutputBuffer(info, 50_000)
+                val protectedScreen = protectedNow()
+                for ((h, b) in gate.flush(SystemClock.uptimeMillis(), protectedScreen)) sink.send(h, b)
+                if (gate.needKey && !protectedScreen && !keyRequested) {
+                    keyRequested = true
+                    requestSync(encoder) // the protected app is gone: restart from a fresh keyframe
+                }
                 val queued = sink.queuedBytes()
                 val now = SystemClock.uptimeMillis()
                 // Recovered for a while: step the bitrate back up towards the target.
@@ -216,7 +225,7 @@ class ScreenStreamer(
                     keyRequested = false
                 }
                 val header = JSONObject().put("type", "video").put("key", key).put("config", config).put("pts", pts)
-                sink.send(header, bytes)
+                for ((h, b) in gate.offer(SystemClock.uptimeMillis(), header to bytes, key, config, protectedNow())) sink.send(h, b)
             }
         } catch (e: IllegalStateException) {
             // The encoder was stopped under us: the stream is over.

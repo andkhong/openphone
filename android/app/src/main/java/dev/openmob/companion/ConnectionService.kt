@@ -95,7 +95,7 @@ class ConnectionService : Service() {
          *  is a phone-known instruction: one matching send, post or delete it names runs without a prompt (D6). */
         fun sendCommand(text: String): Boolean = (running?.send(
             JSONObject().put("type", "command").put("text", text)
-        ) ?: false).also { if (it) GateHost.noteInstruction(text) }
+        ) ?: false).also { if (it) { GateHost.noteInstruction(text); ScreenKeeper.ownerActive() } }
 
         /** The gatekeeper paused after repeated denials: offer Resume in a notification. */
         fun showResume() { running?.let { s -> s.main.post { s.postResume() } } }
@@ -173,6 +173,7 @@ class ConnectionService : Service() {
         if (running == null) {
             running = this
             stopped = false
+            ScreenKeeper.ownerActive() // the owner just pressed Connect
             startForeground(NOTIFICATION_ID, notification("Connecting to your agent…"), types)
             projection?.let { startStreaming(intent.getIntExtra(EXTRA_PROJECTION_CODE, 0), it) }
             // Keep the CPU awake so the agent can keep working with the screen off between steps.
@@ -195,13 +196,13 @@ class ConnectionService : Service() {
             ScreenStreamer(this, projection, object : ScreenStreamer.Sink {
                 override fun send(header: JSONObject, data: ByteArray) = sendBinary(header, data)
                 override fun queuedBytes() = socket?.queueSize() ?: 0L
-            }) {
+            }, protectedNow = { GateHost.protectedNow() }, onStopped = {
                 main.post {
                     streamer = null
                     send(JSONObject().put("type", "video_state").put("available", false).put("reason", "Screen sharing stopped"))
                     setScreenSharing(false)
                 }
-            }
+            })
         } catch (e: Exception) {
             null // e.g. the approval was already used; the dashboard falls back to screenshots
         }
@@ -327,7 +328,7 @@ class ConnectionService : Service() {
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
-                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("gatekeeper").put("device_lock"))
+                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("approval_digest").put("gatekeeper").put("device_lock"))
                 // Which built-in rules and owner policy this phone enforces (the dashboard shows "Phone protection: on").
                 .put("policy_hash", GateHost.policyHash())
                 .put("gatekeeper_rules", GateHost.rulesVersion)
@@ -344,11 +345,12 @@ class ConnectionService : Service() {
                 val started = SystemClock.elapsedRealtime()
                 val service = OpenMobAccessibilityService.instance
                 val admission = GateHost.admit(service, method, toMap(params))
-                if (method != "device_state") ScreenKeeper.touch()
                 if (admission.decision == "refuse" || admission.decision == "ask") {
                     send(gateReply(reply, admission, SystemClock.elapsedRealtime() - started))
                     return@execute
                 }
+                // Only an action the gate admitted keeps the screen on (B3): reads, waits and refusals never do.
+                if (admission.allowed && method in GateHost.actMethods && method != "wake_unlock") ScreenKeeper.touch()
                 if (admission.decision == "redact" && service != null) { // a blocked app is visible: black, or []
                     val result = PhoneActions(service).redacted(method, params)
                     if (result is PhoneActions.Frame) sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
@@ -367,7 +369,11 @@ class ConnectionService : Service() {
                 }
                 val handler = actions
                     ?: error("Accessibility is off. Turn on OpenMob in Settings › Accessibility.")
-                val result = handler.handle(method, params, admission)
+                var result = handler.handle(method, params, admission)
+                // N4: a blocked app may have come up while the screen was being read: check again, after.
+                if ((method == "screenshot" || method == "ui_elements") && GateHost.refreshProtected(service)) {
+                    result = handler.redacted(method, params)
+                }
                 if (result is PhoneActions.Frame) {
                     sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
                     return@execute
@@ -411,7 +417,7 @@ class ConnectionService : Service() {
         override fun onReceive(context: Context, intent: Intent) {
             if (running !== this@ConnectionService) return
             when (intent.action) {
-                Intent.ACTION_USER_PRESENT -> unlocked()
+                Intent.ACTION_USER_PRESENT -> { ScreenKeeper.ownerActive(); unlocked() }
                 Intent.ACTION_SCREEN_OFF, Intent.ACTION_SCREEN_ON ->
                     if (ScreenKeeper.busy || AppState.controller.isNotEmpty()) main.postDelayed({ checkLock() }, 700)
             }
@@ -423,17 +429,15 @@ class ConnectionService : Service() {
     private fun checkLock() {
         val keyguard = getSystemService(KeyguardManager::class.java)
         if (!keyguard.isKeyguardLocked) return
-        if (!keyguard.isKeyguardSecure) {
-            OpenMobAccessibilityService.instance?.let { s -> calls.execute { runCatching { PhoneActions(s).handle("wake_unlock", JSONObject()) } } }
-            return
-        }
-        lockedMidTask()
+        // N5: the screen went off mid-task (the keep-awake overlay prevents timeouts, so most likely the owner's
+        // power press). Never wake and unlock it behind their back, even a swipe lock: pause until they unlock.
+        lockedMidTask(keyguard.isKeyguardSecure)
     }
 
-    private fun lockedMidTask() {
+    private fun lockedMidTask(secure: Boolean = true) {
         if (pausedByLock) return
         pausedByLock = true
-        send(JSONObject().put("type", "device_lock").put("locked", true).put("secure", true))
+        send(JSONObject().put("type", "device_lock").put("locked", true).put("secure", secure))
         AppState.addEvent("status", getString(R.string.lock_paused_event))
         val open = PendingIntent.getActivity(this, 3, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
         getSystemService(NotificationManager::class.java).notify(LOCK_ID, Notification.Builder(this, CHANNEL)
@@ -498,7 +502,7 @@ class ConnectionService : Service() {
             return
         }
         AppState.addEvent(kind, text)
-        if (kind == "status" && text.startsWith("Working on:")) { updateNotification(text); ScreenKeeper.touch() }
+        if (kind == "status" && text.startsWith("Working on:")) updateNotification(text) // the server can't keep the screen on (B3)
         if (kind == "result" || kind == "error") { updateNotification("Agent connected · ready"); ScreenKeeper.release() }
     }
 

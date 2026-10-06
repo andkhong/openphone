@@ -60,3 +60,16 @@ the app's protocol (`FakePhone` in `tests/test_remote.py`), a fake device (`Fake
 `tests/conftest.py`) and a scripted model client in place of an AI provider. They're internal test
 helpers, not a supported API, but from a source checkout you can use them to run a local server with
 fake phones for experiments. `pytest tests/test_api_v1.py` shows how they fit together.
+
+### Gatekeeper smoke suite (emulator, manual)
+
+`tests/adversarial/evil_server.py` plays a compromised server against the real app on an emulator: it
+checks unknown methods, OpenMob and installer launches, dangerous links and typed text, security
+Settings, a blocked app while it loads and once open (taps refused, reads black, no live-view frames),
+the phone-owned approval for "Buy now", that any other action voids an approval, a deep WebView
+"Place order", and that server reads alone don't keep the screen on. It needs an Android emulator with a
+PIN and the debug APK (this repository's CI machine has no emulator image yet, so it hasn't been run);
+the bank and shop checks also need small stand-in apps (`com.example.bank`, `com.example.shop`), which
+are still to be written, and are skipped without them. Run it with
+`python tests/adversarial/evil_server.py --port 8765`, connect the app to `http://10.0.2.2:8765` with
+the printed token, and approve on the emulator when it asks. Never run it against your own phone.
