@@ -544,6 +544,7 @@ class Gatekeeper:
         self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
         self.tokens, self.last_refill = float(self.r.limits["act_burst"]), now
         self.asks, self.denials = [], []
+        self.last_app, self.suspended = "", False
         self.hwm = now
 
     # --- signed owner policy ----------------------------------------------------------

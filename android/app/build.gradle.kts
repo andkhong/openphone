@@ -34,6 +34,8 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // The gatekeeper's shared scenario fixtures (also run by pytest through the Python reference engine).
+    sourceSets.getByName("test").resources.srcDir("../../tests/fixtures/gatekeeper")
 }
 
 dependencies {
