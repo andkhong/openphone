@@ -25,6 +25,10 @@ GENERIC_TOKENS = {
 }
 
 FUZZY_THRESHOLD = 85
+ARCHIVED_NOTE = "archived: reinstall from the Play Store"
+# What a phone says when a listed package can't be opened: Android 15 keeps an archived (offloaded) app listed with
+# no launchable activity; adb's monkey says the same of a package with no launcher entry.
+NOT_LAUNCHABLE = re.compile(r"no launchable activity|isn't installed|is archived|No activities found", re.I)
 
 LlmPicker = Callable[[str, list[str], dict[str, str]], "str | None"]
 
@@ -82,6 +86,9 @@ class AppResolver:
         self.label_cache = label_cache
         self.llm_picker = llm_picker
         self._packages: list[str] | None = None
+        # Listed but not openable (Android 15 archived apps, or a launch that found no launcher activity): they
+        # resolve, so "Chess" still names com.chess, but list_apps and launch_app treat them as not installed.
+        self.archived: set[str] = set()
         self.labels: dict[str, str | None] = self._load_labels()
 
         self._labels_lock = threading.Lock()
@@ -112,6 +119,19 @@ class AppResolver:
     def display_name(self, package: str) -> str:
         return self.labels.get(package) or package_words(package) or package
 
+    def mark_archived(self, package: str, archived: bool = True) -> None:
+        (self.archived.add if archived else self.archived.discard)(package)
+
+    def is_archived(self, package: str) -> bool:
+        return package in self.archived
+
+    def listing(self, query: str = "", limit: int | None = None) -> str:
+        """list_apps' text: "Name (package)" lines, archived ones marked as not installed."""
+        apps = self.installed_apps(query)
+        if limit is not None:
+            apps = apps[:limit]
+        return "\n".join(f"{n} ({p})" + (f" ({ARCHIVED_NOTE})" if p in self.archived else "") for n, p in apps)
+
     def installed_apps(self, query: str = "") -> list[tuple[str, str]]:
         """(display name, package) pairs, best matches first when a query is given."""
         apps = [(self.display_name(p), p) for p in self.packages()]
@@ -123,6 +143,10 @@ class AppResolver:
     def packages(self, refresh: bool = False) -> list[str]:
         if self._packages is None or refresh:
             self._packages = self.driver.launchable_packages()
+            # An archived app the phone still lists stays marked (a newer phone app leaves archived apps out); one it
+            # no longer lists is forgotten. A reinstalled one is unmarked by its next successful launch.
+            listed = set(self._packages)
+            self.archived = {p for p in self.archived if p in listed}
         return self._packages
 
     def resolve(self, name: str) -> Resolution | None:

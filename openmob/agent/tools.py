@@ -17,16 +17,21 @@ _TARGET = {
 TOOLS = [
     {
         "name": "launch_app",
-        "description": "Open an installed app by its display name or package (e.g. 'Where Winds Meet', 'Settings', 'com.whatsapp').",
+        "description": "Open an installed app by its display name or package (e.g. 'Where Winds Meet', 'Settings', "
+                       "'com.whatsapp'). With install_if_missing, an app that isn't installed (or was archived) opens "
+                       "on its Play Store page instead, ready to tap Install.",
         "input_schema": {
             "type": "object",
-            "properties": {"app": {"type": "string"}},
+            "properties": {"app": {"type": "string"},
+                           "install_if_missing": {"type": "boolean",
+                                                  "description": "Not installed: open its Play Store page."}},
             "required": ["app"],
         },
     },
     {
         "name": "list_apps",
-        "description": "List installed apps (display name and package). Pass a query to rank the closest matches first.",
+        "description": "List installed apps (display name and package). Pass a query to rank the closest matches "
+                       "first. Archived apps (removed but still listed by Android) are marked as not installed.",
         "input_schema": {
             "type": "object",
             "properties": {"query": {"type": "string"}},
@@ -210,7 +215,12 @@ an icon near a screen corner (☰, a gear, an avatar, a scroll/book icon) or a b
 condition holds. After tapping Install in the Play Store: wait_until element_enabled "Open|Play" (timeout_s 120; \
 the button is greyed out while it installs). After opening an app or a link, or on a loading screen: \
 wait_until loading_done (or screen_changes). Waiting for a reply or a result: wait_until text_appears with \
-the text you expect. Use wait (fixed seconds) only when nothing observable will change.
+the text you expect. Use wait (fixed seconds) only when nothing observable will change. In games and on \
+boards (chess, cards) wait_until screen_changes for the opponent's move rather than guessing at text that may never \
+appear; a text wait on a still screen ends early, not met.
+- If a request needs an app that isn't installed, launch_app with install_if_missing opens its Play Store page.
+- Android's permission dialogs (notifications, location, camera…) are answered for you by the owner's defaults \
+before you see the screen. Answer one yourself only when the request says how (e.g. "don't allow notifications").
 - After launching a game, wait through loading screens, and close announcements, pop-ups, or "tap to start" \
 screens that are in the way.
 - If an action didn't change the screen as expected, try something different. Don't repeat the same action \

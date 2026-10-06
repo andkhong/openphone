@@ -445,8 +445,20 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
     private fun launchablePackages(): JSONArray {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val packages = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.distinct().sorted()
-        return JSONArray(packages)
+        val listed = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }
+        // Android 15 archives apps (the APK is removed, the app stays listed): those, and anything else with no
+        // launch intent, aren't installed as far as an agent is concerned.
+        return JSONArray(AppListing.launchable(listed, ::isArchived) { pm.getLaunchIntentForPackage(it) != null })
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isArchived(pkg: String): Boolean {
+        if (Build.VERSION.SDK_INT < 35) return false
+        return try {
+            pm.getApplicationInfo(pkg, 0).isArchived
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
@@ -466,7 +478,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     private fun launchApp(pkg: String): Any? {
         val intent = pm.getLaunchIntentForPackage(pkg)
-            ?: throw IllegalStateException("$pkg has no launchable activity")
+            ?: throw IllegalStateException(
+                if (isArchived(pkg)) "$pkg isn't installed (archived): no launchable activity"
+                else "$pkg has no launchable activity")
         // A bound accessibility service is exempt from background activity-start restrictions.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         gate()

@@ -1,23 +1,30 @@
 """Android's runtime permission dialogs, handled by rule with no model call.
 
 "Allow Chess.com to send you notifications? · Allow · Don't allow" used to cost a vision step each (3-6 s), and
-the model flip-flopped between Allow and Don't allow. The agent loop now answers these at observation time
-(Agent._permission_dialog), before the model sees the screen, by the owner's settings (`permission_prompts` in
-the phone's permission settings, openmob/permissions.py):
+the model flip-flopped between Allow and Don't allow (a real run: two "Don't allow" taps and a BACK, ~20 s). The
+agent loop now answers these at observation time (Agent._permission_dialog), before the model sees the screen, by
+the owner's defaults (config `permission_prompts`; on a gatekeeper build, the phone's permission settings first):
 
 - notifications: `allow` (default) | `deny`;
 - location, camera, microphone, contacts, photos and media, phone, SMS, calendar, nearby devices, physical
   activity, body sensors: `once` (default: "Only this time", or the narrowest grant the dialog offers) | `ask` (the
   owner is asked on the phone, "Allow Kalshi to use your location?") | `while_using` | `deny`;
 - location accuracy: `approximate` (default: the Approximate card is chosen before granting) | `precise`;
+- photos and media: "Allow limited access" when offered, else "Only this time", else "Don't allow" (never "Allow
+  all");
 - **never "Allow all the time"**: if that's the only way to grant, the request is denied (the phone refuses it too);
+- a request that itself talks about permissions ("don't allow notifications") is left to the model;
 - a request from an app other than the task's own: ask (S2 of docs/design/phone-gatekeeper.md);
 - under Don't ask (`never`): nobody can be asked, so anything that would ask is denied; `once` and `while_using`
   still grant.
 
 On a yes the narrowest grant is tapped: "Only this time", else "While using the app", else "Allow". Each tap goes
 through the usual checks (a gatekeeper phone enforces the same settings itself, signed on the phone), as a fast
-step recorded with `handled_by: "permission_rule"`.
+step recorded with `source: "auto_dialog"`.
+
+Recognized: a window of the permission controller (Google, AOSP, Samsung), or, whatever the package, a "Don't allow"
+button together with the dialog's "Allow X to …" message (the gatekeeper app OCRs the dialogs Android hides from
+accessibility and lists them as OCRText elements, the message with resource id `ocr_permission_message`).
 """
 
 from __future__ import annotations
@@ -25,7 +32,20 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ..permissions import PERMISSION_DEFAULTS as DEFAULTS  # noqa: F401  (the owner's defaults, per type)
 from ..phone.adb import UIElement
+
+# A request that says how to answer permission prompts ("don't allow notifications", "deny location access"): the
+# model answers them, not the rule.
+_KINDS = r"(?:notification|location|camera|microphone|\bmic\b|contacts|photos|media|nearby|bluetooth|calendar|sms)"
+_ANSWERS = r"(?:don['’]?t allow|do not allow|disallow|deny|denied|allow|grant|block|refuse|reject|decline)"
+TALKS_PERMISSIONS = re.compile(rf"\bpermissions?\b|\b{_ANSWERS}\W+(?:\w+\W+){{0,4}}?{_KINDS}"
+                               rf"|{_KINDS}\w*\W+(?:\w+\W+){{0,3}}?{_ANSWERS}\b", re.I)
+
+
+def request_mentions_permissions(task: str) -> bool:
+    return bool(TALKS_PERMISSIONS.search(task or ""))
+
 
 PACKAGES = re.compile(r"^(com\.google\.android|com\.android|com\.samsung\.android)\.permissioncontroller$"
                       r"|^com\.(google\.)?android\.packageinstaller$")
@@ -34,6 +54,7 @@ BUTTONS = {
     "foreground": re.compile(r"permission_allow_foreground_only_button$"),
     "allow": re.compile(r"permission_allow_button$"),
     "always": re.compile(r"permission_allow_always_button$"),
+    "limited": re.compile(r"permission_allow_selected_button$"),
     "deny": re.compile(r"permission_deny_button$"),
     "deny_forever": re.compile(r"permission_deny_and_dont_ask_again_button$"),
     "precise": re.compile(r"location_accuracy_radio_fine$|accuracy_fine|precise_location", re.I),
@@ -48,6 +69,8 @@ TEXTS = {
     "foreground": re.compile(r"^(while using the app|mientras la app está en uso|mientras se usa la app"
                              r"|bei nutzung der app|während der app-nutzung)$", re.I),
     "always": re.compile(r"^(allow all the time|permitir todo el tiempo|permitir siempre|immer zulassen)$", re.I),
+    "limited": re.compile(r"^(allow limited access|select photos( and videos)?|permitir acceso limitado"
+                          r"|eingeschränkten zugriff erlauben)$", re.I),
     "deny": re.compile(r"^(don['’]t allow|deny|no permitir|nicht zulassen)$", re.I),
     "allow": re.compile(r"^(allow|permitir|zulassen)$", re.I),
 }
@@ -89,11 +112,25 @@ class Plan:
     accuracy: str | None = None  # approximate | precise: the location card to choose before granting
 
 
+OCR_MESSAGE_ID = "ocr_permission_message"  # the gatekeeper app's OCR'd dialog title (no package prefix: not an app's id)
+TITLE = re.compile(r"^Allow\s+.+?\s+to\s.+\?$", re.I | re.S)
+
+
+def _controller_id(rid: str) -> bool:
+    return bool(rid) and PACKAGES.search(rid.split(":", 1)[0]) is not None
+
+
 def detect(package: str | None, elements: list[UIElement]) -> Dialog | None:
-    """A runtime permission dialog on screen, or None."""
+    """A runtime permission dialog on screen, or None. Only the system's: the permission controller's window (its
+    package, or its resource ids), the gatekeeper app's OCR reading of a hidden one (`ocr_permission_message`), or,
+    on an unidentified window (no package), the server's own OCR of an "Allow X to …?" title. An app's own screen
+    that merely looks like one never counts (its ids carry its package)."""
     buttons = {}
     message = ""
+    trusted = bool(package and PACKAGES.search(package))
     for e in elements:
+        if e.covered:
+            continue  # under a higher window: not the dialog's
         rid = e.resource_id or ""
         for role, rx in BUTTONS.items():
             if rx.search(rid) and role not in buttons:
@@ -101,9 +138,13 @@ def detect(package: str | None, elements: list[UIElement]) -> Dialog | None:
         for role, rx in TEXTS.items():
             if role not in buttons and rx.search((e.text or e.desc or "").strip()):
                 buttons[role] = e
-        if MESSAGE.search(rid) and (e.text or e.desc):
+        if MESSAGE.search(rid) and (e.text or e.desc) and (rid == OCR_MESSAGE_ID or _controller_id(rid)):
             message = e.text or e.desc
-    if not (package and PACKAGES.search(package)) and not (buttons and message):
+            trusted = True
+        elif not message and package is None and e.cls == "OCRText" and TITLE.match((e.text or "").strip()):
+            message = e.text  # the server's OCR of a window nobody identified
+            trusted = True
+    if not trusted:
         return None
     if not buttons or not ("deny" in buttons or "deny_forever" in buttons):
         return None
@@ -112,15 +153,27 @@ def detect(package: str | None, elements: list[UIElement]) -> Dialog | None:
     return Dialog(app=(m.group("app").strip() if m else ""), kind=kind, message=message, buttons=buttons)
 
 
-def same_app(a: str, b: str | None) -> bool:
+DOMAIN = re.compile(r"\.(com|net|org|io|app|co|tv|gg)$", re.I)
+
+
+def same_app(a: str, b: str | None, package: str | None = None) -> bool:
+    """The dialog's app name is the task's app: its label, the same with a web-style domain dropped ("Chess.com"
+    for "Chess"), or its package's last part (com.chess)."""
     norm = lambda s: re.sub(r"[^a-z0-9]+", "", (s or "").lower())  # noqa: E731
-    return bool(a) and bool(b) and norm(a) == norm(b)
+    if not a:
+        return False
+    names = {norm(a), norm(DOMAIN.sub("", a.strip()))} - {""}
+    known = {norm(b), norm(DOMAIN.sub("", (b or "").strip()))}
+    if package:
+        known.add(norm(package.rsplit(".", 1)[-1]))
+    return bool(names & (known - {""}))
 
 
-def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | None) -> Plan:
+def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | None,
+           task_package: str | None = None) -> Plan:
     """What to do by the owner's settings. Denying is always safe, so it never needs the owner."""
     never = mode == "never"
-    own = not task_app_label or same_app(dialog.app, task_app_label)
+    own = not task_app_label or same_app(dialog.app, task_app_label, task_package)
     accuracy = (prompts.get("location_accuracy") or "approximate") if dialog.kind == "location" else None
     if dialog.kind == "notifications":
         if prompts.get("notifications", "allow") != "allow":
@@ -128,7 +181,9 @@ def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | No
         if own:
             return Plan("allow")
         return Plan("deny" if never else "ask")
-    if not any(r in dialog.buttons for r in ("one_time", "foreground", "allow")):
+    if dialog.kind == "photos" and not any(r in dialog.buttons for r in ("limited", "one_time")):
+        return Plan("deny")  # only "Allow all" (every photo): never by rule
+    if not any(r in dialog.buttons for r in ("one_time", "foreground", "allow", "limited")):
         return Plan("deny")  # the only grant offered is "Allow all the time": never
     setting = prompts.get(dialog.kind, "once") if own else "ask"  # another app's request (S2) always asks
     if setting == "deny":
@@ -150,6 +205,9 @@ def button(dialog: Dialog, answer: str, grant: str | None = None, asked: bool = 
     the only way to grant (`asked`)."""
     if answer != "allow":
         order = ("deny", "deny_forever")
+    elif dialog.kind == "photos":
+        # Some photos, never "Allow all" (nor a plain "Allow"): limited access, else the setting's grant.
+        order = ("limited", "foreground", "one_time") if grant == "while_using" and not asked else ("limited", "one_time")
     elif dialog.kind == "notifications":
         order = ("allow",)
     elif grant == "once" and not asked:
