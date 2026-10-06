@@ -167,6 +167,8 @@ class GScreen(
     val resolve: Map<String, Pair<String, List<String>>> = emptyMap(), val labels: Map<String, String> = emptyMap(),
     /** The phone has a live input focus (typing and ENTER go there), read or not. */
     val focusExpected: Boolean = false,
+    /** That focus resolved directly (findFocus): its window id, the node, and its ancestors (outermost first). */
+    val focusWindow: Int? = null, val focusNode: GNode? = null, val focusAncestors: List<GNode> = emptyList(),
     /** The accessibility service is bound (else the phone can't see the screen at all). */
     val available: Boolean = true,
     /** The last window-state event: its package and text (they arrive even for windows Android hides). */
@@ -188,6 +190,9 @@ class GScreen(
                 },
                 labels = d["labels"].obj().mapValues { it.value.toString() },
                 focusExpected = d["focus"].obj().bool("expected"),
+                focusWindow = (d["focus"].obj()["window"] as? Number)?.toInt(),
+                focusNode = d["focus"].obj()["node"]?.let { GNode.of(it.obj()) },
+                focusAncestors = d["focus"].obj()["ancestors"].list().map { GNode.of(it.obj()) },
                 available = d["accessibility"] != false,
                 eventPackage = d["event"].obj().str("package"), eventText = d["event"].obj().str("text"),
             )
@@ -264,7 +269,11 @@ object GateScreen {
 
     fun focusedField(screen: GScreen): Field? {
         for (w in screen.ordered) findFocused(w.root, emptyList())?.let { return Field(w, it.last(), it) }
-        return null
+        // Not in the walked tree (e.g. a Jetpack Compose text field): the node the phone's live input focus resolves
+        // to, with its parent chain, counts if its window is one the phone listed.
+        val node = screen.focusNode ?: return null
+        val w = screen.windows.firstOrNull { it.id == screen.focusWindow } ?: return null
+        return Field(w, node, screen.focusAncestors + node)
     }
 
     private fun findFocused(node: GNode?, path: List<GNode>): List<GNode>? {

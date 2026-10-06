@@ -62,6 +62,18 @@ object GateScreens {
         val focusPoint = focus?.let { f ->
             Rect().also(f::getBoundsInScreen).let { r -> r.exactCenterX().toDouble() to r.exactCenterY().toDouble() }
         }
+        // The focused node itself, and its parent chain: a Jetpack Compose field (Google Messages) can be missing
+        // from the walk from the root, but findFocus resolves it.
+        val focusWindow = focus?.windowId
+        val focusNode = focus?.let { runCatching { ADAPTER.leaf(it, emptyList(), false) }.getOrNull() }
+        val focusAncestors = mutableListOf<GNode>()
+        var up = runCatching { focus?.parent }.getOrNull()
+        while (up != null && focusAncestors.size < 40) {
+            runCatching { ADAPTER.leaf(up, emptyList(), false) }.getOrNull()?.let { focusAncestors.add(0, it) }
+            val next = runCatching { up.parent }.getOrNull()
+            @Suppress("DEPRECATION") up.recycle()
+            up = next
+        }
         @Suppress("DEPRECATION") focus?.recycle()
         val pinned = points + listOfNotNull(focusPoint)
         for (w in runCatching { service.windows }.getOrDefault(emptyList())) {
@@ -86,6 +98,7 @@ object GateScreens {
             resolve = urls.associateWith { resolve(pm, it) },
             labels = labels(pm, pkgs) + GateHost.blockedLabels(pm),
             focusExpected = focusPoint != null,
+            focusWindow = focusWindow, focusNode = focusNode, focusAncestors = focusAncestors,
             eventPackage = service.lastEventPackage, eventText = service.lastEventText,
         )
     }

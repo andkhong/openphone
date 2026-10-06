@@ -165,7 +165,7 @@ object GateHost {
                 val url = if (GateText.urlScheme(text) == null) "https://$text" else text
                 screen = GScreen(screen.windows, screen.keyguardLocked, screen.keyguardSecure, screen.quietMs,
                     screen.activity, screen.autofillService, mapOf(url to GateScreens.resolve(service.packageManager, url)),
-                    screen.labels, screen.focusExpected, eventPackage = screen.eventPackage, eventText = screen.eventText)
+                    screen.labels, screen.focusExpected, screen.focusWindow, screen.focusNode, screen.focusAncestors, eventPackage = screen.eventPackage, eventText = screen.eventText)
             }
         }
         return screen

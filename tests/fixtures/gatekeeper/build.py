@@ -717,6 +717,53 @@ SCENARIOS += [
         step("device_state", "no_accessibility", allow())], tags=["hard_deny"]),
 ]
 
+# --- a Compose text field the tree walk doesn't enumerate, resolved from the live input focus ----------------
+MESSAGES_APP = "com.google.android.apps.messaging"
+LABELS[MESSAGES_APP] = "Messages"
+
+
+def compose_screen(pkg=MESSAGES_APP, window_pkg=None, field=None, window_id=1, ancestors=True):
+    row = [button("", "ComposeRowIcon:Shortcuts", (23, 1151, 158, 1309)),
+           button("", "ComposeRowIcon:Gallery", (741, 1151, 876, 1309)),
+           node(desc="Send SMS", id="Compose:Draft:Send", cls="android.view.View", bounds=(899, 1151, 1057, 1309),
+                clickable=True)]
+    focus_node = field or node(cls="android.widget.EditText", hint="Text message", editable=True, focused=True,
+                               bounds=(158, 1151, 606, 1309))
+    return screen(
+        {"id": 1, "type": "application", "layer": 1, "package": window_pkg if window_pkg is not None else pkg,
+         "title": "", "bounds": FULL, "root": node(cls="android.widget.FrameLayout", bounds=FULL, children=row)},
+        focus={"expected": True, "window": window_id, "node": focus_node,
+               "ancestors": [node(cls="android.view.View", bounds=(23, 1151, 876, 1309))] if ancestors else []},
+        labels=LABELS)
+
+
+SCREENS.update({
+    "compose_field": compose_screen(),
+    "compose_password": compose_screen(field=node(cls="android.widget.EditText", editable=True, focused=True,
+                                                  password=True, bounds=(158, 1151, 606, 1309))),
+    "compose_otp": compose_screen(field=node(cls="android.widget.EditText", hint="Enter code", id="otp", editable=True,
+                                             focused=True, bounds=(158, 1151, 606, 1309))),
+    "compose_blocked": compose_screen(pkg="com.chase.sig.android"),
+    "compose_unknown_window": compose_screen(window_pkg=""),
+    "compose_unlisted_window": compose_screen(window_id=42),
+    "compose_webview": compose_screen(pkg="com.example.app", ancestors=False,
+                                      field=node(cls="android.widget.EditText", hint="Card number", editable=True,
+                                                 focused=True, bounds=(158, 1151, 606, 1309))),
+})
+SCENARIOS += [
+    sc("a focused Compose field missing from the walked tree is resolved from the live focus", [
+        step("type_text", "compose_field", allow(), text="On my way"),
+        step("key", "compose_field", ask("send", rule="risk:enter:messaging"), name="ENTER"),
+        step("type_text", "compose_password", refuse("gate_password_field"), text="hunter2"),
+        step("type_text", "compose_otp", ask("fill", rule="risk:otp_field"), text="123456"),
+        step("type_text", "compose_blocked", refuse("gate_blocked_app"), text="hello"),
+        step("type_text", "compose_unknown_window", refuse("gate_screen_unstable", rule="builtin:unknown_window"),
+             text="hello"),
+        step("type_text", "compose_unlisted_window", refuse("gate_screen_unstable", rule="builtin:focus_unread"),
+             text="hello"),
+        step("type_text", "compose_webview", ask("fill", rule="risk:card_field"), text="4242")], tags=["hard_deny"]),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap

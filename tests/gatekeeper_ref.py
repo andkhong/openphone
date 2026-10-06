@@ -182,6 +182,7 @@ class Screen:
     autofill_service: str = ""
     resolve: dict = field(default_factory=dict)
     focus_expected: bool = False  # the phone has a live input focus (typing and ENTER go there)
+    focus: dict = field(default_factory=dict)  # that focus resolved directly: {window, node, ancestors}
     available: bool = True  # the accessibility service is bound (else the phone can't see the screen at all)
     event: dict = field(default_factory=dict)  # the last window-state event: {package, text}
     labels: dict = field(default_factory=dict)
@@ -194,6 +195,7 @@ class Screen:
                    activity=d.get("activity", ""), autofill_service=d.get("autofill_service", ""),
                    resolve=d.get("resolve", {}), labels=d.get("labels", {}),
                    focus_expected=bool((d.get("focus") or {}).get("expected")),
+                   focus=d.get("focus") or {},
                    available=d.get("accessibility", True) is not False, event=d.get("event") or {})
 
     def ordered(self) -> list[Window]:
@@ -294,6 +296,14 @@ def focused_field(screen: Screen) -> tuple[Window, Node, list] | None:
         found = _find_focused(w.root, [])
         if found:
             return w, found[-1], found
+    # Not in the walked tree (e.g. a Jetpack Compose text field): the node the phone's live input focus resolves
+    # to, with its parent chain, counts if its window is one the phone listed.
+    f = screen.focus
+    if f.get("node") is not None:
+        w = next((x for x in screen.windows if x.id == int(f.get("window", -1))), None)
+        if w is not None:
+            node = Node.of(f["node"])
+            return w, node, [Node.of(a) for a in f.get("ancestors", [])] + [node]
     return None
 
 

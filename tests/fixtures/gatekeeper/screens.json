@@ -54,7 +54,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -252,7 +253,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "amazon_checkout": {
@@ -363,7 +365,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "amazon_checkout_card": {
@@ -463,7 +466,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "amazon_autofill": {
@@ -578,7 +582,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "slide_to_pay": {
@@ -649,7 +654,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "chase": {
@@ -707,7 +713,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "login_form": {
@@ -795,7 +802,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "otp_form": {
@@ -855,7 +863,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "chrome_url_js": {
@@ -914,7 +923,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "chrome_url_bank": {
@@ -973,7 +983,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1038,7 +1049,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "web_checkout_enter": {
@@ -1152,7 +1164,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "whatsapp_chat": {
@@ -1239,7 +1252,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "gmail_list": {
@@ -1338,7 +1352,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_main": {
@@ -1592,7 +1607,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_internet": {
@@ -1750,7 +1766,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_security": {
@@ -1892,7 +1909,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_dev": {
@@ -1994,7 +2012,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_keyboards": {
@@ -2096,7 +2115,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_datetime": {
@@ -2254,7 +2274,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_bluetooth": {
@@ -2396,7 +2417,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_system": {
@@ -2526,7 +2548,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_app_info_amazon": {
@@ -2724,7 +2747,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_app_info_chase": {
@@ -2866,7 +2890,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "samsung_accessibility": {
@@ -2967,7 +2992,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "openmob_app": {
@@ -3025,7 +3051,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "keyguard_secure": {
@@ -3221,7 +3248,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "share_sheet": {
@@ -3319,7 +3347,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "german_shop": {
@@ -3430,7 +3459,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "permission_dialog_session": {
@@ -3555,7 +3585,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "permission_dialog_other": {
@@ -3666,7 +3697,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "whatsapp_chat_busy": {
@@ -3753,7 +3785,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   },
   "quiet_ms": 40
  },
@@ -3810,7 +3843,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "deep_truncated": {
@@ -3882,7 +3916,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "settings_about": {
@@ -4024,7 +4059,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "vpn_consent": {
@@ -4148,7 +4184,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "contacts_app": {
@@ -4219,7 +4256,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4330,7 +4368,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "inapp_webview_autofill": {
@@ -4446,7 +4485,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "native_autofill": {
@@ -4548,7 +4588,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "kalshi_app": {
@@ -4606,7 +4647,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_google": {
@@ -4775,7 +4817,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_approx": {
@@ -4944,7 +4987,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_samsung": {
@@ -5113,7 +5157,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_always_only": {
@@ -5238,7 +5283,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "notifications_kalshi": {
@@ -5363,7 +5409,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "camera_kalshi": {
@@ -5502,7 +5549,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_other_app": {
@@ -5671,7 +5719,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "location_oem_unknown": {
@@ -5782,7 +5831,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "otp_focus_unread": {
@@ -5842,7 +5892,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "focus_unknown_window": {
@@ -5904,7 +5955,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "hidden_permission_dialog": {
@@ -5978,7 +6030,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "hidden_permission_samsung": {
@@ -6065,7 +6118,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "partial_window": {
@@ -6123,7 +6177,8 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  },
  "no_accessibility": {
@@ -6140,7 +6195,848 @@
    "com.google.android.gm": "Gmail",
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
-   "com.kalshi": "Kalshi"
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_field": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.messaging",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Text message",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_password": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.messaging",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "editable": true,
+    "focused": true,
+    "password": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_otp": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.messaging",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "otp",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Enter code",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_blocked": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.chase.sig.android",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Text message",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_unknown_window": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Text message",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_unlisted_window": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.messaging",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 42,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Text message",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": [
+    {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.view.View",
+     "bounds": [
+      23,
+      1151,
+      876,
+      1309
+     ],
+     "children": []
+    }
+   ]
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
+  }
+ },
+ "compose_webview": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Shortcuts",
+       "cls": "android.widget.Button",
+       "bounds": [
+        23,
+        1151,
+        158,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "ComposeRowIcon:Gallery",
+       "cls": "android.widget.Button",
+       "bounds": [
+        741,
+        1151,
+        876,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Send SMS",
+       "id": "Compose:Draft:Send",
+       "cls": "android.view.View",
+       "bounds": [
+        899,
+        1151,
+        1057,
+        1309
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "focus": {
+   "expected": true,
+   "window": 1,
+   "node": {
+    "text": "",
+    "desc": "",
+    "id": "",
+    "cls": "android.widget.EditText",
+    "bounds": [
+     158,
+     1151,
+     606,
+     1309
+    ],
+    "children": [],
+    "hint": "Card number",
+    "editable": true,
+    "focused": true
+   },
+   "ancestors": []
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages"
   }
  }
 }

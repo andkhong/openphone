@@ -4003,6 +4003,131 @@
   ]
  },
  {
+  "name": "a focused Compose field missing from the walked tree is resolved from the live focus",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "On my way"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:enter:messaging"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hunter2"
+     }
+    },
+    "screen": "compose_password",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_password_field"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "compose_otp",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "rule": "risk:otp_field"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_blocked",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_unlisted_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4242"
+     }
+    },
+    "screen": "compose_webview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "rule": "risk:card_field"
+    }
+   }
+  ]
+ },
+ {
   "name": "an unreadable app window: taps refused, reads blacked out, no live view",
   "tags": [
    "hard_deny"
