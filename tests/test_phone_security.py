@@ -280,7 +280,7 @@ def test_a_signed_approval_for_one_action_does_not_authorize_another(h):
     start_cart(h, h.ids.a1)
     request = h.pa1.approval_requests[-1]
     # The request names the action (the tool, the app, the target) and its digest; the phone signs that.
-    assert request["digest"] == action_digest(request["action"])
+    assert request["action"]["tool"] == "tap" and request["digest"] == action_digest(request["action"])
     other = action_digest({**request["action"], "text": "Buy 10 now"})
     h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True, digest=other))  # signed, other action
     assert not wait_for(lambda: h.status(h.ids.a1) == "succeeded", timeout=1.0)
@@ -288,6 +288,21 @@ def test_a_signed_approval_for_one_action_does_not_authorize_another(h):
     h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True))  # this action: approved
     assert wait_for(lambda: h.status(h.ids.a1) == "succeeded")
     assert any(a[0] == "tap" for a in h.pa1.driver.actions)
+
+
+def test_an_approval_does_not_cover_a_screen_that_changed_while_asking(h):
+    from openmob.phone.adb import UIElement
+
+    driver = h.pa1.driver
+    driver.elements = [UIElement(0, "Buy now", "", "buy", "Button", True, None, (0, 0, 200, 100))]
+    start_cart(h, h.ids.a1)
+    request = h.pa1.approval_requests[-1]
+    assert request["action"]["text"] == "Buy now"
+    # Before the owner answers, the page swaps the button under the same spot.
+    driver.elements = [UIElement(0, "Subscribe yearly", "", "buy", "Button", True, None, (0, 0, 200, 100))]
+    h.pa1.send(h.pa1.approval(request["id"], request["task_id"], True))
+    assert wait_for(lambda: h.status(h.ids.a1) in ("succeeded", "failed"))
+    assert not any(a[0] == "tap" for a in driver.actions)
 
 
 def test_approval_key_registers_on_first_connect_once(h):

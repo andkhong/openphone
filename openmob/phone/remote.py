@@ -19,7 +19,8 @@ from .protocol import METHODS, decode_element, decode_screenshot
 
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
 # phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
-REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle"}
+REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle",
+              "resolve_url"}
 
 
 class PhoneLink:
@@ -224,6 +225,16 @@ class RemoteDriver(CachedScreenshots):
 
     def open_url(self, url: str) -> None:
         self._call("open_url", url=url)
+
+    def resolve_url(self, url: str) -> dict | None:
+        """Which app would open `url` ({"package", "candidates"}), or None when this phone's app is too
+        old to say (the agent then checks the app in front right after opening)."""
+        if "resolve_url" not in self.capabilities:
+            return None
+        result = self._call("resolve_url", url=url) or {}
+        package = result.get("package")
+        return {"package": str(package) if package else None,
+                "candidates": [str(c) for c in result.get("candidates") or []]}
 
     def wake_unlock(self) -> None:
         self._call("wake_unlock")

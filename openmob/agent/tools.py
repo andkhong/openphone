@@ -34,7 +34,8 @@ TOOLS = [
     },
     {
         "name": "open_url",
-        "description": "Open a web link or app deep link (https://..., tel:..., geo:..., market://...) in the default handler.",
+        "description": "Open a web link (https://...) or a tel:, mailto:, sms:, geo: or market:// link in the "
+                       "default handler. Other schemes (custom app links, javascript:, intent:…) are refused.",
         "input_schema": {
             "type": "object",
             "properties": {"url": {"type": "string"}},
@@ -175,7 +176,7 @@ Make exactly ONE tool call per turn, then check the next screenshot to confirm i
 How to act:
 - To open an app, use launch_app. If it can't find the app, use list_apps to see what's installed and \
 retry with the exact package. As a last resort, press HOME, open the app drawer, and use its search.
-- For a web page, or a deep link the app supports, open_url can be faster than navigating.
+- For a web page (https:// link), open_url can be faster than navigating.
 - Inside an app, look for a search field or tab bar before scrolling. Scroll to find things that are off-screen.
 - If the keyboard covers what you need, press BACK once to hide it.
 - If the target is in the element list, prefer tap_element. Otherwise use tap with pixel coordinates \
