@@ -41,6 +41,9 @@ PUBLIC_DOCS = {"quickstart": "quickstart.md", "concepts": "concepts.md", "phone-
 DOCS_DIRS = [Path(os.environ["OPENMOB_DOCS_DIR"])] if os.environ.get("OPENMOB_DOCS_DIR") else []
 DOCS_DIRS += [Path(__file__).parent.parent / "docs", Path.cwd() / "docs"]
 PAGE = STATIC / "index.html"
+OLD_APP_APPROVALS = ("This phone's OpenMob app is out of date: it signs approvals in an older format "
+                     "this server no longer accepts. Install the latest app to approve; until then it "
+                     "can only decline.")
 LOGIN_MAX_FAILURES = 10  # failed sign-ins per address or email…
 LOGIN_WINDOW = 600  # …in this many seconds, then 429
 SIGNUP_MAX_PER_IP = 20  # sign-up attempts per address in LOGIN_WINDOW
@@ -1006,21 +1009,31 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                                extra="always" if message.get("always") is True else None,
                                digest=record.get("digest"))
 
+    def signs_action_digests(session) -> bool:
+        """Whether this phone's app signs approvals over the action digest (the only format accepted).
+        Apps from before it don't say so; the release that added it is the one that also added
+        `resolve_url`, so either capability marks a current app."""
+        caps = getattr(session.driver, "capabilities", None) or set()
+        return bool({"approval_digest", "resolve_url"} & set(caps))
+
     def approval_blocker(session) -> str | None:
-        """Why this phone can't approve yet: hosted app phones need a registered approval key."""
+        """Why this phone can't approve yet: hosted app phones need a registered approval key and an app
+        that signs the current format. Such a phone is still asked, so it can decline."""
         if not session.info.id.startswith("app-"):
             return None
         auth = store.device_auth(session.info.id.removeprefix("app-"))
-        if auth and not auth["revoked"] and auth["approval_key"]:
-            return None
-        return ("This phone can't approve yet: its OpenMob app hasn't registered a screen-lock key. Update the "
-                "app and reconnect (it registers on connect). Until then it can only decline.")
+        if not (auth and not auth["revoked"] and auth["approval_key"]):
+            return ("This phone can't approve yet: its OpenMob app hasn't registered a screen-lock key. Update the "
+                    "app and reconnect (it registers on connect). Until then it can only decline.")
+        if not signs_action_digests(session):
+            return OLD_APP_APPROVALS
+        return None
 
     def phone_can_loosen(session) -> bool:
         if not session.info.id.startswith("app-"):
             return False
         auth = store.device_auth(session.info.id.removeprefix("app-"))
-        return bool(auth and not auth["revoked"] and auth["approval_key"])
+        return bool(auth and not auth["revoked"] and auth["approval_key"]) and signs_action_digests(session)
 
     def may_approve_for_others(session) -> bool:
         return store.trusted_for_approvals(session.info.id.removeprefix("app-"))

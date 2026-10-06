@@ -558,8 +558,9 @@ class DeviceManager:
             raise perm.ModeNotAllowed(f"This key may ask for at most {max_mode}; {wanted} needs a key whose max_mode "
                                       "allows it.")
         if not self._may_loosen(session):
-            raise perm.ModeNotAllowed("This phone's app can't sign approvals yet, so it stays at auto or tighter. "
-                                      "Update the OpenMob app and pair it again.")
+            raise perm.ModeNotAllowed("This phone's OpenMob app can't sign this change (it's out of date, or it "
+                                      "hasn't registered a screen-lock key), so it stays at Ask for risky or "
+                                      "tighter. Install the latest OpenMob app on it and reconnect.")
         if session.link is None:
             if isinstance(session.driver, RemoteDriver) or session.account_id is not None:
                 raise perm.PhoneUnavailable("The phone must be online to approve this. Open the OpenMob app on it.")

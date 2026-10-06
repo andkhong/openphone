@@ -186,6 +186,25 @@ def test_a_phone_without_an_approval_key_cant_loosen(hosted):
     assert h.alice.patch(f"/api/devices/app-{old}/permissions", json={"default_mode": "ask"}).status_code == 200
 
 
+def test_an_out_of_date_app_is_told_to_update_instead_of_approving_in_vain(hosted):
+    # The phone has a key but an app from before action digests: its yes would be refused, so the
+    # dashboard says "update the app" up front, and its approval prompts carry can_approve: false.
+    h = hosted
+    import uuid
+
+    old = str(uuid.uuid4())
+    signer = new_signer()
+    key = h.pair(h.alice, old, signer)
+    p = h.connect(old, key, signer, legacy_signing=True)
+    assert p.welcome.wait(5)
+    r = h.alice.patch(f"/api/devices/app-{old}/permissions", json={"default_mode": "trusted", "ceiling": "trusted"})
+    assert r.status_code == 403 and r.json()["code"] == "mode_not_allowed"
+    assert "latest OpenMob app" in r.json()["detail"]
+    assert settings_of(h, old)["ceiling"] == "auto"
+    # Tightening still works from the dashboard.
+    assert h.alice.patch(f"/api/devices/app-{old}/permissions", json={"default_mode": "ask"}).status_code == 200
+
+
 def test_always_allow_creates_a_trusted_entry_only_when_signed(hosted):
     h = hosted
     dev = h.ids.a1
