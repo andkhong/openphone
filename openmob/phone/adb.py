@@ -73,6 +73,21 @@ class Screenshot:
         )
 
 
+def downscale(shot: Screenshot, max_side: int, quality: int = 80) -> Screenshot:
+    """The same screen with its long side at most `max_side` px. The device size stays, so
+    to_device and to_image map the smaller image's coordinates onto the same screen."""
+    if max_side <= 0 or max(shot.width, shot.height) <= max_side:
+        return shot
+    ratio = max_side / max(shot.width, shot.height)
+    size = (max(round(shot.width * ratio), 1), max(round(shot.height * ratio), 1))
+    img = Image.open(io.BytesIO(shot.jpeg))
+    img.draft("RGB", size)  # JPEG: decode at a reduced scale when it can (much faster)
+    img = img.convert("RGB").resize(size, Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=quality)
+    return Screenshot(buf.getvalue(), img.width, img.height, shot.device_width, shot.device_height)
+
+
 @dataclass
 class UIElement:
     index: int

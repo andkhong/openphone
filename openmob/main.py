@@ -467,6 +467,12 @@ def cmd_bench(cfg: Config, args) -> None:
     bench_main(cfg, args)
 
 
+def cmd_bench_api(cfg: Config, args) -> None:
+    from .bench_api import main as bench_api_main
+
+    bench_api_main(args)
+
+
 def _public_url(port: int) -> str | None:
     """The running tunnel's URL, if `openmob run --public` started one."""
     import json as _json
@@ -559,12 +565,25 @@ def main(argv: list[str] | None = None) -> None:
                                               "fast-q200, fastd-q200 (e.g. fast,fastd)")
     p_bench.add_argument("--no-home", action="store_true", help="don't press HOME before each run")
 
+    p_bapi = sub.add_parser("bench-api", help="compare API tiers / permission modes through a running server "
+                                              "(docs/benchmarks.md, Model comparison)")
+    p_bapi.add_argument("tasks", help="YAML file of tasks: {tasks: [{name, instruction, reset?, max_steps?}]}")
+    p_bapi.add_argument("--url", required=True, help="the server, e.g. http://localhost:8765")
+    p_bapi.add_argument("--device", help="device id, e.g. app-abc123 (default: the only online phone)")
+    p_bapi.add_argument("--tiers", default="fast,balanced", help="comma-separated tiers (default: fast,balanced)")
+    p_bapi.add_argument("--permission-modes", help="comma-separated permission modes to cross with the tiers")
+    p_bapi.add_argument("--runs", type=int, default=3, help="measured runs per condition (default: 3)")
+    p_bapi.add_argument("--warmup", type=int, default=1, help="warm-up rounds, every condition once (default: 1)")
+    p_bapi.add_argument("--timeout", type=float, default=300, help="seconds a run may take (default: 300)")
+    p_bapi.add_argument("--out", default="bench-results", help="directory for the JSONL and markdown results")
+    p_bapi.add_argument("--key-file", help="read the API key from this file (default: $OPENMOB_API_KEY)")
+
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
     {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
      "key": cmd_key, "phone": cmd_phone, "mcp": cmd_mcp, "timings": cmd_timings, "prompts": cmd_prompts,
-     "bench": cmd_bench}[args.command](cfg, args)
+     "bench": cmd_bench, "bench-api": cmd_bench_api}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

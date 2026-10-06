@@ -71,6 +71,9 @@ class ModelRequest:
     tools: list[dict]
     messages: list[dict]
     max_tokens: int = DEFAULT_MAX_TOKENS
+    # Mark the conversation for prompt caching where the provider needs it (Anthropic); the history
+    # must then stay byte-identical between calls for the cache to hit (see Agent._trim_history).
+    cache_history: bool = False
 
 
 @dataclass
@@ -142,18 +145,43 @@ class AnthropicAdapter:
     def capabilities(self, model: str) -> Capabilities:
         return self.CAPABILITIES
 
-    def complete(self, request: ModelRequest) -> ModelResponse:
+    # Cache breakpoints in the conversation: Anthropic allows 4 per request, and system and tools take 2.
+    HISTORY_BREAKPOINTS = 2
+
+    def request_kwargs(self, request: ModelRequest) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": request.model,
             "max_tokens": request.max_tokens,
             "messages": [self.message(m) for m in request.messages],
         }
+        if request.cache_history:
+            self.mark_history(kwargs["messages"])
         if request.system:
             kwargs["system"] = [{"type": "text", "text": request.system, "cache_control": {"type": "ephemeral"}}]
         if request.tools:
             tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in request.tools]
             tools[-1]["cache_control"] = {"type": "ephemeral"}
             kwargs["tools"] = tools
+        return kwargs
+
+    @classmethod
+    def mark_history(cls, messages: list[dict]) -> None:
+        """Cache breakpoints at the end of the last two user messages: the newest (this call writes the
+        conversation so far to the cache) and the one before (where the previous call wrote it, so this
+        call reads everything up to there). Edits the request's own copy, never the agent's history."""
+        marked = 0
+        for message in reversed(messages):
+            if marked == cls.HISTORY_BREAKPOINTS:
+                break
+            if message["role"] != "user" or not message["content"]:
+                continue
+            if isinstance(message["content"], str):
+                message["content"] = [{"type": "text", "text": message["content"]}]
+            message["content"][-1] = {**message["content"][-1], "cache_control": {"type": "ephemeral"}}
+            marked += 1
+
+    def complete(self, request: ModelRequest) -> ModelResponse:
+        kwargs = self.request_kwargs(request)
         response = _call(self.provider, self.client.messages.create, **kwargs)
         return ModelResponse(
             content=[self.block_in(b) for b in _get(response, "content") or []],
@@ -161,6 +189,82 @@ class AnthropicAdapter:
             model=_get(response, "model"),
             usage=TokenUsage.from_anthropic(_get(response, "usage")),
         )
+
+    def stream(self, request: ModelRequest):
+        """The same call, streamed. Yields ("text", str) and ("tool_call", ToolCall) as each block
+        completes, then ("response", ModelResponse) with everything, usage included. A tool call whose
+        input doesn't parse (cut off by max_tokens) is not yielded, only kept in the response.
+        Raises ModelError like complete()."""
+        events = _call(self.provider, self.client.messages.create, stream=True, **self.request_kwargs(request))
+        blocks: dict[int, dict] = {}
+        model, stop = None, None
+        usage = TokenUsage()
+        try:
+            for event in events:
+                kind = _get(event, "type")
+                if kind == "message_start":
+                    message = _get(event, "message")
+                    model = _get(message, "model")
+                    start = TokenUsage.from_anthropic(_get(message, "usage")) or TokenUsage()
+                    usage = TokenUsage(start.input, start.output, start.cache_read, start.cache_write)
+                elif kind == "content_block_start":
+                    block = _get(event, "content_block")
+                    data = dict(block) if isinstance(block, dict) else block.model_dump(exclude_none=True)
+                    blocks[_get(event, "index")] = {"data": data, "json": "", "text": "", "thinking": "", "signature": ""}
+                elif kind == "content_block_delta":
+                    delta, held = _get(event, "delta"), blocks.get(_get(event, "index"))
+                    if held is None:
+                        continue
+                    piece = _get(delta, "type")
+                    if piece == "text_delta":
+                        held["text"] += _get(delta, "text") or ""
+                    elif piece == "input_json_delta":
+                        held["json"] += _get(delta, "partial_json") or ""
+                    elif piece == "thinking_delta":
+                        held["thinking"] += _get(delta, "thinking") or ""
+                    elif piece == "signature_delta":
+                        held["signature"] += _get(delta, "signature") or ""
+                elif kind == "content_block_stop":
+                    held = blocks.get(_get(event, "index"))
+                    if held is None:
+                        continue
+                    block = self._finish_block(held)
+                    held["block"] = block
+                    if block["type"] == "text" and block["text"]:
+                        yield "text", block["text"]
+                    elif block["type"] == "tool_call" and not held.get("broken"):
+                        yield "tool_call", ToolCall(block["id"], block["name"], block["input"])
+                elif kind == "message_delta":
+                    stop = _get(_get(event, "delta"), "stop_reason") or stop
+                    out = _get(_get(event, "usage"), "output_tokens")
+                    if out is not None:
+                        usage.output = out
+        except ModelError:
+            raise
+        except Exception as exc:
+            print(f"⚠️  {self.provider} stream failed: {exc!r}", flush=True)
+            raise ModelError(f"The model request failed ({type(exc).__name__}).") from exc
+        content = [held.get("block") or self._finish_block(held) for _, held in sorted(blocks.items())]
+        yield "response", ModelResponse(content, stop or "end_turn", model, usage)
+
+    @classmethod
+    def _finish_block(cls, held: dict) -> dict:
+        data = held["data"]
+        kind = data.get("type")
+        if kind == "text":
+            return {"type": "text", "text": (data.get("text") or "") + held["text"]}
+        if kind == "tool_use":
+            try:
+                args = json.loads(held["json"]) if held["json"].strip() else dict(data.get("input") or {})
+            except json.JSONDecodeError:
+                held["broken"] = True  # cut off mid-input: never run it
+                args = {}
+            return {"type": "tool_call", "id": data.get("id"), "name": data.get("name"),
+                    "input": args if isinstance(args, dict) else {}}
+        if kind == "thinking":
+            data = {**data, "thinking": (data.get("thinking") or "") + held["thinking"],
+                    "signature": (data.get("signature") or "") + held["signature"]}
+        return {"type": "opaque", "provider": cls.provider, "data": data}
 
     @classmethod
     def message(cls, message: dict) -> dict:

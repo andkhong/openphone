@@ -106,8 +106,23 @@ def summarize(rows: list[dict]) -> list[dict]:
             vision = [r for r in members if not r.get("fast")]
             group["split"] = {"fast": {"steps": len(fast), "phases": _phases(fast, SPLIT_ROWS)},
                               "vision": {"steps": len(vision), "phases": _phases(vision, SPLIT_ROWS)}}
+        if costed := [r for r in members if r.get("input_tokens") is not None]:
+            group["tokens"] = token_stats(costed)
         out.append(group)
     return out
+
+
+TOKEN_KEYS = ("input_tokens", "cache_read_tokens", "cache_write_tokens", "output_tokens")
+
+
+def token_stats(rows: list[dict]) -> dict:
+    """Model cost of the steps that made a main-model call: mean tokens per step, the share of the
+    prompt read from the cache, and the screenshot size the model saw (median long side)."""
+    means = {k: sum(r.get(k) or 0 for r in rows) / len(rows) for k in TOKEN_KEYS}
+    prompt = means["input_tokens"] + means["cache_read_tokens"] + means["cache_write_tokens"]
+    sides = [float(r["vision_image_side"]) for r in rows if r.get("vision_image_side")]
+    return {"steps": len(rows), **means, "cache_share": means["cache_read_tokens"] / prompt if prompt else None,
+            "image_side": percentile(sides, 0.5)}
 
 
 def _ms(value: float | None) -> str:
@@ -139,6 +154,12 @@ def format_report(groups: list[dict]) -> str:
             lines.append(f"  {'mean ms/step':<14}{'fast':>9}{'vision':>9}")
             for label, key in SPLIT_ROWS:
                 lines.append(f"  {label:<14}{_ms(f['phases'][key]['mean']):>9}{_ms(v['phases'][key]['mean']):>9}")
+        if t := g.get("tokens"):
+            cached = "" if t["cache_share"] is None else f" ({100 * t['cache_share']:.0f}% of the prompt)"
+            side = f" · screenshot {t['image_side']:.0f} px" if t["image_side"] else ""
+            lines.append(f"  tokens per model step ({t['steps']}): input {t['input_tokens']:,.0f} · cache read "
+                         f"{t['cache_read_tokens']:,.0f}{cached} · cache write {t['cache_write_tokens']:,.0f} · "
+                         f"output {t['output_tokens']:,.0f}{side}")
         if done := g.get("done_via"):
             lines.append(f"  finished by: {done['classifier']} jev (no vision confirmation), {done['vision']} vision")
         lines.append("")

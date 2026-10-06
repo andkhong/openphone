@@ -97,7 +97,8 @@ def test_the_agent_reads_corrections_at_its_next_step(tmp_path):
     wait_until(lambda: finished(c, task))
     assert c.task(task)["status"] == "succeeded"
     last_user = client.requests[1]["messages"][-1]["content"]
-    assert last_user[-1] == {"type": "text", "text": "User correction: no, the other button"}
+    last_block = {k: v for k, v in last_user[-1].items() if k != "cache_control"}  # the history's cache mark
+    assert last_block == {"type": "text", "text": "User correction: no, the other button"}
     # The correction is in the saved chat too.
     events = c.history.events(None, c.chat_id)
     assert any(e["kind"] == "correction" and e["message"].endswith("no, the other button") for e in events)
