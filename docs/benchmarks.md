@@ -180,13 +180,15 @@ Each has its own switch, so rounds can be compared. The variant names the ones t
 
 | Feature | Switch (default) | Variant tag | What it saves on the task above |
 |---|---|---|---|
-| The classifier's DONE | `fast_path_done` (false), `fast_path_done_min_probability` (0.85), `OPENMOB_FAST_DONE=on` | `+fastdone` | the vision confirmation, about 1.5 to 1.8 s |
+| The classifier's DONE | `fast_path_done` (true), `fast_path_done_min_probability` (0.85), `OPENMOB_FAST_DONE=off` to disable | `+fastdone` | the vision confirmation, about 1.5 to 1.8 s |
 | Exact app names launch directly | `fast_path_direct_launch` (true) | `+launch` | the text model on LAUNCH_APP, about 0.6 s |
 | One classifier request per step | `jev_one_request` (true), `jev_risk_heads` (40) | `+1req` | 0.3 to 0.6 s per fast step |
 | No screenshot on fast steps | `fast_path_lazy_screenshot` (true) | `+noshot` | 0.1 to 0.3 s per fast step |
 | Settle quiet time | `settle_quiet_ms` (300), `OPENMOB_SETTLE_QUIET_MS` | `+q200` | up to 0.1 s per settle at 200 |
 
-- **The classifier's DONE.** A fast-path DONE usually goes to a vision step. With `fast_path_done`,
+- **The classifier's DONE.** On by default since MVP 1 (`OPENMOB_FAST_DONE=off` or
+  `fast_path_done: false` turns it off): in a real-phone test it fired only on the navigation task,
+  never on tasks with side effects or answers. Without it, a fast-path DONE goes to a vision step. With `fast_path_done`,
   the task ends without it only when all of these hold: (a) the DONE operation and the
   "request looks complete" head both reach `fast_path_done_min_probability`, with the operation's
   confidence at least `fast_path_min_confidence`; (b) the screen shows what the request asked to
@@ -233,7 +235,7 @@ the server and the app (where `wait_idle` works):
 
 ```sh
 OPENMOB_ROUND_D=off openmob run    # round C: all four round D features off
-OPENMOB_ROUND_D=on openmob run     # round D: all four on (by default only fast_path_done is off)
+OPENMOB_ROUND_D=on openmob run     # round D: all four on (also the default)
 OPENMOB_ROUND_D=on OPENMOB_SETTLE_QUIET_MS=200 openmob run   # round D, 200 ms quiet time
 openmob timings --since 2h          # one group per variant, e.g. adaptive+fast and adaptive+fast+noshot+1req+launch+fastdone
 ```

@@ -483,7 +483,7 @@ def test_variant_names_each_feature(tmp_path):
     agent.run("x")
     assert steps[0]["variant"] == "adaptive+q200+fast+noshot+1req+launch+fastdone"
     agent, _, steps = make([DONE], driver, jev, tmp_path, fast_path_lazy_screenshot=False, jev_one_request=False,
-                           fast_path_direct_launch=False)
+                           fast_path_direct_launch=False, fast_path_done=False)
     agent.run("x")
     assert steps[0]["variant"] == "adaptive+fast"
 
@@ -502,7 +502,7 @@ def test_round_switches_from_the_environment(tmp_path, monkeypatch):
     path.write_text("model: claude-sonnet-5-5\n")
     cfg = load_config(path)
     assert (cfg.fast_path_lazy_screenshot, cfg.jev_one_request, cfg.fast_path_direct_launch, cfg.fast_path_done,
-            cfg.settle_quiet_ms) == (True, True, True, False, 300)
+            cfg.settle_quiet_ms) == (True, True, True, True, 300)  # the classifier's DONE is on by default
     monkeypatch.setenv("OPENMOB_ROUND_D", "off")
     cfg = load_config(path)
     assert not (cfg.fast_path_lazy_screenshot or cfg.jev_one_request or cfg.fast_path_direct_launch or cfg.fast_path_done)
@@ -512,6 +512,8 @@ def test_round_switches_from_the_environment(tmp_path, monkeypatch):
     assert cfg.fast_path_done and cfg.jev_one_request and cfg.settle_quiet_ms == 200
     monkeypatch.setenv("OPENMOB_FAST_DONE", "off")
     assert not load_config(path).fast_path_done
+    monkeypatch.delenv("OPENMOB_ROUND_D")
+    assert not load_config(path).fast_path_done  # OPENMOB_FAST_DONE=off alone turns the default off
 
 
 def test_the_one_request_carries_every_head():

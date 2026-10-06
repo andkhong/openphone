@@ -199,8 +199,9 @@ class Config:
     fast_path_direct_launch: bool = True
     # Let the classifier finish a navigation-only task without the vision model's confirmation, when its
     # DONE and "request looks complete" both reach fast_path_done_min_probability and the screen's title or
-    # selected tab matches what the request asked to open. Off until measured. OPENMOB_FAST_DONE=on.
-    fast_path_done: bool = False
+    # selected tab matches what the request asked to open. On by default: in a real-phone test it fired only
+    # on the navigation task, never on tasks with side effects or answers. OPENMOB_FAST_DONE=off turns it off.
+    fast_path_done: bool = True
     fast_path_done_min_probability: float = 0.85
 
     # Phone
