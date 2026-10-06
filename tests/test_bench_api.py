@@ -18,7 +18,7 @@ def key_of(user) -> str:
 
 def test_the_shipped_task_file_loads():
     tasks = load_api_tasks(TASKS)
-    assert [t.name for t in tasks] == ["settings-display", "clock-stopwatch"]  # the game task is a commented placeholder
+    assert [t.name for t in tasks] == ["settings-display", "clock-stopwatch", "settings-deep-chrome-notifications"]  # the game task is a commented placeholder
     assert all(t.reset and t.max_steps for t in tasks)
     assert tasks[0].instruction == "Open Settings and go to Display"
 
