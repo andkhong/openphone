@@ -44,7 +44,7 @@
                    "fill password", "use saved card", "saved card", "use saved payment", "sign in as", "continue as",
                    "use this account", "choose an account"],
     "slide": ["slide to", "swipe to"],
-    "self": ["note to self", "notes to self", "message yourself", "saved messages", "you", "myself", "me"],
+    "self": ["note to self", "notes to self", "message yourself", "saved messages"],
     "copy": ["copy", "copy link", "copy to clipboard", "copy text"],
     "reversible": ["remove from watch later", "remove from playlist", "remove from library", "remove from queue",
                    "remove from downloads", "unsubscribe", "unfollow", "unlike", "like", "follow", "save",
@@ -137,7 +137,7 @@
     "act_per_second": 5, "act_burst": 15,
     "asks_per_window": 6, "ask_window_ms": 600000,
     "denials_to_suspend": 3, "denial_window_ms": 600000,
-    "permit_ms": 60000, "task_grant_ms": 1800000, "task_grant_steps": 25, "own_request_ms": 300000, "pending_ms": 120000, "purchase_followup_ms": 180000,
+    "permit_ms": 60000, "prompt_cooldown_ms": 1000, "task_grant_ms": 1800000, "task_grant_steps": 25, "own_request_ms": 300000, "pending_ms": 120000, "purchase_followup_ms": 180000,
     "quiet_ms": 150, "requested_ms": 1800000,
     "never_max_ms": 86400000, "grant_default_ms": 604800000, "grant_max_ms": 2592000000,
     "pay_grant_default_ms": 86400000, "pay_grant_max_ms": 604800000

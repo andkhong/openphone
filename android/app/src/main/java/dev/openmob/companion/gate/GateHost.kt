@@ -170,6 +170,11 @@ object GateHost {
                 now = later.withQuiet(if (g.stableKey(adm, now) == g.stableKey(adm, later)) 60_000L else 0L)
             }
             val out = g.reverify(adm, now)
+            // Just after a prompt closed (B1): wait out the short cooldown rather than refuse an honest action.
+            if (out.rule == "builtin:prompt_cooldown" && !g.promptOpen && SystemClock.uptimeMillis() < deadline + 1_200) {
+                SystemClock.sleep(100)
+                continue
+            }
             if (out.code != "gate_screen_unstable" || SystemClock.uptimeMillis() >= deadline) return out.takeIf { !it.allowed }
             SystemClock.sleep(50)
         }

@@ -121,13 +121,13 @@ server alike. An action is risky if **any** of these applies; money and the hard
 | Factor | Low risk: no prompt | Risky: asks (or covered by a task approval) |
 |---|---|---|
 | Content | A public link or text with a link ("Copy link", sharing a YouTube URL) | Private content: photos, videos, files, contacts, location |
-| Recipient | You: "Note to self", "Saved messages", "Message yourself", "You", your own chat (your account's email or name), or the clipboard | Anyone else, or a recipient the phone can't tell |
+| Recipient | You, **only when sharing a public link**: a share target named "Note to self", "Saved messages", "Message yourself", or your own account's name ("Ann Lee (You)"); or the clipboard. A chat's title never counts (anyone can name a group "Note to self"), and messages you type are never exempt | Anyone else, or a recipient the phone can't tell |
 | Visibility | Private (a DM, save, copy) | Public (post, publish, comment) |
 | Reversibility | Toggles and undoable steps: like, subscribe and unsubscribe, follow, save, watch later, add to cart | Permanent: deleting messages, photos, files or accounts |
 | Money | — | Any price or currency amount, or a Google Play billing sheet: the money rule (asks at the final commit unless "Also allow purchases") |
 
 Unknown factors fail closed: if the phone can't tell who receives something or what is shared, it asks (or the
-task approval covers it). "Subscribe" and "Join" are money only with a price on or near them. The server's own
+task approval covers it). "Subscribe" and "Join" are money with a price on or near them, on a payment screen, or in a shopping, payment or other money app; otherwise (YouTube) they are free toggles. The server's own
 classifier can no longer make the phone ask on its own: only concrete words or rules do.
 
 ## Three confirmation levels
@@ -136,13 +136,15 @@ Owner principle: a fingerprint is for money and dangerous requests, never for ba
 
 1. **None:** low-risk steps (above), navigation and menus.
 2. **A tap on the phone:** messages and shares to others, posts, deleting your content, filling a saved login in
-   an app, unrecognized Settings changes. OpenMob shows its own Allow / Deny, worded by the phone, with no
+   an app. OpenMob shows its own Allow / Deny, worded by the phone, with no
    fingerprint. The security basis: it is OpenMob's own window, and the gatekeeper never lets an agent tap
    OpenMob's windows (`builtin:own_window`); Allow ignores touches through overlays; and the tap is signed with a
    separate key that doesn't need the screen lock and only ever signs tap-level prompts (`gk1|tap|…`), so it
-   can't approve anything that needs a fingerprint.
+   can't approve anything that needs a fingerprint. While a prompt is up, and for a second after it closes, the
+   phone performs no agent gesture, and Allow ignores taps for half a second after the prompt appears.
 3. **Your fingerprint or PIN:** purchases (a price, a billing sheet) and dangerous steps: saved cards or
-   passwords on a web page, OTP and card fields, app permission grants.
+   passwords on a web page, OTP and card fields, app permission grants, and any change on a Settings page the
+   phone doesn't recognize (never covered by a task approval or "Don't confirm everyday actions").
 
 Hard denies are unchanged. **"Don't confirm everyday actions"** (off by default; turning it on is approved on
 the phone with your fingerprint, turning it off is immediate) makes level 2 run without a tap; money still asks

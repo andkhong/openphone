@@ -362,21 +362,24 @@ object GateScreen {
     /** The share sheet shares a link or text with a link (its preview shows a URL), not a photo, file or contact. */
     fun sharesLink(window: GWindow): Boolean = walk(window.root).any { LINK.containsMatchIn("${it.text} ${it.desc}") }
 
-    /** A recipient that is the owner: "Note to self", "Saved messages", "You", "Ann (You)", or the owner's name. */
+    /** A recipient that is the owner, for public-link shares only (a spoofed "self" can at most receive a public
+     *  link): the owner's own names, with an optional "(You)", or an app's self chat ("Note to self", "Message
+     *  yourself", "Saved messages"). Nothing else ending in "you" counts. */
     fun isSelf(rules: GateRules, label: List<String>, screen: GScreen): Boolean {
         if (label.isEmpty()) return false
         if (rules.w.getValue("self").any { label == GateText.tokens(it) }) return true
-        if (label.size > 1 && label.last() == "you") return true
-        return screen.owner.any { val t = GateText.tokens(it); t.isNotEmpty() && label == t }
+        return screen.owner.map { GateText.tokens(it) }.filter { it.isNotEmpty() }.any { label == it || label == it + "you" }
     }
 
-    /** The open conversation is with the owner (its title near the top says so). Unknown: not self. */
-    fun toSelf(rules: GateRules, window: GWindow, screen: GScreen): Boolean {
-        val top = window.bounds[1] + (window.bounds[3] - window.bounds[1]) * 0.16
-        return walk(window.root).any { n ->
-            n.bounds[1] < top && !n.editable && (n.text.isNotEmpty() || n.desc.isNotEmpty()) &&
-                isSelf(rules, GateText.tokens(n.text.ifEmpty { n.desc }), screen)
-        }
+    /** The words of the row a pressed button sits in, without the button's own: who a "Send" next to a name in an
+     *  in-app share list sends to. */
+    fun rowLabel(t: GTarget): List<String> {
+        val p = t.pressed ?: return emptyList()
+        val i = t.path.indexOfFirst { it === p }
+        if (i <= 0) return emptyList()
+        val own = walk(p, limit = 40).map { System.identityHashCode(it) }.toSet()
+        return GateText.tokens(walk(t.path[i - 1], limit = 60).filter { System.identityHashCode(it) !in own }
+            .joinToString(" ") { "${it.text} ${it.desc}" })
     }
 
     /** A price or currency on the target's window, or a Google Play billing sheet on screen. */

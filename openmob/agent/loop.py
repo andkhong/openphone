@@ -1103,11 +1103,11 @@ class Agent:
         money = gate.words(gate.strip_skips(caution, cfg.confirm_skip_phrases), cfg.money_keywords)
         # Consequence-based risk (by owner request; the phone's gatekeeper decides the same way):
         # - Subscribe / Join are reversible, and money only with a price nearby;
-        if not gate.money_context(obs.elements):
+        if not gate.money_context(obs.elements) and not gate.is_money_app(package):
             money = [m for m in money if m not in gate.PRICE_ONLY_MONEY]
             hits = [h for h in hits if h not in gate.PRICE_ONLY_MONEY]
             real_hits = [h for h in real_hits if h not in gate.PRICE_ONLY_MONEY]
-        # - a message or a public link to yourself (Note to self, your own chat), or copying it, is low risk.
+        # - a public link shared to yourself (a share target that is you while a link is on screen) is low risk.
         if not money and gate.to_self(desc, obs, self._owner_names()) and not credential:
             hits, real_hits, hint_hits = [], [], []
         unlabeled_money = unlabeled and gate.is_money_app(package)

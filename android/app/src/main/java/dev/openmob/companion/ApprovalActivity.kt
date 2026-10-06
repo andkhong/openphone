@@ -89,8 +89,13 @@ class ApprovalActivity : Activity() {
     /** A gate prompt the system interrupted (request id, "always" ticked): shown again when the screen is back. */
     private var resumeAuth: Pair<String, Boolean>? = null
 
+    /** When this screen last gained focus: Allow ignores taps for a moment after (B1: a tap admitted just before the
+     *  prompt appeared must not land on it). */
+    private var focusedAt = Long.MAX_VALUE
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
+        focusedAt = if (hasFocus) android.os.SystemClock.uptimeMillis() else Long.MAX_VALUE
         val (id, always) = resumeAuth ?: return
         if (!hasFocus || prompt != null) return
         resumeAuth = null
@@ -173,6 +178,7 @@ class ApprovalActivity : Activity() {
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
         blocker(request)?.let { return showStatus(it) }
+        if (request.gate && android.os.SystemClock.uptimeMillis() - focusedAt < 500) return // too soon after it appeared
         if (request.gate && request.level == "tap") return approveWithTap(request)
         // Don't ask including purchases: a second, explicit yes for the money part before the screen lock.
         if (request.allowsMoney) {

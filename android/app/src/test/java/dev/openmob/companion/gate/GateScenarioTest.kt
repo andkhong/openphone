@@ -30,7 +30,7 @@ class GateScenarioTest {
         fun run(scenario: Map<String, Any?>, screens: Map<String, GScreen> = SCREENS): List<String> {
             val clock = FakeClock()
             var gk = newGate(clock)
-            val callMs = scenario.long("call_ms", 200)
+            val callMs = scenario.long("call_ms", 1000)
             var last = ""
             var saved: Pair<List<PolicyEntry>, Long> = gk.persist()
             val problems = mutableListOf<String>()

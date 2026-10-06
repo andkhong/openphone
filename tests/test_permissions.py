@@ -420,19 +420,21 @@ def test_prompt_report_summarizes_the_budget():
 
 
 def test_low_risk_flows_dont_ask_on_any_phone(tmp_path):
-    # YouTube's free Subscribe; a link sent in your own chat ("Note to self" at the top); someone else asks.
+    # YouTube's free Subscribe doesn't ask; in a shopping app it's money.
     a, driver, io, perms, _ = agent([tap("Subscribe")], tmp_path, package="com.google.android.youtube")
     a.run("subscribe to pewdiepie", permissions=perms)
     assert not io.questions and len(taps(driver)) == 1
+    a, driver, io, perms, _ = agent([tap("Subscribe")], tmp_path, IO(["no"]), package=SHOP)
+    a.run("subscribe", permissions=perms)
+    assert len(io.questions) == 1
+    # A chat's title never makes a send "to yourself" (anyone can name a group "Note to self"): it asks.
     title = UIElement(0, "Note to self", "", "", "TextView", False, None, (0, 50, 1000, 120))
     link = UIElement(1, "https://youtube.com/@PewDiePie", "", "", "TextView", False, None, (0, 1200, 1000, 1280))
-    a, driver, io, perms, _ = agent([tap("Send")], tmp_path, elements=[title, link])
-    a.run("share his channel with myself", permissions=perms)
-    assert not io.questions and len(taps(driver)) == 1
-    title = UIElement(0, "Bob Smith", "", "", "TextView", False, None, (0, 50, 1000, 120))
     a, driver, io, perms, _ = agent([tap("Send")], tmp_path, IO(["no"]), elements=[title, link])
-    a.run("share his channel", permissions=perms)
+    a.run("share his channel with myself", permissions=perms)
     assert len(io.questions) == 1
+    from openmob.agent import gate
+    assert not gate.is_self_label("Miss you") and gate.is_self_label("Ann Lee (You)", ["Ann Lee"])
 
 
 def test_everyday_setting_skips_everyday_confirmations_but_not_money(tmp_path):

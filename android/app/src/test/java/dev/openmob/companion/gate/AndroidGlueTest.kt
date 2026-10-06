@@ -123,6 +123,23 @@ class AndroidGlueTest {
         assertEquals(listOf("pending", "expired", "pending", "expired", "pending", "expired"), events)
     }
 
+    @Test fun noGestureLandsWhileAPromptIsUpOrJustClosed() {
+        val clock = GateScenarioTest.FakeClock()
+        val gk = Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
+        val shop = GateScenarioTest.SCREENS.getValue("amazon_product")
+        val chat = GateScenarioTest.SCREENS.getValue("whatsapp_chat")
+        val early = gk.admit("tap", mapOf("x" to 540L, "y" to 1560L), shop)
+        clock.elapsed += 300
+        val ask = gk.admit("tap", mapOf("x" to 990L, "y" to 2250L), chat)
+        assertTrue(early.allowed)
+        assertEquals("ask", ask.decision)
+        assertEquals("builtin:prompt_cooldown", gk.reverify(early, shop).rule)
+        gk.cancel(ask.approvalId)
+        assertEquals("builtin:prompt_cooldown", gk.reverify(early, shop).rule)
+        clock.elapsed += 1100
+        assertTrue(gk.reverify(early, shop).allowed)
+    }
+
     @Test fun permitsAreVoidedByAnyOtherAction() {
         val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
         val chat = GateScenarioTest.SCREENS.getValue("whatsapp_chat")

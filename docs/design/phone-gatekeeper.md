@@ -632,6 +632,13 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   approval itself is tap-level. This relaxes D5's "screen lock for every gated action" for tap-level actions:
   a malicious app on the phone (out of scope) or an accessibility overlay that defeats
   filterTouchesWhenObscured could approve tap-level asks.
+- **Review of D23–D25:** reverify refuses every act while a prompt is pending and for 1 s after one closes
+  (the approved action's permit excepted), and Allow ignores taps for 500 ms after its window gains focus;
+  unrecognized Settings changes are fingerprint-level (never covered by a task grant or "everyday"); the "self"
+  exemption applies only to public-link shares (share-sheet targets, and an in-app share list's Send next to
+  your own name while a link is shown), never to chat titles or typed messages, and the "ends with you" rule is
+  gone; Subscribe/Join are money in payment context and money-category apps too; a task grant covers only the
+  kinds of risky step its request names and the task's first app plus apps the request names.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

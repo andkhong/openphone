@@ -862,7 +862,7 @@ SCENARIOS += [
         step("tap", "youtube_channel", allow(rule="task_grant"), hint="the agent opens the menu", x=1010, y=350,
              **TASK),
         step("tap", "share_sheet", allow(rule="task_grant"), x=170, y=1600, **TASK),
-        step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK),
+        step("tap", "messenger_friend", allow(rule="task_grant"), **SEND, **TASK),
         step("tap", "youtube_channel", allow(), x=270, y=510, **TASK),  # the free Subscribe isn't money
         # Still asked: money. Still refused: the hard denies.
         step("tap", "amazon_product", ask("pay"), **BUY, **TASK), {"cancel": "last"},
@@ -875,11 +875,11 @@ SCENARIOS += [
         step("tap", "whatsapp_chat", ask("send"), **SEND, task="t2")], tags=["task_grant"]),
     sc("a task grant expires and has a step cap", [
         task_grant(ask("task")), {"approve": "last", "sig": "valid"},
-        *[step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK) for _ in range(25)],
-        step("tap", "whatsapp_chat", ask("send"), **SEND, **TASK), {"cancel": "last"},
+        *[step("tap", "messenger_friend", allow(rule="task_grant"), **SEND, **TASK) for _ in range(25)],
+        step("tap", "messenger_friend", ask("send"), **SEND, **TASK), {"cancel": "last"},
         task_grant(ask("task"), task="t3"), {"approve": "last", "sig": "valid"},
         {"advance_ms": 1801000},
-        step("tap", "whatsapp_chat", ask("send"), **SEND, task="t3")], tags=["task_grant", "clock"]),
+        step("tap", "messenger_friend", ask("send"), **SEND, task="t3")], tags=["task_grant", "clock"]),
     sc("a forged task approval grants nothing; another request text asks again", [
         task_grant(ask("task")), {"approve": "last", "sig": "bad", "expect_accepted": False},
         task_grant(ask("task")), {"cancel": "last"},
@@ -889,7 +889,7 @@ SCENARIOS += [
        keep_open=True),
     sc("a request typed on this phone needs no task prompt", [
         {"instruction": SHARE_TEXT}, task_grant(allow(rule="task_grant:own_request")),
-        step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK)], tags=["task_grant"]),
+        step("tap", "messenger_friend", allow(rule="task_grant"), **SEND, **TASK)], tags=["task_grant"]),
     sc("Subscribe is money only with a price: YouTube's isn't, Join $4.99 is", [
         step("tap", "youtube_channel", allow(), x=270, y=510),  # free and reversible: no prompt
         step("tap", "youtube_join", ask("pay", money="start"), x=790, y=510)], tags=["risk"]),
@@ -934,14 +934,38 @@ SCREENS.update({
                                                            node(text="New post", bounds=(40, 120, 800, 200))]),
                              labels=LABELS),
 })
+def share_list(rows):
+    """Messenger's own share list (after choosing Messenger in the share sheet): the link, then a row per person
+    with a Send button."""
+    kids = [node(text="https://youtube.com/@PewDiePie", bounds=(40, 150, 1040, 230))]
+    for i, name in enumerate(rows):
+        top = 600 + 140 * i
+        kids.append(node(cls="android.widget.LinearLayout", bounds=(0, top, W, top + 120), children=[
+            node(text=name, bounds=(140, top + 20, 700, top + 100)),
+            button("Send", "com.facebook.orca:id/send_button", (840, top + 10, 1020, top + 110))]))
+    return screen(app(MESSENGER, kids), labels=LABELS, owner=OWNER)
+
+
+SCREENS.update({
+    "messenger_share_list": share_list(["Ann Lee", "Bob Smith"]),
+    "messenger_spoofed_self": chat("Miss you"),
+    "messenger_note_to_self": chat("Note to self"),
+    "settings_oem_unknown": settings("Knox guard", [("Some protection", 420, "android:id/title", True)]),
+    "paywall_offscreen_price": screen(app("com.example.news", [
+        node(text="Unlimited access", bounds=(40, 150, 1040, 230)),
+        node(text="Card on file: Visa •••• 4242 · Total due today", bounds=(40, 300, 1040, 380)),
+        node(id="card", cls="android.widget.EditText", hint="Card number", editable=True, bounds=(40, 400, 1040, 500)),
+        button("Subscribe", "subscribe", (40, 1600, 1040, 1720))]), labels=LABELS),
+    "shop_subscribe": screen(app("com.example.shop", [button("Subscribe", "subscribe", (40, 1600, 1040, 1720))]),
+                             labels=LABELS),
+})
 EVERYDAY = {"policy": {"type": "everyday", "on": True}, "sig": "valid", "expect_accepted": True}
 SCENARIOS += [
     sc("everyday low-risk flows: no prompt", [
         step("tap", "share_link_sheet", allow(), x=170, y=1600),          # the YouTube link to yourself
         step("tap", "share_link_sheet", allow(), x=690, y=1600),          # Copy link
         step("tap", "share_link_sheet", allow(), x=950, y=1600),          # Note to self
-        step("tap", "messenger_self", allow(), x=990, y=2250),            # send it in your own chat
-        step("key", "messenger_self", allow(), name="ENTER"),
+        step("tap", "messenger_share_list", allow(), x=930, y=650),       # Messenger's own list: Send next to you
         step("tap", "youtube_video", allow(), x=170, y=1550),             # like
         step("tap", "youtube_video", allow(), x=570, y=1550),             # unsubscribe
         step("tap", "youtube_video", allow(), x=940, y=1550),             # save
@@ -980,6 +1004,34 @@ SCENARIOS += [
         task_grant(ask("task", level="tap"), text="share PewDiePie's channel with Bob, don't ask me"),
         {"cancel": "last"},
         step("tap", "share_link_sheet", ask("share", level="tap"), x=430, y=1600)], tags=["consequence"]),
+]
+
+SCENARIOS += [
+    sc("after the review fixes, the YouTube share to yourself is still 0 prompts", [
+        step("tap", "youtube_channel", allow(), x=270, y=510),                       # subscribe (free)
+        step("tap", "youtube_video", allow(), x=570, y=1550),                        # unsubscribe
+        step("tap", "share_link_sheet", allow(), x=170, y=1600),                     # share the link to yourself
+        step("tap", "messenger_share_list", allow(), x=930, y=650)], tags=["friction", "consequence"]),
+    sc("self is never a chat title: a group named Miss you or Note to self still asks", [
+        step("tap", "messenger_spoofed_self", ask("send", level="tap"), x=990, y=2250), {"cancel": "last"},
+        step("tap", "messenger_note_to_self", ask("send", level="tap"), x=990, y=2250), {"cancel": "last"},
+        step("key", "messenger_note_to_self", ask("send"), name="ENTER"), {"cancel": "last"},
+        step("tap", "messenger_share_list", ask("send", level="tap"), x=930, y=790)], tags=["consequence"],
+       keep_open=True),
+    sc("an unrecognized Settings change needs a fingerprint, even under a task or everyday", [
+        task_grant(ask("task")), {"approve": "last", "sig": "valid"},
+        EVERYDAY,
+        step("tap", "settings_oem_unknown", ask("settings", level="fingerprint"), x=540, y=480, **TASK)],
+       tags=["settings", "task_grant"], keep_open=True),
+    sc("Subscribe is money in payment context and in shopping apps, even with the price off screen", [
+        step("tap", "paywall_offscreen_price", ask("pay", money="start"), x=540, y=1660), {"cancel": "last"},
+        step("tap", "shop_subscribe", ask("pay", money="start"), x=540, y=1660)], tags=["risk"], keep_open=True),
+    sc("a task grant covers only the kinds and apps its request names", [
+        task_grant(ask("task"), text="share PewDiePie's channel with Bob on Messenger"),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "messenger_friend", allow(rule="task_grant"), **SEND, **TASK),
+        step("tap", "photo_viewer", ask("delete"), x=970, y=2250, **TASK), {"cancel": "last"},  # not a delete task
+        step("tap", "whatsapp_chat", ask("send"), **SEND, **TASK)], tags=["task_grant"], keep_open=True),
 ]
 
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},

@@ -79,6 +79,8 @@ class Gatekeeper(
         var level = "fingerprint"
         /** A task prompt: the request text's digest. */
         var digest = ""
+        /** A task prompt: the request text (the grant's scope comes from it). */
+        var text = ""
     }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
     private class Followup(val pkg: String, val task: String, val expires: Long, var acts: Int = 0)
@@ -91,7 +93,10 @@ class Gatekeeper(
     /** binding -> (package, task): an approved flow-starting money tap; the follow-up starts when it runs. */
     private val startPermits = HashMap<String, Pair<String, String>>()
     private val credits = mutableListOf<Credit>()
-    private class TaskGrant(val digest: String, val expires: Long, var used: Int = 0, val apps: MutableSet<String> = mutableSetOf())
+    private class TaskGrant(val digest: String, val expires: Long, val words: List<String>, val kinds: Set<String>,
+                            var used: Int = 0, var first: String = "", val apps: MutableSet<String> = mutableSetOf())
+    /** When the last prompt closed (monotonic ms): no gesture for a moment after (B1). */
+    private var promptClosed = Long.MIN_VALUE / 2
     /** task id -> the owner's approval of that task (task approval, by owner request). */
     private val taskGrants = HashMap<String, TaskGrant>()
     /** Requests typed or spoken on this phone (digest, expiry): a task for one needs no task prompt. */
@@ -123,7 +128,7 @@ class Gatekeeper(
 
     private fun expire(now: Long) {
         val gone = pending.values.filter { now - it.created >= lim("pending_ms") }.map { it.id }
-        gone.forEach { pending.remove(it); onEvent?.invoke(it, "expired") }
+        gone.forEach { pending.remove(it); promptClosed = now; onEvent?.invoke(it, "expired") }
         permits.entries.removeAll { it.value <= now }
         if ((followup?.expires ?: Long.MAX_VALUE) <= now) followup = null
         credits.removeAll { it.expires <= now }
@@ -272,7 +277,9 @@ class Gatekeeper(
      *  for everyday-but-consequential ones (messages and shares to others, posts, deletes, native autofill,
      *  unrecognized Settings changes). Low-risk actions never get here. */
     fun level(risk: Risk): String =
-        if (risk.money != null || risk.reason.startsWith("permission:") || (risk.kind == "fill" && risk.grant == null)) "fingerprint"
+        // A Settings change the phone didn't recognize fails closed (D2): never a tap.
+        if (risk.money != null || risk.reason.startsWith("permission:") || (risk.kind == "fill" && risk.grant == null) ||
+            risk.kind == "settings") "fingerprint"
         else "tap"
 
     fun tightenPermission(perm: String, value: String): Boolean = synchronized(lock) {
@@ -388,6 +395,7 @@ class Gatekeeper(
         }
         trackFollowup(method, params, j)
         if (j.app && j.pkg.isNotEmpty()) lastApp = j.pkg
+        taskGrants[params["task"]?.toString().orEmpty()]?.let { g -> if (j.app && j.pkg.isNotEmpty() && g.first.isEmpty()) g.first = j.pkg }
         val mode = mode(params["mode"] as? String)
         var risk = j.risk
         val hint = params["hint"]?.toString()?.trim().orEmpty()
@@ -408,7 +416,7 @@ class Gatekeeper(
             return Admission("allow", strict = true, binding = bind, kind = risk.kind, rule = it, money = risk.money,
                 method = method, params = params, pkg = j.pkg, plain = plain)
         }
-        if (mode != "ask" && taskCovers(risk, params, j.pkg)) return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
         if (mode != "ask" && everyday && level(risk) == "tap") return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
@@ -450,7 +458,7 @@ class Gatekeeper(
         }
         if (everyday) return Admission("allow", rule = "everyday", kind = "task", method = method, params = params, binding = bind)
         if (ownRequests.any { it.first == digest && it.second > now }) {
-            mintTask(task, digest)
+            mintTask(task, digest, text)
             return Admission("allow", rule = "task_grant:own_request", kind = "task", method = method, params = params, binding = bind)
         }
         pending.values.firstOrNull { it.binding == bind }?.let { p ->
@@ -467,23 +475,36 @@ class Gatekeeper(
         val wording = "Agent wants to: $text. Allow the steps this needs?"
         val risk = Risk("task", "task", wording = wording)
         val id = "gk" + UUID.randomUUID().toString().replace("-", "")
-        pending[id] = Pending(id, bind, now, risk, "", task, null, method, params).also { it.digest = digest; it.level = "tap" }
+        pending[id] = Pending(id, bind, now, risk, "", task, null, method, params).also { it.digest = digest; it.level = "tap"; it.text = text }
         onEvent?.invoke(id, "pending")
         Admission("ask", code = "gate_needs_approval", rule = "risk:task", kind = "task", approvalId = id, wording = wording,
             binding = bind, method = method, params = params, level = "tap",
             message = "Waiting for the owner's approval of this task on the phone.")
     }
 
-    private fun mintTask(task: String, digest: String) {
-        taskGrants[task] = TaskGrant(digest, now() + lim("task_grant_ms"))
+    /** The grant covers what the request names: the first app the task works in plus apps the request names, and only
+     *  the kinds of risky step its words ask for (a "share" request doesn't cover deleting or posting). */
+    private fun mintTask(task: String, digest: String, text: String) {
+        val toks = GateText.tokens(text)
+        val kinds = mutableSetOf("other", "fill")
+        for ((kind, extra) in listOf("send" to listOf("share", "message", "text", "reply", "forward", "email", "tell"),
+                                     "share" to listOf("share", "send", "forward"), "post" to listOf("share"),
+                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty"))) {
+            if (GateText.anyPhrase(toks, (rules.w[kind] ?: emptyList()) + extra) != null) kinds.add(kind)
+        }
+        taskGrants[task] = TaskGrant(digest, now() + lim("task_grant_ms"), toks, kinds)
     }
 
-    /** Under the task's grant: every non-money risky step, except browser or WebView autofill and permission
-     *  dialogs (and the hard denies, which never get here). */
-    private fun taskCovers(risk: Risk, params: Map<String, Any?>, pkg: String): Boolean {
+    /** Under the task's grant: the tap-level risky steps of the kinds its request asks for, in its first app or an app
+     *  the request names (system surfaces such as the share sheet count as the app they serve). Never money,
+     *  Settings, browser or WebView autofill, or permission dialogs (and never the hard denies). */
+    private fun taskCovers(risk: Risk, params: Map<String, Any?>, pkg: String, screen: GScreen): Boolean {
         val g = taskGrants[params["task"]?.toString().orEmpty()] ?: return false
         if (now() >= g.expires || g.used >= lim("task_grant_steps")) return false
-        if (risk.kind == "task" || risk.kind == "step" || level(risk) != "tap") return false
+        if (risk.kind == "task" || risk.kind == "step" || level(risk) != "tap" || risk.kind !in g.kinds) return false
+        val app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
+        val label = GateText.tokens(screen.labels[app].orEmpty())
+        if (app != g.first && !(label.isNotEmpty() && GateText.hasPhrase(g.words, label.joinToString(" ")))) return false
         g.used++
         if (pkg.isNotEmpty()) g.apps.add(pkg) // the apps the task actually used
         return true
@@ -593,8 +614,9 @@ class Gatekeeper(
         // can approve the other kind (the messages are domain-separated too).
         if (!(if (p.level == "tap") tapVerifier else verifier).verify(message, signature)) return false
         pending.remove(id)
+        promptClosed = now
         if (p.risk.kind == "task") { // the owner approved the task: a grant, not a one-shot permit
-            mintTask(p.task, p.digest)
+            mintTask(p.task, p.digest, p.text)
             onEvent?.invoke(id, "approved")
             return true
         }
@@ -620,6 +642,7 @@ class Gatekeeper(
 
     fun cancel(id: String): Boolean = synchronized(lock) {
         if (pending.remove(id) == null) return false
+        promptClosed = now()
         onEvent?.invoke(id, "expired")
         true
     }
@@ -628,6 +651,7 @@ class Gatekeeper(
         val now = now()
         markShown(id)
         if (pending.remove(id) == null) return false
+        promptClosed = now
         denials.removeAll { now - it >= lim("denial_window_ms") }
         denials.add(now)
         if (denials.size >= lim("denials_to_suspend")) suspended = true
@@ -662,6 +686,13 @@ class Gatekeeper(
 
     fun reverify(adm: Admission, screen: GScreen): Admission = synchronized(lock) {
         if (!adm.allowed || adm.method !in rules.act) return adm
+        // No gesture while a prompt is up, or just after one closed: an action admitted a moment before could land on
+        // its Allow (B1). The approved action itself (its permit) goes ahead.
+        if (adm.method != "wake_unlock" && adm.permit == null &&
+            (pending.isNotEmpty() || now() - promptClosed < lim("prompt_cooldown_ms"))) {
+            return refuse("gate_prompt_open", "builtin:prompt_cooldown",
+                "An approval prompt is (or was just) on screen. Try again in a moment.", adm.method, adm.params, adm.pkg)
+        }
         val j = judge(adm.method, adm.params, screen)
         j.refuse?.let {
             adm.permit?.let(permits::remove)
@@ -891,7 +922,7 @@ class Gatekeeper(
         val moneyCtx = payment || rules.moneyApp.containsMatchIn(pkg)
         val flow = GateText.anyPhrase(words, rules.w.getValue("flow_start")) ?: idWords.firstOrNull { it in setOf("buy", "purchase", "transfer") }
         // YouTube's free Subscribe, a free group's Join: money only with a price nearby or a billing sheet.
-        if (flow != null && !((flow == "subscribe" || flow == "join") && !priced)) return Risk("pay", "words:$flow", money = "start", grant = pkg)
+        if (flow != null && !((flow == "subscribe" || flow == "join") && !(priced || moneyCtx))) return Risk("pay", "words:$flow", money = "start", grant = pkg)
         val terminal = GateText.anyPhrase(words, rules.w.getValue("terminal"))
             ?: idWords.firstOrNull { it in setOf("pay", "place order", "placeorder", "confirm") }
         if (terminal != null) {
@@ -979,7 +1010,9 @@ class Gatekeeper(
         }
         var risk = wordRisk(label, ids, w.pkg, j.payment, GateScreen.priced(screen, w))
         // A message to yourself ("Note to self", your own chat): nobody else receives it.
-        if (risk != null && risk.kind == "send" && risk.money == null && GateScreen.toSelf(rules, w, screen)) risk = null
+        // An in-app share list's "Send" next to your own name, while a public link is shared.
+        if (risk != null && risk.kind == "send" && risk.money == null && GateScreen.sharesLink(w) &&
+            GateScreen.isSelf(rules, GateScreen.rowLabel(t), screen)) risk = null
         if (risk == null && (sliderAt(t) || has(label, rules.w.getValue("slide")))) {
             risk = Risk(if (j.payment) "pay" else "other", "slider", money = if (j.payment) "terminal" else null,
                 grant = if (j.payment) w.pkg else null)
@@ -1093,7 +1126,7 @@ class Gatekeeper(
         if (j.payment) {
             j.risk = Risk("pay", "enter:payment", money = "terminal", grant = w.pkg, wording = "Allow pressing Enter on a checkout in $app?")
         } else if (listOf("messaging", "email", "social").any { rules.isCat(it, w.pkg) }) {
-            if (!GateScreen.toSelf(rules, w, screen)) j.risk = Risk("send", "enter:messaging", grant = w.pkg, wording = "Allow sending with Enter in $app?")
+            j.risk = Risk("send", "enter:messaging", grant = w.pkg, wording = "Allow sending with Enter in $app?")
         } else if ((browser || webview) && !search) {
             j.risk = Risk("other", "enter:form", wording = "Allow submitting a form with Enter in $app?")
         }

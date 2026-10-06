@@ -83,6 +83,23 @@ def test_permission_defaults_tighten_freely_and_loosen_only_signed():
     assert not gk.tighten_permission("camera", "always")
 
 
+def test_no_gesture_lands_while_a_prompt_is_up_or_just_closed():
+    """B1: an action admitted just before a prompt appeared can't land on its Allow."""
+    from gatekeeper_ref import Screen
+
+    gk = Gatekeeper()
+    shop, chat = Screen.of(SCREENS["amazon_product"]), Screen.of(SCREENS["whatsapp_chat"])
+    early = gk.admit("tap", {"x": 540, "y": 1560}, shop)  # Add to cart: allowed
+    gk.clock.elapsed += 300
+    ask = gk.admit("tap", {"x": 990, "y": 2250}, chat)  # a prompt opens
+    assert early.decision == "allow" and ask.decision == "ask"
+    assert gk.reverify(early, shop).rule == "builtin:prompt_cooldown"
+    gk.cancel(ask.approval_id)
+    assert gk.reverify(early, shop).rule == "builtin:prompt_cooldown"  # just closed
+    gk.clock.elapsed += 1100
+    assert gk.reverify(early, shop).decision == "allow"
+
+
 def test_the_scenarios_cover_every_area():
     tags = {t for s in SCENARIOS for t in s["tags"]}
     assert {"friction", "permits", "grants", "clock", "modes", "hard_deny", "settings", "risk", "limits",

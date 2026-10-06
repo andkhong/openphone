@@ -8882,5 +8882,611 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger"
   }
+ },
+ "messenger_share_list": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.facebook.orca",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        600,
+        1080,
+        720
+       ],
+       "children": [
+        {
+         "text": "Ann Lee",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          140,
+          620,
+          700,
+          700
+         ],
+         "children": []
+        },
+        {
+         "text": "Send",
+         "desc": "",
+         "id": "com.facebook.orca:id/send_button",
+         "cls": "android.widget.Button",
+         "bounds": [
+          840,
+          610,
+          1020,
+          710
+         ],
+         "children": [],
+         "clickable": true
+        }
+       ]
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        740,
+        1080,
+        860
+       ],
+       "children": [
+        {
+         "text": "Bob Smith",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          140,
+          760,
+          700,
+          840
+         ],
+         "children": []
+        },
+        {
+         "text": "Send",
+         "desc": "",
+         "id": "com.facebook.orca:id/send_button",
+         "cls": "android.widget.Button",
+         "bounds": [
+          840,
+          750,
+          1020,
+          850
+         ],
+         "children": [],
+         "clickable": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "messenger_spoofed_self": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.facebook.orca",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Miss you",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        800,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "com.facebook.orca:id/composer",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.facebook.orca:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "messenger_note_to_self": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.facebook.orca",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Note to self",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        800,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "https://youtube.com/@PewDiePie",
+       "desc": "",
+       "id": "com.facebook.orca:id/composer",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.facebook.orca:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  },
+  "owner": [
+   "Ann Lee",
+   "ann@example.com"
+  ]
+ },
+ "settings_oem_unknown": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Knox guard",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Knox guard",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Some protection",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
+ },
+ "paywall_offscreen_price": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.news",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Unlimited access",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Card on file: Visa •••• 4242 · Total due today",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        300,
+        1040,
+        380
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "card",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "hint": "Card number",
+       "editable": true
+      },
+      {
+       "text": "Subscribe",
+       "desc": "",
+       "id": "subscribe",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
+ },
+ "shop_subscribe": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Subscribe",
+       "desc": "",
+       "id": "subscribe",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger"
+  }
  }
 }

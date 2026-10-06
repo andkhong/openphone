@@ -4763,7 +4763,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -4928,7 +4928,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -4943,7 +4943,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -4958,7 +4958,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -4973,7 +4973,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -4988,7 +4988,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5003,7 +5003,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5018,7 +5018,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5033,7 +5033,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5048,7 +5048,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5063,7 +5063,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5078,7 +5078,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5093,7 +5093,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5108,7 +5108,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5123,7 +5123,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5138,7 +5138,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5153,7 +5153,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5168,7 +5168,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5183,7 +5183,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5198,7 +5198,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5213,7 +5213,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5228,7 +5228,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5243,7 +5243,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5258,7 +5258,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5273,7 +5273,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5288,7 +5288,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5303,7 +5303,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
@@ -5345,7 +5345,7 @@
       "task": "t3"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
@@ -5490,7 +5490,7 @@
       "task": "t1"
      }
     },
-    "screen": "whatsapp_chat",
+    "screen": "messenger_friend",
     "expect": {
      "decision": "allow",
      "rule": "task_grant"
@@ -5585,23 +5585,11 @@
     "call": {
      "method": "tap",
      "params": {
-      "x": 990,
-      "y": 2250
+      "x": 930,
+      "y": 650
      }
     },
-    "screen": "messenger_self",
-    "expect": {
-     "decision": "allow"
-    }
-   },
-   {
-    "call": {
-     "method": "key",
-     "params": {
-      "name": "ENTER"
-     }
-    },
-    "screen": "messenger_self",
+    "screen": "messenger_share_list",
     "expect": {
      "decision": "allow"
     }
@@ -6058,6 +6046,321 @@
      "code": "gate_needs_approval",
      "kind": "share",
      "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "after the review fixes, the YouTube share to yourself is still 0 prompts",
+  "tags": [
+   "friction",
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 650
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "self is never a chat title: a group named Miss you or Note to self still asks",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_spoofed_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_note_to_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "messenger_note_to_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 790
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unrecognized Settings change needs a fingerprint, even under a task or everyday",
+  "tags": [
+   "settings",
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480,
+      "task": "t1"
+     }
+    },
+    "screen": "settings_oem_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Subscribe is money in payment context and in shopping apps, even with the price off screen",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "paywall_offscreen_price",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "shop_subscribe",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a task grant covers only the kinds and apps its request names",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with Bob on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
     }
    }
   ]
