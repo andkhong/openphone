@@ -150,8 +150,8 @@ in, and it works in Auto too: no mode switch needed.
 | pay | 24 hours (7 days at most) | Only for that one app, never a category, and the prompt asks a second time |
 
 It is not offered for Settings (no stable page identity yet), in Ask every step, or on another of
-the owner's phones than the one acting. The grant is signed (`…|always`, see
-[phone protocol](phone-protocol.md)), so it carries the screen lock like the approval itself.
+the owner's phones than the one acting. The grant itself is signed by the phone's screen-lock key
+(the signed text ends in `|always`), so it carries the screen lock like the approval does.
 
 ### The prompt budget
 
