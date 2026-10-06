@@ -191,7 +191,7 @@ aren't listed).
 
 The owner removes a phone on the dashboard (account button → **Your phones** → Remove, which
 revokes its key and closes its connections at once); the phone can unpair itself with its own key
-(see [the phone protocol](phone-protocol.md#26-pairing-and-unpairing-accounts-mode)).
+(`POST /api/phone/unpair` with its key; see [Set up a phone](phone-setup.md)).
 
 ### POST /v1/enrollments
 
