@@ -10,7 +10,8 @@ import yaml
 
 from .permissions import (DEFAULT_APP_CATEGORIES, DEFAULT_CREDENTIAL_TERMS, DEFAULT_MONEY_KEYWORDS,
                           DEFAULT_SETTINGS_ASK, DEFAULT_SETTINGS_EVERYDAY, DEFAULT_SETTINGS_REFUSE, DEFAULT_SKIP_PHRASES,
-                          DEFAULT_START_FLOW_WORDS, DEFAULT_TERMINAL_WORDS, MODES)
+                          DEFAULT_START_FLOW_WORDS, DEFAULT_TERMINAL_WORDS, MODES, PERMISSION_DEFAULTS,
+                          permission_values)
 
 DEFAULT_CONFIRM_KEYWORDS = [
     "buy", "purchase", "pay", "payment", "checkout", "top up", "recharge",
@@ -156,6 +157,12 @@ class Config:
     # Money words that start a new flow: they always ask again.
     money_start_words: list[str] = field(default_factory=lambda: list(DEFAULT_START_FLOW_WORDS))
     ocr: bool = True  # Apple Vision OCR when the app has no accessibility tree (games)
+    # Android's runtime permission dialogs are answered by the loop with no model call (agent/permission_dialogs.py),
+    # by these owner defaults: notifications allow | deny; location_accuracy approximate | precise; the other types
+    # (location, camera, microphone, photos, nearby_devices…) deny | ask | once | while_using. Never "Allow all the
+    # time". A request that talks about permissions ("don't allow notifications") is left to the model.
+    auto_permission_dialogs: bool = True
+    permission_prompts: dict[str, str] = field(default_factory=lambda: dict(PERMISSION_DEFAULTS))
 
     # Developer API (/v1): tiers, per-key limits, and apps API tasks can't touch by default.
     api_tiers: dict[str, dict] = field(default_factory=lambda: {k: dict(v) for k, v in DEFAULT_API_TIERS.items()})
@@ -310,4 +317,12 @@ def load_config(path: str | Path | None = None) -> Config:
         raise ValueError("history_trim must be one of: batch, rolling")
     if cfg.ui_tree not in {"auto", "always", "never"}:
         raise ValueError("ui_tree must be one of: auto, always, never")
+    prompts = dict(PERMISSION_DEFAULTS)
+    for kind, value in (cfg.permission_prompts or {}).items():
+        if kind not in PERMISSION_DEFAULTS or value not in permission_values(kind):
+            raise ValueError(f"permission_prompts.{kind}: one of {', '.join(permission_values(kind))}"
+                             if kind in PERMISSION_DEFAULTS else
+                             f"permission_prompts: unknown type {kind!r} (one of {', '.join(PERMISSION_DEFAULTS)})")
+        prompts[kind] = value
+    cfg.permission_prompts = prompts
     return cfg

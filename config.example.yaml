@@ -41,6 +41,16 @@ settle_quiet_ms: 300               # how long without screen changes counts as s
 verify_taps: true                  # re-check a tap target just before tapping (OpenMob app phones)
 ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
 ocr: true                          # Apple Vision OCR for screens without an accessibility tree
+# Android permission dialogs are answered by the loop (no model call) with these owner defaults. Never
+# "Allow all the time". A request that says how to answer ("don't allow notifications") is left to the model.
+auto_permission_dialogs: true
+# permission_prompts:
+#   notifications: allow             # allow | deny
+#   location_accuracy: approximate   # approximate | precise
+#   location: once                   # once ("Only this time") | while_using | ask | deny; same for camera,
+#   camera: once                     # microphone, photos, nearby_devices, contacts, phone, sms, calendar…
+#   persistent_grants: ask           # ask | allow: a lasting Allow for contacts, SMS, phone, calendar, body
+#                                    # sensors, nearby devices when the dialog offers no one-time option
 
 # Vision steps (docs/benchmarks.md, "Vision steps")
 keep_screenshots: 2                # screenshots left in the history after a trim
