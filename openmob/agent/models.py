@@ -71,6 +71,9 @@ class ModelRequest:
     tools: list[dict]
     messages: list[dict]
     max_tokens: int = DEFAULT_MAX_TOKENS
+    # Mark the conversation for prompt caching where the provider needs it (Anthropic); the history
+    # must then stay byte-identical between calls for the cache to hit (see Agent._trim_history).
+    cache_history: bool = False
 
 
 @dataclass
@@ -142,18 +145,43 @@ class AnthropicAdapter:
     def capabilities(self, model: str) -> Capabilities:
         return self.CAPABILITIES
 
-    def complete(self, request: ModelRequest) -> ModelResponse:
+    # Cache breakpoints in the conversation: Anthropic allows 4 per request, and system and tools take 2.
+    HISTORY_BREAKPOINTS = 2
+
+    def request_kwargs(self, request: ModelRequest) -> dict[str, Any]:
         kwargs: dict[str, Any] = {
             "model": request.model,
             "max_tokens": request.max_tokens,
             "messages": [self.message(m) for m in request.messages],
         }
+        if request.cache_history:
+            self.mark_history(kwargs["messages"])
         if request.system:
             kwargs["system"] = [{"type": "text", "text": request.system, "cache_control": {"type": "ephemeral"}}]
         if request.tools:
             tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in request.tools]
             tools[-1]["cache_control"] = {"type": "ephemeral"}
             kwargs["tools"] = tools
+        return kwargs
+
+    @classmethod
+    def mark_history(cls, messages: list[dict]) -> None:
+        """Cache breakpoints at the end of the last two user messages: the newest (this call writes the
+        conversation so far to the cache) and the one before (where the previous call wrote it, so this
+        call reads everything up to there). Edits the request's own copy, never the agent's history."""
+        marked = 0
+        for message in reversed(messages):
+            if marked == cls.HISTORY_BREAKPOINTS:
+                break
+            if message["role"] != "user" or not message["content"]:
+                continue
+            if isinstance(message["content"], str):
+                message["content"] = [{"type": "text", "text": message["content"]}]
+            message["content"][-1] = {**message["content"][-1], "cache_control": {"type": "ephemeral"}}
+            marked += 1
+
+    def complete(self, request: ModelRequest) -> ModelResponse:
+        kwargs = self.request_kwargs(request)
         response = _call(self.provider, self.client.messages.create, **kwargs)
         return ModelResponse(
             content=[self.block_in(b) for b in _get(response, "content") or []],
