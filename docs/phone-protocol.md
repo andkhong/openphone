@@ -96,7 +96,7 @@ While connected, run the socket inside a **foreground service** with a **persist
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
-| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -176,6 +176,38 @@ How the Android app handles it:
 * **Review** opens a screen with the question and requester. **Approve** there requires the phone's screen lock (`BiometricPrompt`, strong biometric or device credential), and only then sends `approved: true`. The screen is `FLAG_SECURE`, so it never appears in screenshots or the live view.
 * After **2 minutes** with no answer, the request expires: the notification is dismissed and **nothing is sent**. The server should time out on its own (about 2 minutes) and treat it as denied.
 * A repeated `approval_request` with an `id` already pending, answered or expired is ignored. An answer is only sent while connected. If sending fails, the request stays pending so the person can try again. When the person disconnects, pending requests are dropped unanswered.
+
+**Approval kinds** (newer servers). An `approval_request` may carry more fields; an app that doesn't
+know them shows the `question` as before.
+
+| Field | Meaning |
+|---|---|
+| `kind` | `action` (a risky tap, the default), `step` (Ask-every-step mode: the next change), `plan` (Plan-first mode: the numbered plan is in `question`, its steps in `plan`) or `mode_change` (agents would ask less on **this** phone; only sent to that phone) |
+| `plan` | For `kind: "plan"`: the steps, as strings |
+| `change` | For `kind: "mode_change"`: `{loosens, default_mode?, ceiling?, never?}`, informational. The `question` says it in words, e.g. "Allow agents to act without asking on this phone for 1 hour?" |
+| `always` | Offered only on the phone that would act: `{app, kind, days, text, confirm_twice, target?}`. Shown as an **Always allow this** checkbox, off by default, labelled with `text` ("Agents could send any WhatsApp message as you for 30 days"). With `confirm_twice` (payments) the app asks a second time before the screen lock |
+
+| `action` | What exactly will happen, as fields: `{tool, package, text, desc, resource_id, bounds, input}` (the target element's identity, any typed text, URL or key; for a plan or mode change, the plan or the change in `input`). The app shows it ("Exactly: Tap “Buy now” (id buy_now) in com.amazon…") |
+| `digest` | The action's digest (see §8.1, "Approval signing"). The app recomputes it from `action` and refuses to sign when they differ |
+| `signature_required` | `true`: the server only accepts signed approvals (accounts mode). An app without an approval key must not send an unsigned yes |
+| `can_approve`, `cannot_approve_reason` | `can_approve: false`: this phone can only decline (it has no registered approval key yet), shown with the reason. The app shows Deny only |
+
+Approving with **Always allow this** adds `"always": true` to the `approval`, and the signature
+covers it: the signed text ends in `|always`. A `mode_change` is signed like any approval; its
+`task_id` names the change (`mode_change:…`). Both loosen the phone's permissions, so the server
+accepts them only with a valid signature by that phone's approval key (never from an app without one).
+
+**`permissions`** (server to phone): the phone's permission mode, after the `welcome` and whenever it
+changes.
+```json
+{"type": "permissions", "default_mode": "never", "ceiling": "never", "never_until": 1791223200}
+```
+While `ceiling` is `never` and `never_until` (unix seconds) is in the future, the app shows a banner
+in its connection notification ("Agents can act without asking until 21:00") with a **Turn off**
+action, and clears it at `never_until`.
+
+**`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
+Never ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
 
 **`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
 ```json
@@ -260,8 +292,12 @@ Stop after **150** elements. On any failure (no root, timeout), reply `ok:true` 
 | `password` | bool, optional | `true` when `isPassword`; omitted otherwise |
 | `editable` | bool, optional | `true` when `isEditable`; omitted otherwise |
 | `covered` | bool, optional | `true` when the centre of `bounds` lies inside a window stacked above the node's own window (a higher `AccessibilityWindowInfo.getLayer()`: a dialog, the keyboard, a system bar), so a tap there would land on that window; omitted otherwise |
+| `focused` | bool, optional | `true` for the text field with input focus (`isFocused` on an editable or password node); omitted otherwise |
+| `hint` | string, optional | A text field's `hintText` ("Search", "Card number"), trimmed, at most 80 characters; omitted when empty |
 
-`password`, `editable` and `covered` are optional: servers that don't know them ignore them, and a missing field means `false`. The server uses `password` to keep the model from typing into password fields, and refuses to `tap_element` a `covered` element (the model is told to deal with what covers it first).
+`password`, `editable`, `covered`, `focused` and `hint` are optional: servers that don't know them ignore them, and a missing field means `false` (or empty). The server uses `password` to refuse typing into password fields, refuses to `tap_element` a `covered` element (the model is told to deal with what covers it first), and uses `focused` and `hint` to tell where ENTER goes: a search box, a form, or a browser's address bar.
+
+The server judges every tap by the element under the point, not by what the model calls it, so keep `bounds` accurate.
 
 The array order defines the element indices the model uses (`tap_element [3]`), so keep it stable for a given screen. The server taps the centre of `bounds`.
 
@@ -309,7 +345,14 @@ Params: `{"name": "BACK"}`. Names are uppercase and come from `adb.KEYCODES`:
 See §5.1 for how each one maps. For a key you can't perform, reply with an error naming the key (`"Key MENU is not supported by the OpenMob app"`). For a name not in the list: `"Unknown key FOO"`.
 
 ### 4.12 `open_url`
-Params: `{"url": "https://youtube.com/results?search_query=lofi"}`. Open the URL in its default handler. It may be `https:`, `tel:`, `geo:`, `market:`, or an app deep link. Error if no activity handles it (`"No app can open <url>"`). Do not auto-place calls: `tel:` should open the dialer, not call.
+Params: `{"url": "https://youtube.com/results?search_query=lofi"}`. Open the URL in its default handler. The server only sends `https:`, `http:`, `tel:`, `mailto:`, `sms:`, `geo:` and `market:` links (it refuses `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes itself). Error if no activity handles it (`"No app can open <url>"`). Do not auto-place calls: `tel:` should open the dialer, not call.
+
+### 4.12a `resolve_url` (optional)
+Only for apps whose hello lists `"resolve_url"` in `device.capabilities`. Params: `{"url": "https://secure.chase.com/x"}`. Say which app **would** open the URL, without opening it:
+```json
+{"package": "com.chase.sig.android", "candidates": ["com.android.chrome", "com.chase.sig.android"]}
+```
+`package` is `PackageManager.resolveActivity(Intent(ACTION_VIEW, uri), MATCH_DEFAULT_ONLY)`'s package, or `null` when the system would show its chooser (`android`) or nothing handles it; `candidates` is every package from `queryIntentActivities` for the same intent. The server refuses the link before calling `open_url` when the handler (or, with a chooser, any candidate) is an app the task may not open. Without this method, the server opens the link and then checks `current_app`, pressing `BACK` (then `HOME`) if a blocked app came up.
 
 ### 4.13 `wake_unlock`
 Called at the start of every task. Turn the screen on if it is off, and dismiss the lock screen **if it is not secure** (swipe-to-unlock or none). With a secure lock (PIN, pattern, password, biometric), wake the screen and return `null`. The agent sees the lock screen and asks the user. **Never** enter credentials. Reply with an error only if the screen could not be woken.
@@ -455,6 +498,13 @@ Open the dashboard URL (`…/?t=<token>`) in a browser. A connected phone appear
 - [ ] `ui_elements` never errors, is capped at 150, has `checked: null` for non-checkables, and bounds in device pixels.
 - [ ] Every key name returns success or a clear error.
 - [ ] `type_text` inserts at the cursor, handles non-ASCII, and refuses password fields.
+- [ ] Text that goes in by paste doesn't stay on the clipboard. Manual check: copy "before" in any app;
+  have the agent type into a field that rejects `ACTION_SET_TEXT` (Gmail's To: chips); then long-press
+  another field and Paste. It pastes "before" (or nothing, if Android didn't let the app read the
+  clipboard), never the typed text, and on Android 13+ no clipboard preview shows the typed text.
+- [ ] `resolve_url` (if listed) names the app that would open a link, without opening it.
+- [ ] An approval shows the request's `action` and signs `<id>|<task>|<digest>|true|<timestamp>`
+  only when its own digest of `action` equals `digest`.
 - [ ] Close code 4401 stops retries; other closes back off from 1 s to 30 s.
 - [ ] The kill switch disconnects immediately and stays disconnected.
 
@@ -492,14 +542,25 @@ only right after the owner passes the screen lock.
   SubjectPublicKeyInfo, i.e. Java's `PublicKey.encoded`) in `POST /api/pair/redeem` when pairing.
   Phones paired before this existed send it once in the `hello` (`"approval_key": "MFkw…"`); the
   server keeps the first one and never lets a later hello replace it. Only pairing again does.
-- **Signing.** Approve through `BiometricPrompt` with a `CryptoObject` wrapping a
+- **Approval signing.** Approve through `BiometricPrompt` with a `CryptoObject` wrapping a
   `SHA256withECDSA` `Signature` initialised with the private key. On success, sign the UTF-8 bytes
-  of `<approval id>|<task id>|true|<timestamp>` (the unix time in seconds, also sent as
-  `timestamp`) and send the base64 DER signature as `signature`.
-- **What the server accepts.** Once a phone has a registered key, a `true` without a valid
-  signature by **that phone's** key, over **this** approval id and task, made within the last 5
-  minutes, is ignored (the prompt stays open on the owner's other phones). A phone without a
-  registered key (an older app) is trusted as before, until it updates.
+  of `<approval id>|<task id>|<digest>|true|<timestamp>` (the unix time in seconds, also sent as
+  `timestamp`; `|always` appended for "Always allow this") and send the base64 DER signature as
+  `signature`. `digest` is the request's action digest: the lowercase hex SHA-256 of
+  `openmob-action-1` followed, for each of `tool`, `package`, `text`, `desc`, `resource_id`,
+  `bounds`, `input` in that order, by `|<UTF-8 byte length>:<value>` (a missing field is empty;
+  `bounds` is `l,t,r,b` or `x,y`). Recompute it from the `action` you show and refuse to sign if it
+  differs from `digest`. (Apps from before action digests signed `<approval id>|<task id>|true|<timestamp>`;
+  current servers refuse that.)
+- **What the server accepts.** In accounts mode a `true` counts only with a valid signature by
+  **that phone's** key, over **this** approval id, task and action digest, made within the last 5
+  minutes; anything else is ignored (the prompt stays open on the owner's other phones). A phone
+  without a registered key can't approve: it is told so (`can_approve: false`) and can only
+  decline until it registers one on its next connect. Token/dev mode has no keys and accepts the
+  phone's yes as before.
+- **The action must still be the same.** After a signed yes, the server re-reads the screen and runs
+  the action only if its digest is unchanged (same app, same element at the same place). If the
+  screen changed while the owner was deciding, the action isn't run and the agent looks again.
 - **Denials are never signed.** Anyone may say no: `{"type": "approval", "id": "5d0c…", "approved": false}`.
 | Rule | Server behaviour |
 |---|---|

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import inspect
 import json
 import re
 import threading
@@ -19,10 +20,12 @@ from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
-from . import fast
+from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
+from ..phone.approval_keys import action_digest
+from . import fast, gate
 from .models import ModelError, ModelRequest, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import TOOL_SPECS, system_prompt
+from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -35,6 +38,17 @@ FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
+REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
+# Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
+CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key"}
+# Tools after which the element list of the screen they acted on may be out of date.
+MOVES_SCREEN = CHANGING | {"scroll"}
+# ENTER in these apps sends what was typed.
+SENDING_CATEGORIES = {"messaging", "email", "social"}
+OPEN_CHECK_SECONDS = 2.0  # after open_url on a phone that can't resolve links first: how long to watch the app
+CHANGED_DURING_APPROVAL = ("Didn't {what}: the screen changed while the owner was being asked, so the approval "
+                           "doesn't cover what is there now. Look at the new screen.")
+DECLINE_WORDS = ("no", "nope", "deny", "denied", "stop", "cancel", "reject")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -52,6 +66,8 @@ class AgentResult:
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
     fast_steps: int = 0  # tool calls the fast path made (no main model)
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
+    prompts: int = 0  # approval prompts the owner saw (permission telemetry)
+    mode: str | None = None  # the permission mode the task ran in
 
 
 class Observation:
@@ -127,6 +143,18 @@ class _TaskState:
     escalated: bool = False  # a vision step ran, or the fast path declined or looped
     risky: bool = False  # the risky-tap check fired on some step (keywords or the classifier)
     typed: bool = False  # text was typed
+    # Permission modes (openmob/permissions.py):
+    perms: TaskPermissions = field(default_factory=TaskPermissions)
+    task_app: str | None = None  # the app the task works in: the first it launched, else the first it acted in
+    last_package: str | None = None  # the app of the last guarded action (a switch ends a payment follow-up)
+    exempt_used: set[str] = field(default_factory=set)  # auto: requested words already used once
+    money_followup: dict | None = None  # {package, at}: one follow-up commit tap after an approved payment
+    plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
+    step_approved: bool = False  # ask mode: the owner approved the action now running
+    typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
+    prompts: int = 0
+    acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
+    tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
 
 
 def is_yes(answer: str) -> bool:
@@ -186,23 +214,30 @@ class Agent:
         blocked: Callable[[str], bool] | None = None,
         memory: str = "on",
         isolated: bool = False,
+        permissions: TaskPermissions | None = None,
     ) -> AgentResult:
         """`model` and `max_steps` override this phone's settings for one task; `blocked` names
         packages the task must not open or operate (the task stops if one comes to the front).
         `memory`: on | read_only | off. `isolated`: a caller other than the phone's chat (e.g. an
-        API key) that must neither see nor add to the chat's recent requests."""
+        API key) that must neither see nor add to the chat's recent requests. `permissions`: the
+        task's permission mode against the phone's live settings (default: config's mode, ceiling auto)."""
         self.usage = Usage()
         self.timer.reset()
         self.task_model = model or self.model
+        perms = permissions or TaskPermissions(self.config.default_permission_mode)
+        if perms.requested == "never":  # no prompts: sensitive apps are off-limits for every task then
+            blocked = self._with_sensitive(blocked)
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
-                           memory=memory if self.memory is not None else "off")
+                           memory=memory if self.memory is not None else "off", perms=perms)
         state.fast = self._fast_enabled()
         self._task_variant = self._variant(state.fast)
         result = self._run(state, go_home, isolated)
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
+        result.prompts = state.prompts
+        result.mode = perms.mode()
         if state.used_notes:
             self.memory.mark_used(state.used_notes)
         if not isolated:
@@ -225,7 +260,9 @@ class Agent:
         self._show_later(state, messages, obs)
         nudged = False
 
-        system = system_prompt(self.platform) + self._user_notes(state)
+        mode = state.perms.mode()
+        system = system_prompt(self.platform) + mode_notes(mode) + self._user_notes(state)
+        tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
@@ -233,7 +270,7 @@ class Agent:
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
             self._apply_corrections(state, messages)
-            if state.fast and not state.vision_next:
+            if state.fast and not state.vision_next and not self._needs_plan(state):
                 taken = self._fast_step(state, obs)
                 if taken is not None:
                     last = taken[-1][2]
@@ -249,7 +286,7 @@ class Agent:
                 response = route.adapter.complete(ModelRequest(
                     model=self.task_model,
                     system=system,
-                    tools=TOOL_SPECS,
+                    tools=tools,
                     messages=messages,
                     max_tokens=route.spec.max_tokens,
                 ))
@@ -572,6 +609,8 @@ class Agent:
             outcome.done_via = done_via
         outcome.timings = self.timer.take()
         state.step_index += 1
+        if name in MOVES_SCREEN and not outcome.is_error:
+            state.acted_on = obs
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
         self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step)
         return outcome
@@ -620,6 +659,25 @@ class Agent:
             self.io.event("error", f"Step not recorded: {exc}")
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        state.step_approved = False
+        # Refused in every mode, before anything asks: links outside the scheme allowlist, typing into
+        # a password field, and dangerous URLs typed into an address bar.
+        if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
+            return self._refuse(str(args.get("url", ""))[:80], why)
+        if name == "type_text" and (refused := self._typing_refusal(str(args.get("text", "")),
+                                                                    self._field(state, obs), obs)):
+            return refused
+        if name in CHANGING:
+            if self._needs_plan(state) and not (name == "press_key" and args.get("key") != "ENTER"):
+                return Outcome("Plan first: call propose_plan with a short numbered plan for the owner to approve "
+                               "before you change anything on the phone.", is_error=True, settle=0)
+            if state.perms.mode() == "ask":
+                if blocked := self._step_gate(name, args, obs, state):
+                    return blocked
+            if not (name == "type_text" or (name == "press_key" and args.get("key") == "ENTER")):
+                state.typing_approved = False
+        if name == "propose_plan":
+            return self._propose_plan(args, state)
         if name == "launch_app":
             resolution = self.resolver.resolve(args["app"])
             if resolution is None:
@@ -633,7 +691,10 @@ class Agent:
                 )
             if self._is_blocked(state, resolution.package):
                 return Outcome(f"{BLOCKED_APP_MESSAGE} Don't try to open it another way; call done.", is_error=True, settle=0)
+            state.money_followup = None  # an app switch ends a payment's follow-up
             self.driver.launch_app(resolution.package)
+            if state.task_app is None and not gate.is_launcher(resolution.package):
+                state.task_app = resolution.package
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
                 settle=self.config.launch_settle_delay,
@@ -647,8 +708,15 @@ class Agent:
             return Outcome("\n".join(f"{n} ({p})" for n, p in apps) or "No apps found.", settle=0)
 
         if name == "open_url":
-            self.driver.open_url(args["url"])
-            return Outcome(f"Opened {args['url']}.", settle=self.config.launch_settle_delay)
+            url = gate.web_url(str(args["url"]))
+            refused, resolved = self._check_url(url, state)
+            if refused:
+                return refused
+            state.money_followup = None  # leaving the app ends a payment's follow-up
+            self.driver.open_url(url)
+            if not resolved and (backed := self._back_out_if_blocked(state, obs.package)):
+                return backed
+            return Outcome(f"Opened {url}.", settle=self.config.launch_settle_delay)
 
         if name == "tap_element":
             index = int(args["index"])
@@ -659,27 +727,36 @@ class Agent:
                 return Outcome(f"Element [{index}] {element.label!r} is covered by another window (a dialog or the "
                                "keyboard), so a tap would land on that. Deal with what covers it first.",
                                is_error=True, settle=0)
-            # The step's one classifier request asked about the element by its label. When the model
-            # described the target in other words, the check asks again with those words included.
-            same = str(args.get("target", "")).strip() in ("", element.label)
-            if blocked := self._guard(f"{args.get('target', '')} {element.label}", state, obs, element if same else None):
+            # Judged by the element's own fields (and whatever its center lands on), never by the
+            # model's words for it; those can only add caution. The step's one classifier request asked
+            # about the element by its label: when the model described it in other words, the check
+            # asks again with those words included.
+            hint = str(args.get("target", "")).strip()
+            inside = gate.hit([e for e in obs.elements if e is not element and gate.within(e, element)],
+                              *element.center)
+            words = " ".join(w for w in (gate.element_words(element), inside.words) if w)
+            shown = element.text or element.desc or inside.shown or gate.readable_id(element.resource_id)
+            action = self._action("tap", obs.package, element)
+            if blocked := self._guard(words, state, obs, element, hint=hint, action=action,
+                                      cached=hint in ("", element.label), unlabeled=not words,
+                                      label=repr(shown) if shown else None,
+                                      recheck=lambda: self._action("tap", self.driver.current_app(),
+                                                                   self._same_element(element))):
                 return blocked
             if moved := self._target_moved(element):
                 return moved
             self.driver.tap(*element.center)
+            state.tapped_field = element if fast.is_text_field(element) or element.password else None
             return Outcome(f"Tapped [{index}] {element.label!r}.")
 
-        if name == "tap":
-            if blocked := self._guard(args.get("target", ""), state, obs):
-                return blocked
+        if name in ("tap", "long_press"):
+            # A long press is judged exactly like a tap, whatever its duration.
             x, y = obs.shot.to_device(args["x"], args["y"])
-            self.driver.tap(x, y)
-            return Outcome(f"Tapped {args.get('target') or 'point'} at ({args['x']},{args['y']}).")
-
-        if name == "long_press":
-            if blocked := self._guard(args.get("target", ""), state, obs):
+            if blocked := self._guard_point(name, x, y, str(args.get("target", "")), state, obs):
                 return blocked
-            x, y = obs.shot.to_device(args["x"], args["y"])
+            if name == "tap":
+                self.driver.tap(x, y)
+                return Outcome(f"Tapped {args.get('target') or 'point'} at ({args['x']},{args['y']}).")
             self.driver.long_press(x, y, int(args.get("duration_ms", 800)))
             return Outcome(f"Long-pressed {args.get('target') or 'point'}.")
 
@@ -694,18 +771,30 @@ class Agent:
                 "right": (cx + dx, cy, cx - dx, cy),
                 "left": (cx - dx, cy, cx + dx, cy),
             }
-            self.driver.swipe(*moves[args["direction"]], 400)
+            move = moves[args["direction"]]
+            if blocked := self._guard_swipe("scroll", *move, 400, "", state, obs):
+                return blocked
+            self.driver.swipe(*move, 400)
             return Outcome(f"Scrolled {args['direction']}.")
 
         if name == "swipe":
             x1, y1 = obs.shot.to_device(args["x1"], args["y1"])
             x2, y2 = obs.shot.to_device(args["x2"], args["y2"])
-            self.driver.swipe(x1, y1, x2, y2, int(args.get("duration_ms", 300)))
+            duration = int(args.get("duration_ms", 300))
+            if blocked := self._guard_swipe("swipe", x1, y1, x2, y2, duration, str(args.get("target", "")), state, obs):
+                return blocked
+            self.driver.swipe(x1, y1, x2, y2, duration)
             return Outcome("Swiped.")
 
         if name == "type_text":
+            text = str(args["text"])
+            field = self._field(state, obs)
+            if refused := self._typing_refusal(text, field, obs):
+                return refused
+            if args.get("submit") and (blocked := self._guard_enter(state, obs, field, typed=text)):
+                return blocked
             state.typed = True
-            self.driver.type_text(args["text"])
+            self.driver.type_text(text)
             if args.get("submit"):
                 self.driver.key("ENTER")
             # A search box: give its suggestions a moment longer to arrive before the next look.
@@ -714,6 +803,9 @@ class Agent:
                            quiet_ms=self.config.settle_quiet_ms + SEARCH_EXTRA_QUIET_MS if search else None)
 
         if name == "press_key":
+            key = str(args["key"]).upper()
+            if key == "ENTER" and (blocked := self._guard_enter(state, obs, self._field(state, obs))):
+                return blocked
             self.driver.key(args["key"])
             return Outcome(f"Pressed {args['key']}.")
 
@@ -739,30 +831,84 @@ class Agent:
         target = text.lower()
         return [k for k in self.config.confirm_keywords if re.search(rf"\b{re.escape(k.lower())}\b", target)]
 
-    def _guard(self, description: str, state: _TaskState, obs: Observation, element: UIElement | None = None) -> Outcome | None:
-        """Ask before risky taps ('Buy', 'Send', ...) the user didn't ask for.
+    def _guard(self, description: str, state: _TaskState, obs: Observation, element: UIElement | None = None, *,
+               hint: str = "", action: dict | None = None, cached: bool = True, unlabeled: bool = False,
+               force: bool = False, money_forced: bool = False, verb: str = "tap", kind_hint: str | None = None,
+               recheck: Callable[[], dict | None] | None = None, label: str | None = None) -> Outcome | None:
+        """Before an action that may commit something: refuse it, ask the owner, or let it run
+        (docs/safety.md#permission-modes and #what-is-guarded).
 
-        Risky: matches a confirm keyword, or Jev rates it risky. Requested: Jev judges that the
-        request explicitly asked for it, or (without Jev) the matched keyword appears in the request.
-        For a tap on `element`, the step's one classifier request may already hold its risk (and,
-        when it can matter, its "requested"); otherwise the separate check asks now.
-        """
-        policy = self.config.confirm_actions
-        if policy == "never":
-            return None
-        hits = self._keyword_hits(description)
-        risky = bool(hits)
-        requested = any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower()) for k in hits)
+        `description` is what the action really touches: the target element's own text, description
+        and resource id (never the model's words for it). `hint` is the model's description, which can
+        only add caution: its risky words make the action risky, but it never makes anything "requested",
+        "covered" or an everyday Setting. `unlabeled`: nothing at the target says what it is, which asks
+        in shopping, payment, food, travel and ride apps (`force` and `money_forced` ask likewise, the
+        latter as money). `action` (tool, app, target identity, typed text) is what an approval binds:
+        its digest goes with the prompt, the phone signs it, and after a yes `recheck` must still
+        describe the same action, or the screen changed while the owner was asked.
+
+        Refused in every mode: security-critical Settings pages (and a blocked app's info page); under
+        `never` also money (without a trusted pay entry for the app) and autofill/credential suggestions.
+        Risky: a confirm or money keyword (minus on-the-way phrases like "Add to cart"), an autofill
+        suggestion, a Settings change outside the everyday allowlist, or the classifier's risk.
+        Requested: Jev judges that the request explicitly asked for it, or (without Jev) the matched
+        keyword appears in the request; the classifier may veto "requested", never grant it. Whether a
+        risky action asks then depends on the mode (see _covered). For a tap on `element` (`cached`),
+        the step's one classifier request may already hold its risk (and, when it can matter, its
+        "requested")."""
+        cfg = self.config
+        mode = state.perms.mode()
+        desc = " ".join(description.split())
+        hint = " ".join((hint or "").split())
+        extra = hint if hint and hint.lower() not in desc.lower() else ""
+        caution = f"{desc} {extra}".strip()
+        package = obs.package
+        if package and package != state.last_package:
+            state.money_followup = None  # an app switch ends a payment's follow-up
+            state.last_package = package
+        if state.task_app is None and package:
+            state.task_app = package
+        tier = gate.settings_tier(cfg, package, desc, element, obs.elements, self._blocked_label(state))
+        if extra:  # the model's words can make a Settings tap refused or asked, never everyday
+            hint_tier = gate.settings_tier(cfg, package, extra, None, obs.elements, self._blocked_label(state))
+            if hint_tier == "refuse" or (hint_tier == "ask" and tier != "refuse"):
+                tier = hint_tier
+        shown = desc or (f"an unlabeled spot the agent calls {hint!r}" if hint else "an unlabeled spot")
+        if tier == "refuse":
+            return self._refuse(shown, "this Settings page is security-critical, so agents can't change it.")
+        credential = gate.is_credential(cfg, caution)
+        if credential and mode == "never":
+            return self._refuse(shown, "autofill and saved-credential suggestions are off while agents act "
+                                       "without asking.")
+        real_hits = self._keyword_hits(gate.strip_skips(desc, cfg.confirm_skip_phrases))
+        hint_hits = self._keyword_hits(gate.strip_skips(extra, cfg.confirm_skip_phrases)) if extra else []
+        hits = real_hits + [h for h in hint_hits if h not in real_hits]
+        money = gate.words(gate.strip_skips(caution, cfg.confirm_skip_phrases), cfg.money_keywords)
+        unlabeled_money = unlabeled and gate.is_money_app(package)
+        if money_forced or (unlabeled_money and gate.payment_context(obs.elements)):
+            money = money or ["payment"]
+        risky = bool(hits or money or credential or force or unlabeled_money)
+        if tier == "allow":
+            # Everyday Settings (Wi-Fi, Bluetooth, dark mode…) never ask, unless the model's own words
+            # for the target are risky.
+            risky = bool(hint_hits or force)
+        elif tier == "ask":
+            risky = True
+        # "Requested" comes from the target's own words. The model's words count only when they are all
+        # that makes the action risky (then trusting them is no looser than ignoring them).
+        basis = real_hits or ([] if force or unlabeled_money or money_forced or tier == "ask" else hint_hits)
+        requested = bool(basis) and any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower())
+                                        for k in basis)
         if self.judge:
             try:
-                known = element is not None and element.index in obs.risks and (
+                known = cached and element is not None and element.index in obs.risks and (
                     not requested or element.index in obs.requested)
                 if known:
                     risk, asked = obs.risks[element.index], obs.requested.get(element.index, 0.0)
                 else:
-                    risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, description.strip(),
+                    risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, caution or shown,
                                                    self._describe(obs))
-                risky = risky or risk >= self.config.jev_risk_threshold
+                risky = risky or risk >= cfg.jev_risk_threshold
                 # The classifier only ever adds caution. It reads on-screen text, so a screen could
                 # talk it into "the user asked for this"; it may veto "requested", never grant it.
                 requested = requested and asked >= 0.5
@@ -770,23 +916,471 @@ class Agent:
                 self.io.event("error", str(exc))
         if risky:
             state.risky = True
-        if not risky or (policy == "unrequested" and requested):
+        kind = "settings" if tier == "ask" else (gate.kind_of(hits, money, credential) or kind_hint)
+        share = gate.is_share(hits)
+        settings = state.perms.current_settings()
+        if mode == "never" or cfg.confirm_actions == "never":
+            if money and not trusted_for(settings, package, "pay", cfg.app_categories, False):
+                return self._refuse(shown, "payments are off while agents act without asking (a trusted pay "
+                                           "entry for this app allows them).")
+            return None
+        if mode == "ask" and state.step_approved:
+            return None  # the owner just approved this very action
+        if not risky:
+            return None
+        if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None
         if state.approved:
             state.approved = False
             return None
-        # A separate channel when the IO has one, so callers can tell a risky-action
-        # confirmation apart from an ordinary question.
-        confirm = getattr(self.io, "confirm", self.io.ask)
-        answer = self.timer.timed("wait", confirm, f"I'm about to tap {description.strip()!r}. Should I go ahead?")
+        context = gate.money_context(obs.elements) if money else ""
+        where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
+        what = label if label is not None else (repr(desc) if desc else shown)
+        question = f"I'm about to {verb} {what}{where}{f' ({context})' if context else ''}. Should I go ahead?"
+        details = {"kind": "action", "action_kind": kind, "package": package}
+        digest = None
+        if action is not None:
+            digest = action_digest(action)
+            details.update(action=action, digest=digest)
+        always = self._always_offer(mode, kind, package, obs, desc if share else None)
+        if always:
+            details["always"] = always
+        answer = self._ask_owner(state, question, details)
         if is_yes(answer):
+            if refused := self._approval_mismatch(digest, recheck, f"{verb} {what}"):
+                return refused
+            if money and not gate.words(desc, cfg.money_terminal_words):
+                state.money_followup = {"package": package, "at": time.monotonic()}  # a terminal tap mints nothing
             return None
         return Outcome(
-            f"The user did not approve tapping {description.strip()!r} (they said {answer!r}). "
+            f"The user did not approve this ({verb} {what}; they said {answer!r}). "
             "Don't do it. Pick another approach or call done.",
             is_error=True,
             settle=0,
         )
+
+    def _approval_mismatch(self, digest: str | None, recheck: Callable[[], dict | None] | None,
+                           what: str) -> Outcome | None:
+        """After a yes: an approval signed on the phone names the action it approved (its digest). It
+        must be the action asked about, and, re-read now, the screen must still show that action."""
+        take = getattr(self.io, "take_approval_digest", None)
+        approved = take() if callable(take) else None
+        if approved is None:
+            return None  # approved without a phone signature (adb, local or an owner's API key): as before
+        if digest is None or approved != digest:
+            return Outcome(f"Didn't {what}: the approval was for a different action. Ask again if it's still "
+                           "needed.", is_error=True, settle=0)
+        if recheck is None or not getattr(self.driver, "fast_ui_tree", False):
+            return None
+        try:
+            with self.timer.phase("observe"):
+                now = recheck()
+        except DeviceError:
+            now = None
+        if now is None or action_digest(now) != digest:
+            return Outcome(CHANGED_DURING_APPROVAL.format(what=what), is_error=True, settle=0)
+        return None
+
+    # --- what an action really touches ------------------------------------------------
+
+    @staticmethod
+    def _action(tool: str, package: str | None, element: UIElement | None = None,
+                point: tuple[int, int] | None = None, typed: str = "") -> dict:
+        """The action an approval binds (approval_keys.action_digest): the tool, the app, the target
+        element's identity (or the point, with nothing there) and any typed text, URL or key."""
+        bounds = list(element.bounds) if element is not None else (list(point) if point else "")
+        return {"tool": tool, "package": package or "", "text": element.text if element else "",
+                "desc": element.desc if element else "", "resource_id": element.resource_id if element else "",
+                "bounds": bounds, "input": typed}
+
+    def _same_element(self, element: UIElement) -> UIElement | None:
+        """The element, re-read: the one with the same identity on the screen now, or None."""
+        same = (element.text, element.desc, element.resource_id, element.cls, element.bounds)
+        return next((e for e in self.driver.ui_elements()
+                     if (e.text, e.desc, e.resource_id, e.cls, e.bounds) == same), None)
+
+    def _elements(self, state: _TaskState, obs: Observation, fresh: bool = False) -> list[UIElement]:
+        """The screen's elements: the observation's, unless an earlier action this step changed the
+        screen (or `fresh`), then re-read."""
+        if fresh or state.acted_on is obs:
+            with self.timer.phase("observe"):
+                return self.driver.ui_elements()
+        return obs.elements
+
+    def _hit(self, state: _TaskState, obs: Observation, x: int, y: int) -> gate.Hit:
+        """What a touch at device (x, y) lands on (gate.hit), re-reading the screen when nothing is
+        found in a list that may be out of date."""
+        found = gate.hit(self._elements(state, obs), x, y)
+        if found.element is None and obs.elements and state.acted_on is not obs:
+            found = gate.hit(self._elements(state, obs, fresh=True), x, y)
+        return found
+
+    def _guard_point(self, tool: str, x: int, y: int, hint: str, state: _TaskState, obs: Observation,
+                     verb: str | None = None) -> Outcome | None:
+        """A tap (or long press, or a swipe that is really a tap) at device (x, y): judged by what is
+        actually there, the model's words for it only adding caution."""
+        element, words, is_labeled, shown = self._hit(state, obs, x, y)
+        action = self._action(tool, obs.package, element, point=(x, y))
+
+        def recheck() -> dict:
+            now = gate.hit(self.driver.ui_elements(), x, y).element
+            return self._action(tool, self.driver.current_app(), now, point=(x, y))
+
+        verb = verb or ("long-press" if tool == "long_press" else "tap")
+        blocked = self._guard(words, state, obs, element, hint=hint, action=action, unlabeled=not is_labeled,
+                              force=gate.is_slider(element, words), verb=verb, recheck=recheck,
+                              label=repr(shown) if shown else None)
+        if blocked is None and tool in ("tap", "long_press"):
+            state.tapped_field = element if element is not None and (
+                fast.is_text_field(element) or element.password) else None
+        return blocked
+
+    def _guard_swipe(self, tool: str, x1: int, y1: int, x2: int, y2: int, duration_ms: int, hint: str,
+                     state: _TaskState, obs: Observation) -> Outcome | None:
+        """A swipe that Android delivers as a tap is judged as a tap at its start. Any other swipe is
+        judged at each end that is a commit control: a slider ("slide to pay") or a risky label. (A
+        scroll is judged on the list it was decided from, without re-reading: it never acts as a tap.)"""
+        elements = obs.elements if tool == "scroll" else self._elements(state, obs)
+        if gate.swipe_is_tap(elements, x1, y1, x2, y2, duration_ms):
+            return self._guard_point(tool, x1, y1, hint, state, obs, verb="tap (by a short swipe)")
+        seen = []
+        for x, y in ((x1, y1), (x2, y2)):
+            element, words, _, shown = gate.hit(elements, x, y)
+            if element is None or element in seen:
+                continue
+            seen.append(element)
+            commit = self._keyword_hits(gate.strip_skips(words, self.config.confirm_skip_phrases)) or gate.words(
+                gate.strip_skips(words, self.config.confirm_skip_phrases), self.config.money_keywords)
+            if not (commit or gate.is_slider(element, words)):
+                continue
+            action = self._action(tool, obs.package, element, typed=f"{x1},{y1}->{x2},{y2}")
+            if blocked := self._guard(words, state, obs, element, hint=hint, action=action,
+                                      force=gate.is_slider(element, words), verb="swipe",
+                                      label=repr(shown) if shown else None,
+                                      recheck=lambda e=element: self._action(tool, self.driver.current_app(),
+                                                                             self._same_element(e),
+                                                                             typed=f"{x1},{y1}->{x2},{y2}")):
+                return blocked
+        return None
+
+    def _field(self, state: _TaskState, obs: Observation) -> UIElement | None:
+        """The text field typing and ENTER go to, as far as we can tell (None: unknown)."""
+        if state.acted_on is obs:  # e.g. the tap that focused it, this same step
+            return state.tapped_field
+        return gate.focused_field(obs.elements) or state.tapped_field
+
+    def _typing_refusal(self, text: str, field: UIElement | None, obs: Observation) -> Outcome | None:
+        """Never typed, in any mode: into a password field, or a javascript:/intent:/file:/content:/data:
+        URL into an address bar (or anywhere in a browser, when the field isn't known)."""
+        if field is not None and field.password:
+            return self._refuse("a password field", "agents never type passwords; the owner types them.")
+        scheme = gate.dangerous_text(text)
+        if scheme and (gate.is_url_bar(field, obs.package) or (
+                field is None and gate.is_browser(obs.package, obs.elements))):
+            return self._refuse(f"{scheme}: in the address bar", f"{scheme}: links can run code or reach into "
+                                                                 "apps, so they're never typed.")
+        return None
+
+    def _guard_enter(self, state: _TaskState, obs: Observation, field: UIElement | None,
+                     typed: str | None = None) -> Outcome | None:
+        """ENTER (press_key, or type_text's submit) commits what the field holds:
+        - in a browser's address bar it opens a URL: the open_url checks run on it;
+        - in messaging, email and social apps it sends: judged as a "send";
+        - in a browser or WebView form, or on a payment screen, it submits: it asks per the mode
+          (as money when money words are on screen). Search boxes never ask."""
+        cfg = self.config
+        package = obs.package
+        elements = obs.elements
+        browser = gate.is_browser(package, elements)
+        editables = [e for e in elements if fast.is_text_field(e)]
+        if field is None and browser and editables and all(
+                gate.is_url_bar(e, package) or gate.is_search_field(e) for e in editables):
+            field = next((e for e in editables if gate.is_url_bar(e, package)), None)  # address bar or search
+            if field is None:
+                return None
+        if gate.is_url_bar(field, package) or (field is None and browser and typed and gate.looks_like_url(typed)):
+            url = typed if typed is not None else (field.text if field is not None else "")
+            if not gate.looks_like_url(url):
+                return None  # a search from the address bar
+            refused, _ = self._check_url(gate.web_url(url), state)
+            return refused
+        typed_input = "" if typed is None else typed
+        action = self._action("enter", package, field, typed=typed_input)
+        if category_of(package, cfg.app_categories) & SENDING_CATEGORIES:
+            return self._guard("send", state, obs, field, action=action, verb="press Enter to send",
+                               kind_hint="send", label="what was typed")
+        if gate.is_search_field(field):
+            return None
+        money = gate.money_screen(cfg, elements)
+        if browser or money or gate.payment_context(elements):
+            words = gate.element_words(field)
+            return self._guard(words, state, obs, field, action=action, force=True, money_forced=money,
+                               verb="press Enter to submit", kind_hint=None,
+                               label=f"the form ({words!r})" if words else "the form")
+        return None
+
+    def _check_url(self, url: str, state: _TaskState) -> tuple[Outcome | None, bool]:
+        """open_url's checks, also run on a URL typed into an address bar: the scheme allowlist, then
+        the app that will handle it, resolved on the phone before opening (newer apps, adb), against
+        the task's blocked apps. (refusal or None, whether the handler was resolved)."""
+        if why := gate.url_refusal(url):
+            return self._refuse(url[:80], why), False
+        resolve = getattr(self.driver, "resolve_url", None)
+        target = None
+        if callable(resolve):
+            try:
+                target = resolve(url)
+            except DeviceError:
+                target = None
+        if target is None:
+            return None, False
+        handlers = [target["package"]] if target.get("package") else list(target.get("candidates") or [])
+        if any(self._is_blocked(state, p) for p in handlers):
+            return Outcome(f"{BLOCKED_APP_MESSAGE} That link opens in it. Don't try to open it another way; "
+                           "call done.", is_error=True, settle=0), True
+        return None, True
+
+    def _back_out_if_blocked(self, state: _TaskState, before: str | None) -> Outcome | None:
+        """A phone that can't resolve links first: watch which app the link opened, and back out of a
+        blocked one at once (BACK, then HOME)."""
+        if not state.blocked:
+            return None
+        deadline = time.monotonic() + OPEN_CHECK_SECONDS
+        package = self.driver.current_app()
+        while package == before and time.monotonic() < deadline and not state.cancel.is_set():
+            self._sleep(0.2, state.cancel)
+            package = self.driver.current_app()
+        if not self._is_blocked(state, package):
+            return None
+        self.driver.key("BACK")
+        if self._is_blocked(state, self.driver.current_app()):
+            self.driver.key("HOME")
+        return Outcome(f"{BLOCKED_APP_MESSAGE} The link opened it, so I went back. Don't try to open it another "
+                       "way; call done.", is_error=True, settle=0)
+
+    def _covered(self, state: _TaskState, mode: str, desc: str, hits: list[str], money: list[str], kind: str | None,
+                 share: bool, requested: bool, package: str | None, settings: dict) -> bool:
+        """A risky action that runs without asking in this mode:
+        - money: the one follow-up commit tap after an approved payment (terminal words only, same app,
+          within FOLLOWUP_SECONDS, no app switch since), or a trusted pay entry for this app (auto, trusted);
+        - a live trusted entry for this app and kind (auto, trusted; category entries in trusted only);
+        - plan: an unused approved plan step naming the action (its risky words) in this app;
+        - auto/trusted: a requested action, once per word, in the task's own app (never money)."""
+        cfg = self.config
+        if money:
+            follow = state.money_followup
+            if (follow and follow["package"] == package and time.monotonic() - follow["at"] <= FOLLOWUP_SECONDS
+                    and gate.words(desc, cfg.money_terminal_words) and not gate.words(desc, cfg.money_start_words)):
+                state.money_followup = None
+                return True
+            return mode in ("auto", "trusted") and trusted_for(settings, package, "pay", cfg.app_categories, False)
+        if mode in ("auto", "trusted") and kind and kind != "settings" and trusted_for(
+                settings, package, kind, cfg.app_categories, mode == "trusted", target=desc if share else None):
+            return True
+        if mode == "plan":
+            return self._plan_covers(state, hits, package)
+        if mode in ("auto", "trusted") and cfg.confirm_actions == "unrequested" and requested and kind != "settings":
+            fresh = [h for h in hits if h not in state.exempt_used]
+            if fresh and package == state.task_app:
+                state.exempt_used.update(hits)
+                return True
+        return False
+
+    def _always_offer(self, mode: str, kind: str | None, package: str | None, obs: Observation,
+                      target: str | None) -> dict | None:
+        """The "Always allow this" option a prompt may carry: none for Settings (no page identity), for
+        autofill in browsers or WebViews, in ask mode, or without a kind and an app."""
+        if mode not in ("auto", "trusted", "plan") or kind not in ALWAYS_DAYS or not package:
+            return None
+        if gate.is_launcher(package) or (kind == "fill" and gate.is_browser(package, obs.elements)):
+            return None
+        days = ALWAYS_DAYS[kind]
+        offer = {"app": package, "kind": kind, "days": days,
+                 "text": gate.grant_text(kind, self._app_label(package), days, target),
+                 "confirm_twice": kind == "pay"}
+        if target:
+            offer["target"] = " ".join(target.split()).lower()[:80]
+        return offer
+
+    def _ask_owner(self, state: _TaskState, question: str, details: dict) -> str:
+        """One approval prompt (the owner's screen lock, on an app phone). Counts it, and records its
+        decision and how long the owner took, for the prompt budget (`openmob prompts`)."""
+        confirm = getattr(self.io, "confirm", None)
+        started = time.monotonic()
+        if confirm is None:
+            answer = self.timer.timed("wait", self.io.ask, question)
+        else:
+            try:
+                takes_details = "details" in inspect.signature(confirm).parameters
+            except (TypeError, ValueError):
+                takes_details = False
+            answer = (self.timer.timed("wait", confirm, question, details) if takes_details
+                      else self.timer.timed("wait", confirm, question))
+        state.prompts += 1
+        low = answer.strip().lower()
+        decision = ("always" if is_yes(answer) and "always" in low else "approved" if is_yes(answer)
+                    else "denied" if not low or low.split()[0] in DECLINE_WORDS else "changes")
+        record = getattr(self.io, "record_prompt", None)
+        if record is not None:
+            try:
+                record({"t": time.time(), "kind": details.get("kind", "action"),
+                        "action_kind": details.get("action_kind"), "mode": state.perms.mode(),
+                        "decision": decision, "latency_ms": int((time.monotonic() - started) * 1000),
+                        "package": details.get("package")})
+            except Exception as exc:  # telemetry must never break a task
+                self.io.event("error", f"Prompt not recorded: {exc}")
+        return answer
+
+    def _refuse(self, desc: str, why: str) -> Outcome:
+        self.io.event("status", f"Refused {desc!r}: {why}")
+        return Outcome(REFUSED.format(why=why[0].upper() + why[1:]), is_error=True, settle=0)
+
+    def _blocked_label(self, state: _TaskState):
+        """A Settings app-info page names its app by label: is that an app this task may not touch?"""
+        if not state.blocked:
+            return None
+
+        def check(text: str) -> bool:
+            try:
+                package = self.resolver.exact(text)
+            except Exception:
+                return False
+            return bool(package and state.blocked(package))
+        return check
+
+    def _app_label(self, package: str | None) -> str:
+        if not package:
+            return "this app"
+        try:
+            return self.resolver.display_name(package) or package
+        except Exception:
+            return package
+
+    def _with_sensitive(self, blocked):
+        patterns = [re.compile(p, re.IGNORECASE) for p in self.config.sensitive_apps]
+        return lambda package: any(p.search(package) for p in patterns) or bool(blocked and blocked(package))
+
+    # --- ask every step / plan first ------------------------------------------------
+
+    def _step_gate(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome | None:
+        """Ask mode: the owner approves every changing action. Not asked: tapping a text field (it only
+        focuses it), a long swipe (a scroll), keys other than ENTER, and the ENTER that submits text the
+        owner just approved (typing and its submit are one prompt)."""
+        what = None
+        action = None
+        if name in ("tap_element", "tap", "long_press"):
+            element = None
+            if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
+                i = int(args["index"])
+                element = obs.elements[i] if 0 <= i < len(obs.elements) else None
+                if element is not None and fast.is_text_field(element):
+                    return None
+            elif name != "tap_element" and all(isinstance(args.get(k), (int, float)) for k in ("x", "y")):
+                element = self._hit(state, obs, *obs.shot.to_device(args["x"], args["y"])).element  # what's there
+            label = gate.element_words(element) or args.get("target") or "that point"
+            what = f"{'long-press' if name == 'long_press' else 'tap'} {label.strip()!r}"
+            action = self._action(name, obs.package, element)
+        elif name == "type_text":
+            text = str(args.get("text", ""))
+            shown = text if len(text) <= 80 else text[:79] + "…"
+            what = f"type {shown!r}" + (" and press Enter" if args.get("submit") else "")
+            action = self._action("type_text", obs.package, self._field(state, obs), typed=text)
+        elif name == "press_key":
+            if args.get("key") != "ENTER":
+                return None
+            if state.typing_approved:
+                state.typing_approved = False
+                state.step_approved = True  # the owner approved typing this text and submitting it
+                return None
+            what = "press Enter"
+            action = self._action("enter", obs.package, self._field(state, obs))
+        elif name == "swipe":
+            frame = obs.geometry()
+            w, h = (frame.width, frame.height) if frame else (1080, 2400)
+            if not gate.short_swipe(args, w, h):
+                try:
+                    x1, y1 = obs.shot.to_device(args["x1"], args["y1"])
+                    x2, y2 = obs.shot.to_device(args["x2"], args["y2"])
+                    tap_like = gate.swipe_is_tap(obs.elements, x1, y1, x2, y2, int(args.get("duration_ms", 300)))
+                except (KeyError, TypeError, ValueError):
+                    tap_like = False
+                if not tap_like:
+                    return None
+            what = f"tap {args.get('target') or 'by swiping'}"
+            action = self._action("swipe", obs.package, typed=str(args.get("target") or ""))
+        elif name == "launch_app":
+            what = f"open {args.get('app')!r}"
+            action = self._action("launch_app", obs.package, typed=str(args.get("app")))
+        elif name == "open_url":
+            what = f"open {args.get('url')!r}"
+            action = self._action("open_url", obs.package, typed=str(args.get("url")))
+        if what is None:
+            return None
+        digest = action_digest(action) if action is not None else None
+        answer = self._ask_owner(state, f"Next step: {what}. Should I go ahead?",
+                                 {"kind": "step", "package": obs.package,
+                                  **({"action": action, "digest": digest} if action is not None else {})})
+        if not is_yes(answer):
+            return Outcome(f"The user did not approve this step ({what}; they said {answer!r}). Don't do it. "
+                           "Pick another approach or call done.", is_error=True, settle=0)
+        if refused := self._approval_mismatch(digest, None, what):
+            return refused
+        state.step_approved = True
+        state.typing_approved = name == "type_text"
+        return None
+
+    def _needs_plan(self, state: _TaskState) -> bool:
+        return state.plan is None and state.perms.mode() == "plan"
+
+    def _propose_plan(self, args: dict, state: _TaskState) -> Outcome:
+        """Plan mode: show the plan for one approval. Yes: carry it out. No: the task ends. Anything
+        else is the owner's changes: propose again."""
+        if state.perms.mode() != "plan":
+            return Outcome("This task doesn't need a plan approved; carry on.", settle=0)
+        steps = []
+        for raw in (args.get("steps") or [])[:12]:
+            item = raw if isinstance(raw, dict) else {"text": str(raw)}
+            text = " ".join(str(item.get("text", "")).split())[:200]
+            if text:
+                steps.append({"text": text, "app": (str(item.get("app") or "").strip() or None), "used": False})
+        if not steps:
+            return Outcome("A plan needs 1 to 12 steps: [{text, app}].", is_error=True, settle=0)
+        lines = "\n".join(f"{i}. {s['text']}" + (f" ({s['app']})" if s["app"] else "") for i, s in enumerate(steps, 1))
+        answer = self._ask_owner(state, f"Plan for: {state.task}\n{lines}\nApprove this plan?",
+                                 {"kind": "plan", "plan": [s["text"] for s in steps]})
+        if is_yes(answer):
+            state.plan = steps
+            return Outcome("The owner approved the plan. Carry it out step by step; anything risky the plan "
+                           "doesn't name will still ask.", settle=0)
+        low = answer.strip().lower()
+        if not low or low.split()[0] in DECLINE_WORDS:
+            return Outcome("The owner rejected the plan, so the task ends here.", done=True, success=False, settle=0)
+        return Outcome(f"The owner wants changes to the plan: {answer!r}. Call propose_plan again with a revised "
+                       "plan.", settle=0)
+
+    def _plan_covers(self, state: _TaskState, hits: list[str], package: str | None) -> bool:
+        """An approved plan step covers one risky action: every risky word of the action appears in the
+        step's text, and the step's app (if it names one) is the app in front. Each step covers once."""
+        if not state.plan or not hits:
+            return False
+        for step in state.plan:
+            if step["used"]:
+                continue
+            text = step["text"].lower()
+            if not all(re.search(rf"\b{re.escape(h.lower())}\b", text) for h in hits):
+                continue
+            app = step["app"]
+            if app and package:
+                try:
+                    resolved = self.resolver.exact(app)
+                except Exception:
+                    resolved = None
+                if (resolved != package and app.lower() not in package.lower()
+                        and app.lower() != self._app_label(package).lower()):
+                    continue
+            step["used"] = True
+            return True
+        return False
 
     def _target_moved(self, element: UIElement) -> Outcome | None:
         """Just before a tap_element: re-read the elements and refuse if the target is no longer at the

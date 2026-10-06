@@ -33,6 +33,7 @@ KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 # What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
 SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write")
 DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
+KEY_MODES = ("ask", "plan", "auto", "trusted", "never")  # an API key's max_mode (permissions.MODES)
 LAST_USED_EVERY = 60  # seconds between saves of a key's last-used time
 WEBHOOK_SECRET_OVERLAP = 24 * 3600  # a replaced webhook secret still signs deliveries this long
 # OPENMOB_DATA_DIR points at persistent storage when hosted (e.g. a Fly volume at /data).
@@ -299,6 +300,23 @@ class AccountStore:
             self._save()
             return True
 
+    def device_permissions(self, device_id: str) -> dict | None:
+        """The phone's permission settings (openmob/permissions.py), or None. Pairing again resets them."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            return dict(d["permissions"]) if d and not d["revoked"] and isinstance(d.get("permissions"), dict) else None
+
+    def set_device_permissions(self, device_id: str, settings: dict) -> bool:
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            if not d or d["revoked"]:
+                return False
+            d["permissions"] = settings
+            self._save()
+            return True
+
     def list_devices(self, account_id: str) -> list[Device]:
         with self._lock:
             self._refresh()
@@ -382,9 +400,12 @@ class AccountStore:
     # --- developer API keys --------------------------------------------------
 
     def create_api_key(self, account_id: str, name: str, scopes=DEFAULT_SCOPES,
-                       confirm_approve: bool = False) -> tuple[str, str]:
+                       confirm_approve: bool = False, max_mode: str = "auto") -> tuple[str, str]:
         """Returns (key id, key). The key is shown once; only its hash is kept.
-        `confirm_approve`: the key may approve risky actions itself (else only the owner can)."""
+        `confirm_approve`: the key may approve risky actions itself (else only the owner can).
+        `max_mode`: the loosest permission mode its tasks may ask for (the phone's ceiling still applies)."""
+        if max_mode not in KEY_MODES:
+            raise AuthError(f"max_mode must be one of: {', '.join(KEY_MODES)}")
         scopes = sorted(set(scopes))
         unknown = [sc for sc in scopes if sc not in SCOPES]
         if unknown or not scopes:
@@ -399,7 +420,7 @@ class AccountStore:
             self._data["api_keys"][key_id] = {
                 "account_id": account_id, "name": name, "scopes": scopes, "hash": _hash_token(key),
                 "created": time.time(), "last_used": None, "revoked": False, "disabled": False,
-                "confirm_approve": bool(confirm_approve),
+                "confirm_approve": bool(confirm_approve), "max_mode": max_mode,
             }
             self._save()
         return key_id, key
@@ -427,13 +448,14 @@ class AccountStore:
                 record["last_used"] = now
                 self._save()
             return {"id": key_id, "account_id": record["account_id"], "scopes": list(record["scopes"]),
-                    "name": record["name"], "confirm_approve": bool(record.get("confirm_approve"))}
+                    "name": record["name"], "confirm_approve": bool(record.get("confirm_approve")),
+                    "max_mode": record.get("max_mode") or "auto"}
 
     @staticmethod
     def _public_key(key_id: str, k: dict) -> dict:
         return {"id": key_id, "prefix": f"{KEY_PREFIX}{key_id}", "name": k["name"], "scopes": list(k["scopes"]),
                 "created": k["created"], "last_used": k["last_used"], "disabled": bool(k.get("disabled")),
-                "confirm_approve": bool(k.get("confirm_approve"))}
+                "confirm_approve": bool(k.get("confirm_approve")), "max_mode": k.get("max_mode") or "auto"}
 
     def list_api_keys(self, account_id: str) -> list[dict]:
         """This account's live keys (never the hash)."""
@@ -479,6 +501,19 @@ class AccountStore:
             if not k or k["account_id"] != account_id or k["revoked"]:
                 return False
             k["confirm_approve"] = bool(on)
+            self._save()
+            return True
+
+    def set_key_max_mode(self, account_id: str, key_id: str, mode: str) -> bool:
+        """The loosest permission mode this key's tasks may ask for."""
+        if mode not in KEY_MODES:
+            raise AuthError(f"max_mode must be one of: {', '.join(KEY_MODES)}")
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["account_id"] != account_id or k["revoked"]:
+                return False
+            k["max_mode"] = mode
             self._save()
             return True
 
@@ -556,7 +591,8 @@ class AccountStore:
             if not k or account is None:
                 return None
             return {"id": key_id, "account_id": k["account_id"], "scopes": list(k["scopes"]), "name": k["name"],
-                    "confirm_approve": bool(k.get("confirm_approve")), "revoked": bool(k["revoked"]),
+                    "confirm_approve": bool(k.get("confirm_approve")), "max_mode": k.get("max_mode") or "auto",
+                    "revoked": bool(k["revoked"]),
                     "disabled": bool(k.get("disabled")), "api_disabled": bool(account.get("api_disabled"))}
 
     def admin_set_key_disabled(self, key_id: str, on: bool) -> str | None:

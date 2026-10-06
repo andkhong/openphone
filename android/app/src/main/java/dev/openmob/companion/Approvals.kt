@@ -22,12 +22,52 @@ import org.json.JSONObject
  * Everything here runs on the main thread.
  */
 object Approvals {
-    /** `deviceName`: the phone that would act, when the server says (it may be another of the owner's phones). */
+    /**
+     * "Always allow this": the trusted grant an approval may also make (only offered on the phone that
+     * would act). `text` says what it allows ("Agents could send any WhatsApp message as you for 30
+     * days"); `confirmTwice` (payments) asks a second time before granting.
+     */
+    data class Always(val app: String, val kind: String, val days: Double, val text: String, val confirmTwice: Boolean)
+
+    /**
+     * `deviceName`: the phone that would act, when the server says (it may be another of the owner's phones).
+     * `kind`: action (a risky tap) | step (ask-every-step mode) | plan | mode_change (agents would ask less).
+     */
+    /**
+     * `action`: the action's fields as the server sent them ([ActionDigest.FIELDS]); `digest`: the server's
+     * digest of them. The app shows [actionLine] and signs only if its own digest of `action` matches
+     * ([consistent]). `signatureRequired`: the server accepts only signed approvals (accounts mode).
+     * `canApprove` false: this phone can only decline (no approval key registered yet), for
+     * `cannotApproveReason`.
+     */
     data class Request(
         val id: String, val taskId: String, val question: String, val requester: String, val deviceName: String = "",
+        val kind: String = "action", val plan: List<String> = emptyList(), val always: Always? = null,
+        val action: Map<String, String> = emptyMap(), val digest: String = "", val signatureRequired: Boolean = false,
+        val canApprove: Boolean = true, val cannotApproveReason: String = "",
     ) {
         /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
         val shownQuestion: String get() = if (deviceName.isEmpty()) question else "On $deviceName: $question"
+
+        /** What exactly will happen, from the action's own fields (empty for an older server). */
+        val actionLine: String get() = if (action.isEmpty()) "" else ActionDigest.describe(action)
+
+        /** The digest the server sent is the digest of the action shown. */
+        val consistent: Boolean get() = digest.isNotEmpty() && ActionDigest.of(action) == digest
+    }
+
+    /** The action's fields as strings (bounds as "l,t,r,b"; JSON null as empty). */
+    private fun actionFields(json: JSONObject?): Map<String, String> {
+        if (json == null) return emptyMap()
+        return ActionDigest.FIELDS.associateWith { name ->
+            when {
+                !json.has(name) || json.isNull(name) -> ""
+                json.optJSONArray(name) != null -> json.getJSONArray(name).let { list ->
+                    (0 until list.length()).joinToString(",") { list.optLong(it).toString() }
+                }
+                else -> json.optString(name)
+            }
+        }
     }
 
     const val EXTRA_ID = "dev.openmob.APPROVAL_ID"
@@ -56,6 +96,17 @@ object Approvals {
             question = message.optString("question").trim().ifEmpty { app.getString(R.string.approval_no_question) },
             requester = message.optString("requester").trim().ifEmpty { app.getString(R.string.approval_unknown_requester) },
             deviceName = message.optString("device_name").trim(),
+            kind = message.optString("kind").ifEmpty { "action" },
+            plan = message.optJSONArray("plan")?.let { list -> (0 until list.length()).map { list.optString(it) } } ?: emptyList(),
+            always = message.optJSONObject("always")?.let {
+                Always(it.optString("app"), it.optString("kind"), it.optDouble("days", 30.0), it.optString("text"),
+                       it.optBoolean("confirm_twice"))
+            }?.takeIf { it.app.isNotEmpty() && it.kind.isNotEmpty() && it.text.isNotEmpty() },
+            action = actionFields(message.optJSONObject("action")),
+            digest = message.optString("digest"),
+            signatureRequired = message.optBoolean("signature_required"),
+            canApprove = message.optBoolean("can_approve", true),
+            cannotApproveReason = message.optString("cannot_approve_reason").trim(),
         )
         pending[id] = request
         main.postDelayed({ expire(app, id) }, id, EXPIRY_MS)
@@ -67,9 +118,12 @@ object Approvals {
      * Sends the owner's answer, once. False if the request is gone (answered or expired) or the
      * phone is offline; in the offline case it stays pending so the owner can try again.
      */
-    fun answer(context: Context, id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0): Boolean {
+    fun answer(
+        context: Context, id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0,
+        always: Boolean = false,
+    ): Boolean {
         val request = pending[id] ?: return false
-        if (!ConnectionService.sendApproval(id, approved, signature, timestamp)) return false
+        if (!ConnectionService.sendApproval(id, approved, signature, timestamp, always && approved)) return false
         finish(context, id)
         val app = context.applicationContext
         AppState.addEvent(

@@ -36,6 +36,9 @@ errors. See [MCP errors](mcp.md#errors).
 | `code` | Status | Meaning | What to do |
 |---|---|---|---|
 | `insufficient_scope` | `403` | The key lacks the scope this route or tool needs; `detail` names it | Create a key with that scope (scopes can't be added to an existing key) |
+| `mode_not_allowed` | `403` | The `permission_mode` (or permission change) is looser than the key's `max_mode` or the phone's ceiling, or the phone's app can't sign approvals yet | Tell your user. Only the owner can allow more: a key's `max_mode` in the developer console, a phone's ceiling on the phone. Don't retry or work around it |
+| `needs_phone_approval` | `202` | Not an error: a permission change that loosens waits for the owner's approval on the phone. The body has `approval_id` | Poll `GET /v1/devices/{id}/permissions/approvals/{approval_id}`; tell your user to check the phone. Don't repeat the request |
+| `invalid_permissions` | `400` | A permission change that isn't valid (e.g. `pay` for a category, `default_mode: never` while Never ask is off) | Fix the request |
 | `confirmation_requires_owner` | `403` | The key tried to approve a risky action, which only the phone's owner may do | Wait for the owner to approve on the phone, or decline with `{"approve": false}`. The owner can turn on **Approve risky actions** for the key: see [Safety & approvals](safety.md#let-a-key-approve-confirm_approve) |
 | `too_many_tasks` | `429` | The key already has its maximum of unfinished tasks | Wait for one to finish, or cancel one |
 | `daily_quota` | `429` | The key's tasks for today (UTC) are used up | Wait for `Retry-After` (midnight UTC) |

@@ -19,9 +19,10 @@ from typing import Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
+from . import permissions as perm
 from .agent.models import model_listing
 from .devices import DeviceManager, Session
 from .phone.base import DeviceError
@@ -51,9 +52,21 @@ HELLO_TIMEOUT = 10
 LINK_RECHECK = 5.0  # seconds between re-checks of a phone socket's pairing against the account store
 
 
+PermissionMode = Literal["ask", "plan", "auto", "trusted", "never"]
+
+
 class CommandIn(BaseModel):
     text: str
     mode: Literal["auto", "queue"] = "auto"  # auto: corrects a running task; queue: always a new task
+    permission_mode: PermissionMode | None = None  # this chat's mode; None: the phone's default
+
+
+class PermissionsIn(BaseModel):
+    """A change to a phone's permission settings. Tightening applies at once; loosening asks the phone."""
+    default_mode: PermissionMode | None = None
+    ceiling: Literal["ask", "plan", "auto", "trusted"] | None = None
+    trusted: list[dict] | None = None  # the whole new list: [{app | category, kinds, expires_at}]
+    never: Literal["1h", "24h", "7d", "off"] | None = None
 
 
 class Credentials(BaseModel):
@@ -383,10 +396,61 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         feed = screen_feeds.get(session) or screen_feeds.setdefault(session, ScreenFeed(session.driver))
         await feed.serve(ws, allowed, View.parse(ws.query_params.get("side"), ws.query_params.get("quality")))
 
+    def mode_error(exc: Exception) -> JSONResponse:
+        if isinstance(exc, perm.ModeNotAllowed):
+            return JSONResponse({"detail": str(exc), "code": "mode_not_allowed"}, status_code=403)
+        if isinstance(exc, perm.PhoneUnavailable):
+            return JSONResponse({"detail": str(exc), "code": "phone_offline"}, status_code=409)
+        return JSONResponse({"detail": str(exc), "code": "invalid_permissions"}, status_code=400)
+
     @app.post("/api/devices/{device_id}/command")
-    def command(device_id: str, body: CommandIn, request: Request) -> dict:
+    def command(device_id: str, body: CommandIn, request: Request) -> Response:
         require_auth(request)
-        return {"result": owned_session(device_id, request).coordinator.submit(body.text, "dashboard", mode=body.mode)}
+        session = owned_session(device_id, request)
+        mode = None
+        if body.permission_mode is not None:
+            try:  # a chat's mode can't be looser than the phone allows ("Approve on your phone" first)
+                mode = manager.check_mode(session.info.id, body.permission_mode)
+            except (perm.ModeNotAllowed, perm.PermissionsInvalid) as exc:
+                return mode_error(exc)
+        return {"result": session.coordinator.submit(body.text, "dashboard", mode=body.mode, permission_mode=mode)}
+
+    def permissions_view(session) -> dict:
+        settings = manager.permission_settings(session.info.id)
+        return {**perm.public(settings), "labels": perm.LABELS, "descriptions": perm.DESCRIPTIONS,
+                "categories": sorted(manager.cfg.app_categories), "never_durations": list(perm.NEVER_DURATIONS),
+                "can_loosen": manager._may_loosen(session), "online": bool(session.online)}
+
+    @app.get("/api/devices/{device_id}/permissions")
+    def get_permissions(device_id: str, request: Request) -> dict:
+        require_auth(request)
+        return permissions_view(owned_session(device_id, request))
+
+    @app.patch("/api/devices/{device_id}/permissions")
+    def patch_permissions(device_id: str, body: PermissionsIn, request: Request) -> Response:
+        """Tightening applies now (200). Loosening (a looser default or ceiling, trusted entries, never)
+        asks the phone for its screen lock: 202 {status: needs_phone_approval, approval_id}; poll
+        .../permissions/approvals/{approval_id}."""
+        require_auth(request)
+        session = owned_session(device_id, request)
+        patch = body.model_dump(exclude_none=True)
+        try:
+            result = manager.change_permissions(session, patch, requester="Your dashboard")
+        except (perm.ModeNotAllowed, perm.PhoneUnavailable, perm.PermissionsInvalid) as exc:
+            return mode_error(exc)
+        if result["status"] == "applied":
+            return JSONResponse({**result, "settings": permissions_view(session)})
+        return JSONResponse({**result, "code": "needs_phone_approval",
+                             "detail": "Approve this on the phone, with its screen lock."}, status_code=202)
+
+    @app.get("/api/devices/{device_id}/permissions/approvals/{approval_id}")
+    def permission_approval(device_id: str, approval_id: str, request: Request) -> dict:
+        require_auth(request)
+        session = owned_session(device_id, request)
+        row = manager.permission_request(account(request), session.info.id, approval_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="Unknown approval.")
+        return {**row, "settings": permissions_view(session)}
 
     @app.post("/api/devices/{device_id}/stop")
     def stop(device_id: str, request: Request) -> dict:
@@ -560,7 +624,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         feedback = history.feedback_map(account(request), snap["chat_id"]) if history and snap.get("chat_id") else {}
         # confirm_on_phone: only the phone may approve the pending risky action (the dashboard hides its buttons)
         on_phone = getattr(manager, "confirm_on_phone", None)
-        return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s))}
+        settings = manager.permission_settings(s.info.id) if hasattr(manager, "permission_settings") else None
+        return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s)),
+                "permissions": perm.public(settings) if settings else None}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
 
@@ -665,22 +731,45 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 print(f"🔐 Approval key registered for {device.get('model') or raw_id}.", flush=True)
 
     def verify_phone_approval(session, approval_id: str, record: dict, message: dict) -> bool:
-        """A yes counts only if the answering phone signed it with its screen-lock key. Phones whose
-        app predates approval keys (none registered) are trusted as before, until they update."""
+        """A yes counts only if the answering phone signed it with its screen-lock key, over the
+        digest of this very action (phone/approval_keys.py). An app phone without a registered key
+        can't approve at all: it registers one on its next connect, and until then can only decline.
+        (Token/dev mode has no keys, so it trusts the phone as before.)"""
         if store is None:
             return True
         from .phone.approval_keys import verify_approval
 
         auth = store.device_auth(session.info.id.removeprefix("app-"))
-        if not auth or auth["revoked"] or auth["account_id"] != session.account_id:
+        if not auth or auth["revoked"] or auth["account_id"] != session.account_id or not auth["approval_key"]:
             return False
-        if not auth["approval_key"]:
-            return True
         return verify_approval(auth["approval_key"], str(approval_id), record["task_id"], True,
-                               message.get("timestamp"), message.get("signature"))
+                               message.get("timestamp"), message.get("signature"),
+                               extra="always" if message.get("always") is True else None,
+                               digest=record.get("digest"))
+
+    def approval_blocker(session) -> str | None:
+        """Why this phone can't approve yet: hosted app phones need a registered approval key."""
+        if not session.info.id.startswith("app-"):
+            return None
+        auth = store.device_auth(session.info.id.removeprefix("app-"))
+        if auth and not auth["revoked"] and auth["approval_key"]:
+            return None
+        return ("This phone can't approve yet: its OpenMob app hasn't registered a screen-lock key. Update the "
+                "app and reconnect (it registers on connect). Until then it can only decline.")
+
+    def phone_can_loosen(session) -> bool:
+        if not session.info.id.startswith("app-"):
+            return False
+        auth = store.device_auth(session.info.id.removeprefix("app-"))
+        return bool(auth and not auth["revoked"] and auth["approval_key"])
 
     if hasattr(manager, "replaced_listeners"):  # (test doubles may not have these)
         manager.approval_verifier = verify_phone_approval
+        if store is not None:  # hosted: settings live on each phone's pairing; loosening needs its key
+            manager.permissions = perm.AccountPermissions(store)
+            manager.can_loosen = phone_can_loosen
+            manager.approval_blocker = approval_blocker  # approving at all needs the key
+            manager.requires_signature = lambda session: session.info.id.startswith("app-")
 
     def phone_reconnected_elsewhere(session, old, new) -> None:
         service = getattr(app.state, "v1_service", None)
@@ -759,6 +848,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 elif kind == "approval":  # the owner approved or denied a risky action, with screen lock
                     await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
                                             message.get("approved") is True, message)
+                elif kind == "permissions_off":  # "Turn off" in the never banner: an unsigned tightening
+                    await run_in_threadpool(manager.phone_turned_off_never, session)
                 elif kind == "command" and str(message.get("text", "")).strip():
                     targets = manager.phone_stop_targets(session)
                     result = await run_in_threadpool(session.coordinator.submit, message["text"], "phone")

@@ -99,6 +99,11 @@ callers only ever see the tier names, never which model or provider runs them.
 | `sensitive_apps` | banking, payment, wallet, crypto, password and authenticator apps | Package-name patterns API tasks may not open unless the phone's owner allows it |
 | `confirm_actions` | `unrequested` | Ask before risky taps the instruction didn't ask for (`always`: every risky tap; `never`: none) |
 | `confirm_keywords` | buy, pay, send, delete, … | Words that make a tap risky |
+| `default_permission_mode` | `auto` | A phone's [permission mode](safety.md#permission-modes) until its owner picks one: `ask`, `plan` or `auto` (looser modes need the phone's own approval) |
+| `money_keywords` | buy, pay, order, checkout, … | Payment words: they ask even when requested and are refused under Never ask |
+| `confirm_skip_phrases` | add to cart, proceed to checkout, … | Steps on the way to a commit point, never asked about |
+| `settings_refuse_terms`, `settings_everyday_terms`, `settings_ask_terms` | see `openmob/permissions.py` | The Settings tiers: refused, never asked, asked |
+| `app_categories` | messaging, email, social, notes, photos | Categories a trusted entry may name (package-name parts) |
 | `history_retention_days` | 0 (keep forever) | Delete chats (task text and outcomes) not used for this many days |
 
 The developer console's **Overview** page shows each account the tiers and limits in effect.

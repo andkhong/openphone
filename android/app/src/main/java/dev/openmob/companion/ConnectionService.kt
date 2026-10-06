@@ -46,6 +46,7 @@ class ConnectionService : Service() {
     companion object {
         private const val ACTION_START = "dev.openmob.START"
         private const val ACTION_STOP = "dev.openmob.STOP"
+        private const val ACTION_NEVER_OFF = "dev.openmob.NEVER_OFF"
         private const val CHANNEL = "agent"
         private const val NOTIFICATION_ID = 1
         private const val PROTOCOL_VERSION = 1
@@ -70,12 +71,18 @@ class ConnectionService : Service() {
         val isRunning: Boolean get() = running != null
 
         /** The owner's answer to an approval request (see Approvals). False if not connected. */
-        fun sendApproval(id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0): Boolean =
+        fun sendApproval(
+            id: String, approved: Boolean, signature: String? = null, timestamp: Long = 0, always: Boolean = false,
+        ): Boolean =
             AppState.connected && running?.send(
                 JSONObject().put("type", "approval").put("id", id).put("approved", approved).apply {
                     if (signature != null) put("signature", signature).put("timestamp", timestamp)
+                    if (always) put("always", true) // "Always allow this", signed with `|always`
                 }
             ) ?: false
+
+        /** "Turn off" agents acting without asking: back to auto. A tightening, so nothing to sign. */
+        fun turnOffNever(): Boolean = AppState.connected && running?.send(JSONObject().put("type", "permissions_off")) ?: false
 
         /** Send a spoken or typed request to the agent. False if not connected. */
         fun sendCommand(text: String): Boolean = running?.send(
@@ -125,6 +132,14 @@ class ConnectionService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             shutDown("Disconnected")
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_NEVER_OFF) {
+            if (turnOffNever()) {
+                AppState.setNeverUntil(0)
+                AppState.addEvent("status", getString(R.string.never_turned_off))
+                updateNotification(statusLine)
+            }
             return START_NOT_STICKY
         }
         @Suppress("DEPRECATION")
@@ -252,7 +267,7 @@ class ConnectionService : Service() {
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
-                .put("capabilities", JSONArray().put("wait_idle"))
+                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url"))
         )
 
     private fun handleCall(message: JSONObject) {
@@ -343,6 +358,13 @@ class ConnectionService : Service() {
                 }
                 // Answered on another of the owner's phones (or no longer needed): drop the prompt.
                 "approval_cancel" -> main.post { Approvals.cancel(this@ConnectionService, message.optString("id")) }
+                // The phone's permission mode: while agents may act without asking, the notification says so.
+                "permissions" -> main.post {
+                    val until = message.optDouble("never_until", 0.0).let { if (it.isNaN()) 0L else it.toLong() }
+                    AppState.setNeverUntil(if (message.optString("ceiling") == "never") until else 0)
+                    updateNotification(statusLine)
+                    scheduleNeverExpiry()
+                }
             }
         }
 
@@ -379,6 +401,16 @@ class ConnectionService : Service() {
         TileService.requestListeningState(this, ComponentName(this, OpenMobTileService::class.java))
     }
 
+    /** Redraw the notification when `never` runs out, so the banner goes away on time. */
+    private fun scheduleNeverExpiry() {
+        main.removeCallbacksAndMessages(NEVER_TOKEN)
+        val left = AppState.neverUntil * 1000 - System.currentTimeMillis()
+        if (left > 0) main.postAtTime({ AppState.setNeverUntil(0); updateNotification(statusLine) }, NEVER_TOKEN,
+                                      android.os.SystemClock.uptimeMillis() + left)
+    }
+
+    private val NEVER_TOKEN = Any()
+
     private fun notification(text: String): Notification {
         statusLine = text
         val manager = getSystemService(NotificationManager::class.java)
@@ -394,12 +426,31 @@ class ConnectionService : Service() {
             this, 1, Intent(this, ConnectionService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
         )
         val who = AppState.controller
-        return Notification.Builder(this, CHANNEL)
+        // Never ask: a persistent banner, with Turn off right in the notification.
+        val neverUntil = AppState.neverUntil
+        val never = neverUntil * 1000 > System.currentTimeMillis()
+        val banner = if (never) getString(
+            R.string.never_banner,
+            android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(neverUntil * 1000)),
+        ) else ""
+        val builder = Notification.Builder(this, CHANNEL)
             .setSmallIcon(android.R.drawable.ic_menu_view)
-            .setContentTitle(if (who.isEmpty()) getString(R.string.notif_title) else getString(R.string.controller_using, who))
-            .setContentText(text)
+            .setContentTitle(when {
+                who.isNotEmpty() -> getString(R.string.controller_using, who)
+                never -> banner
+                else -> getString(R.string.notif_title)
+            })
+            .setContentText(if (never && who.isNotEmpty()) "$banner · $text" else text)
             .setOngoing(true)
             .setContentIntent(open)
+        if (never) {
+            val off = PendingIntent.getService(
+                this, 2, Intent(this, ConnectionService::class.java).setAction(ACTION_NEVER_OFF), PendingIntent.FLAG_IMMUTABLE,
+            )
+            builder.setStyle(Notification.BigTextStyle().bigText("$banner\n$text"))
+            builder.addAction(Notification.Action.Builder(null, getString(R.string.never_turn_off), off).build())
+        }
+        return builder
             .addAction(
                 Notification.Action.Builder(
                     null, getString(if (who.isEmpty()) R.string.notif_disconnect else R.string.notif_stop), disconnect,

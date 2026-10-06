@@ -29,8 +29,19 @@ and approve its own purchase.
 Android's secure key store that can only be used right after the owner passes the screen lock
 (fingerprint, face or PIN), and gives the server its public half. Every "approve" must carry a fresh
 signature from that key, so even someone who steals a phone's connection key can't approve a
-purchase: they'd need the owner's screen lock too. Declining needs no signature. (Phones running an
-app older than this keep working as before until they update.)
+purchase: they'd need the owner's screen lock too. Declining needs no signature.
+
+**An approval covers one action, the one it showed.** The prompt says exactly what will happen (the
+app, the button's text and id, any text to be typed), and the phone signs a digest of that action.
+OpenMob runs the action only if it is still that action: if the screen changed while the owner was
+deciding (the button moved, or another one took its place), it doesn't tap, and the agent looks
+again. A yes for one action never authorizes another.
+
+**A phone must be able to sign to approve.** On a hosted account, a phone whose app hasn't registered
+a screen-lock key (an app older than approval keys) can only **decline**: its prompt says to update
+the app and reconnect, which registers the key. Apps older than action-bound approvals are refused
+the same way until they update. (Local token mode has no keys, so nothing changes there: an app
+phone's screen-lock yes is accepted as before, and a phone over USB is approved from the dashboard.)
 
 ## Phones and their connections
 
@@ -78,8 +89,9 @@ After a "no", the task doesn't tap and carries on another way, or finishes.
 A tap counts as risky when it matches the server's list of risky actions (buy, pay, send, delete
 and the like) or is judged risky from the screen. By default, if your instruction itself asks for
 that action ("buy the headphones in my cart"), the tap counts as requested and the task doesn't
-stop to ask. So put spending, sending and deleting in an instruction only when you mean it. (A
-server's operator can make every risky tap ask, requested or not.)
+stop to ask, once, in the app the task works in. Payments ask even then. So put spending, sending
+and deleting in an instruction only when you mean it. (A server's operator can make every risky tap
+ask, requested or not.) How much a task asks is its [permission mode](#permission-modes).
 
 ### Let a key approve (`confirm_approve`)
 
@@ -94,6 +106,143 @@ when you create the key. Then:
 
 Only do this for keys that run code you control. A model holding such a key could approve a
 purchase it read about on the screen.
+
+## Permission modes
+
+A permission mode decides **whether** a task stops to ask the phone's owner. It never decides who
+may approve: approving always takes the owner's screen lock on a phone (or a `confirm_approve` key,
+see above). Pick a mode per chat in the dashboard (the chip next to the model picker), per task over
+the API and MCP (`permission_mode`), or set a phone's default in its settings.
+
+| Mode | `permission_mode` | Asks the owner |
+|---|---|---|
+| **Ask every step** | `ask` | Before every change: taps, long-presses, typing (text and its Enter are **one** prompt), a swipe short enough to be a tap, opening an app or a link. Not for scrolling, Back, Home, waiting or finishing. |
+| **Plan first** | `plan` | Once for a short numbered plan, before anything happens. Then only for a risky step the plan doesn't name, and for every payment. Saying no ends the task; typing changes makes the agent propose a revised plan. |
+| **Auto** (default) | `auto` | At the commit point of a send, delete, post or payment the request didn't ask for. A requested one runs **once**, in the task's own app. Payments always ask (once per purchase, see below). |
+| **Trusted apps** | `trusted` | Like Auto, but risky actions in apps or categories the owner trusts run without asking. |
+| **Never ask** | `never` | Never. Payments, autofill and blocked apps are **refused** instead. Time-limited (1 h, 24 h or 7 d), only after the owner approves it on that phone. |
+
+### What counts, and when it asks
+
+- **Only the commit point asks.** Searching, opening a product, "Add to cart", "Proceed to checkout"
+  or typing a draft never ask. "Send", "Place order", "Delete", "Pay" do. A requested purchase is
+  one prompt, worded with the item and price on screen ("I'm about to tap 'Buy now' in Amazon
+  (Total $12.99). Should I go ahead?").
+- **Payments** (`money_keywords`: buy, pay, order, checkout, subscribe, purchase, transfer, book,
+  donate, place order, top up…) always ask, even when requested, unless the app has a trusted `pay`
+  entry. After an approved payment, **one** follow-up commit tap is covered: only for the terminal
+  words (place order, confirm purchase, pay, confirm…), in the same app and task, within 3 minutes,
+  and never after an app switch. Approving a terminal tap covers nothing more, and words that start
+  a new purchase (buy now, subscribe, book, top up, donate) always ask again.
+- **The requested-action exemption is used once.** "Send hi to Mom" lets the first Send in the
+  task's app run; a second Send, or a Send in another app the agent wandered into, asks.
+- **Settings has tiers.** Security-critical pages (screen lock, accounts and users, notification
+  access and other special access, default apps, developer options and wireless debugging,
+  keyboards, date and time, unknown sources…) are **refused in every mode**, including the way into
+  them. Everyday pages (Wi-Fi, Bluetooth, display and dark mode, sound, battery, location, per-app
+  notifications) never ask. Pairing a new Bluetooth device and changes on pages OpenMob doesn't
+  recognise ask. On an app's info page, Force stop and Clear cache run; Uninstall, Disable and Clear
+  storage ask; anything on a blocked app's info page is refused.
+- **Autofill and saved credentials** ("Use saved password", passkeys, saved cards) ask, and are
+  refused under Never ask.
+- The screen classifier can still only add caution: it can make a tap risky, never make it requested.
+
+### "Always allow this"
+
+Most prompts on the phone offer **Always allow this** (off by default). With the same screen-lock
+touch it adds a trusted entry for that app and kind, and the prompt says what it allows ("Agents
+could send any WhatsApp message as you for 30 days"). This is the usual way trusted apps get filled
+in, and it works in Auto too: no mode switch needed.
+
+| Kind | Lasts | Notes |
+|---|---|---|
+| send, post, delete | 30 days | A share is bound to its source app **and** target ("Share to Mom") |
+| fill (autofill) | 30 days | Only in native apps, bound to that app; never offered in browsers or WebViews |
+| pay | 24 hours (7 days at most) | Only for that one app, never a category, and the prompt asks a second time |
+
+It is not offered for Settings (no stable page identity yet), in Ask every step, or on another of
+the owner's phones than the one acting. The grant itself is signed by the phone's screen-lock key
+(the signed text ends in `|always`), so it carries the screen lock like the approval does.
+
+### The prompt budget
+
+Every prompt is counted per task, with its decision (approved, always, denied, changes) and how long
+the owner took to answer. On a self-hosted server, `openmob prompts --since 7d` reports the median
+prompts per task and the share of approvals given in under 2 seconds. The budget: at most 1 prompt
+for a typical task, and fewer than 20% of approvals under 2 s (faster than that, nobody is reading).
+Only counts, kinds, modes and timings are kept, never the prompt's text.
+
+### Ceilings: tightening is free, loosening needs the phone
+
+Each phone has a **default mode**, a **ceiling** (the loosest mode it allows: Ask, Plan, Auto or
+Trusted; Auto by default), its **trusted entries** and, while it's on, a **Never ask expiry**.
+
+- **Tightening** (a stricter default or ceiling, removing a trusted entry, turning Never ask off)
+  takes effect at once, from the dashboard, the API or MCP.
+- **Loosening** (a mode past the ceiling, any new or wider trusted entry, turning on Never ask,
+  adding `pay`) is never applied directly. The server sends a `mode_change` approval to **that phone
+  only** ("Allow agents to act without asking on this phone for 1 hour?"); it applies once the phone
+  answers with a fresh signature by its own screen-lock key. The dashboard shows "Approve on your
+  phone" and waits; the API answers `202 needs_phone_approval` with an `approval_id` to poll.
+- A task's mode must be no looser than the phone's ceiling (and, for an API key, the key's
+  `max_mode`, `auto` by default). Otherwise it's refused with `403 mode_not_allowed`.
+- **Phones without an approval key** (an app older than signed approvals) can't be loosened past
+  Auto: update the app and pair it again.
+- **Token / dev mode** (`openmob run` without accounts) has no approval keys. An app phone still has
+  to approve the change on its own prompt (screen lock, unsigned). A USB/adb phone has no prompt, so
+  the dashboard's change applies directly: whoever holds the dashboard token controls the computer
+  it's plugged into. Settings are kept in `~/.config/openmob/permissions.json`.
+- Pairing a phone again resets its settings (they live on its pairing).
+
+### Never ask
+
+- Turning it on takes the phone's screen lock; it lasts 1 hour, 24 hours or 7 days, then the phone
+  is back to its ceiling and a `never` default reverts to **Auto**.
+- While it's on, the phone's OpenMob notification shows a banner ("Agents can act without asking
+  until 21:00") with **Turn off**, and the dashboard's live panel shows a warning chip. Turn off works
+  from anywhere: the notification, the dashboard, the API (`never: "off"`) or MCP.
+- **No prompts, but refusals stay.** Payments are refused unless the app has a trusted `pay` entry;
+  autofill and saved-credential suggestions are refused; security-critical Settings stay refused;
+  OpenMob itself and sensitive apps (banking, payments, wallets, password managers) are blocked for
+  **every** task, the owner's own included, whatever `allow_sensitive_apps` says.
+- Expiry times are checked by the server against its own clock. (The phone-side gatekeeper will use
+  a monotonic clock, so changing the phone's time can't extend it.)
+
+### A test phone for developers
+
+For headless automation, give a **spare phone** the Never ask mode: from the dashboard pick
+**Never ask → Enable → 7 days** (or `PATCH /v1/devices/{id}/permissions {"never": "7d"}` from a key
+whose `max_mode` is `never`) and approve it on the phone. Leave your own phone on Auto and add
+trusted apps with "Always allow" as you go. Keep payments off test phones, or add one trusted `pay`
+entry for the one store you test against.
+
+### How `confirm_approve` relates
+
+`confirm_approve` is unchanged: it means "this key may approve" (say yes to a prompt over the API),
+not "don't ask". Modes decide whether a prompt appears at all. A key with `confirm_approve` and the
+default Auto mode gets the same prompts as any key; they go to the key instead of the phone. No mode
+lets a server, key or dashboard approve on its own.
+
+## What is guarded
+
+Every action that could commit something is judged by **what it really touches**, never by the
+model's own description of it. The model's words can only add caution.
+
+| Action | How it's judged |
+|---|---|
+| `tap`, `long_press` at coordinates | By the element actually at that point on the screen (re-read if the screen may have changed): its text, description and resource id. A long press of any length is judged as a tap. If nothing labeled is there, it asks in shopping, payment, food, travel and ride apps |
+| `tap_element` | By the element's own text, description and resource id, plus whatever its centre lands on |
+| `swipe`, `scroll` | A swipe that barely moves (within twice the touch slop, 48 px) or is quicker than 150 ms is a tap, judged as one at its start point; so is a swipe that starts and ends on the same button. Any other swipe is judged at each end that is a commit control: a slider ("Slide to pay") or a risky label |
+| ENTER (`press_key ENTER`, `type_text` with `submit`) | In messaging, email and social apps it's a **send**. In a browser or web form, and on a payment screen, it's a **submit** that asks (as a payment when money words are on screen). Search boxes never ask. In a browser's address bar, the link checks below run on the URL |
+| `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
+| `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar |
+
+Typed text that goes through the clipboard (some fields only accept a paste) doesn't stay there: the
+app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
+previous clipboard back, or clears it.
+
+These are server-side checks. The [phone gatekeeper design](design/phone-gatekeeper.md) moves the
+same rules onto the phone itself.
 
 ## Sensitive apps are off-limits by default
 

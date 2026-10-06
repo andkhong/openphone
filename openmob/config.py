@@ -8,10 +8,14 @@ from pathlib import Path
 
 import yaml
 
+from .permissions import (DEFAULT_APP_CATEGORIES, DEFAULT_CREDENTIAL_TERMS, DEFAULT_MONEY_KEYWORDS,
+                          DEFAULT_SETTINGS_ASK, DEFAULT_SETTINGS_EVERYDAY, DEFAULT_SETTINGS_REFUSE, DEFAULT_SKIP_PHRASES,
+                          DEFAULT_START_FLOW_WORDS, DEFAULT_TERMINAL_WORDS, MODES)
+
 DEFAULT_CONFIRM_KEYWORDS = [
     "buy", "purchase", "pay", "payment", "checkout", "top up", "recharge",
     "subscribe", "send", "post", "publish", "delete", "remove", "uninstall",
-    "transfer", "place order", "confirm order",
+    "transfer", "place order", "confirm order", "share to", "forward to",
 ]
 
 DEFAULT_MODELS = [
@@ -108,6 +112,24 @@ class Config:
     confirm_keywords: list[str] = field(default_factory=lambda: list(DEFAULT_CONFIRM_KEYWORDS))
     # Ask before risky taps (buy/send/delete…): unrequested = only if the request didn't ask for it.
     confirm_actions: str = "unrequested"  # unrequested | always | never
+    # Permission modes (docs/safety.md#permission-modes): a phone's mode when it has no setting yet.
+    default_permission_mode: str = "auto"  # ask | plan | auto (looser modes need the phone's own approval)
+    # Money actions ask even when the request asked for them (once per task and app).
+    money_keywords: list[str] = field(default_factory=lambda: list(DEFAULT_MONEY_KEYWORDS))
+    # Steps on the way to a commit point ("Add to cart", "Proceed to checkout"): never asked about.
+    confirm_skip_phrases: list[str] = field(default_factory=lambda: list(DEFAULT_SKIP_PHRASES))
+    # Categories a trusted entry may name: category -> package-name parts.
+    app_categories: dict[str, list[str]] = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_APP_CATEGORIES.items()})
+    # Settings tiers: security-critical pages are refused, everyday ones never ask, the rest ask.
+    settings_refuse_terms: list[str] = field(default_factory=lambda: list(DEFAULT_SETTINGS_REFUSE))
+    settings_everyday_terms: list[str] = field(default_factory=lambda: list(DEFAULT_SETTINGS_EVERYDAY))
+    settings_ask_terms: list[str] = field(default_factory=lambda: list(DEFAULT_SETTINGS_ASK))
+    # Autofill / saved-credential suggestions: asked about, refused under `never`.
+    credential_terms: list[str] = field(default_factory=lambda: list(DEFAULT_CREDENTIAL_TERMS))
+    # After an approved payment: the one follow-up commit tap these name is covered (FOLLOWUP_SECONDS).
+    money_terminal_words: list[str] = field(default_factory=lambda: list(DEFAULT_TERMINAL_WORDS))
+    # Money words that start a new flow: they always ask again.
+    money_start_words: list[str] = field(default_factory=lambda: list(DEFAULT_START_FLOW_WORDS))
     ocr: bool = True  # Apple Vision OCR when the app has no accessibility tree (games)
 
     # Developer API (/v1): tiers, per-key limits, and apps API tasks can't touch by default.
@@ -240,6 +262,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.models.insert(0, normalize_model(cfg.model))
     if cfg.confirm_actions not in {"unrequested", "always", "never"}:
         raise ValueError("confirm_actions must be one of: unrequested, always, never")
+    if cfg.default_permission_mode not in ("ask", "plan", "auto"):
+        raise ValueError("default_permission_mode must be one of: ask, plan, auto")
     if cfg.api_default_tier not in cfg.api_tiers:
         raise ValueError(f"api_default_tier must be one of: {', '.join(cfg.api_tiers)}")
     for name, tier in cfg.api_tiers.items():

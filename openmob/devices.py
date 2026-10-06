@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import json
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+from . import permissions as perm
 from .config import Config
 from .phone.adb import AdbError, PhoneDriver
+from .phone.approval_keys import action_digest
 from .phone.apps import DEFAULT_LABEL_CACHE
 from .phone.base import Device, DeviceError
 from .phone.remote import PhoneLink, RemoteDriver
@@ -84,6 +88,20 @@ class DeviceManager:
         # (answering session, approval record, approved, message) -> bool: is this approval genuine
         # (signed with the phone's screen-lock key)? None: no check (local mode).
         self.approval_verifier = None
+        # Per-phone permission settings (mode, ceiling, trusted entries, never). Hosted servers swap in
+        # AccountPermissions (kept on each phone's pairing); local mode a JSON file (main.py).
+        self.permissions = perm.PermissionStore()
+        # (session) -> bool: may this phone approve a loosening? Hosted: only with a registered
+        # approval key (its signature is the proof). None: yes (token/dev mode, no keys exist).
+        self.can_loosen = None
+        # (session) -> str | None: why this phone can't approve at all yet (hosted: an app phone with no
+        # registered approval key), or None. Such a phone is still asked, so it can decline.
+        self.approval_blocker = None
+        # (session) -> bool: its approvals must be signed (hosted app phones). Sent with each request.
+        self.requires_signature = None
+        # approval id -> {status: pending|approved|denied|expired|replaced, device_id, account_id, patch,
+        # loosens, created, decided}: permission changes waiting for (or decided on) the phone.
+        self.permission_requests: dict[str, dict] = {}
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -275,7 +293,7 @@ class DeviceManager:
             session.controller = (task_id, who["name"])  # the API task just started
             self._post(session, {"type": "event", "kind": "controller", "message": who["name"]})
         if entry["kind"] == "question" and data.get("confirm") and (who is None or who["human"]):
-            self._ask_owner(session, task_id, entry["message"], who)
+            self._ask_owner(session, task_id, entry["message"], who, data.get("approval"))
 
     # Approvals go to every online phone of the owner, not just the one acting: the owner may be
     # holding another. The first answer wins (screen lock on that phone); the others are told to
@@ -284,13 +302,31 @@ class DeviceManager:
     def _approval_targets(self, acting: Session) -> list[Session]:
         return [s for s in list(self.sessions.values()) if s.link and s.account_id == acting.account_id]
 
-    def _ask_owner(self, acting: Session, task_id: str, question: str, who: dict | None) -> None:
+    @staticmethod
+    def _bound_action(kind: str, question: str, details: dict) -> dict:
+        """The action an approval binds (phone/approval_keys.py): the agent's own (tool, app, target,
+        typed text), or, for a plan or anything without one, the request itself."""
+        action = details.get("action")
+        if isinstance(action, dict) and action.get("tool"):
+            return dict(action)
+        text = "\n".join(str(s) for s in details.get("plan") or []) or question
+        return {"tool": kind or "action", "package": details.get("package") or "", "input": text}
+
+    def _ask_owner(self, acting: Session, task_id: str, question: str, who: dict | None,
+                   details: dict | None = None) -> None:
         approval_id = uuid.uuid4().hex
-        record = {"session": acting, "task_id": task_id, "question": question, "who": who, "sent": set()}
+        details = details or {}
+        kind = details.get("kind") or "action"
+        action = self._bound_action(kind, question, details)
+        record = {"session": acting, "task_id": task_id, "question": question, "who": who, "sent": set(),
+                  "kind": kind, "details": details, "action": action, "digest": action_digest(action)}
         with self._approvals_lock:
             self.approvals[approval_id] = record
         for target in self._approval_targets(acting):
             self._send_approval(target, approval_id, record)
+        self._expire_later(approval_id)
+
+    def _expire_later(self, approval_id: str) -> None:
         timer = threading.Timer(self.approval_timeout, self._expire_approval, (approval_id,))
         timer.daemon = True
         timer.start()
@@ -299,11 +335,28 @@ class DeviceManager:
         acting = record["session"]
         with self._approvals_lock:
             record["sent"].add(target.info.id)
-        self._post(target, {
+        message = {
             "type": "approval_request", "id": approval_id, "task_id": record["task_id"],
             "question": record["question"], "requester": record["who"]["name"] if record["who"] else "You",
             "device_id": acting.info.id, "device_name": acting.info.model,  # which phone would act
-        })
+            "kind": record.get("kind", "action"),  # action | step | plan | mode_change
+            # What the approval binds: the phone shows it, recomputes the digest and signs that.
+            "action": record.get("action") or {}, "digest": record.get("digest") or "",
+        }
+        if self.requires_signature is not None and self.requires_signature(target):
+            message["signature_required"] = True
+        if self.approval_blocker is not None and (why := self.approval_blocker(target)):
+            message["can_approve"] = False  # this phone can only decline (its app shows why)
+            message["cannot_approve_reason"] = why
+        details = record.get("details") or {}
+        if details.get("plan"):
+            message["plan"] = list(details["plan"])
+        if record.get("kind") == "mode_change":
+            message["change"] = record.get("change") or {}
+        # "Always allow this" is offered only on the phone that would act, and only where it can be signed.
+        if details.get("always") and target is acting and self._may_loosen(target):
+            message["always"] = details["always"]
+        self._post(target, message)
 
     def _dismiss(self, approval_id: str, record: dict, except_id: str | None = None) -> None:
         """Tell every phone that was asked (but the one that answered) to drop the prompt."""
@@ -312,9 +365,13 @@ class DeviceManager:
             if target is not None and session_id != except_id:
                 self._post(target, {"type": "approval_cancel", "id": approval_id})
 
+    def _may_loosen(self, session: Session) -> bool:
+        return self.can_loosen is None or bool(self.can_loosen(session))
+
     def _forget_approvals(self, session: Session, task_id: str) -> None:
         with self._approvals_lock:
-            gone = [(a, r) for a, r in self.approvals.items() if r["task_id"] == task_id and r["session"] is session]
+            gone = [(a, r) for a, r in self.approvals.items() if r["task_id"] == task_id and r["session"] is session
+                    and r.get("kind") != "mode_change"]
             for approval_id, _ in gone:
                 del self.approvals[approval_id]
         for approval_id, record in gone:
@@ -329,14 +386,21 @@ class DeviceManager:
         """The owner answered an approval_request on one of their phones (after its screen-lock
         check). Ignored (False) unless that request is still open and its task still waiting, and,
         for a yes, the phone proved the screen lock (approval_verifier). A no needs no proof."""
+        message = message or {}
         with self._approvals_lock:
             record = self.approvals.get(str(approval_id or ""))
             if record is None or record["session"].account_id != session.account_id:
                 return False
+        if record.get("kind") == "mode_change":
+            return self._resolve_permission_change(session, str(approval_id), record, approved, message)
+        # "Always allow this": only from the phone that would act, where it was offered.
+        always = (approved and message.get("always") is True and bool((record.get("details") or {}).get("always"))
+                  and session is record["session"] and self._may_loosen(session))
         if approved and self.approval_verifier is not None and not self.approval_verifier(
-                session, approval_id, record, message or {}):
-            session.coordinator.event("status", "An approval wasn't signed with this phone's screen lock, "
-                                                "so it was ignored.", task=None)
+                session, approval_id, record, {**message, "always": always}):
+            why = self.approval_blocker(session) if self.approval_blocker is not None else None
+            session.coordinator.event("status", why or "An approval wasn't signed with this phone's screen lock "
+                                                       "for this action, so it was ignored.", task=None)
             return False
         with self._approvals_lock:
             if self.approvals.pop(str(approval_id), None) is None:
@@ -346,7 +410,17 @@ class DeviceManager:
         info = acting.coordinator.task(task_id)
         if not info or info["status"] != "needs_confirmation":
             return False
-        if not acting.coordinator.answer(task_id, "yes" if approved else "no"):
+        if always:
+            offer = record["details"]["always"]
+            if offer.get("kind") in perm.KINDS and offer.get("app"):
+                entry = perm.always_entry(offer["app"], offer["kind"], offer.get("target"))
+                self.permissions.set(acting.info.id, perm.add_entry(self.permissions.get(acting.info.id), entry))
+                acting.coordinator.event("status", f"Always allowed from now on: {offer.get('text') or offer['kind']}",
+                                         task=task_id)
+                self.push_permissions(acting)
+        answer = ("yes, always" if always else "yes") if approved else "no"
+        # A yes names the action it approved: the agent runs it only if that's still the action at hand.
+        if not acting.coordinator.answer(task_id, answer, digest=record.get("digest") if approved else None):
             return False
         for listener in self.approval_listeners:
             try:
@@ -364,6 +438,9 @@ class DeviceManager:
         if record is None:
             return
         self._dismiss(approval_id, record)
+        if record.get("kind") == "mode_change":
+            self._decide_request(approval_id, "expired")
+            return
         acting, task_id = record["session"], record["task_id"]
         info = acting.coordinator.task(task_id)
         if info and info["status"] == "needs_confirmation":
@@ -391,7 +468,7 @@ class DeviceManager:
         shows Decline but not Approve. That's every confirmation on an app phone (approvals need the
         screen-lock prompt); phones without the app (adb) can still be approved from the dashboard."""
         snap = session.coordinator.snapshot()
-        if snap["question_kind"] != "confirm" or not snap["task_id"]:
+        if snap["question_kind"] not in ("confirm", "plan") or not snap["task_id"]:
             return False
         return not getattr(session.coordinator, "text_approvals", True)
 
@@ -402,9 +479,157 @@ class DeviceManager:
         with self._approvals_lock:
             pending = [(a, r) for a, r in self.approvals.items() if r["session"].account_id == session.account_id]
         for approval_id, record in pending:
+            if record.get("kind") == "mode_change":
+                if record["session"] is session:
+                    self._send_approval(session, approval_id, record)
+                continue
             info = record["session"].coordinator.task(record["task_id"])
             if info and info["status"] == "needs_confirmation":
                 self._send_approval(session, approval_id, record)  # same id: phones ignore ones they answered
+        self.push_permissions(session)
+
+    # --- permission modes (openmob/permissions.py) ---------------------------------------
+
+    def permission_settings(self, session_id: str) -> dict:
+        settings = self.permissions.get(session_id)
+        if settings == perm.default_settings():  # a phone without a setting: the server's default mode
+            settings = {**settings, "default_mode": perm.tightest(self.cfg.default_permission_mode, perm.DEFAULT_MODE)}
+        return perm.normalize(settings)
+
+    def task_permissions(self, session_id: str, mode: str | None = None) -> perm.TaskPermissions:
+        """A task's policy: `mode` (or the phone's default), always checked against the live settings."""
+        requested = mode if mode in perm.MODES else self.permission_settings(session_id)["default_mode"]
+        return perm.TaskPermissions(requested, lambda: self.permission_settings(session_id))
+
+    def check_mode(self, session_id: str, mode: str | None, max_mode: str = "never") -> str:
+        """The mode a new task runs in: `mode` (None: the phone's default, tightened to `max_mode`),
+        or ModeNotAllowed when it's looser than the phone's ceiling or `max_mode`."""
+        settings = self.permission_settings(session_id)
+        ceiling = perm.effective_ceiling(settings)
+        if mode is None:
+            return perm.tightest(settings["default_mode"], ceiling, max_mode)
+        if mode not in perm.MODES:
+            raise perm.PermissionsInvalid(f"permission_mode must be one of: {', '.join(perm.MODES)}.")
+        allowed = perm.tightest(ceiling, max_mode)
+        if perm.looser(mode, allowed):
+            who = ("this key" if perm.looser(ceiling, max_mode) else "this phone" if perm.looser(max_mode, ceiling)
+                   else "this key and phone")
+            raise perm.ModeNotAllowed(
+                f"permission_mode {mode} is looser than {who} allows ({allowed}). Only the phone's owner can allow "
+                "more: a key's max_mode in the developer console, a phone's ceiling on the phone itself.")
+        return mode
+
+    def change_permissions(self, session: Session, patch: dict, requester: str = "You",
+                           max_mode: str = "never") -> dict:
+        """Apply a change. A pure tightening applies now: {"status": "applied", "settings"}. Anything
+        that loosens waits for a screen-lock-signed approval on that phone: {"status":
+        "needs_phone_approval", "approval_id", "question"}. ModeNotAllowed: a loosening past `max_mode`
+        (an API key's), or one this phone can't sign (hosted, no approval key). PhoneUnavailable: offline."""
+        sid = session.info.id
+        new, loosens = perm.apply_patch(self.permission_settings(sid), patch, self.cfg.app_categories)
+        if not loosens:
+            self.permissions.set(sid, new)
+            self.push_permissions(session)
+            return {"status": "applied", "settings": perm.public(new)}
+        wanted = "never" if any(x.startswith("never:") for x in loosens) else max(
+            [x.split(":")[1] for x in loosens if x.startswith("ceiling:")] + ["trusted" if any(
+                x.startswith("trusted:") for x in loosens) else "ask"], key=perm.rank)
+        if perm.looser(wanted, max_mode):
+            raise perm.ModeNotAllowed(f"This key may ask for at most {max_mode}; {wanted} needs a key whose max_mode "
+                                      "allows it.")
+        if not self._may_loosen(session):
+            raise perm.ModeNotAllowed("This phone's app can't sign approvals yet, so it stays at auto or tighter. "
+                                      "Update the OpenMob app and pair it again.")
+        if session.link is None:
+            if isinstance(session.driver, RemoteDriver) or session.account_id is not None:
+                raise perm.PhoneUnavailable("The phone must be online to approve this. Open the OpenMob app on it.")
+            # A USB/adb phone in local token mode has no approval prompt: whoever holds the dashboard
+            # token controls the computer it's plugged into, so the change applies (docs/safety.md).
+            self.permissions.set(sid, new)
+            return {"status": "applied", "settings": perm.public(new)}
+        return self.request_permission_change(session, patch, loosens, requester)
+
+    def request_permission_change(self, session: Session, patch: dict, loosens: list[str], requester: str) -> dict:
+        """Ask the phone itself (only that phone: its own screen lock) to approve a loosening. A newer
+        request for the same phone replaces an older one still pending."""
+        approval_id = uuid.uuid4().hex
+        question = perm.describe_loosening(loosens)
+        action = {"tool": "mode_change", "input": f"{question}\n{json.dumps(patch, sort_keys=True)}"}
+        record = {"session": session, "task_id": f"mode_change:{approval_id[:12]}", "question": question,
+                  "action": action, "digest": action_digest(action),
+                  "who": {"name": requester, "human": True}, "sent": set(), "kind": "mode_change", "details": {},
+                  "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
+                                                                          if k in ("default_mode", "ceiling", "never")}}}
+        with self._approvals_lock:
+            older = [(a, r) for a, r in self.approvals.items()
+                     if r.get("kind") == "mode_change" and r["session"] is session]
+            for a, _ in older:
+                del self.approvals[a]
+            self.approvals[approval_id] = record
+            self.permission_requests[approval_id] = {
+                "id": approval_id, "status": "pending", "device_id": session.info.id, "account_id": session.account_id,
+                "question": question, "loosens": loosens, "created": time.time(), "decided": None}
+            for a, _ in older:
+                self.permission_requests[a].update(status="replaced", decided=time.time())
+            while len(self.permission_requests) > 500:
+                self.permission_requests.pop(next(iter(self.permission_requests)))
+        for a, r in older:
+            self._dismiss(a, r)
+        self._send_approval(session, approval_id, record)
+        self._expire_later(approval_id)
+        session.coordinator.event("status", f"Asked on the phone: {question}", task=None)
+        return {"status": "needs_phone_approval", "approval_id": approval_id, "question": question}
+
+    def _resolve_permission_change(self, session: Session, approval_id: str, record: dict, approved: bool,
+                                   message: dict) -> bool:
+        target = record["session"]
+        if session is not target:
+            return False  # only the phone being loosened can approve it, with its own screen lock
+        if approved and (not self._may_loosen(session) or (self.approval_verifier is not None and not
+                                                           self.approval_verifier(session, approval_id, record,
+                                                                                  message))):
+            session.coordinator.event("status", "A permission change wasn't signed with this phone's screen lock, "
+                                                "so it was ignored.", task=None)
+            return False
+        with self._approvals_lock:
+            if self.approvals.pop(approval_id, None) is None:
+                return False
+        if approved:
+            try:
+                new, _ = perm.apply_patch(self.permission_settings(target.info.id), record["patch"],
+                                          self.cfg.app_categories)
+            except perm.PermissionsInvalid:
+                self._decide_request(approval_id, "denied")
+                return False
+            self.permissions.set(target.info.id, new)
+            target.coordinator.event("status", f"Approved on the phone: {record['question']}", task=None)
+            self.push_permissions(target)
+        self._decide_request(approval_id, "approved" if approved else "denied")
+        return True
+
+    def _decide_request(self, approval_id: str, status: str) -> None:
+        with self._approvals_lock:
+            row = self.permission_requests.get(approval_id)
+            if row and row["status"] == "pending":
+                row.update(status=status, decided=time.time())
+
+    def permission_request(self, account_id: str | None, session_id: str, approval_id: str) -> dict | None:
+        with self._approvals_lock:
+            row = self.permission_requests.get(approval_id)
+            if not row or row["device_id"] != session_id or (account_id is not None and row["account_id"] != account_id):
+                return None
+            return {k: row[k] for k in ("id", "status", "device_id", "question", "created", "decided")}
+
+    def push_permissions(self, session: Session) -> None:
+        """Tell the phone its mode, so its notification can show the `never` banner ("Turn off")."""
+        settings = self.permission_settings(session.info.id)
+        self._post(session, {"type": "permissions", "default_mode": settings["default_mode"],
+                             "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"]})
+
+    def phone_turned_off_never(self, session: Session) -> None:
+        """"Turn off" on the phone: back to auto. A tightening, so it needs no signature."""
+        self.change_permissions(session, {"never": "off"})
+        session.coordinator.event("status", "Turned off on the phone: agents ask again.", task=None)
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:
         coordinator = Coordinator(self.speaker, history=self.history)
@@ -412,6 +637,7 @@ class DeviceManager:
         coordinator.device_id = info.id
         coordinator.device_model = info.model
         coordinator.question_timeout = float(getattr(self.cfg, "question_timeout_seconds", 300) or 0)
+        coordinator.permissions_for = lambda mode, sid=info.id: self.task_permissions(sid, mode)
         cache = Path(DEFAULT_LABEL_CACHE).with_name(f"labels-{info.id}.json")
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:

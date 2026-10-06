@@ -14,7 +14,7 @@ import httpx
 import pytest
 from conftest import FakeDriver, text_block, tool_use
 from test_hosted import _up, pair, signup
-from test_remote import FakePhone, free_port, wait_for
+from test_remote import FakePhone, free_port, new_signer, wait_for
 
 from openmob.accounts import AccountStore
 from openmob.agent.loop import Agent
@@ -99,7 +99,7 @@ def orc(tmp_path):
         for device in devices:
             key = pair(base, client, session, device_id=device)
             drivers[device] = FakeDriver()
-            fakes[device] = FakePhone(ws, drivers[device], device_id=device, key=key)
+            fakes[device] = FakePhone(ws, drivers[device], device_id=device, key=key, signer=new_signer())
             assert fakes[device].welcome.wait(5)
             phones.append(fakes[device])
         key = client.post("/api/developer/keys", json={"name": f"{name}-agent", "scopes": [

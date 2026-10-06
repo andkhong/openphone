@@ -287,7 +287,7 @@ def test_approval_goes_to_every_phone_and_the_first_answer_wins(orc):
     assert on_phone["id"] == on_tablet["id"] and on_tablet["device_name"] == "Google Pixel 9"
     assert on_tablet["device_id"] == A and on_tablet["task_id"] == r.json()["id"]
     assert not orc.bob.phones["bob-phone"].approval_requests  # never another account's phones
-    tablet.send({"type": "approval", "id": on_tablet["id"], "approved": True})  # answered on the tablet
+    tablet.send(tablet.approval(on_tablet["id"], on_tablet["task_id"], True))  # answered on the tablet
     wait_task(orc.alice, r.json()["id"], "succeeded")
     assert any(a[0] == "tap" for a in orc.alice.drivers["alice-phone"].actions)
     assert wait_for(lambda: on_phone["id"] in phone.approval_cancels)  # the phone drops its prompt

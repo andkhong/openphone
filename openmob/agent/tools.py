@@ -34,7 +34,8 @@ TOOLS = [
     },
     {
         "name": "open_url",
-        "description": "Open a web link or app deep link (https://..., tel:..., geo:..., market://...) in the default handler.",
+        "description": "Open a web link (https://...) or a tel:, mailto:, sms:, geo: or market:// link in the "
+                       "default handler. Other schemes (custom app links, javascript:, intent:…) are refused.",
         "input_schema": {
             "type": "object",
             "properties": {"url": {"type": "string"}},
@@ -175,7 +176,7 @@ Make exactly ONE tool call per turn, then check the next screenshot to confirm i
 How to act:
 - To open an app, use launch_app. If it can't find the app, use list_apps to see what's installed and \
 retry with the exact package. As a last resort, press HOME, open the app drawer, and use its search.
-- For a web page, or a deep link the app supports, open_url can be faster than navigating.
+- For a web page (https:// link), open_url can be faster than navigating.
 - Inside an app, look for a search field or tab bar before scrolling. Scroll to find things that are off-screen.
 - If the keyboard covers what you need, press BACK once to hide it.
 - If the target is in the element list, prefer tap_element. Otherwise use tap with pixel coordinates \
@@ -226,3 +227,45 @@ def system_prompt(platform: str = "android") -> str:
             + IOS_NOTES
         )
     return SYSTEM_PROMPT
+
+
+# Plan first (permission mode "plan"): offered only in that mode, so other tasks' tool lists don't change.
+PLAN_TOOL = {
+    "name": "propose_plan",
+    "description": (
+        "Show the owner a short numbered plan for this request and wait for their one approval. Required "
+        "before any other action in this task. Name each risky step's action in its words (\"Send the message "
+        "to Mom in WhatsApp\") and the app it happens in."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array", "minItems": 1, "maxItems": 12,
+                "items": {"type": "object", "properties": {
+                    "text": {"type": "string", "description": "One step, in plain words"},
+                    "app": {"type": "string", "description": "The app it happens in, if any"},
+                }, "required": ["text"]},
+            },
+        },
+        "required": ["steps"],
+    },
+}
+PLAN_TOOL_SPEC = {"name": PLAN_TOOL["name"], "description": PLAN_TOOL["description"],
+                  "parameters": PLAN_TOOL["input_schema"]}
+
+MODE_NOTES = {
+    "ask": "\nPermission mode: Ask every step. The owner approves each change on their phone, so don't also "
+           "call ask_user to confirm; ask only when the request is ambiguous.\n",
+    "plan": "\nPermission mode: Plan first. Before anything else, call propose_plan with a short numbered plan. "
+            "After the owner approves it, follow it; a risky step the plan doesn't name, or any payment, still "
+            "asks. If the owner asks for changes, propose a revised plan.\n",
+    "auto": "",  # today's behavior: the base prompt's safety rules
+    "trusted": "",
+    "never": "\nPermission mode: Never ask. The owner chose not to be asked: don't call ask_user to confirm. "
+             "Payments, autofill and blocked apps are refused; if one is needed, call done and say so.\n",
+}
+
+
+def mode_notes(mode: str) -> str:
+    return MODE_NOTES.get(mode, "")

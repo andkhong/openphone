@@ -13,6 +13,7 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.app.KeyguardManager
 import android.content.ClipData
+import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
@@ -25,7 +26,9 @@ import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.media.AudioManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PersistableBundle
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
@@ -80,6 +83,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         "type_text" -> typeText(params.reqString("text"))
         "key" -> key(params.reqString("name"))
         "open_url" -> openUrl(params.reqString("url"))
+        "resolve_url" -> resolveUrl(params.reqString("url"))
         "wake_unlock" -> wakeUnlock()
         "wait_idle" -> waitIdle(
             params.optLong("quiet_ms", DEFAULT_QUIET_MS).coerceIn(MIN_QUIET_MS, MAX_IDLE_MS),
@@ -284,6 +288,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             // Optional, only when true: lets the server keep the model away from password fields.
             .apply { if (node.isPassword) put("password", true) }
             .apply { if (node.isEditable) put("editable", true) }
+            // The field typing and ENTER go to, and its hint ("Search", "Card number"): the server tells
+            // a search box from a form, and finds the address bar.
+            .apply { if (node.isFocused && (node.isEditable || node.isPassword)) put("focused", true) }
+            .apply { node.hintText?.toString()?.trim()?.takeIf { it.isNotEmpty() }?.let { put("hint", it.take(80)) } }
             // Its center is under a higher window (a dialog, the keyboard): a tap there would land on that.
             .apply { if (above.any { it.contains(r.centerX(), r.centerY()) }) put("covered", true) }
     }
@@ -338,6 +346,19 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return null
     }
 
+    /** Which app would open [url], without opening it: {package (null for the chooser or nothing),
+     *  candidates}. The server refuses a link into a blocked app before it is opened. */
+    @Suppress("DEPRECATION") // int-flags overloads; the Flags variants are API 33+
+    private fun resolveUrl(url: String): JSONObject {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+        val chosen = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        val candidates = pm.queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY)
+            .map { it.activityInfo.packageName }.distinct().sorted()
+        // "android" is the system's chooser (ResolverActivity): no single app is the handler.
+        val handler = chosen?.takeIf { it != "android" }
+        return JSONObject().put("package", handler ?: JSONObject.NULL).put("candidates", JSONArray(candidates))
+    }
+
     // --- gestures --------------------------------------------------------------------------------
 
     /** Validates a point against the current screen (StrokeDescription also rejects negative paths). */
@@ -389,11 +410,30 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return null
     }
 
+    /**
+     * Paste [text] through the clipboard, then put the owner's clipboard back. What OpenMob typed (an
+     * OTP, an address) must not stay on the clipboard for other apps or the next paste: the clip is
+     * marked sensitive (Android 13+ keeps it out of the clipboard preview and history), and right after
+     * the paste the previous clip is restored, or the clipboard cleared when we couldn't read it
+     * (Android only lets the foreground app or keyboard read it).
+     */
     private fun paste(node: AccessibilityNodeInfo, text: String) {
-        service.getSystemService(ClipboardManager::class.java)
-            .setPrimaryClip(ClipData.newPlainText("OpenMob", text))
-        if (!node.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
-            throw IllegalStateException("The focused field did not accept text (set text and paste both failed)")
+        val clipboard = service.getSystemService(ClipboardManager::class.java)
+        val previous = runCatching { clipboard.primaryClip }.getOrNull()
+        val clip = ClipData.newPlainText("OpenMob", text)
+        if (Build.VERSION.SDK_INT >= 33) {
+            clip.description.extras = PersistableBundle().apply { putBoolean(ClipDescription.EXTRA_IS_SENSITIVE, true) }
+        }
+        clipboard.setPrimaryClip(clip)
+        try {
+            // Synchronous: the field has read the clip by the time this returns.
+            if (!node.performAction(AccessibilityNodeInfo.ACTION_PASTE)) {
+                throw IllegalStateException("The focused field did not accept text (set text and paste both failed)")
+            }
+        } finally {
+            runCatching {
+                if (previous != null) clipboard.setPrimaryClip(previous) else clipboard.clearPrimaryClip()
+            }
         }
     }
 
