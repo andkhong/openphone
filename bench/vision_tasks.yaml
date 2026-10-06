@@ -34,3 +34,13 @@ tasks:
   #   instruction: Open <game> and open its main menu
   #   reset: Close the menu in <game> if it is open, then go to the home screen
   #   max_steps: 20
+
+  # 5. Waiting (wait_until): an install, then the app's first screen. Measures the time spent waiting
+  #    on the Play Store and on the app's loading screen; `openmob timings` shows the waits per step
+  #    (wait_cond, wait_met, waited_ms). Pick a small free app that isn't installed on the test phone
+  #    (e.g. a ~5 MB one like "Simple Calculator"), run it once per build, and uninstall it in between
+  #    (the reset can't: uninstalling asks for confirmation, so do it by hand or with adb).
+  # - name: install-and-open
+  #   instruction: Install <small free app> from the Play Store, then open it
+  #   reset: Go to the home screen
+  #   max_steps: 15

@@ -124,6 +124,12 @@ class Config:
     # others keep the fixed delays (adb: launches end once the app is in front). OPENMOB_ADAPTIVE_SETTLE=off.
     adaptive_settle: bool = True
     settle_quiet_ms: int = 300  # OPENMOB_SETTLE_QUIET_MS sets it too (to compare e.g. 200)
+    # "Wait until" instead of blind waits (agent/waiting.py), on phones whose element list is quick to read
+    # (the OpenMob app). After launch_app / open_url: while a spinner or "Loading" is on screen, keep
+    # waiting, up to this long in all (0: only the settle above).
+    launch_wait_seconds: float = 10.0
+    # After tapping Install in the Play Store: wait until its button reads Open/Play again (0: don't).
+    install_wait_seconds: float = 90.0
     # Re-read the screen's elements just before tap_element, and don't tap one that moved or vanished
     # (only on phones whose element list is quick to read: the OpenMob app).
     verify_taps: bool = True

@@ -63,6 +63,14 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     # Newer apps (hello device.capabilities has "wait_idle"): return once no window or content change
     # has arrived for quiet_ms, or at max_ms. The agent's adaptive settle; others get a fixed sleep.
     "wait_idle": ({"quiet_ms": "int", "max_ms": "int"}, "{waited_ms: int, idle: bool}", 10),
+    # Newer apps (hello device.capabilities has "wait_for"): return as soon as a condition holds on the
+    # phone's own element list (checked on each window or content change), or at timeout_ms (max 10 s
+    # per call). Read-only: a wait never acts. See agent/waiting.py and docs/phone-protocol.md §4.16.
+    "wait_for": (
+        {"condition": "{until, pattern?, package?, quiet_ms?}", "timeout_ms": "int"},
+        "{met: bool, waited_ms: int, seen: str, package: str or null, redacted?: bool}",
+        15,
+    ),
     # Live-view video, only for phones whose hello says "video": true (the owner allowed screen
     # streaming). The agent never uses these; it keeps taking screenshots.
     "stream_start": (
@@ -144,6 +152,7 @@ def encode_element(el: UIElement) -> dict:
         # Optional flags, only when true (older servers ignore them).
         **{flag: True for flag in ("editable", "password", "covered", "focused") if getattr(el, flag)},
         **({"hint": el.hint} if el.hint else {}),
+        **({} if el.enabled else {"enabled": False}),  # only when greyed out
     }
 
 
@@ -163,4 +172,5 @@ def decode_element(index: int, data: dict) -> UIElement:
         covered=bool(data.get("covered")),
         focused=bool(data.get("focused")),
         hint=str(data.get("hint") or ""),
+        enabled=data.get("enabled", True) is not False,
     )

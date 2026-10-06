@@ -20,7 +20,7 @@ from .protocol import METHODS, decode_element, decode_screenshot
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
 # phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
 REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle",
-              "resolve_url"}
+              "resolve_url", "wait_for"}
 
 
 class PhoneLink:
@@ -258,6 +258,24 @@ class RemoteDriver(CachedScreenshots):
             self.capabilities.discard("wait_idle")  # it said so, but can't after all: stop asking
             return None
         return {"waited_ms": int(result.get("waited_ms", 0)), "idle": bool(result.get("idle"))}
+
+    def wait_for(self, condition: dict, timeout_ms: int) -> dict | None:
+        """Let the phone watch for `condition` (agent/waiting.py) for up to timeout_ms: {met, waited_ms,
+        seen, package, redacted?}, or None when this phone's app can't (the caller polls instead)."""
+        if "wait_for" not in self.capabilities:
+            return None
+        try:
+            result = self._call("wait_for", condition=condition, timeout_ms=int(timeout_ms)) or {}
+        except PhoneTimeout:
+            raise
+        except DeviceError:
+            if self.link.closed:
+                raise
+            self.capabilities.discard("wait_for")  # it said so, but can't after all: stop asking
+            return None
+        return {"met": bool(result.get("met")), "waited_ms": int(result.get("waited_ms", 0)),
+                "seen": str(result.get("seen") or ""), "package": result.get("package"),
+                "redacted": bool(result.get("redacted"))}
 
     def device_state(self) -> dict | None:
         """{"interactive", "locked"} right now, or None if this app version can't say. Never waits

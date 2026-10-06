@@ -28,7 +28,8 @@ SIMPLE_OPERATIONS = {
     "SCROLL_UP": ("scroll", {"direction": "up"}),
     "SCROLL_DOWN": ("scroll", {"direction": "down"}),
     "BACK": ("press_key", {"key": "BACK"}),
-    "WAIT": ("wait", {"seconds": 1.0}),
+    # Not a blind second: until nothing is loading (or 3 s), so a quick screen costs a few hundred ms.
+    "WAIT": ("wait_until", {"until": "loading_done", "timeout_s": 3}),
 }
 
 TEXT_SYSTEM = (

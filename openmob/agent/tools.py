@@ -119,8 +119,31 @@ TOOLS = [
         },
     },
     {
+        "name": "wait_until",
+        "description": (
+            "Wait until something you expect happens on the phone, and return as soon as it does (with what "
+            "was seen and how long it took), or at timeout_s with the screen as it is then. Prefer this to wait: "
+            "it ends the moment the condition holds. until: screen_changes (anything meaningful changes); "
+            "text_appears / text_disappears (target: text or a regex, matched against element text, "
+            "descriptions and OCR, e.g. 'Open|Play'); element_enabled (target: a button's label, e.g. 'Open|Play': "
+            "the button is there and no longer greyed out); app_in_front (target: a package or app name); "
+            "loading_done (no spinner, progress bar or 'Loading' text, and the screen is still)."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "until": {"type": "string", "enum": ["screen_changes", "text_appears", "text_disappears",
+                                                     "element_enabled", "app_in_front", "loading_done"]},
+                "target": {"type": "string", "description": "The text, regex, label or package the condition needs"},
+                "timeout_s": {"type": "number", "minimum": 1, "maximum": 120, "default": 30},
+            },
+            "required": ["until"],
+        },
+    },
+    {
         "name": "wait",
-        "description": "Wait for loading screens or animations to finish.",
+        "description": "Sleep a fixed time. Only when nothing observable will change (e.g. an animation you "
+                       "must let finish); otherwise use wait_until.",
         "input_schema": {
             "type": "object",
             "properties": {"seconds": {"type": "number", "minimum": 0.5, "maximum": 30}},
@@ -183,6 +206,11 @@ retry with the exact package. As a last resort, press HOME, open the app drawer,
 measured on the screenshot (origin top-left; the size is given with every screenshot).
 - Games and some apps draw their own UI, so there is no element list. Rely on the screenshot. Menus are often \
 an icon near a screen corner (☰, a gear, an avatar, a scroll/book icon) or a button labeled "Menu".
+- To wait, use wait_until with a concrete condition rather than a fixed wait: it returns the moment the \
+condition holds. After tapping Install in the Play Store: wait_until element_enabled "Open|Play" (timeout_s 120; \
+the button is greyed out while it installs). After opening an app or a link, or on a loading screen: \
+wait_until loading_done (or screen_changes). Waiting for a reply or a result: wait_until text_appears with \
+the text you expect. Use wait (fixed seconds) only when nothing observable will change.
 - After launching a game, wait through loading screens, and close announcements, pop-ups, or "tap to start" \
 screens that are in the way.
 - If an action didn't change the screen as expected, try something different. Don't repeat the same action \

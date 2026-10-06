@@ -104,6 +104,7 @@ class UIElement:
     covered: bool = False  # its center is under a higher window (a dialog, the keyboard), so a tap would miss
     focused: bool = False  # the text field that has input focus (typing and ENTER go to it)
     hint: str = ""  # a text field's hint ("Search", "Card number"), from apps that report it
+    enabled: bool = True  # False: greyed out (the Play Store's "Open" while an install runs)
 
     @property
     def center(self) -> tuple[int, int]:
@@ -151,6 +152,7 @@ def parse_ui_xml(xml_text: str, limit: int = 150) -> list[UIElement]:
                 editable="EditText" in (node.get("class") or ""),
                 password=node.get("password") == "true",
                 focused=node.get("focused") == "true" and "EditText" in (node.get("class") or ""),
+                enabled=node.get("enabled") != "false",
             )
         )
         if len(elements) >= limit:
@@ -200,6 +202,8 @@ def format_elements(elements: list[UIElement], shot: Screenshot) -> str:
             parts.append("checked" if el.checked else "unchecked")
         if not el.clickable:
             parts.append("(not clickable)")
+        if not el.enabled:
+            parts.append("(disabled)")
         if el.covered:
             parts.append("(covered by another window)")
         parts.append(f"@ ({x},{y})")

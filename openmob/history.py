@@ -147,7 +147,11 @@ MIGRATIONS = [("turns", "package", "TEXT")] + [
       ("steps", "variant", "TEXT"), ("steps", "done_via", "TEXT"),
       ("turns", "prompts", "INTEGER"), ("turns", "mode", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TOKEN_COLUMNS
-]
+] + [("steps", column, kind) for column, kind in (
+    # A wait (agent/waiting.py) on this step: the wait_until tool's, the `wait` tool's sleep, or the loop's own
+    # ("auto:…", after a launch or an Install tap). wait_cond: e.g. text_appears:Open|Play, sleep, auto:loading_done.
+    ("wait_cond", "TEXT"), ("wait_met", "INTEGER"), ("wait_via", "TEXT"), ("waited_ms", "INTEGER"))]
+WAIT_COLUMNS = ("wait_cond", "wait_met", "wait_via", "waited_ms")
 
 
 class History:
@@ -272,6 +276,12 @@ class History:
                  None if step.get("fast") is None else int(bool(step["fast"])), step.get("variant"),
                  step.get("done_via"), *(step.get(c) for c in TOKEN_COLUMNS)),
             )
+            if step.get("wait_cond"):
+                met = step.get("wait_met")
+                self._db.execute("UPDATE steps SET wait_cond = ?, wait_met = ?, wait_via = ?, waited_ms = ? "
+                                 "WHERE turn_id = ? AND idx = ?",
+                                 (step["wait_cond"], None if met is None else int(bool(met)), step.get("wait_via"),
+                                  step.get("waited_ms"), turn_id, step["idx"]))
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
 
@@ -355,7 +365,7 @@ class History:
             args.append(model)
         rows = self._q(
             f"""SELECT s.turn_id, s.idx, s.jev, s.fast, s.variant, s.settle_idle, s.done_via, COALESCE(s.model, t.model) AS model,
-                       {", ".join("s." + c for c in TIMING_COLUMNS + TOKEN_COLUMNS)}
+                       {", ".join("s." + c for c in TIMING_COLUMNS + TOKEN_COLUMNS + WAIT_COLUMNS)}
                 FROM steps s LEFT JOIN turns t ON t.id = s.turn_id WHERE {" AND ".join(where)} ORDER BY s.t""",
             tuple(args),
         )
