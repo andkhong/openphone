@@ -4,7 +4,7 @@ import dev.openmob.companion.ActionDigest
 
 /**
  * A permission change the owner approved on this phone (the server's `mode_change` approval_request: the
- * dashboard's "Never ask", "Also allow purchases", a higher ceiling, trusted apps). On a gatekeeper phone it
+ * dashboard's "Don't ask", "Also allow purchases", a higher ceiling, trusted apps). On a gatekeeper phone it
  * becomes signed owner policy (D16, D17, D21) that the phone itself enforces.
  *
  * The phone words the prompt itself from the structured change ([describe]); the server's question is shown
@@ -18,6 +18,8 @@ object ModeChange {
     private val GRANT_KINDS = setOf("send", "post", "delete", "pay", "fill")
     const val PAY_MS = 86_400_000L
     const val GRANT_MS = 604_800_000L
+    private val MODE_NAMES = mapOf("ask" to "Ask every step", "plan" to "Plan first", "auto" to "Ask for risky",
+                                   "trusted" to "Trusted apps")
 
     /** The change as JSON, from the signed action's input ("<question>\n<json>"). */
     fun patch(input: String): Map<String, Any?> =
@@ -52,10 +54,10 @@ object ModeChange {
             "never" -> {
                 val hours = (r["duration_ms"] as Long) / 3_600_000L
                 val span = if (hours >= 24) "24 hours" else "$hours hour${if (hours == 1L) "" else "s"}"
-                parts.add(if (r["allow_money"] == true) "Let agents act on this phone without asking, INCLUDING PURCHASES, for $span?"
-                          else "Let agents act on this phone without asking for $span? Purchases stay off.")
+                parts.add(if (r["allow_money"] == true) "Turn on Don't ask: agents act on this phone without asking, INCLUDING PURCHASES, for $span?"
+                          else "Turn on Don't ask: agents act on this phone without asking for $span? Purchases stay off.")
             }
-            "ceiling" -> parts.add("Let agents ask less on this phone (up to “${r["mode"]}”)?")
+            "ceiling" -> parts.add("Let agents ask less on this phone (up to “${MODE_NAMES[r["mode"]] ?: r["mode"]}”)?")
             "grant" -> parts.add("Let agents ${r["kind"]} in ${r["binding"]} without asking for ${
                 if (r["kind"] == "pay") "24 hours" else "7 days"}?")
         }

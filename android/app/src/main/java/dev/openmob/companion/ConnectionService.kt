@@ -591,7 +591,7 @@ class ConnectionService : Service() {
             this, 1, Intent(this, ConnectionService::class.java).setAction(ACTION_STOP), PendingIntent.FLAG_IMMUTABLE,
         )
         val who = AppState.controller
-        // Never ask: a persistent banner, with Turn off right in the notification.
+        // Don't ask: a persistent banner, with Turn off right in the notification.
         val neverUntil = AppState.neverUntil
         val never = neverUntil * 1000 > System.currentTimeMillis()
         val banner = if (never) getString(

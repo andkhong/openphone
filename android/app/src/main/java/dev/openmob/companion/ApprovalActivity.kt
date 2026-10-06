@@ -35,7 +35,7 @@ import android.widget.Toast
  * Kinds (docs/phone-protocol.md): a risky action, a step (ask-every-step mode), a plan (plan-first
  * mode) or a mode_change (agents would ask less on this phone). "Always allow this" (off by default)
  * also grants the offered trusted entry; for payments it asks a second time. It is signed too. A
- * mode_change that also allows purchases ("Also allow purchases" with Never ask) asks a second time
+ * mode_change that also allows purchases ("Also allow purchases" with Don't ask) asks a second time
  * as well, before the screen lock.
  */
 class ApprovalActivity : Activity() {
@@ -159,7 +159,7 @@ class ApprovalActivity : Activity() {
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
         blocker(request)?.let { return showStatus(it) }
-        // Never ask including purchases: a second, explicit yes for the money part before the screen lock.
+        // Don't ask including purchases: a second, explicit yes for the money part before the screen lock.
         if (request.allowsMoney) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.approval_money_confirm_title)

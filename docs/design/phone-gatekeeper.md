@@ -1,6 +1,6 @@
 # Phone as gatekeeper: on-device policy enforcement
 
-Status: reviewed and approved (3 review rounds), 2026-10-05. Branch `feature/agent-platform`.
+Status: reviewed and approved (3 review rounds), 2026-10-05. **Phase 1 implemented** (branch `gatekeeper-p1`): see "Phase 1 as built" at the end for what differs from this text.
 Decisions are marked **Decision:** and numbered (D1, D2, …). Changes from review 1 are listed at the end.
 
 ## 1. Problem and threat model
@@ -518,3 +518,55 @@ Failing a friction criterion means tuning the word classes, the categories or th
 | S3 | Accepted: gatekeeper phones ignore `approval_request` (D9) |
 | S4 | Accepted: grant wording states what it allows, the checkbox is off by default, `pay` needs a second confirm (D20); D4, D6 and `plan` state what isn't bound |
 | S5 | Accepted: pairing a new Bluetooth device asks; connecting to an already-paired device stays on the allowlist |
+
+## Phase 1 as built
+
+Code: `android/app/src/main/java/dev/openmob/companion/gate/` (engine `Gatekeeper.kt`, screen model `GateModel.kt`,
+Android glue `GateScreens.kt` and `GateHost.kt`, permission changes `ModeChange.kt`), the rule file
+`android/app/src/main/resources/gatekeeper/rules.json`, and on the server `phone/remote.py` (`GateRefused`, the
+re-send), `devices.py` (`gate_event`, `device_lock`, D10), `agent/loop.py` and `platform/service.py`
+(`approval_on_phone`). Protocol: docs/phone-protocol.md §9.
+
+**Testing approach.** One JSON rule file, read by the Kotlin engine and by a Python reference engine
+(`tests/gatekeeper_ref.py`); shared fixtures (`tests/fixtures/gatekeeper/`: screens, scenarios, attacks) run in
+both JUnit (`GateScenarioTest`) and pytest (`test_gatekeeper_conformance.py`), so the two can't drift. The
+adversarial suite (`test_gatekeeper_adversarial.py`) puts a fake compromised server in front of a simulated
+gatekeeper phone running the reference engine over raw protocol messages; every attack is also a fixture the
+Kotlin engine runs. This replaces §8's emulator-based `evil_server.py` for Phase 1: there are no instrumented
+tests or captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
+
+**Where it differs from the text above:**
+- **Settings, unrecognized pages:** only *changing* taps ask (a switch or checkbox, or a change word such as
+  Turn on, Allow, Reset); plain navigation into a sub-page doesn't. Pages are recognized by window title, the
+  headers at the top that aren't rows, and the activity class (accessibility doesn't expose fragment classes).
+- **Resource ids** are matched as whole words of the id (`sendButton` → send, but not `sender_name`), and
+  `checkout` in an id counts as pre-commit like the word (D4).
+- **Delete** asks wherever it appears, not only in a confirmation dialog.
+- **Requested (D6):** only instructions typed or spoken in the app count; each credits one send, post or
+  delete for 30 minutes, not bound to an app (sessions are Phase 2).
+- **Purchase follow-up** is bound to the call's `task` param, which the server asserts (the app and the
+  3-minute limit are the phone's).
+- **`plan` is enforced as `auto`** on the phone, and the server skips its plan approval on gatekeeper phones
+  (plan permits are Phase 2).
+- **Policy changes:** Phase 1 has no `policy_proposal`. The server's `mode_change` approval request plays that
+  role: the phone words it from the signed change (the server's question is only "Server says"), and the one
+  screen-lock signature (the server's approval format over the change's digest) is kept as the record's proof
+  and re-verified on load. Trusted *category* entries aren't enforced as allows (the phone keeps asking);
+  trusted app entries use the D20 default durations rather than the server's expiry; `never` is capped at
+  24 hours. The 30-day test-phone `never` (D21) and MDM (D18) aren't implemented.
+- **Keys:** the auth-bound approval key also signs policy records (no separate policy key); the policy file is
+  app-private and every record's signature is checked on load, but the file isn't separately encrypted.
+- **Crop:** its hash is in the signed message; the permit is bound to method, params and target fingerprint,
+  since a re-sent call can't reproduce the crop.
+- **Reverify:** for risky or payment-context decisions it needs the same fingerprint and a quiet screen
+  (waiting up to 1 s); for other allowed actions it re-judges the current target and refuses only if that is
+  now risky or refused (fewer spurious refusals from animations).
+- **`never` and the always-ask class** also covers typing into OTP and card fields, and an unlabeled tap in
+  payment context counts as money.
+- **Denials that suspend** are the owner's denials of prompts (not the gate's refusals); a notification offers
+  Resume.
+- **New:** code `phone_locked` (act calls while a secure lock is up, checked before the keyguard hard deny) and
+  the `device_lock` message; the app keeps the screen on only while working (owner report).
+- **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
+  the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
+  session/proposal prompt limits (Phase 2).

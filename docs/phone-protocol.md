@@ -115,7 +115,8 @@ Errors: `400` for a wrong, used, expired or voided code (with `detail`), `429` a
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
-| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. `"gatekeeper"`: the app enforces policy itself (§9); `"device_lock"`: it pushes `device_lock` messages. |
+| `device.policy_hash` | string, optional | Gatekeeper apps: a short hash of the built-in rules and the owner's signed policy this phone enforces. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -616,3 +617,100 @@ Calls are never replayed. A read (`screenshot`, `ui_elements`, `current_app`, �
 asked again on the new connection; an action (`tap`, `type_text`, `launch_app`, …) that was cut off is
 reported to the agent as "may or may not have happened" and never repeated. Live-view calls don't
 wait for a reconnect.
+
+## 9. Gatekeeper (phone-side policy)
+
+An app whose hello lists `"gatekeeper"` in `device.capabilities` enforces policy itself
+(docs/design/phone-gatekeeper.md, Phase 1). A compromised server can then at most *request*: the phone refuses
+forbidden calls and asks its owner, with its own wording and the screen lock, for risky ones. The server keeps
+all its own checks as defense in depth. Apps without the capability keep today's behaviour (§3.3, §8).
+
+### 9.1 Every call goes through the gate first
+
+Methods fall into three classes (the built-in rule file `gatekeeper/rules.json` in the APK): **meta**
+(`device_state`, `wait_idle`, always allowed), **read** (`screenshot`, `ui_elements`, `current_app`,
+`launchable_packages`, `app_labels`, `resolve_url`, `stream_*`: allowed, but `screenshot` is a black frame and
+`ui_elements` is `[]` while a blocked app is visible in any window) and **act** (`tap`, `long_press`, `swipe`,
+`type_text`, `key`, `launch_app`, `open_url`, `wake_unlock`). Anything else is refused with `gate_unknown_method`.
+Act calls are re-checked right before the side effect (the target under the point must still be the same).
+
+Act calls may carry three extra params, which the gate reads and which never relax anything:
+
+| Param | Meaning |
+|---|---|
+| `mode` | The task's permission mode. The phone uses the tighter of it and its owner's **signed** ceiling (and `never` window): a claim of `never`, `trusted` or `allow_money` without the owner's signature gets `auto`. |
+| `task` | The task id (a purchase's one follow-up commit is covered only within the same task and app). |
+| `hint` | The server's own caution ("the agent thinks this pays"): turns an allowed action into a prompt, never the reverse. |
+
+### 9.2 Refusals
+
+A refused call gets `ok:false` with a stable `code`, the reason in `error`, and `gate`:
+
+```json
+{"type": "result", "id": "…", "ok": false, "code": "gate_blocked_app",
+ "error": "Blocked on the phone: com.chase.sig.android is a sensitive app. Don't open it another way; call done.",
+ "gate": {"rule": "builtin:sensitive_apps", "package": "com.chase.sig.android", "ms": 6}}
+```
+
+| Code | Meaning | Server |
+|---|---|---|
+| `gate_blocked_app` | A blocked app (banking, payments, wallets, password managers, authenticators, OpenMob itself): launching it, a link into it, acting in it, or its app-info page | Report to the agent; don't retry |
+| `gate_denied_page` | A security-critical Settings page, the keyguard or a system approval prompt, OpenMob's own windows, the package installer | Report; don't retry |
+| `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
+| `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
+| `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
+| `gate_prompt_open` | Another prompt is still open on the phone | Wait for it to be answered |
+| `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts in 10 minutes, or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
+| `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt) | Report to the agent; never retried automatically |
+| `gate_screen_unstable` | The screen didn't settle within a second for a risky action | Report; look again |
+| `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
+| `gate_no_session`, `gate_policy_invalid` | Reserved (Phase 2) | Report |
+
+### 9.3 Approvals on the phone
+
+For a risky action (a money commit, a send/post/delete, autofill or saved credentials, a share target, an
+unrecognized Settings change, an unlabeled tap in a shopping app, typing into an OTP or card field, ENTER in a
+chat or a checkout, every changing act in `ask` mode) the phone replies at once:
+
+```json
+{"type": "result", "id": "…", "ok": false, "code": "gate_needs_approval", "approval_id": "3f…",
+ "error": "Waiting for the owner's approval on the phone.",
+ "gate": {"rule": "risk:words:buy now", "kind": "pay", "question": "Allow tapping “Buy now” in Amazon?", "ms": 9}}
+```
+
+and shows its own prompt: its wording and a crop of the target, with the server's `hint` only as a labeled
+"Server says" line. Approving takes the screen lock; the auth-bound approval key signs
+`gk1|<device id>|<approval id>|<action binding>|crop:<sha256 of the crop>[|grant:<grant>]`, the phone verifies it
+and mints a **one-shot permit for exactly that call** (method, params and the target's fingerprint) for 60 s on
+its monotonic clock. Then it tells the server:
+
+```json
+{"type": "gate_event", "approval_id": "3f…", "state": "approved"}
+```
+
+`state` is `pending`, `approved`, `denied` or `expired` (2 minutes, or Stop). The server re-sends the identical
+call **once per approval id**; a replayed `gate_event` does nothing. On `denied` or `expired` it tells the agent
+"not approved" and sends nothing. An approved "Buy now" (a flow-starting money word) also covers one terminal
+commit ("Place your order") in the same app and task within 3 minutes, so a purchase is one prompt.
+
+While the phone is asking, the task is `needs_confirmation` (the dashboard shows "Waiting for your approval on
+the phone…"). `POST /v1/tasks/{id}/answer` with `approve:true` returns **409 `approval_on_phone`** for every key;
+`approve:false` declines. Gatekeeper phones **ignore `approval_request`** for actions (a server-worded prompt
+behind the screen lock would be phishing); only `mode_change` requests are taken, and the phone words those
+from the signed change itself. Approval happens only on the acting phone; the owner's other phones get a plain
+notice.
+
+### 9.4 The lock screen mid-task
+
+While the agent works the app keeps the screen on (a 1-pixel accessibility overlay with `FLAG_KEEP_SCREEN_ON`,
+removed as soon as work stops). If the phone locks anyway, a swipe-only lock is woken and dismissed; a secure
+lock makes the phone send
+
+```json
+{"type": "device_lock", "locked": true, "secure": true}
+```
+
+and show "Unlock your phone to continue". Act calls get `phone_locked` meanwhile. When the owner unlocks, it
+sends `{"type": "device_lock", "locked": false}`. The server pauses the task for up to `locked_wait_seconds`
+(default 300), then lets the agent look again; if the phone stays locked, the task fails with reason
+`phone_locked`. The agent never taps or swipes at a lock screen.

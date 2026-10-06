@@ -28,7 +28,7 @@ class ModeChangeTest {
 
     @Test fun theServersQuestionIsNotTheWording() {
         val a = action("Approve to keep your account safe", "{\"allow_money\": true, \"never\": \"1h\"}")
-        assertEquals("Let agents act on this phone without asking, INCLUDING PURCHASES, for 1 hour?",
+        assertEquals("Turn on Don't ask: agents act on this phone without asking, INCLUDING PURCHASES, for 1 hour?",
                      ModeChange.describe(a.getValue("input")))
         assertTrue(ModeChange.allowsMoney(a.getValue("input")))
     }

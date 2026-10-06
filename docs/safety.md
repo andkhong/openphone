@@ -43,6 +43,68 @@ the app and reconnect, which registers the key. Apps older than action-bound app
 the same way until they update. (Local token mode has no keys, so nothing changes there: an app
 phone's screen-lock yes is accepted as before, and a phone over USB is approved from the dashboard.)
 
+## The phone enforces it too (gatekeeper)
+
+Every rule above runs on the server. A phone whose app has the **gatekeeper** (current apps; the hello lists the
+`gatekeeper` capability) enforces its own policy as well, so even a compromised server can at most
+*request* an action. The design is docs/design/phone-gatekeeper.md (Phase 1); the
+messages are in the phone protocol (docs/phone-protocol.md, §9). Older apps keep the
+server-side behaviour above.
+
+**Every call is checked on the phone first**, against the screen as the phone sees it (what is really under
+the tap, not what the model says is there), and re-checked right before the gesture, typing or launch.
+Unknown methods are refused.
+
+**Refused in every mode, on the phone:**
+- **Blocked apps**: banking, payments, wallets, crypto, password managers and authenticators, and OpenMob
+  itself. Launching them, links into them, acting in them and their app-info page are refused; screenshots
+  are black and the element list is empty while one is visible anywhere on screen.
+- **Security-critical Settings**: screen lock and security, accounts and users, accessibility, notification
+  access and special app access, default apps, developer options and wireless debugging, VPN and Private DNS,
+  language and region, and **enabling a keyboard**. Recognized by page title, activity and package across
+  AOSP, Pixel, Samsung and Xiaomi Settings and Google account settings.
+- **Password fields** (never typed into), and `javascript:`, `intent:`, `file:`, `content:`, `data:` text.
+- **Links** other than `https`/`http` (checked against the app Android would open them in), `tel` (the dialer
+  only), `geo`, `mailto`, `sms` and `market`.
+- **Taps into OpenMob's own screens, the system's biometric prompt and the lock screen**, and the package
+  installer.
+
+**Asked on the phone, with its own words and screen lock:** money commits ("Buy now", "Place your order",
+"Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
+notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
+"slide to pay", unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
+manual date and time, pairing a new Bluetooth device, app-info actions other than Force stop and Clear cache,
+any change on a Settings page the phone doesn't recognize, and a permission dialog for an app other than the
+one the task is using. Swipes that are really taps and long presses are judged as taps. Steps on the way
+("Add to cart", "Proceed to checkout", search, scrolling, everyday Settings such as Wi-Fi, Bluetooth, dark mode
+or Do Not Disturb) never ask.
+
+- **The prompt is the phone's.** It says what the phone sees ("Allow tapping “Buy now” in Amazon?") with a
+  crop of the target; the server's words appear only as a labeled "Server says" line. The phone ignores
+  server-worded approval requests for actions.
+- **One yes, one action.** The screen-lock signature covers exactly that call and the target under it, for
+  60 seconds, once. A changed screen voids it. "Buy now" then "Place your order" in the same app and task
+  within 3 minutes is **one** prompt.
+- **Only on that phone.** API keys and the dashboard can decline, never approve (`409 approval_on_phone`).
+- **"Always allow this"** (off by default) also grants that kind for 7 days (purchases: 24 hours, after a
+  second confirmation), per app (a share: per target; a Settings page: that page; never for autofill in
+  browsers). Grants are signed with the screen lock and listed on the phone.
+- **The mode is the phone's.** The phone takes the tighter of the task's mode and its owner's signed ceiling
+  (default **Ask for risky**). **Don't ask** and **"Also allow purchases"** count only when the owner approved
+  them on that phone; under Don't ask, purchases (unless allowed), autofill and anything else that would ask
+  are refused instead. Every expiry runs on the phone's monotonic clock: setting the date back extends
+  nothing, and time left carries across a reboot (failing closed if it can't be read).
+- **Limits and Stop.** At most 5 actions a second and 6 prompts per 10 minutes; 3 denials in 10 minutes pause
+  agents until the owner taps Resume. Stop (in the app or the notification) drops every approval, prompt and
+  Don't-ask window on the phone at once.
+- **Refusals are reported, not retried.** The agent is told why, with a stable code
+  (`gate_blocked_app`, `gate_denied_page`, …), and picks another way or stops.
+
+**What the gatekeeper doesn't stop yet (Phase 1):** reading screens of apps that aren't blocked and
+non-risky actions at any time (sessions come in Phase 2); quick-settings toggles and the notification shade;
+icon-only sends with obfuscated ids in languages other than English; and a blocked app opened from the
+launcher or recents (everything inside it is still refused and blacked out).
+
 ## Phones and their connections
 
 - **One live connection per phone.** If a second connection logs in as the same phone, the older
@@ -323,6 +385,11 @@ approval when it's on.
   password or biometric lock is left alone: the task is refused with `409 phone_locked` (a step
   waits for the owner to unlock it), and OpenMob never enters a PIN, pattern, password or
   fingerprint.
+- **The screen stays on while the agent works**, and only then (the app holds it on during active work and
+  lets go as soon as the task ends). If a secure lock comes up mid-task anyway, the task **pauses** with
+  "Unlock your phone to continue" on the phone and in the task's events, and carries on when the owner
+  unlocks, for up to `locked_wait_seconds` (default 5 minutes); then it fails with reason `phone_locked`. The
+  agent never taps or swipes at a lock screen.
 
 ## Untrusted content
 
