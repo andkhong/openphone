@@ -45,6 +45,7 @@ def _not_blank(value: str) -> str:
 
 
 NonBlank = Annotated[str, AfterValidator(_not_blank)]  # whitespace-only is a 422, like an empty string
+PermissionMode = Literal["ask", "plan", "auto", "trusted", "never"]
 
 
 class TaskIn(BaseModel):
@@ -52,6 +53,8 @@ class TaskIn(BaseModel):
     tier: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
     memory: Literal["on", "read_only", "off"] = "on"  # use and/or add to the owner's pinned notes
+    # When the phone asks its owner; ≤ the key's max_mode and the phone's ceiling. None: the phone's default.
+    permission_mode: PermissionMode | None = None
 
 
 class NoteIn(BaseModel):
@@ -69,10 +72,19 @@ class KeyIn(BaseModel):
     scopes: list[str] = Field(default_factory=lambda: ["devices:read", "tasks:run", "tasks:read"])
     # Off by default: risky actions are approved by the owner (on the phone), not by the caller.
     confirm_approve: bool = False
+    max_mode: PermissionMode = "auto"  # the loosest permission mode this key's tasks may ask for
 
 
 class KeyPatch(BaseModel):
-    confirm_approve: bool
+    confirm_approve: bool | None = None
+    max_mode: PermissionMode | None = None
+
+
+class PermissionsPatch(BaseModel):
+    default_mode: PermissionMode | None = None
+    ceiling: Literal["ask", "plan", "auto", "trusted"] | None = None
+    trusted: list[dict] | None = None
+    never: Literal["1h", "24h", "7d", "off"] | None = None
 
 
 class SettingsIn(BaseModel):
@@ -130,11 +142,27 @@ class DeveloperApi:
                         idempotency_key: str | None = Header(default=None)) -> dict:
             request = {"device_id": device_id, **body.model_dump()}
             task, replayed = s.idempotent(p, idempotency_key, request, lambda: s.create_task(
-                p, device_id, body.instruction, body.tier, body.max_steps, body.memory))
+                p, device_id, body.instruction, body.tier, body.max_steps, body.memory,
+                permission_mode=body.permission_mode))
             if replayed:  # a retry with the same Idempotency-Key and body: the original response, as 200
                 response.status_code = 200
                 response.headers["Idempotent-Replayed"] = "true"
             return task
+
+        @r.get("/devices/{device_id}/permissions")
+        def get_permissions(device_id: str, p: Principal = Depends(self.need("devices:read"))) -> dict:
+            return s.get_permissions(p, device_id)
+
+        @r.patch("/devices/{device_id}/permissions")
+        def patch_permissions(device_id: str, body: PermissionsPatch,
+                              p: Principal = Depends(self.need("tasks:run"))) -> Response:
+            result = s.change_permissions(p, device_id, body.model_dump(exclude_none=True))
+            return JSONResponse(result, status_code=200 if result["status"] == "applied" else 202)
+
+        @r.get("/devices/{device_id}/permissions/approvals/{approval_id}")
+        def permission_approval(device_id: str, approval_id: str,
+                                p: Principal = Depends(self.need("devices:read"))) -> dict:
+            return s.permission_approval(p, device_id, approval_id)
 
         @r.get("/limits")
         def limits(p: Principal = Depends(self.need("tasks:read"))) -> dict:
@@ -232,20 +260,29 @@ class DeveloperApi:
             if self.store.api_key_count(account_id) >= MAX_KEYS_PER_ACCOUNT:
                 raise HTTPException(400, f"You can have at most {MAX_KEYS_PER_ACCOUNT} keys. Revoke one first.")
             try:
-                key_id, key = self.store.create_api_key(account_id, body.name, body.scopes, body.confirm_approve)
+                key_id, key = self.store.create_api_key(account_id, body.name, body.scopes, body.confirm_approve,
+                                                        body.max_mode)
             except AuthError as exc:
                 raise HTTPException(400, str(exc)) from None
             self.ledger.audit("key.create", account_id, key_id, outcome=",".join(sorted(set(body.scopes))))
             if body.confirm_approve:
                 self.ledger.audit("key.confirm_approve", account_id, key_id, outcome="on")
+            if body.max_mode != "auto":
+                self.ledger.audit("key.max_mode", account_id, key_id, outcome=body.max_mode)
             created = next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
             return {**created, "key": key}  # the only time the full key is ever shown
 
         @r.patch("/keys/{key_id}")
         def update_key(key_id: str, body: KeyPatch, account_id: str = Depends(owner)) -> dict:
-            if not self.store.set_key_confirm_approve(account_id, key_id, body.confirm_approve):
+            if not any(k["id"] == key_id for k in self.store.list_api_keys(account_id)):
                 raise HTTPException(404, "Unknown key.")
-            self.ledger.audit("key.confirm_approve", account_id, key_id, outcome="on" if body.confirm_approve else "off")
+            if body.confirm_approve is not None:
+                self.store.set_key_confirm_approve(account_id, key_id, body.confirm_approve)
+                self.ledger.audit("key.confirm_approve", account_id, key_id,
+                                  outcome="on" if body.confirm_approve else "off")
+            if body.max_mode is not None:
+                self.store.set_key_max_mode(account_id, key_id, body.max_mode)
+                self.ledger.audit("key.max_mode", account_id, key_id, outcome=body.max_mode)
             return next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
 
         @r.post("/keys/{key_id}/revoke")
