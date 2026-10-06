@@ -54,6 +54,12 @@ fast_path_min_probability: 0.7
 fast_path_min_confidence: 0.6
 fast_path_min_elements: 3
 # fast_path_text_model: claude-haiku-4-5-20251001   # writes typed text; default: resolver_model
+fast_path_lazy_screenshot: true    # fast steps skip the screenshot unless the step goes to vision
+jev_one_request: true              # one Jev request per step (screen state, next step, tap risk)
+jev_risk_heads: 40                 # candidate targets whose tap risk that request asks about
+fast_path_direct_launch: true      # an app named exactly in the request opens without the small text model
+fast_path_done: false              # Jev may finish navigation-only tasks without the vision confirmation
+fast_path_done_min_probability: 0.85
 
 # Ask before tapping anything that matches these words.
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,

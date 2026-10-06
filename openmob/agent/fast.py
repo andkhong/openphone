@@ -3,11 +3,13 @@
 On a screen with a usable accessibility element list, one classifier request picks the operation
 and its target from an indexed element table (the pattern of browser-use/jev-ultrafast, MIT). TAP
 resolves to the element's own center, TYPE_TEXT asks a small text model for the string, and
-LAUNCH_APP goes through the app resolver. Anything uncertain goes to the ordinary vision step
-(screenshot + elements to the main model), which alone may finish a task. See loop.Agent._fast_step.
+LAUNCH_APP opens an app the request names exactly (else the small text model names it). Anything
+uncertain goes to the ordinary vision step (screenshot + elements to the main model), which
+finishes tasks, except plain navigation the classifier may finish itself when every check passes
+(fast_path_done). See loop.Agent._fast_step and _classifier_done.
 
-This module holds the pure parts: eligibility, the element table, screen signatures, and the
-text model's tiny JSON contract.
+This module holds the pure parts: eligibility, the element table, screen signatures, the text
+model's tiny JSON contract, and the request and title checks behind direct launches and DONE.
 """
 
 from __future__ import annotations
@@ -105,3 +107,121 @@ def parse_value(reply: str, key: str) -> str | None:
     if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT_CHARS:
         return None
     return value
+
+
+# --- reading the request (for the direct app launch and the classifier's DONE) ---------------
+
+# Verbs that only move around or look: a request made only of these changes nothing on the phone.
+NAVIGATION_VERBS = ("navigate to", "take me to", "switch to", "bring up", "pull up", "show me", "go to", "go into",
+                    "open up", "open", "launch", "start", "show", "view", "see", "display")
+APP_VERBS = ("open up", "open", "launch", "start", "switch to", "go to", "go into", "bring up", "pull up")
+# Words that imply a side effect, on top of config.confirm_keywords (buy, send, delete, …).
+SIDE_EFFECT_WORDS = (
+    "book", "submit", "order", "reserve", "call", "message", "text", "email", "reply", "share", "upload", "install",
+    "update", "cancel", "sign", "accept", "decline", "add", "create", "save", "set", "change", "turn", "enable",
+    "disable", "toggle", "switch on", "switch off", "type", "write", "search", "play", "record", "follow", "like",
+    "join", "connect", "pair", "reset", "clear", "log", "rename", "move", "copy", "download", "allow", "block",
+    "mute", "unmute", "schedule", "remind", "enter", "fill", "rate", "comment",
+)
+LEADING_FILLER = re.compile(r"^(?:please\s+|can you\s+|could you\s+|would you\s+|now\s+|just\s+|then\s+)+", re.I)
+CLAUSE_SPLIT = re.compile(r"\s*(?:[,;.!?]|\band then\b|\bthen\b|\band\b)\s*", re.I)
+ARTICLES = re.compile(r"^(?:the|my|a|an)\s+", re.I)
+GENERIC_TAIL = re.compile(r"\s+(?:app|application|settings|setting|page|screen|tab|section|menu|options)$", re.I)
+CORRECTION_PREFIX = "User correction:"
+TAB_WORDS = re.compile(r"tab|navigation|bottom_?nav|navbar", re.I)
+
+
+def request_lines(task: str) -> list[str]:
+    """The request and any corrections the user added while it ran, as plain lines."""
+    return [line.split(CORRECTION_PREFIX, 1)[-1].strip() for line in task.splitlines() if line.strip()]
+
+
+def clauses(text: str) -> list[str]:
+    return [c for c in CLAUSE_SPLIT.split(text) if c and c.strip()]
+
+
+def _after_verb(clause: str, verbs: tuple[str, ...]) -> str | None:
+    """'go to the Display settings' -> 'Display settings' for a clause starting with one of `verbs`."""
+    clause = LEADING_FILLER.sub("", clause.strip())
+    for verb in verbs:
+        match = re.match(rf"{re.escape(verb)}\b\s*(.*)$", clause, re.I)
+        if match:
+            rest = ARTICLES.sub("", match.group(1).strip(" \"'"))
+            return rest or None
+    return None
+
+
+def app_phrases(task: str) -> list[str]:
+    """Names the request may give an app ("open Settings", "go to Display in Settings"): the words
+    after an opening verb, and the part after a final " in " / " on "."""
+    out: list[str] = []
+    for line in request_lines(task):
+        for clause in clauses(line):
+            rest = _after_verb(clause, APP_VERBS)
+            if not rest:
+                continue
+            parts = [rest] + [p for p in re.split(r"\s+(?:in|on)\s+(?:the\s+|my\s+)?", rest, flags=re.I)[1:]]
+            for part in parts:
+                for name in (part, re.sub(r"\s+(?:app|application)$", "", part, flags=re.I)):
+                    if name and name not in out:
+                        out.append(name)
+    return out
+
+
+def navigation_only(task: str, confirm_keywords: list[str]) -> bool:
+    """The request only opens or shows things: every clause starts with a navigation verb, and no word
+    in it implies a side effect. Corrections added mid-task don't count as navigation."""
+    if CORRECTION_PREFIX in task:
+        return False
+    text = task.lower()
+    for word in (*confirm_keywords, *SIDE_EFFECT_WORDS):
+        if re.search(rf"\b{re.escape(word.lower())}\b", text):
+            return False
+    parts = clauses(task)
+    return bool(parts) and all(_after_verb(c, NAVIGATION_VERBS) for c in parts)
+
+
+def key_target(task: str) -> str | None:
+    """What the request finally asks to see: the last clause's object, without a trailing " in <app>"
+    ('Open Settings and go to Display' -> 'Display')."""
+    parts = clauses(task)
+    rest = _after_verb(parts[-1], NAVIGATION_VERBS) if parts else None
+    if not rest:
+        return None
+    return re.split(r"\s+(?:in|on)\s+", rest, maxsplit=1, flags=re.I)[0].strip() or None
+
+
+def _norm(text: str) -> str:
+    from ..phone.apps import normalize
+
+    return normalize(text)
+
+
+def _names_match(label: str, target: str) -> bool:
+    a, b = _norm(label), _norm(target)
+    if not a or not b:
+        return False
+    stripped = _norm(GENERIC_TAIL.sub("", target))
+    return a in (b, stripped) or a.replace(" ", "") in (b.replace(" ", ""), stripped.replace(" ", ""))
+
+
+def _inside(inner: tuple, outer: tuple) -> bool:
+    return outer != inner and outer[0] <= inner[0] and outer[1] <= inner[1] and inner[2] <= outer[2] and inner[3] <= outer[3]
+
+
+def shows_target(elements: list[UIElement], target: str, screen_height: int | None = None) -> UIElement | None:
+    """The element that shows the screen is `target`: a selected tab named target, or a
+    title: a non-tappable label named target near the top that isn't inside a tappable row (a list
+    entry named target is a way there, not the place itself). None if there's no such element."""
+    real = [el for el in elements if el.cls != OCR_CLASS and not el.covered]
+    height = screen_height or max((el.bounds[3] for el in real), default=0)
+    tappable = [el.bounds for el in real if el.clickable]
+    for el in real:
+        if not _names_match(el.text or el.desc, target):
+            continue
+        if el.checked is True and TAB_WORDS.search(f"{el.cls} {el.resource_id}"):
+            return el  # a selected tab (a checked switch named target is a setting, not a place)
+        top = height and el.center[1] <= 0.3 * height
+        if not el.clickable and top and not any(_inside(el.bounds, b) for b in tappable):
+            return el
+    return None

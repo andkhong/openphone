@@ -100,7 +100,7 @@ class Config:
     # change for settle_quiet_ms), capped at the delays above. Needs a phone whose app offers wait_idle;
     # others keep the fixed delays (adb: launches end once the app is in front). OPENMOB_ADAPTIVE_SETTLE=off.
     adaptive_settle: bool = True
-    settle_quiet_ms: int = 300
+    settle_quiet_ms: int = 300  # OPENMOB_SETTLE_QUIET_MS sets it too (to compare e.g. 200)
     # Re-read the screen's elements just before tap_element, and don't tap one that moved or vanished
     # (only on phones whose element list is quick to read: the OpenMob app).
     verify_taps: bool = True
@@ -148,6 +148,19 @@ class Config:
     fast_path_min_confidence: float = 0.6  # and Jev's confidence in each
     fast_path_min_elements: int = 3  # labeled elements a screen needs (fewer: the vision step)
     fast_path_text_model: str | None = None  # writes text and app names; default: resolver_model
+    # Latency features on top of the fast path (docs/benchmarks.md). Each can be switched off to compare.
+    # Fast steps decide from the element list alone; the screenshot is taken only if the step goes to vision.
+    fast_path_lazy_screenshot: bool = True
+    # One Jev request per step: screen state, the fast path's heads and the risky-tap questions together.
+    jev_one_request: bool = True
+    jev_risk_heads: int = 40  # candidate targets whose tap risk that request asks (others: a separate check)
+    # An app the request names exactly (an installed app's label) opens without the small text model.
+    fast_path_direct_launch: bool = True
+    # Let the classifier finish a navigation-only task without the vision model's confirmation, when its
+    # DONE and "request looks complete" both reach fast_path_done_min_probability and the screen's title or
+    # selected tab matches what the request asked to open. Off until measured. OPENMOB_FAST_DONE=on.
+    fast_path_done: bool = False
+    fast_path_done_min_probability: float = 0.85
 
     # Phone
     adb_path: str = "adb"
@@ -206,6 +219,14 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.jev_enabled = False
     if os.environ.get("OPENMOB_ADAPTIVE_SETTLE", "").strip().lower() in {"0", "off", "false", "no"}:
         cfg.adaptive_settle = False
+    round_d = os.environ.get("OPENMOB_ROUND_D", "").strip().lower()
+    if round_d:  # all four round D features on or off at once (docs/benchmarks.md), for comparisons
+        on = round_d in {"1", "on", "true", "yes"}
+        cfg.fast_path_lazy_screenshot = cfg.jev_one_request = cfg.fast_path_direct_launch = cfg.fast_path_done = on
+    if os.environ.get("OPENMOB_FAST_DONE", "").strip():
+        cfg.fast_path_done = os.environ["OPENMOB_FAST_DONE"].strip().lower() in {"1", "on", "true", "yes"}
+    if os.environ.get("OPENMOB_SETTLE_QUIET_MS", "").strip():
+        cfg.settle_quiet_ms = int(os.environ["OPENMOB_SETTLE_QUIET_MS"])
     if os.environ.get("OPENMOB_FAST_PATH", "").strip():
         cfg.fast_path = os.environ["OPENMOB_FAST_PATH"].strip().lower()
     cfg.openai_api_key = os.environ.get("OPENAI_API_KEY")

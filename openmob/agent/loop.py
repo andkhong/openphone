@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Protocol
 
 from ..config import Config
-from ..jev import JevError, JevJudge, ScreenAssessment, describe_screen
+from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, format_elements
 from ..phone.base import DeviceError
@@ -33,6 +33,7 @@ REDACTED = "<redacted>"
 POINT_ARGS = {"tap": (("x", "y"),), "long_press": (("x", "y"),), "swipe": (("x1", "y1"), ("x2", "y2"))}
 FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
+DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
@@ -50,14 +51,43 @@ class AgentResult:
     usage: Usage = field(default_factory=Usage)
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
     fast_steps: int = 0  # tool calls the fast path made (no main model)
+    done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
 
 
-@dataclass
 class Observation:
-    shot: Screenshot
-    elements: list[UIElement]
-    package: str | None
-    assessment: ScreenAssessment | None = None
+    """One look at the phone. The screenshot can be deferred (`capture`): a fast step decides from the
+    element list alone, and the screenshot is taken only when something needs it (a vision step)."""
+
+    def __init__(self, shot: Screenshot | None, elements: list[UIElement], package: str | None,
+                 assessment: ScreenAssessment | None = None, capture: Callable[[], Screenshot] | None = None,
+                 geometry: Screenshot | None = None):
+        self._shot = shot
+        self.elements = elements
+        self.package = package
+        self.assessment = assessment
+        self.capture = capture
+        self._geometry = geometry  # a recent frame of the same phone: its sizes, when no screenshot was taken
+        # From the one-request classifier call (jev_one_request), when it ran on this screen:
+        self.heads: dict | None = None  # the fast path's target heads it was asked
+        self.choice: StepChoice | None = None  # its fast-path decision
+        self.risks: dict[int, float] = {}  # element index -> tap risk
+        self.requested: dict[int, float] = {}  # element index -> "the request asked for this tap"
+
+    @property
+    def shot(self) -> Screenshot:
+        if self._shot is None:
+            if self.capture is None:
+                raise DeviceError("No screenshot of this screen")
+            self._shot = self.capture()
+        return self._shot
+
+    @property
+    def captured(self) -> bool:
+        return self._shot is not None
+
+    def geometry(self) -> Screenshot | None:
+        """This screen's screenshot if taken, else a recent frame's (for device sizes only)."""
+        return self._shot or self._geometry
 
 
 @dataclass
@@ -70,6 +100,7 @@ class Outcome:
     timings: dict | None = None  # this step's time per phase in ms (set by _execute)
     launched: str | None = None  # the package launch_app started (adb's launch settle waits for it)
     quiet_ms: int | None = None  # adaptive settle: a longer quiet time (e.g. search suggestions)
+    done_via: str | None = None  # for done: "vision" | "classifier"
 
 
 @dataclass
@@ -91,6 +122,11 @@ class _TaskState:
     fast_steps: int = 0  # tool calls the fast path made
     # The actions so far, for the fast path's loop check: {"action", "screen_changed"}.
     actions: list[dict] = field(default_factory=list)
+    unshown: Observation | None = None  # the current screen, not yet in the main model's conversation
+    # For the classifier's DONE (fast_path_done): anything that makes this more than plain navigation.
+    escalated: bool = False  # a vision step ran, or the fast path declined or looped
+    risky: bool = False  # the risky-tap check fired on some step (keywords or the classifier)
+    typed: bool = False  # text was typed
 
 
 def is_yes(answer: str) -> bool:
@@ -124,6 +160,7 @@ class Agent:
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         self.timer = StepTimer()  # where each step's time goes (measurement only)
+        self._frame: Screenshot | None = None  # the last screenshot the agent took (for sizes)
         self._task_variant = self._variant()  # the latency features of the task in progress (steps record it)
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
@@ -184,10 +221,8 @@ class Agent:
         except ModelUnavailable as exc:
             return AgentResult(False, str(exc), 0)
         obs = self._observe_settled(state)
-        messages: list[dict] = [{
-            "role": "user",
-            "content": [{"type": "text", "text": self._request_text(task, isolated)}, *self._obs_blocks(obs, self._app_notes(state, obs))],
-        }]
+        messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
+        self._show_later(state, messages, obs)
         nudged = False
 
         system = system_prompt(self.platform) + self._user_notes(state)
@@ -201,9 +236,14 @@ class Agent:
             if state.fast and not state.vision_next:
                 taken = self._fast_step(state, obs)
                 if taken is not None:
+                    last = taken[-1][2]
+                    if last.done:
+                        return AgentResult(last.success, last.text, step, done_via=last.done_via)
                     obs = self._after_fast_step(state, obs, taken, messages)
                     continue
             state.vision_next = False
+            state.escalated = True
+            self._show(state, messages)
             self._trim_history(messages)
             with self.timer.phase("model"):
                 response = route.adapter.complete(ModelRequest(
@@ -259,7 +299,7 @@ class Agent:
                 })
 
             if finished:
-                return AgentResult(finished.success, finished.text, step)
+                return AgentResult(finished.success, finished.text, step, done_via=finished.done_via)
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step)
 
@@ -267,7 +307,8 @@ class Agent:
             obs = self._observe_after_action(state, obs)
             # The new screen goes after the tool results, not inside them: Anthropic rejects images
             # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
-            messages.append({"role": "user", "content": results + self._obs_blocks(obs, self._app_notes(state, obs))})
+            messages.append({"role": "user", "content": results})
+            self._show_later(state, messages, obs)
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
 
@@ -283,13 +324,31 @@ class Agent:
 
     # --- observation -----------------------------------------------------
 
-    def _observe(self, state: _TaskState) -> Observation:
+    def _observe(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
         with self.timer.phase("observe"):
-            return self._observe_untimed(state)
+            return self._observe_untimed(state, before, pending)
 
-    def _observe_untimed(self, state: _TaskState) -> Observation:
+    def _lazy_shots(self, state: _TaskState) -> bool:
+        return state.fast and self.config.fast_path_lazy_screenshot
+
+    def _screenshot(self) -> Screenshot:
+        with self.timer.phase("observe"):
+            shot = self.driver.screenshot()
+        self._frame = shot
+        return shot
+
+    def _recent_frame(self) -> Screenshot | None:
+        """A recent capture of this phone (the agent's own, else the live view's), for its sizes."""
+        latest = getattr(self.driver, "latest_capture", None)
+        try:
+            return (latest() if latest else None) or self._frame
+        except Exception:
+            return self._frame
+
+    def _observe_untimed(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
         package = self.driver.current_app()
-        shot = self.driver.screenshot()
+        # The fast path decides from the element list; its screenshot waits until a vision step needs it.
+        shot = None if self._lazy_shots(state) else self._screenshot()
         elements: list[UIElement] = []
         mode = self.config.ui_tree
         # Games make uiautomator slow and useless; stop asking after two empty dumps.
@@ -299,25 +358,58 @@ class Agent:
             key = package or ""
             state.treeless_misses[key] = 0 if useful else state.treeless_misses.get(key, 0) + 1
         if self.use_ocr and not any(el.text or el.desc for el in elements):
+            shot = shot or self._screenshot()  # OCR reads the screenshot (no element list: a vision step anyway)
             elements = elements + self._ocr_elements(shot, start=len(elements))
-        obs = Observation(shot, elements, package)
+        obs = Observation(shot, elements, package, capture=self._screenshot,
+                          geometry=None if shot else self._recent_frame())
+        if before is not None:  # whether the last actions changed the screen (the fast path's loop check)
+            changed = fast.signature(obs.package, obs.elements) != fast.signature(before.package, before.elements)
+            for action in pending:
+                action["screen_changed"] = changed
         if self.judge:
             try:
-                obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
+                if self._one_request(state, obs):
+                    self._classify_step(state, obs)
+                else:
+                    obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
             except JevError as exc:
                 self.io.event("error", str(exc))
         return obs
 
-    def _observe_settled(self, state: _TaskState) -> Observation:
+    def _one_request(self, state: _TaskState, obs: Observation) -> bool:
+        """Ask the screen classifier everything for this step at once: on fast-path tasks, on screens the
+        fast path can use (jev_one_request)."""
+        return (state.fast and self.config.jev_one_request and hasattr(self.judge, "observe_step")
+                and fast.eligible(obs.elements, self.config.fast_path_min_elements))
+
+    def _classify_step(self, state: _TaskState, obs: Observation) -> None:
+        """One classifier request: the screen's state and "looks done", the fast path's operation and
+        targets, and the risky-tap questions for up to jev_risk_heads candidate elements (tappable
+        ones first). Requested questions only for elements a confirm keyword names (the only ones
+        whose "requested" can matter, see _guard)."""
+        heads = fast.targets(obs.elements)
+        obs.heads = heads
+        candidates = sorted((el for el in obs.elements if fast.labeled(el) and not el.covered),
+                            key=lambda el: not el.clickable)
+        risk = {str(el.index): el.label for el in candidates[: max(self.config.jev_risk_heads, 0)]}
+        requested = {k: label for k, label in risk.items() if self._keyword_hits(label)}
+        verdict = self.timer.timed("jev", self.judge.observe_step, state.task,
+                                   fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads,
+                                   risk, requested)
+        obs.assessment, obs.choice = verdict.assessment, verdict.choice
+        obs.risks = {int(k): v for k, v in verdict.risks.items()}
+        obs.requested = {int(k): v for k, v in verdict.requested.items()}
+
+    def _observe_settled(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
         """Observe, and sit out loading screens without spending a Claude call on each one."""
-        obs = self._observe(state)
+        obs = self._observe(state, before, pending)
         while self._is_loading(obs) and state.auto_waited < self.config.jev_auto_wait_seconds:
             if state.cancel.is_set():
                 break
             self.io.event("status", "Loading screen; waiting…")
             self.timer.timed("wait", state.cancel.wait, LOADING_POLL_SECONDS)
             state.auto_waited += LOADING_POLL_SECONDS
-            obs = self._observe(state)
+            obs = self._observe(state, before, pending)
         return obs
 
     def _is_loading(self, obs: Observation) -> bool:
@@ -406,6 +498,25 @@ class Agent:
             {"type": "image", "media_type": "image/jpeg", "data": base64.b64encode(obs.shot.jpeg).decode()},
         ]
 
+    def _show_later(self, state: _TaskState, messages: list[dict], obs: Observation) -> None:
+        """The main model sees `obs` at its next turn. Without lazy screenshots it goes into the
+        conversation now (as before); with them, when a vision step comes (_show)."""
+        state.unshown = obs
+        if not self._lazy_shots(state):
+            self._show(state, messages)
+
+    def _show(self, state: _TaskState, messages: list[dict]) -> None:
+        """Put the current screen (text and screenshot) at the end of the last user message."""
+        obs, state.unshown = state.unshown, None
+        if obs is None:
+            return
+        if messages[-1]["role"] != "user":
+            messages.append({"role": "user", "content": []})
+        last = messages[-1]
+        if isinstance(last["content"], str):
+            last["content"] = [{"type": "text", "text": last["content"]}]
+        last["content"].extend(self._obs_blocks(obs, self._app_notes(state, obs)))
+
     # --- mid-task corrections ("steer") ----------------------------------------
 
     def _apply_corrections(self, state: _TaskState, messages: list[dict]) -> None:
@@ -446,13 +557,16 @@ class Agent:
 
     # --- actions ---------------------------------------------------------
 
-    def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False) -> Outcome:
+    def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False,
+                 done_via: str = "vision") -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
                 outcome = self._dispatch(name, args, obs, state)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
+        if outcome.done:
+            outcome.done_via = done_via
         outcome.timings = self.timer.take()
         state.step_index += 1
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
@@ -467,7 +581,7 @@ class Agent:
         if record is None:
             return
         try:
-            shot = obs.shot
+            shot = obs.geometry()  # never takes a screenshot just for the record
             safe = dict(args)
             text = outcome.text
             if name == "type_text":
@@ -484,23 +598,25 @@ class Agent:
                               "bounds": list(el.bounds), "index": el.index}
                     points = list(el.center)
             for xk, yk in POINT_ARGS.get(name, ()):
-                if isinstance(args.get(xk), (int, float)) and isinstance(args.get(yk), (int, float)):
+                if shot and isinstance(args.get(xk), (int, float)) and isinstance(args.get(yk), (int, float)):
                     points += shot.to_device(args[xk], args[yk])
             # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
-            norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4) for i, v in enumerate(points)]
+            norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4)
+                    for i, v in enumerate(points)] if shot else []
             record({
                 "idx": state.step_index, "t": time.time(), "tool": name, "args": safe,
                 "norm_xy": norm or None, "package": obs.package,
-                "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
+                "screen_w": shot.device_width if shot else None, "screen_h": shot.device_height if shot else None,
+                "anchor": anchor,
                 "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
+                "done_via": outcome.done_via,
             })
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
-        shot = obs.shot
         if name == "launch_app":
             resolution = self.resolver.resolve(args["app"])
             if resolution is None:
@@ -540,7 +656,10 @@ class Agent:
                 return Outcome(f"Element [{index}] {element.label!r} is covered by another window (a dialog or the "
                                "keyboard), so a tap would land on that. Deal with what covers it first.",
                                is_error=True, settle=0)
-            if blocked := self._guard(f"{args.get('target', '')} {element.label}", state, obs):
+            # The step's one classifier request asked about the element by its label. When the model
+            # described the target in other words, the check asks again with those words included.
+            same = str(args.get("target", "")).strip() in ("", element.label)
+            if blocked := self._guard(f"{args.get('target', '')} {element.label}", state, obs, element if same else None):
                 return blocked
             if moved := self._target_moved(element):
                 return moved
@@ -550,19 +669,20 @@ class Agent:
         if name == "tap":
             if blocked := self._guard(args.get("target", ""), state, obs):
                 return blocked
-            x, y = shot.to_device(args["x"], args["y"])
+            x, y = obs.shot.to_device(args["x"], args["y"])
             self.driver.tap(x, y)
             return Outcome(f"Tapped {args.get('target') or 'point'} at ({args['x']},{args['y']}).")
 
         if name == "long_press":
             if blocked := self._guard(args.get("target", ""), state, obs):
                 return blocked
-            x, y = shot.to_device(args["x"], args["y"])
+            x, y = obs.shot.to_device(args["x"], args["y"])
             self.driver.long_press(x, y, int(args.get("duration_ms", 800)))
             return Outcome(f"Long-pressed {args.get('target') or 'point'}.")
 
         if name == "scroll":
-            w, h = shot.device_width, shot.device_height
+            frame = obs.shot  # this screen's own size (a recent frame may predate a rotation)
+            w, h = frame.device_width, frame.device_height
             cx, cy = w // 2, h // 2
             dx, dy = int(w * 0.3), int(h * 0.25)
             moves = {
@@ -575,12 +695,13 @@ class Agent:
             return Outcome(f"Scrolled {args['direction']}.")
 
         if name == "swipe":
-            x1, y1 = shot.to_device(args["x1"], args["y1"])
-            x2, y2 = shot.to_device(args["x2"], args["y2"])
+            x1, y1 = obs.shot.to_device(args["x1"], args["y1"])
+            x2, y2 = obs.shot.to_device(args["x2"], args["y2"])
             self.driver.swipe(x1, y1, x2, y2, int(args.get("duration_ms", 300)))
             return Outcome("Swiped.")
 
         if name == "type_text":
+            state.typed = True
             self.driver.type_text(args["text"])
             if args.get("submit"):
                 self.driver.key("ENTER")
@@ -611,28 +732,41 @@ class Agent:
 
         return Outcome(f"Unknown tool {name}.", is_error=True)
 
-    def _guard(self, description: str, state: _TaskState, obs: Observation) -> Outcome | None:
+    def _keyword_hits(self, text: str) -> list[str]:
+        target = text.lower()
+        return [k for k in self.config.confirm_keywords if re.search(rf"\b{re.escape(k.lower())}\b", target)]
+
+    def _guard(self, description: str, state: _TaskState, obs: Observation, element: UIElement | None = None) -> Outcome | None:
         """Ask before risky taps ('Buy', 'Send', ...) the user didn't ask for.
 
         Risky: matches a confirm keyword, or Jev rates it risky. Requested: Jev judges that the
         request explicitly asked for it, or (without Jev) the matched keyword appears in the request.
+        For a tap on `element`, the step's one classifier request may already hold its risk (and,
+        when it can matter, its "requested"); otherwise the separate check asks now.
         """
         policy = self.config.confirm_actions
         if policy == "never":
             return None
-        target = description.lower()
-        hits = [k for k in self.config.confirm_keywords if re.search(rf"\b{re.escape(k.lower())}\b", target)]
+        hits = self._keyword_hits(description)
         risky = bool(hits)
         requested = any(re.search(rf"\b{re.escape(k.lower())}\b", state.task.lower()) for k in hits)
         if self.judge:
             try:
-                risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, description.strip(), self._describe(obs))
+                known = element is not None and element.index in obs.risks and (
+                    not requested or element.index in obs.requested)
+                if known:
+                    risk, asked = obs.risks[element.index], obs.requested.get(element.index, 0.0)
+                else:
+                    risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, description.strip(),
+                                                   self._describe(obs))
                 risky = risky or risk >= self.config.jev_risk_threshold
                 # The classifier only ever adds caution. It reads on-screen text, so a screen could
                 # talk it into "the user asked for this"; it may veto "requested", never grant it.
                 requested = requested and asked >= 0.5
             except JevError as exc:
                 self.io.event("error", str(exc))
+        if risky:
+            state.risky = True
         if not risky or (policy == "unrequested" and requested):
             return None
         if state.approved:
@@ -701,20 +835,28 @@ class Agent:
         c = self.config
         if not fast.eligible(obs.elements, c.fast_path_min_elements):
             return None
-        heads = fast.targets(obs.elements)
-        try:
-            choice = self.timer.timed("jev", self.judge.next_step, state.task, fast.screen_table(obs.package, obs.elements),
-                                      state.actions[-5:], heads)
-        except (JevError, KeyError, TypeError, ValueError) as exc:
-            self.io.event("error", f"Fast step skipped: {exc}")
-            return None
+        if obs.heads is not None:  # the step's one classifier request already decided (_classify_step)
+            heads, choice = obs.heads, obs.choice
+            if choice is None:
+                return None  # that request failed: the vision step
+        else:
+            heads = fast.targets(obs.elements)
+            try:
+                choice = self.timer.timed("jev", self.judge.next_step, state.task,
+                                          fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads)
+            except (JevError, KeyError, TypeError, ValueError) as exc:
+                self.io.event("error", f"Fast step skipped: {exc}")
+                return None
         op = choice.operation
 
         def sure(p: float, conf: float) -> bool:
             return p >= c.fast_path_min_probability and conf >= c.fast_path_min_confidence
 
-        # DONE always goes to the vision model: only it may say the task succeeded.
-        if op in ("DONE", "ESCALATE") or not sure(choice.probability, choice.confidence):
+        # DONE goes to the vision model, except a plain navigation task the classifier may finish
+        # itself when every check passes (fast_path_done, see _classifier_done).
+        if op == "DONE":
+            return self._classifier_done(state, obs, choice)
+        if op == "ESCALATE" or not sure(choice.probability, choice.confidence):
             return None
         element = None
         if op in heads:
@@ -731,7 +873,9 @@ class Agent:
                 return None
             calls = [("tap_element", {"index": element.index, "target": element.label}), ("type_text", {"text": text})]
         elif op == "LAUNCH_APP":
-            app = self._fast_value(state, "app", {"foreground_app": obs.package or "unknown"})
+            app = self._direct_app(state, obs) if c.fast_path_direct_launch else None
+            if app is None:
+                app = self._fast_value(state, "app", {"foreground_app": obs.package or "unknown"})
             if app is None:
                 return None
             calls = [("launch_app", {"app": app})]
@@ -745,6 +889,7 @@ class Agent:
         first = self._action_text(calls[0][0], calls[0][1], obs)
         recent = [a["action"] for a in state.actions[-4:]]
         if recent[-1:] == [first] or recent.count(first) >= 2:
+            state.escalated = True
             return None
 
         taken = []
@@ -760,6 +905,50 @@ class Agent:
             if outcome.is_error:
                 break
         return taken
+
+    def _direct_app(self, state: _TaskState, obs: Observation) -> str | None:
+        """The package of the one app the request names exactly (an installed app's label or an alias,
+        case, diacritics and spacing aside), so it opens without asking the text model. None when
+        no name matches, or the names match several apps or only the app already in front."""
+        found = {pkg for phrase in fast.app_phrases(state.task) if (pkg := self.resolver.exact(phrase))}
+        found.discard(obs.package)
+        return found.pop() if len(found) == 1 else None
+
+    def _classifier_done(self, state: _TaskState, obs: Observation, choice: StepChoice) -> list | None:
+        """Finish without the vision model's confirmation (fast_path_done), only when all of these hold;
+        otherwise None (the vision step confirms, as always):
+        (a) the classifier's DONE and its "request looks complete" both reach
+            fast_path_done_min_probability, with its confidence at least fast_path_min_confidence;
+        (b) the screen shows what the request asked to open: a title or selected tab named after it
+            (or, for "open <app>", that app is in front);
+        (c) the task only navigated: the request is made of navigation verbs and names no side effect,
+            no tap was risky and nothing was typed;
+        (d) nothing escalated to the vision model or looped."""
+        c = self.config
+        a = obs.assessment
+        if not (c.fast_path_done and choice.probability >= c.fast_path_done_min_probability
+                and choice.confidence >= c.fast_path_min_confidence
+                and a is not None and a.task_done >= c.fast_path_done_min_probability):
+            return None
+        if state.escalated or state.risky or state.typed or any(x["screen_changed"] is False for x in state.actions):
+            return None
+        if not fast.navigation_only(state.task, c.confirm_keywords):
+            return None
+        target = fast.key_target(state.task)
+        if not target:
+            return None
+        shown = fast.shows_target(obs.elements, target)  # sizes from the elements themselves (no stale frame)
+        if shown is not None:
+            summary = f"{shown.text or shown.desc} is open."
+        elif obs.package and self.resolver.exact(target) == obs.package:
+            summary = f"{self.resolver.display_name(obs.package)} is open."
+        else:
+            return None
+        args = {"summary": summary, "success": True}
+        outcome = self._execute("done", args, obs, state, fast_step=True, done_via="classifier")
+        state.fast_steps += 1
+        self._event("action", f"done: {outcome.text}", {"timings": outcome.timings, "jev": True, "fast": True})
+        return [("done", args, outcome)]
 
     def _fast_value(self, state: _TaskState, key: str, context: dict) -> str | None:
         """A small, fast text model writes one value ({"text": …} or {"app": …}); None if it can't."""
@@ -781,7 +970,7 @@ class Agent:
     def _after_fast_step(self, state: _TaskState, obs: Observation, taken: list[tuple[str, dict, Outcome]],
                          messages: list[dict]) -> Observation:
         """Settle, look again, and tell the main model what happened (as text in the conversation, so
-        any provider takes it), followed by the new screen."""
+        any provider takes it). The new screen follows when the main model next decides (_show_later)."""
         last = taken[-1][2]
         settle = self.config.settle_delay if last.settle is None else last.settle
         self._settle(settle, state, last.launched, last.quiet_ms)
@@ -795,27 +984,37 @@ class Agent:
             lines.append(f"- {name} {json.dumps(shown)}: {'Error: ' if outcome.is_error else ''}{text}")
         note = ("Since your last turn, a quick helper took these steps from the element list "
                 "(no reply needed; carry on from the new screen):\n" + "\n".join(lines))
-        blocks = [{"type": "text", "text": note}, *self._obs_blocks(new, self._app_notes(state, new))]
+        blocks = [{"type": "text", "text": note}]
         if messages[-1]["role"] == "user" and isinstance(messages[-1]["content"], list):
             messages[-1]["content"].extend(blocks)
         else:
             messages.append({"role": "user", "content": blocks})
+        self._show_later(state, messages, new)
         return new
 
     def _observe_after_action(self, state: _TaskState, before: Observation) -> Observation:
-        """Observe after an action and note whether it changed the screen (the fast path's loop check)."""
-        obs = self._observe_settled(state)
-        changed = fast.signature(obs.package, obs.elements) != fast.signature(before.package, before.elements)
-        for action in state.actions:
-            if action["screen_changed"] is None:
-                action["screen_changed"] = changed
-        return obs
+        """Observe after an action and note whether it changed the screen (the fast path's loop check).
+        The note is made as soon as the elements are read, before the classifier sees recent actions."""
+        pending = [action for action in state.actions if action["screen_changed"] is None]
+        return self._observe_settled(state, before, pending)
 
     # --- settling after an action -------------------------------------------------
 
     def _variant(self, fast_path: bool = False) -> str:
-        """Which latency features a task runs with, for comparing them in `openmob timings`."""
-        return ("adaptive" if self.config.adaptive_settle else "fixed") + ("+fast" if fast_path else "")
+        """Which latency features a task runs with, for comparing them in `openmob timings`:
+        fixed | adaptive settle (+q<ms> for a quiet time other than 300 ms), then with the fast path
+        +fast and its extras: +noshot (lazy screenshots), +1req (one classifier request per step),
+        +launch (exact app names launch directly), +fastdone (the classifier may finish)."""
+        c = self.config
+        out = "adaptive" if c.adaptive_settle else "fixed"
+        if c.adaptive_settle and c.settle_quiet_ms != DEFAULT_QUIET_MS:
+            out += f"+q{c.settle_quiet_ms}"
+        if fast_path:
+            out += "+fast"
+            for on, tag in ((c.fast_path_lazy_screenshot, "noshot"), (c.jev_one_request, "1req"),
+                            (c.fast_path_direct_launch, "launch"), (c.fast_path_done, "fastdone")):
+                out += f"+{tag}" if on else ""
+        return out
 
     def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None) -> None:
         """Let the screen catch up after an action. `seconds` is the most to wait (the fixed delay).

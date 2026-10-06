@@ -372,6 +372,8 @@ class Coordinator:
                 self._block_own_app(options)
                 result = self.agent.run(text, self.cancel, go_home=go_home, **options)
                 data = {"final": True, "success": result.success, "steps": result.steps}
+                if getattr(result, "done_via", None):
+                    data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
                 summary = result.summary
                 if self._unanswered == task_id and not result.success:
                     data["reason"] = "question_timeout"
