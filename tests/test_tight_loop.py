@@ -170,41 +170,27 @@ class FlowPhone(FakeDriver):
     def wait_idle(self, quiet_ms, max_ms):
         return {"idle": True, "waited_ms": 1}
 
-
-def test_a_notification_dialog_is_allowed_with_no_model_call(tmp_path):
-    phone = FlowPhone({"guest": ("com.chess", APP_SCREEN), "dialog": (CONTROLLER, notification_dialog()),
-                       "bots": ("com.chess", BOTS_SCREEN)}, "guest",
-                      {("guest", "Play as Guest"): "dialog", ("dialog", "Allow"): "bots"})
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0, target="Play as Guest")],
-        [tool_use("done", "b", summary="On the bots screen.", success=True)],
-    ], tmp_path)
-    result = agent.run("install chess and play 5 moves against a bot")
-    assert result.success
-    assert phone.tapped == ["Play as Guest", "Allow"]
-    # The dialog cost no model call: two decisions for the whole run (the guest tap and done).
-    assert len(client.requests) == 2
-    auto = io_.steps[1]
-    assert auto["source"] == "auto_dialog" and auto["tool"] == "tap_element" and auto["package"] == CONTROLLER
-    assert "Allow" in auto["outcome"] and not auto["is_error"]
-    assert "source" not in io_.steps[0]  # the model's own steps carry no source
-    assert "Play Bots" in last_text(client.requests[1]) and not io_.questions  # nobody was asked
+    def key(self, name):
+        super().key(name)
+        nxt = self.moves.get((self.screen, name))
+        if nxt:
+            self.screen = nxt
 
 
-def test_the_location_two_step_picks_approximate_then_only_this_time(tmp_path):
-    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "loc": (CONTROLLER, location_dialog()),
-                       "loc2": (CONTROLLER, location_dialog(precise_checked=False)),
-                       "bots": ("com.chess", BOTS_SCREEN)}, "app",
-                      {("app", "Play as Guest"): "loc", ("loc", "Approximate"): "loc2",
-                       ("loc2", "Only this time"): "bots"})
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0)],
-        [tool_use("done", "b", summary="ok", success=True)],
-    ], tmp_path)
-    agent.run("find a chess club near me")
-    assert phone.tapped == ["Play as Guest", "Approximate", "Only this time"]
-    assert [s.get("source") for s in io_.steps] == [None, "auto_dialog", "auto_dialog", None]
-    assert len(client.requests) == 2
+class SamsungPhone(FlowPhone):
+    """The real failure (Samsung, Android 15/16): taps reach the permission dialog but Android drops them
+    (accessibility-data-sensitive, the service isn't an accessibility tool); BACK closes it at once."""
+
+    def tap(self, x, y):
+        if self.screens[self.screen][0] == CONTROLLER:
+            FakeDriver.tap(self, x, y)
+            self.tapped.append("ignored")
+            return
+        super().tap(x, y)
+
+
+
+
 
 
 def test_defaults_per_type_and_never_allow_all_the_time():
@@ -286,20 +272,6 @@ def test_a_fake_dialog_on_a_web_page_is_not_auto_tapped(tmp_path):
         assert phone.tapped == [] and all("source" not in s for s in io_.steps) and len(client.requests) == 1
 
 
-def test_a_request_about_permissions_is_left_to_the_model(tmp_path):
-    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "dialog": (CONTROLLER, notification_dialog()),
-                       "bots": ("com.chess", BOTS_SCREEN)}, "app",
-                      {("app", "Play as Guest"): "dialog", ("dialog", "Don't allow"): "bots"})
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0)],
-        [tool_use("tap_element", "b", index=2, target="Don't allow")],
-        [tool_use("done", "c", summary="ok", success=True)],
-    ], tmp_path, task_io=RecordingIO(answers=["yes"]))  # (a model's tap in a permission dialog asks, as before)
-    agent.run("open chess as a guest and don't allow notifications")
-    assert phone.tapped == ["Play as Guest", "Don't allow"] and len(client.requests) == 3
-    assert all("source" not in s for s in io_.steps)
-    assert pd.request_mentions_permissions("deny location access") and not pd.request_mentions_permissions(
-        "install chess and play 5 moves against a bot")
 
 
 def test_the_handler_can_be_turned_off_and_the_model_is_told():
@@ -343,51 +315,8 @@ def test_a_cant_see_refusal_waits_for_the_screen_and_tries_once_more(tmp_path):
     assert not step["is_error"] and phone.tapped == ["Play Bots"] and len(client.requests) == 2
 
 
-def test_a_cant_see_refusal_over_a_new_dialog_does_nothing_and_the_dialog_is_answered(tmp_path):
-    phone = FlowPhone({"bots": ("com.chess", BOTS_SCREEN), "dialog": (CONTROLLER, notification_dialog()),
-                       "game": ("com.chess", [el(0, "Resign")])}, "bots", {("dialog", "Allow"): "game"})
-    real_tap = phone.tap
-    refused = []
-
-    def tap(x, y):
-        if not refused:
-            refused.append(1)
-            phone.screen = "dialog"  # the dialog came up as the tap was sent
-            raise Unstable("The phone can't see what's there. Look again.")
-        real_tap(x, y)
-
-    phone.tap = tap
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0, target="Play Bots")],
-        [tool_use("done", "b", summary="ok", success=True)],
-    ], tmp_path, verify_taps=False)
-    agent.run("play a bot")
-    assert io_.steps[0]["is_error"] and "screen changed" in io_.steps[0]["outcome"]
-    assert io_.steps[1]["source"] == "auto_dialog" and phone.tapped == ["Allow"]
-    assert len(client.requests) == 2
 
 
-def test_an_unreadable_window_is_given_a_moment_before_the_model_looks(tmp_path):
-    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "hidden": (None, []),
-                       "dialog": (CONTROLLER, notification_dialog()), "bots": ("com.chess", BOTS_SCREEN)}, "app",
-                      {("app", "Play as Guest"): "hidden", ("dialog", "Allow"): "bots"})
-    real_read = phone.ui_elements
-    seen = {"at": None}
-
-    def read():
-        if phone.screen == "hidden":
-            seen["at"] = seen["at"] or time.monotonic()
-            if time.monotonic() - seen["at"] > 0.3:
-                phone.screen = "dialog"  # OCR done: the dialog is readable
-        return real_read()
-
-    phone.ui_elements = read
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0)],
-        [tool_use("done", "b", summary="ok", success=True)],
-    ], tmp_path)
-    agent.run("open chess as a guest")
-    assert phone.tapped == ["Play as Guest", "Allow"] and len(client.requests) == 2
 
 
 # --- D. waits that can never be met ------------------------------------------------------------------
@@ -446,19 +375,6 @@ def test_the_agents_wait_until_uses_the_still_exit(tmp_path):
     assert step["wait_met"] is False and step["waited_ms"] < 4500 and "still" in step["outcome"]
 
 
-def test_a_lasting_contacts_grant_asks_the_owner_with_no_model_call(tmp_path):
-    contacts = [el(0, "Allow Chess.com to access your contacts?", PC + "permission_message", "TextView"),
-                el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
-    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "dialog": (CONTROLLER, contacts),
-                       "bots": ("com.chess", BOTS_SCREEN)}, "app",
-                      {("app", "Play as Guest"): "dialog", ("dialog", "Allow"): "bots", ("dialog", "Don't allow"): "bots"})
-    agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0)],
-        [tool_use("done", "b", summary="ok", success=True)],
-    ], tmp_path, task_io=RecordingIO(answers=["no"]))
-    agent.run("invite a friend to chess")
-    assert io_.questions and "contacts" in io_.questions[0]  # the owner was asked, not the model
-    assert phone.tapped == ["Play as Guest", "Don't allow"] and len(client.requests) == 2
 
 
 # --- Play Store installs ------------------------------------------------------------------------------
@@ -477,3 +393,131 @@ def test_an_unrequested_install_asks_and_a_requested_one_does_not(tmp_path):
         agent.run(task)
         assert bool(io_.questions) is asked
         assert phone.tapped == ([] if asked else ["Install"])
+
+
+# --- B (revised). Permission dialogs are dismissed with Back ------------------------------------------------
+
+def guest_flow(phone_cls=SamsungPhone, dialog=None, back_closes=True):
+    screens = {"guest": ("com.chess", APP_SCREEN), "dialog": (CONTROLLER, dialog or notification_dialog()),
+               "bots": ("com.chess", BOTS_SCREEN)}
+    moves = {("guest", "Play as Guest"): "dialog"}
+    if back_closes:
+        moves[("dialog", "BACK")] = "bots"
+    return phone_cls(screens, "guest", moves)
+
+
+def test_regression_samsung_taps_ignored_back_closes_the_dialog(tmp_path):
+    phone = guest_flow()
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0, target="Play as Guest")],
+        [tool_use("done", "b", summary="On the bots screen.", success=True)],
+    ], tmp_path)
+    result = agent.run("install chess and play 5 moves against a bot")
+    assert result.success
+    assert phone.tapped == ["Play as Guest"]  # no tap was ever sent to the dialog
+    assert [a for a in phone.actions if a[0] == "key"] == [("key", "BACK")]
+    assert len(client.requests) == 2  # the dialog cost no model call
+    auto = io_.steps[1]
+    assert auto["source"] == "auto_dialog" and auto["tool"] == "press_key" and auto["args"] == {"key": "BACK"}
+    assert auto["outcome"].startswith("Dismissed Chess.com's notifications request with Back")
+    assert "didn't get the permission" in auto["outcome"]
+    seen = str(client.requests[1]["messages"])
+    assert "Play Bots" in seen and "Dismissed Chess.com's notifications request" in seen
+    assert not io_.questions
+
+
+def test_a_dialog_back_cant_close_is_tried_twice_then_left_to_the_owner(tmp_path):
+    phone = guest_flow(back_closes=False)
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0)],
+        [tool_use("done", "b", summary="Waiting for you.", success=False)],
+    ], tmp_path)
+    agent.run("play chess")
+    assert [a for a in phone.actions if a[0] == "key"] == [("key", "BACK"), ("key", "BACK")]
+    assert [s.get("source") for s in io_.steps] == [None, "auto_dialog", "auto_dialog", None]
+    assert "answer it on the phone" in str(client.requests[1]["messages"]) and len(client.requests) == 2
+
+
+def test_the_models_tap_on_a_dialog_is_not_sent(tmp_path):
+    phone = guest_flow(back_closes=False)
+    phone.screen = "dialog"
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=1, target="Allow")],
+        [tool_use("tap", "b", x=270, y=700, target="Allow")],
+        [tool_use("done", "c", summary="no", success=False)],
+    ], tmp_path, auto_permission_dialogs=False)
+    agent.run("play chess")
+    assert phone.tapped == [] and not [a for a in phone.actions if a[0] == "tap"]
+    for step in io_.steps[:2]:
+        assert step["is_error"] and "Press BACK" in step["outcome"]
+
+
+def test_an_explicit_allow_request_still_gets_back_and_an_honest_note(tmp_path):
+    phone = guest_flow()
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0)],
+        [tool_use("done", "b", summary="Android requires you to tap Allow yourself.", success=False)],
+    ], tmp_path)
+    agent.run("open chess as a guest and allow notifications")
+    assert [a for a in phone.actions if a[0] == "key"] == [("key", "BACK")] and phone.tapped == ["Play as Guest"]
+    assert "Android requires the owner to tap Allow" in str(client.requests[1]["messages"])
+    assert pd.request_wants_permission("turn on location for Maps")
+    assert not pd.request_wants_permission("open chess and don't allow notifications")
+
+
+def test_location_and_contacts_dialogs_are_dismissed_the_same_way(tmp_path):
+    contacts = [el(0, "Allow Chess.com to access your contacts?", PC + "permission_message", "TextView"),
+                el(1, "Allow", PC + "permission_allow_button"), el(2, "Don't allow", PC + "permission_deny_button")]
+    for dialog in (location_dialog(), contacts):
+        phone = guest_flow(dialog=dialog)
+        agent, client, io_ = make(phone, [
+            [tool_use("tap_element", "a", index=0)],
+            [tool_use("done", "b", summary="ok", success=True)],
+        ], tmp_path)
+        agent.run("find a chess club near me")
+        assert phone.tapped == ["Play as Guest"] and ("key", "BACK") in phone.actions
+        assert not io_.questions and len(client.requests) == 2
+
+
+def test_a_cant_see_refusal_over_a_new_dialog_does_nothing_and_the_dialog_is_dismissed(tmp_path):
+    phone = FlowPhone({"bots": ("com.chess", BOTS_SCREEN), "dialog": (CONTROLLER, notification_dialog()),
+                       "game": ("com.chess", [el(0, "Resign")])}, "bots", {("dialog", "BACK"): "game"})
+    refused = []
+
+    def tap(x, y):
+        refused.append(1)
+        phone.screen = "dialog"  # the dialog came up as the tap was sent
+        raise Unstable("The phone can't see what's there. Look again.")
+
+    phone.tap = tap
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0, target="Play Bots")],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], tmp_path, verify_taps=False)
+    agent.run("play a bot")
+    assert io_.steps[0]["is_error"] and "screen changed" in io_.steps[0]["outcome"]
+    assert io_.steps[1]["source"] == "auto_dialog" and ("key", "BACK") in phone.actions
+    assert len(client.requests) == 2
+
+
+def test_an_unreadable_window_is_given_a_moment_before_the_model_looks(tmp_path):
+    phone = FlowPhone({"app": ("com.chess", APP_SCREEN), "hidden": (None, []),
+                       "dialog": (CONTROLLER, notification_dialog()), "bots": ("com.chess", BOTS_SCREEN)}, "app",
+                      {("app", "Play as Guest"): "hidden", ("dialog", "BACK"): "bots"})
+    real_read = phone.ui_elements
+    seen = {"at": None}
+
+    def read():
+        if phone.screen == "hidden":
+            seen["at"] = seen["at"] or time.monotonic()
+            if time.monotonic() - seen["at"] > 0.3:
+                phone.screen = "dialog"  # OCR done: the dialog is readable
+        return real_read()
+
+    phone.ui_elements = read
+    agent, client, io_ = make(phone, [
+        [tool_use("tap_element", "a", index=0)],
+        [tool_use("done", "b", summary="ok", success=True)],
+    ], tmp_path)
+    agent.run("open chess as a guest")
+    assert phone.tapped == ["Play as Guest"] and ("key", "BACK") in phone.actions and len(client.requests) == 2
