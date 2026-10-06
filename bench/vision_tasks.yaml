@@ -1,0 +1,28 @@
+# Tasks for `openmob bench-api` (docs/benchmarks.md, "Model comparison").
+#
+# Each task: name, instruction, an optional reset (runs before every run, not measured) and max_steps.
+# Keep tasks read-only or self-reversing: nothing that sends, buys or deletes. A task that asks a
+# question is cancelled by the bench (nobody answers), so a risky step shows up as a failed run.
+
+tasks:
+  # 1. The labeled baseline: Settings has a full accessibility tree, so most steps can be fast steps;
+  #    the vision step is mostly the DONE confirmation.
+  - name: settings-display
+    instruction: Open Settings and go to Display
+    reset: Go to the home screen
+    max_steps: 12
+
+  # 2. Vision-heavy: the stopwatch's start / pause controls are icon-only on Pixel (and plain buttons on
+  #    Samsung), so the model works from the screenshot. Self-reversing: it ends reset to zero.
+  #    Stock Clock app on both: com.google.android.deskclock / com.sec.android.app.clockpackage.
+  - name: clock-stopwatch
+    instruction: Open the Clock app, go to the Stopwatch, start it, then pause it and reset it to zero
+    reset: Open the Clock app's Stopwatch, reset it to zero if it isn't already, then go to the home screen
+    max_steps: 15
+
+  # 3. A game (no accessibility tree: every step is a vision step). Fill in a game installed on the
+  #    test phone, then uncomment. Keep it to opening and closing menus: no purchases, no matches.
+  # - name: game-menu
+  #   instruction: Open <game> and open its main menu
+  #   reset: Close the menu in <game> if it is open, then go to the home screen
+  #   max_steps: 20
