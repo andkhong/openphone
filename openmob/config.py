@@ -141,7 +141,9 @@ class Config:
     # Fast path (needs Jev): on screens with a usable element list, Jev picks the next operation and its
     # target in one call and the step runs without the main model (a small text model writes any text).
     # off | fast_tier (only tasks on the `fast` API tier's model) | on. OPENMOB_FAST_PATH sets it too.
-    fast_path: str = "off"
+    # On by default since it measured 10.8 s -> 6.0 s on a labeled-app task (docs/benchmarks.md);
+    # without Jev it does nothing.
+    fast_path: str = "on"
     fast_path_min_probability: float = 0.7  # the chosen operation's and target's probability
     fast_path_min_confidence: float = 0.6  # and Jev's confidence in each
     fast_path_min_elements: int = 3  # labeled elements a screen needs (fewer: the vision step)

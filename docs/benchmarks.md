@@ -91,7 +91,7 @@ Two features cut the time a step spends outside the model:
   after a tap, 3 s after a launch), so a settle is never longer than before. Apps without
   `wait_idle` in their hello (older builds) and iOS keep the fixed sleep; an adb phone ends a launch's
   settle once the app is in front (polling `dumpsys window`), plus the 0.8 s settle.
-- **The fast path** (`fast_path: off | fast_tier | on`, off by default; needs Jev): on a screen with
+- **The fast path** (`fast_path: off | fast_tier | on`, on by default; needs Jev): on a screen with
   enough labeled elements (`fast_path_min_elements`), one Jev request picks the operation and its
   target (operation head plus TAP and TYPE_TEXT target heads, the pattern of
   browser-use/jev-ultrafast). When both clear `fast_path_min_probability` and
@@ -121,9 +121,9 @@ On a phone running the OpenMob app (where `wait_idle` works), run the same tasks
 server under each condition and read `openmob timings`, which groups steps by variant:
 
 ```sh
-OPENMOB_ADAPTIVE_SETTLE=off openmob run   # baseline: run the tasks, then stop the server
-openmob run                               # adaptive settle
-OPENMOB_FAST_PATH=on openmob run          # adaptive settle + fast path (needs TYPESAFE_API_KEY)
+OPENMOB_ADAPTIVE_SETTLE=off OPENMOB_FAST_PATH=off openmob run   # baseline: run the tasks, then stop the server
+OPENMOB_FAST_PATH=off openmob run         # adaptive settle
+openmob run                               # adaptive settle + fast path (the default; needs TYPESAFE_API_KEY)
 openmob timings --since 2h                # one group per variant: fixed, adaptive, adaptive+fast
 ```
 
@@ -147,3 +147,20 @@ launch). The fast path replaces about 1.5 s of model time on each step it takes 
 - `settle_ms` was a fixed sleep: `settle_delay` (0.8 s by default) after most actions and
   `launch_settle_delay` (3 s) after `launch_app` and `open_url`. On a short task, that can be more
   than the phone actions take. With adaptive settle those are caps (see above).
+
+## Measured (2026-10-05, Samsung SM-S948U1 through the server and the app, Jev on)
+
+"Open Settings and go to Display", 5 runs per condition after a warm-up, a reset task between runs.
+All 15 runs succeeded.
+
+| | Fixed settle | Adaptive settle | Adaptive + fast path |
+|---|---|---|---|
+| Task time, median (range) | 10.8 s (9.8–13.3) | 8.2 s (7.6–9.1) | **6.0 s** (5.8–6.3) |
+| Time to first action | 2.1 s | 2.2 s | 1.35 s |
+| Settle per task | 3.8 s | 1.2 s | 1.1 s |
+| Main model per task | 5.4 s | 5.1 s | 2.4 s |
+| Classifier per task | 0.5 s | 0.45 s | 1.0 s |
+
+With the fast path, opening Settings and tapping Display ran without the main model; only the DONE
+confirmation was a vision step. One easy task in a well-labeled app: re-measure on harder tasks
+(typing, search, long lists, poorly labeled apps) before reading more into it.
