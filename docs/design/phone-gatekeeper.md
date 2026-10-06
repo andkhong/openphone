@@ -608,6 +608,15 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   the open prompt; the language rule uses script and lower-case words, not dictionary misses on tickers;
   "Submit" is a terminal money word in money apps (now including prediction markets and trading apps). A
   Compose text field missing from the walked tree is resolved from findFocus.
+- **Decision D23 (task approval, by owner request, 2026-10-06):** at task start the phone asks once, worded
+  from the task's request text with its source on the "Server says" line, and signs a task grant bound to the task
+  id and the request text's digest (30 minutes on the monotonic clock, at most 25 risky steps, in-memory, cleared
+  by Stop). Under it, non-money risky steps of that task run without prompts; money commits (unless "Also allow
+  purchases"), browser/WebView autofill and permission dialogs still ask; hard denies still refuse. Requests
+  typed on the phone are granted without a prompt. Not offered in `ask` or `never`; `plan` uses it. Trade-off:
+  inside an approved task a compromised server chooses the steps (recipients, texts) within the approved
+  request's wording, which the phone can't check; the owner accepted this for friction. "Subscribe"/"Join" are
+  money only with a price nearby or a Play billing sheet.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

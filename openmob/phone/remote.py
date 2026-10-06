@@ -159,6 +159,15 @@ class RemoteDriver(CachedScreenshots):
         """The phone enforces the gatekeeper: refusals come back with codes, and it asks its owner itself."""
         return "gatekeeper" in self.capabilities
 
+    def task_grant(self, task: str, text: str, source: str) -> bool:
+        """Task approval: ask the owner, on the phone, to approve this task once (the phone words the prompt from the
+        request). True: granted. Raises GateRefused (gate_denied: declined; gate_no_answer) otherwise. False: this
+        phone's app can't (no "task_grant" capability)."""
+        if not self.gatekeeper or "task_grant" not in self.capabilities:
+            return False
+        result = self._call("task_grant", task=task, text=text, source=source) or {}
+        return bool(result.get("granted"))
+
     def gate_hint(self, text: str) -> None:
         """The server's checks found the next act risky: the phone asks (one prompt covering both detectors)."""
         self._gate_hint = " ".join((text or "").split())[:200]

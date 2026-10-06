@@ -251,6 +251,7 @@ class V1Service:
                 "instruction": info["request"], "created": info["created"], "started": info["started"],
                 "finished": info["finished"], "steps": info["steps"], "question": clean_text(info["question"]),
                 "permission_mode": meta.get("permission_mode"),
+                "prompts_count": info.get("prompts_count"),
                 "outcome": ({"success": info["success"], "summary": clean_text(info["summary"]),
                              "reason": info.get("reason")}
                             if info["status"] in FINAL_STATUSES else None),

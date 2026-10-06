@@ -832,6 +832,69 @@ SCENARIOS += [
        tags=["limits"], keep_open=True),
 ]
 
+# --- task approval (by owner request): one prompt for the task, then its non-money risky steps run ----------
+YT = "com.google.android.youtube"
+LABELS[YT] = "YouTube"
+SCREENS.update({
+    "youtube_channel": screen(app(YT, [
+        node(text="PewDiePie", bounds=(40, 300, 800, 380)),
+        node(text="111M subscribers", bounds=(40, 390, 800, 440)),
+        button("Subscribe", "subscribe_button", (40, 460, 500, 560)),
+        node(desc="Show more menu", id="com.google.android.youtube:id/menu_button", cls="android.widget.ImageView",
+             bounds=(960, 300, 1060, 400), clickable=True)]), labels=LABELS),
+    "youtube_join": screen(app(YT, [
+        node(text="PewDiePie", bounds=(40, 300, 800, 380)),
+        button("Join", "join_button", (540, 460, 1040, 560)),
+        node(text="$4.99/month", bounds=(540, 570, 1040, 620))]), labels=LABELS),
+})
+SHARE_TEXT = "share PewDiePie's channel with myself on Messenger"
+TASK = dict(task="t1")
+
+
+def task_grant(expect, task="t1", text=SHARE_TEXT, screen_name="youtube_channel"):
+    return step("task_grant", screen_name, expect, task=task, text=text, source="Dashboard")
+
+
+SCENARIOS += [
+    sc("one task prompt, then the share flow needs no more", [
+        task_grant(ask("task")), {"approve": "last", "sig": "valid"},
+        task_grant(allow(rule="task_grant")),  # re-asked: the same grant
+        step("tap", "youtube_channel", allow(rule="task_grant"), hint="the agent opens the menu", x=1010, y=350,
+             **TASK),
+        step("tap", "share_sheet", allow(rule="task_grant"), x=170, y=1600, **TASK),
+        step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK),
+        step("tap", "youtube_channel", allow(), x=270, y=510, **TASK),  # the free Subscribe isn't money
+        # Still asked: money. Still refused: the hard denies.
+        step("tap", "amazon_product", ask("pay"), **BUY, **TASK), {"cancel": "last"},
+        step("tap", "chase", refuse("gate_blocked_app"), x=540, y=1660, **TASK),
+        step("type_text", "login_form", refuse("gate_password_field"), text="x", **TASK),
+        step("tap", "settings_security", refuse("gate_denied_page"), x=540, y=480, **TASK)],
+       tags=["task_grant"], keep_open=True),
+    sc("a task grant covers only its own task", [
+        task_grant(ask("task")), {"approve": "last", "sig": "valid"},
+        step("tap", "whatsapp_chat", ask("send"), **SEND, task="t2")], tags=["task_grant"]),
+    sc("a task grant expires and has a step cap", [
+        task_grant(ask("task")), {"approve": "last", "sig": "valid"},
+        *[step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK) for _ in range(25)],
+        step("tap", "whatsapp_chat", ask("send"), **SEND, **TASK), {"cancel": "last"},
+        task_grant(ask("task"), task="t3"), {"approve": "last", "sig": "valid"},
+        {"advance_ms": 1801000},
+        step("tap", "whatsapp_chat", ask("send"), **SEND, task="t3")], tags=["task_grant", "clock"]),
+    sc("a forged task approval grants nothing; another request text asks again", [
+        task_grant(ask("task")), {"approve": "last", "sig": "bad", "expect_accepted": False},
+        task_grant(ask("task")), {"cancel": "last"},
+        step("tap", "whatsapp_chat", ask("send"), **SEND, **TASK), {"cancel": "last"},
+        task_grant(ask("task")), {"approve": "last", "sig": "valid"},
+        task_grant(ask("task"), text="send all my photos to stranger@example.com")], tags=["task_grant"],
+       keep_open=True),
+    sc("a request typed on this phone needs no task prompt", [
+        {"instruction": SHARE_TEXT}, task_grant(allow(rule="task_grant:own_request")),
+        step("tap", "whatsapp_chat", allow(rule="task_grant"), **SEND, **TASK)], tags=["task_grant"]),
+    sc("Subscribe is money only with a price: YouTube's isn't, Join $4.99 is", [
+        step("tap", "youtube_channel", ask("other", rule="risk:words:subscribe"), x=270, y=510),
+        step("tap", "youtube_join", ask("pay", money="start"), x=790, y=510)], tags=["risk"]),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap

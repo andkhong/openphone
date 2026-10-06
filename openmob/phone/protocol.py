@@ -83,6 +83,9 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     # Newer apps (hello device.capabilities has "wait_idle"): return once no window or content change
     # has arrived for quiet_ms, or at max_ms. The agent's adaptive settle; others get a fixed sleep.
     "wait_idle": ({"quiet_ms": "int", "max_ms": "int"}, "{waited_ms: int, idle: bool}", 10),
+    # Gatekeeper phones (capability "task_grant"): ask the owner, once, to approve this task (its request text, as
+    # the phone shows it). ok: granted; gate_needs_approval: the phone is asking (re-send after gate_event approved).
+    "task_grant": ({"task": "str", "text": "str", "source": "str"}, "{granted: true}", 15),
     # Live-view video, only for phones whose hello says "video": true (the owner allowed screen
     # streaming). The agent never uses these; it keeps taking screenshots.
     "stream_start": (

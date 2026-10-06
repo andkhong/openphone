@@ -71,6 +71,8 @@ class Gatekeeper(
         var cropHash = ""
         /** Shown to the owner: only shown prompts count toward the prompt limit. */
         var counted = false
+        /** A task prompt: the request text's digest. */
+        var digest = ""
     }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
     private class Followup(val pkg: String, val task: String, val expires: Long, var acts: Int = 0)
@@ -83,6 +85,11 @@ class Gatekeeper(
     /** binding -> (package, task): an approved flow-starting money tap; the follow-up starts when it runs. */
     private val startPermits = HashMap<String, Pair<String, String>>()
     private val credits = mutableListOf<Credit>()
+    private class TaskGrant(val digest: String, val expires: Long, var used: Int = 0, val apps: MutableSet<String> = mutableSetOf())
+    /** task id -> the owner's approval of that task (task approval, by owner request). */
+    private val taskGrants = HashMap<String, TaskGrant>()
+    /** Requests typed or spoken on this phone (digest, expiry): a task for one needs no task prompt. */
+    private val ownRequests = mutableListOf<Pair<String, Long>>()
     private val grants = mutableListOf<Grant>()
     var ceiling = "auto"
         private set
@@ -276,6 +283,7 @@ class Gatekeeper(
     fun noteInstruction(text: String) = synchronized(lock) {
         val toks = GateText.tokens(text)
         val now = now()
+        ownRequests.add(GateText.sha256(text.split(WS).filter { it.isNotEmpty() }.joinToString(" ")) to now + lim("own_request_ms"))
         for (kind in listOf("send", "post", "delete")) {
             if (GateText.anyPhrase(toks, rules.w.getValue(kind)) != null) credits.add(Credit(kind, now + lim("requested_ms")))
         }
@@ -293,6 +301,7 @@ class Gatekeeper(
     fun revokeAll() = synchronized(lock) {
         pending.keys.toList().forEach { onEvent?.invoke(it, "expired") }
         permits.clear(); pending.clear(); followup = null; credits.clear(); startPermits.clear()
+        taskGrants.clear(); ownRequests.clear()
         never = null
         entries.removeAll { it.record["type"] == "never" }
         suspended = false
@@ -307,6 +316,7 @@ class Gatekeeper(
         val now = now()
         expire(now)
         if (method in rules.meta) return Admission("allow", method = method, params = params)
+        if (method in rules.task) return requestTask(params)
         if (method in rules.read || method.startsWith("stream_")) {
             val hidden = hidden(screen)
             if ((method == "screenshot" || method == "ui_elements") && hidden.isNotEmpty()) {
@@ -370,6 +380,8 @@ class Gatekeeper(
             return Admission("allow", strict = true, binding = bind, kind = risk.kind, rule = it, money = risk.money,
                 method = method, params = params, pkg = j.pkg, plain = plain)
         }
+        if (mode != "ask" && taskCovers(risk, params, j.pkg)) return Admission("allow", strict = true, binding = bind,
+            kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
         val window = lim("ask_window_ms")
         asks.removeAll { now - it >= window }
         if (asks.size >= lim("asks_per_window")) {
@@ -388,6 +400,63 @@ class Gatekeeper(
 
     /** Why reads must not see this screen ("" if they may): a blocked app in any window, or an app window the
      *  phone can't identify yet (it may be a blocked app still loading). */
+    // --- task approval (by owner request): one prompt for the task, its non-money risky steps then run --------
+
+    /** The server asks for a task grant at task start: the phone shows the request itself ("Agent wants to: …")
+     *  and the owner approves the task once. Requests typed or spoken on this phone need no prompt. */
+    fun requestTask(params: Map<String, Any?>): Admission = synchronized(lock) {
+        val now = now()
+        val task = params["task"]?.toString().orEmpty()
+        val text = params["text"]?.toString().orEmpty().split(WS).filter { it.isNotEmpty() }.joinToString(" ").take(300)
+        val method = "task_grant"
+        if (task.isEmpty() || text.isEmpty()) return refuse("gate_denied", "builtin:task_request",
+            "A task grant needs the task id and its request text.", method, params)
+        val digest = GateText.sha256(text)
+        val bind = GateText.sha256("gk1-task|$task|$digest")
+        taskGrants[task]?.let { g ->
+            if (g.digest == digest && now < g.expires) return Admission("allow", rule = "task_grant", kind = "task",
+                method = method, params = params, binding = bind)
+        }
+        if (ownRequests.any { it.first == digest && it.second > now }) {
+            mintTask(task, digest)
+            return Admission("allow", rule = "task_grant:own_request", kind = "task", method = method, params = params, binding = bind)
+        }
+        pending.values.firstOrNull { it.binding == bind }?.let { p ->
+            return Admission("ask", code = "gate_needs_approval", rule = "risk:task", kind = "task", approvalId = p.id,
+                wording = p.risk.wording, binding = bind, method = method, params = params,
+                message = "Waiting for the owner's approval on the phone.")
+        }
+        if (pending.isNotEmpty()) return refuse("gate_prompt_open", "builtin:prompt_open",
+            "Waiting for the owner to answer a prompt on the phone.", method, params)
+        val window = lim("ask_window_ms")
+        asks.removeAll { now - it >= window }
+        if (asks.size >= lim("asks_per_window")) return refuse("gate_rate_limited", "builtin:prompt_rate",
+            "Too many approval prompts on the phone: try again later.", method, params)
+        val wording = "Agent wants to: $text. Allow the steps this needs?"
+        val risk = Risk("task", "task", wording = wording)
+        val id = "gk" + UUID.randomUUID().toString().replace("-", "")
+        pending[id] = Pending(id, bind, now, risk, "", task, null, method, params).also { it.digest = digest }
+        onEvent?.invoke(id, "pending")
+        Admission("ask", code = "gate_needs_approval", rule = "risk:task", kind = "task", approvalId = id, wording = wording,
+            binding = bind, method = method, params = params, message = "Waiting for the owner's approval of this task on the phone.")
+    }
+
+    private fun mintTask(task: String, digest: String) {
+        taskGrants[task] = TaskGrant(digest, now() + lim("task_grant_ms"))
+    }
+
+    /** Under the task's grant: every non-money risky step, except browser or WebView autofill and permission
+     *  dialogs (and the hard denies, which never get here). */
+    private fun taskCovers(risk: Risk, params: Map<String, Any?>, pkg: String): Boolean {
+        val g = taskGrants[params["task"]?.toString().orEmpty()] ?: return false
+        if (now() >= g.expires || g.used >= lim("task_grant_steps")) return false
+        if (risk.money != null || risk.kind == "task" || risk.kind == "step" || risk.reason.startsWith("permission:")) return false
+        if (risk.kind == "fill" && risk.grant == null) return false
+        g.used++
+        if (pkg.isNotEmpty()) g.apps.add(pkg) // the apps the task actually used
+        return true
+    }
+
     fun hidden(screen: GScreen): String = when {
         screen.windows.any { rules.blocked(it.pkg) } -> "builtin:sensitive_apps"
         screen.windows.any { it.pkg.isEmpty() && it.type == "application" } -> "builtin:unknown_window"
@@ -490,6 +559,11 @@ class Gatekeeper(
         }
         if (!verifier.verify(message, signature)) return false
         pending.remove(id)
+        if (p.risk.kind == "task") { // the owner approved the task: a grant, not a one-shot permit
+            mintTask(p.task, p.digest)
+            onEvent?.invoke(id, "approved")
+            return true
+        }
         permits[p.binding] = now + lim("permit_ms")
         if (p.risk.money == "start") startPermits[p.binding] = p.pkg to p.task // the follow-up starts when this tap runs
         if (grant != null) {
@@ -771,7 +845,7 @@ class Gatekeeper(
         return has(label, rules.sList("change_words"))
     }
 
-    private fun wordRisk(label: List<String>, ids: List<String>, pkg: String, payment: Boolean): Risk? {
+    private fun wordRisk(label: List<String>, ids: List<String>, pkg: String, payment: Boolean, priced: Boolean = true): Risk? {
         val words = GateText.stripPhrases(label, rules.w.getValue("pre_commit"))
         val idWords = mutableListOf<String>()
         val risky = rules.list("resource_id_risky")
@@ -782,6 +856,8 @@ class Gatekeeper(
         }
         val moneyCtx = payment || rules.moneyApp.containsMatchIn(pkg)
         val flow = GateText.anyPhrase(words, rules.w.getValue("flow_start")) ?: idWords.firstOrNull { it in setOf("buy", "purchase", "transfer") }
+        // YouTube's free Subscribe, a free group's Join: money only with a price nearby or a billing sheet.
+        if ((flow == "subscribe" || flow == "join") && !priced) return Risk("other", "words:$flow")
         if (flow != null) return Risk("pay", "words:$flow", money = "start", grant = pkg)
         val terminal = GateText.anyPhrase(words, rules.w.getValue("terminal"))
             ?: idWords.firstOrNull { it in setOf("pay", "place order", "placeorder", "confirm") }
@@ -865,7 +941,7 @@ class Gatekeeper(
             j.risk = Risk("other", "notification_action", wording = wording())
             return j
         }
-        var risk = wordRisk(label, ids, w.pkg, j.payment)
+        var risk = wordRisk(label, ids, w.pkg, j.payment, GateScreen.priced(screen, w))
         if (risk == null && (sliderAt(t) || has(label, rules.w.getValue("slide")))) {
             risk = Risk(if (j.payment) "pay" else "other", "slider", money = if (j.payment) "terminal" else null,
                 grant = if (j.payment) w.pkg else null)
@@ -1027,6 +1103,7 @@ class Gatekeeper(
     }
 
     companion object {
+        private val WS = Regex("\\s+")
         private val PERMISSION_APP = Regex("(?i)^allow\\s+(.+?)\\s+to\\s")
         val RANK = mapOf("ask" to 0, "plan" to 1, "auto" to 1, "trusted" to 2, "never" to 3)
         /** Well over the accessibility service's notificationTimeout (100 ms), the event delay the list lags by. */

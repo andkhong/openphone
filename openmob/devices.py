@@ -751,6 +751,7 @@ class DeviceManager:
         coordinator.device_model = info.model
         coordinator.question_timeout = float(getattr(self.cfg, "question_timeout_seconds", 300) or 0)
         coordinator.permissions_for = lambda mode, sid=info.id: self.task_permissions(sid, mode)
+        coordinator.requester_for = lambda task_id: (self._requester(task_id) or {}).get("name")
         cache = Path(DEFAULT_LABEL_CACHE).with_name(f"labels-{info.id}.json")
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:

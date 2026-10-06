@@ -91,6 +91,12 @@ or Do Not Disturb) never ask.
 - **"Always allow this"** (off by default) also grants that kind for 7 days (purchases: 24 hours, after a
   second confirmation), per app (a share: per target; a Settings page: that page; never for autofill in
   browsers). Grants are signed with the screen lock and listed on the phone.
+- **Task approval** (on by default, owner-switchable with `task_approval`): at the start of a task the phone asks
+  once, worded from the request itself ("Agent wants to: … Allow the steps this needs?"). Approved, the task's
+  non-money risky steps run without more prompts for up to 30 minutes or 25 steps; purchases, browser autofill
+  and permission dialogs still ask, and hard denies still refuse. Declining stops the task. A request you typed
+  or said on the phone itself needs no task prompt. "Subscribe" or "Join" count as money only with a price on
+  or near the control, or a Google Play billing sheet.
 - **The mode is the phone's.** The phone takes the tighter of the task's mode and its owner's signed ceiling
   (default **Ask for risky**). **Don't ask** and **"Also allow purchases"** count only when the owner approved
   them on that phone; under Don't ask, purchases (unless allowed), autofill and anything else that would ask

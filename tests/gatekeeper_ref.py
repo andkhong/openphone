@@ -394,6 +394,14 @@ def money_amounts(window: Window, target) -> list[str]:
     return sorted(set(a for t in texts for a in amounts(t)))
 
 
+def priced(screen: Screen, window: Window) -> bool:
+    """A price or currency on the target's window, or a Google Play billing sheet on screen."""
+    if any(w.package == "com.android.vending" and w.type in ("application", "system") and w is not window
+           for w in screen.windows):
+        return True
+    return any(amounts(f"{n.text} {n.desc}") for n in walk(window.root, []))
+
+
 def page_title(window: Window) -> list[str]:
     """What a Settings page calls itself: its window title, and headers near the top that aren't rows."""
     parts = [window.title]
@@ -501,7 +509,8 @@ class Pending:
     package: str
     task: str
     grant_offer: dict | None
-    counted: bool = False  # shown to the owner (only shown prompts count toward the prompt limit)
+    counted: bool = False
+    digest: str = ""  # a task prompt: the request text's digest  # shown to the owner (only shown prompts count toward the prompt limit)
 
 
 class TestVerifier:
@@ -543,6 +552,8 @@ class Gatekeeper:
         self.followup: dict | None = None  # {package, task, expires, acts}
         self.start_permits: dict[str, dict] = {}  # binding -> {package, task}: a flow-starting money approval
         self.credits: list[dict] = []  # {kind, expires}
+        self.task_grants: dict[str, dict] = {}  # task id -> {digest, expires, used, apps}: the owner approved the task
+        self.own_requests: list[dict] = []  # requests typed or spoken on this phone: {digest, expires}
         self.grants: list[Grant] = []
         self.ceiling = "auto"
         self.perm_defaults: dict[str, str] = {}  # the owner's signed (or tightened) permission-dialog defaults
@@ -605,6 +616,7 @@ class Gatekeeper:
         # In-memory state does not survive a restart.
         self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
         self.start_permits = {}
+        self.task_grants, self.own_requests = {}, []
         self.tokens, self.last_refill = float(self.r.limits["act_burst"]), now
         self.asks, self.denials = [], []
         self.last_app, self.suspended = "", False
@@ -684,6 +696,8 @@ class Gatekeeper:
     def note_instruction(self, text: str) -> None:
         toks = tokens(text)
         now = self.now()
+        self.own_requests.append({"digest": sha256(" ".join(text.split())),
+                                  "expires": now + self.r.limits["own_request_ms"]})
         for kind in ("send", "post", "delete"):
             if any_phrase(toks, self.r.w[kind]):
                 self.credits.append({"kind": kind, "expires": now + self.r.limits["requested_ms"]})
@@ -700,6 +714,7 @@ class Gatekeeper:
             self.events.append({"state": "expired", "approval_id": aid})
         self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
         self.start_permits = {}
+        self.task_grants, self.own_requests = {}, []
         self.never = None
         self.suspended = False
 
@@ -711,6 +726,8 @@ class Gatekeeper:
         params = params or {}
         if method in self.r.meta:
             return Admission("allow", method=method, params=params)
+        if method in self.r.d["methods"]["task"]:
+            return self.request_task(params)
         if method in self.r.read or method.startswith("stream_"):
             hidden = self._hidden(screen)
             if method in ("screenshot", "ui_elements") and hidden:
@@ -783,6 +800,8 @@ class Gatekeeper:
             return Admission("allow", strict=True, binding=bind, permit=bind, kind=risk.kind, money=risk.money, **base)
         if mode != "ask" and (why := self._covered(risk, j.package, params)):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule=why, money=risk.money, **base)
+        if mode != "ask" and self._task_covers(risk, params, j.package):
+            return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
         window = self.r.limits["ask_window_ms"]
         self.asks = [t for t in self.asks if now - t < window]
         if len(self.asks) >= self.r.limits["asks_per_window"]:
@@ -797,6 +816,70 @@ class Gatekeeper:
         return Admission("ask", code="gate_needs_approval", rule=f"risk:{risk.reason}", kind=risk.kind,
                          approval_id=aid, wording=risk.wording, grant_offer=offer, binding=bind, money=risk.money,
                          message="Waiting for the owner's approval on the phone.", **base)
+
+    # --- task approval (by owner request): one prompt for the task, its non-money risky steps then run --------
+
+    def request_task(self, params: dict) -> Admission:
+        """The server asks for a task grant at task start: the phone shows the request itself ("Agent wants to: …")
+        and the owner approves the task once. Requests typed or spoken on this phone need no prompt."""
+        now = self.now()
+        task = str(params.get("task") or "")
+        text = " ".join(str(params.get("text") or "").split())[:300]
+        source = " ".join(str(params.get("source") or "").split())[:60]
+        method = "task_grant"
+        if not task or not text:
+            return self._refuse("gate_denied", "builtin:task_request", "A task grant needs the task id and its "
+                                "request text.", method, params)
+        digest = sha256(text)
+        bind = sha256(f"gk1-task|{task}|{digest}")
+        g = self.task_grants.get(task)
+        if g is not None and g["digest"] == digest and now < g["expires"]:
+            return Admission("allow", rule="task_grant", kind="task", method=method, params=params, binding=bind)
+        if any(o["digest"] == digest and o["expires"] > now for o in self.own_requests):
+            self._mint_task(task, digest)
+            return Admission("allow", rule="task_grant:own_request", kind="task", method=method, params=params,
+                             binding=bind)
+        same = next((p for p in self.pending.values() if p.binding == bind), None)
+        if same is not None:
+            return Admission("ask", code="gate_needs_approval", rule="risk:task", kind="task",
+                             approval_id=same.approval_id, wording=same.risk.wording, binding=bind, method=method,
+                             params=params, message="Waiting for the owner's approval on the phone.")
+        if self.pending:
+            return self._refuse("gate_prompt_open", "builtin:prompt_open",
+                                "Waiting for the owner to answer a prompt on the phone.", method, params)
+        window = self.r.limits["ask_window_ms"]
+        self.asks = [t for t in self.asks if now - t < window]
+        if len(self.asks) >= self.r.limits["asks_per_window"]:
+            return self._refuse("gate_rate_limited", "builtin:prompt_rate",
+                                "Too many approval prompts on the phone: try again later.", method, params)
+        wording = f"Agent wants to: {text}. Allow the steps this needs?"
+        risk = Risk("task", "task", wording=wording)
+        aid = "gk" + uuid.uuid4().hex
+        self.pending[aid] = Pending(aid, bind, now, risk, "", task, None)
+        self.pending[aid].digest = digest
+        self.events.append({"state": "pending", "approval_id": aid})
+        return Admission("ask", code="gate_needs_approval", rule="risk:task", kind="task", approval_id=aid,
+                         wording=wording, binding=bind, method=method, params=params,
+                         message="Waiting for the owner's approval of this task on the phone.")
+
+    def _mint_task(self, task: str, digest: str) -> None:
+        self.task_grants[task] = {"digest": digest, "expires": self.now() + self.r.limits["task_grant_ms"],
+                                  "used": 0, "apps": set()}
+
+    def _task_covers(self, risk: Risk, params: dict, package: str) -> bool:
+        """Under the task's grant: every non-money risky step, except browser or WebView autofill and permission
+        dialogs (and the hard denies, which never get here)."""
+        g = self.task_grants.get(str(params.get("task") or ""))
+        if g is None or self.now() >= g["expires"] or g["used"] >= self.r.limits["task_grant_steps"]:
+            return False
+        if risk.money or risk.kind in ("task", "step") or risk.reason.startswith("permission:"):
+            return False
+        if risk.kind == "fill" and risk.grant is None:
+            return False
+        g["used"] += 1
+        if package:
+            g["apps"].add(package)  # the apps the task actually used
+        return True
 
     def _hidden(self, screen: Screen) -> str:
         """Why reads must not see this screen ("" if they may): a blocked app in any window, or an app window the
@@ -912,6 +995,10 @@ class Gatekeeper:
         if not self.verifier.verify(message, signature):
             return False
         del self.pending[approval_id]
+        if p.risk.kind == "task":  # the owner approved the task: a grant, not a one-shot permit
+            self._mint_task(p.task, p.digest)
+            self.events.append({"state": "approved", "approval_id": approval_id})
+            return True
         self.permits[p.binding] = now + self.r.limits["permit_ms"]
         if p.risk.money == "start":  # the follow-up starts only when this very tap runs (reverify)
             self.start_permits[p.binding] = {"package": p.package, "task": p.task}
@@ -1169,7 +1256,8 @@ class Gatekeeper:
             return True
         return any_phrase(label, self.r.s["change_words"]) is not None
 
-    def _word_risk(self, label: list[str], ids: list[str], package: str, payment: bool) -> Risk | None:
+    def _word_risk(self, label: list[str], ids: list[str], package: str, payment: bool,
+                   priced: bool = True) -> Risk | None:
         r = self.r
         words = strip_phrases(label, r.w["pre_commit"])
         id_words = []
@@ -1181,6 +1269,9 @@ class Gatekeeper:
         money_ctx = payment or bool(r.money_app.search(package or ""))
         flow = any_phrase(words, r.w["flow_start"]) or next((w for w in id_words if w in ("buy", "purchase",
                                                                                           "transfer")), None)
+        if flow in ("subscribe", "join") and not priced:
+            # YouTube's free Subscribe, a free group's Join: money only with a price nearby or a billing sheet.
+            return Risk("other", f"words:{flow}")
         if flow:
             return Risk("pay", f"words:{flow}", money="start", grant=package)
         terminal = any_phrase(words, r.w["terminal"]) or next(
@@ -1270,7 +1361,7 @@ class Gatekeeper:
                 re.compile(r.surf["notification_action_ids"]).search(pressed.id or "") or "Button" in pressed.cls):
             j.risk = Risk("other", "notification_action", wording=wording())
             return j
-        risk = self._word_risk(label, ids, w.package, j.payment)
+        risk = self._word_risk(label, ids, w.package, j.payment, priced=priced(screen, w))
         if risk is None:
             slider = any(re.compile(r.d["slider_class"]).search(n.cls or "") for n in (pressed, t.hit) if n)
             if slider or any_phrase(label, r.w["slide"]):

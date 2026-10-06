@@ -165,6 +165,7 @@ class _TaskState:
     plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
     step_approved: bool = False  # ask mode: the owner approved the action now running
     locked_out: bool = False  # the phone stayed locked past locked_wait_seconds
+    task_outcome: str | None = None  # task_declined / task_no_answer: the owner didn't approve the task
     dialog_out: bool = False  # a system dialog only the owner can answer stayed open past owner_dialog_wait_seconds
     app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
@@ -264,6 +265,8 @@ class Agent:
             result.reason = "phone_locked"
         elif state.dialog_out and not result.success:
             result.reason = "needs_owner_dialog"
+        elif state.task_outcome and not result.success:
+            result.reason = state.task_outcome
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
@@ -286,6 +289,8 @@ class Agent:
             route = router_for(self.client, self.config).route(self.task_model)
         except ModelUnavailable as exc:
             return AgentResult(False, str(exc), 0)
+        if (declined := self._task_approval(state)) is not None:
+            return declined
         obs = self._observe_settled(state)
         messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
         self._show_later(state, messages, obs)
@@ -1486,6 +1491,36 @@ class Agent:
         if hasattr(self.driver, "dialog_waiter"):
             self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
 
+    def _task_approval(self, state: _TaskState) -> AgentResult | None:
+        """Task approval (by owner request): on a gatekeeper phone, in Ask for risky / Trusted / Plan first, ask the
+        owner once, on the phone, to approve this task; its non-money risky steps then run without more prompts.
+        Declined: the task stops (task_declined). Not asked in Ask every step or Don't ask, or when turned off."""
+        task_grant = getattr(self.driver, "task_grant", None)
+        if task_grant is None or not self._gatekeeper or state.perms.mode() not in ("auto", "trusted", "plan"):
+            return None
+        try:
+            if (state.perms.current_settings() or {}).get("task_approval") is False:
+                return None
+        except Exception:
+            pass
+        source = getattr(self.io, "task_source", None)
+        try:
+            granted = task_grant(str(getattr(self.io, "current_task", "") or ""), state.task,
+                                 source() if callable(source) else "An agent")
+        except GateRefused as exc:
+            if exc.code in ("gate_denied", "gate_no_answer"):
+                state.task_outcome = "task_declined" if exc.code == "gate_denied" else "task_no_answer"
+                return AgentResult(False, "The owner declined this task on the phone." if exc.code == "gate_denied"
+                                   else "Nobody approved this task on the phone in time, so I didn't start.", 0)
+            self.io.event("status", f"No task approval ({exc.code}): risky steps will ask one by one.")
+            return None
+        except DeviceError:
+            return None
+        if granted:
+            self.io.event("status", "Task approved on the phone: its steps run without more prompts (purchases "
+                                    "still ask).")
+        return None
+
     def _gate_approval(self, refusal) -> str:
         """The phone asked its owner (gate_needs_approval): the task waits for that answer, worded by the phone.
         The API and dashboard can decline it, never approve it (approval_on_phone)."""
@@ -1493,7 +1528,8 @@ class Agent:
         if state is None:
             return False
         question = refusal.question or "Approve this action on your phone?"
-        answer = self._ask_owner(state, f"Waiting for your approval on the phone: {question}",
+        what = "of this task " if refusal.kind == "task" else ""
+        answer = self._ask_owner(state, f"Waiting for your approval {what}on the phone: {question}",
                                  {"kind": "gate", "approver": "phone", "approval_id": refusal.approval_id,
                                   "package": refusal.package, "action_kind": refusal.kind})
         if is_yes(answer):

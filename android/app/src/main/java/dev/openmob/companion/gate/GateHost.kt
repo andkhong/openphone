@@ -117,6 +117,11 @@ object GateHost {
     fun admit(service: OpenMobAccessibilityService?, method: String, params: Map<String, Any?>): Admission {
         val g = gk()
         // Without the accessibility service the phone sees nothing: every act is refused (gate_unavailable).
+        if (method in g.rules.task) { // task approval: the phone words the prompt from the request itself
+            val adm = g.admit(method, params, GScreen(emptyList()))
+            if (adm.decision == "ask" && service != null) prompt(service, adm)
+            return adm
+        }
         if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList(), available = service != null))
         if (method in g.rules.read || method.startsWith("stream_")) {
             val screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
@@ -202,7 +207,9 @@ object GateHost {
         // The crop shows the owner the item and the price: the signature covers its hash.
         val crop = point?.let { (x, y) -> runCatching { PhoneActions(service).crop(x, y) }.getOrNull() }
         crop?.let { gk().setCrop(adm.approvalId, GateText.sha256(it)) }
-        val hint = adm.params["hint"]?.toString()?.trim().orEmpty()
+        // A task prompt names who asked (as the server says: it's shown on the labeled "Server says" line).
+        val hint = if (adm.kind == "task") "Requested by ${adm.params["source"]?.toString()?.take(60).orEmpty().ifEmpty { "an agent" }}"
+            else adm.params["hint"]?.toString()?.trim().orEmpty()
         val offer = adm.grantOffer
         main.post {
             Approvals.requestGate(app, adm.approvalId, adm.wording, hint, crop, offer?.let { grantText(it, adm) })

@@ -18,10 +18,12 @@ from conftest import FakeDriver
 class GatekeeperPhone(FakePhone):
     """A FakePhone whose app has the gatekeeper: taps on "Buy now" ask the owner on the phone."""
 
-    def __init__(self, *args, owner=None, refuse=None, locked=None, dialog=None, **kw):
+    def __init__(self, *args, owner=None, refuse=None, locked=None, dialog=None, task_owner=None, **kw):
         kw.setdefault("capabilities", ["wait_idle", "resolve_url", "gatekeeper", "device_lock"])
         self.owner = owner  # "approve" | "deny" | None (never answers)
         self.refuse = refuse  # a refusal code every tap gets
+        self.task_owner = task_owner  # "approve" | "deny" | None: the answer to the task prompt
+        self.task_requests, self.tasks_granted = [], set()
         self.dialog = dialog  # seconds an unreadable system dialog stays up (None: none; -1: forever)
         self.locked = locked  # seconds the phone stays locked (None: never locked; -1: forever)
         self.prompts = []  # approval ids the phone asked its owner about
@@ -29,6 +31,21 @@ class GatekeeperPhone(FakePhone):
         super().__init__(*args, **kw)
 
     def handle(self, method, params):
+        if method == "task_grant":
+            self.task_requests.append(params)
+            if params["task"] in self.tasks_granted:
+                return {"granted": True}
+            approval_id = "gk" + uuid.uuid4().hex
+            if self.task_owner:
+                state = {"approve": "approved", "deny": "denied"}[self.task_owner]
+                if state == "approved":
+                    self.tasks_granted.add(params["task"])
+                threading.Timer(0.3, self.send, ({"type": "gate_event", "approval_id": approval_id,
+                                                  "state": state},)).start()
+            raise PhoneReply({"ok": False, "code": "gate_needs_approval", "approval_id": approval_id,
+                              "error": "Waiting for the owner's approval of this task on the phone.",
+                              "gate": {"rule": "risk:task", "kind": "task",
+                                       "question": "Agent wants to: " + params["text"] + ". Allow the steps this needs?"}})
         if method == "tap":
             if self.dialog is not None:
                 up, self.dialog = self.dialog, None
@@ -147,6 +164,29 @@ def test_no_answer_from_the_driver_is_its_own_code():
     with pytest.raises(GateRefused) as info:
         driver.tap(1, 2)
     assert info.value.code == "gate_no_answer" and len(driver.link.calls) == 1
+
+
+TASK_CAPS = ["wait_idle", "resolve_url", "gatekeeper", "device_lock", "task_grant"]
+
+
+def test_task_approval_is_one_prompt_at_the_start(api):
+    phone, driver = gatekeeper(api, owner="approve", task_owner="approve", capabilities=TASK_CAPS)
+    task = run_task(api.alice, "check the cart")
+    done = wait_status(api.alice, task["id"], "succeeded", timeout=12)
+    first, again = phone.task_requests  # asked, approved on the phone, re-sent once
+    assert first["task"] == task["id"] and first["text"] == "check the cart" and first["source"] == "test"
+    assert again == first
+    log = _log(api)
+    assert any("Waiting for your approval of this task on the phone: Agent wants to: check the cart" in m for m in log)
+    assert done["prompts_count"] == 2  # the task prompt, and Buy now (money still asks)
+
+
+def test_a_declined_task_stops_before_any_step(api):
+    phone, driver = gatekeeper(api, task_owner="deny", capabilities=TASK_CAPS)
+    task = run_task(api.alice, "check the cart")
+    done = wait_status(api.alice, task["id"], "failed", "cancelled", timeout=10)
+    assert done["outcome"]["reason"] == "task_declined"
+    assert taps(phone) == [] and not any(a[0] == "tap" for a in driver.actions)
 
 
 def test_the_api_can_decline_and_nothing_is_sent(api):

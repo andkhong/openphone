@@ -25,7 +25,7 @@ def test_scenario(scenario):
 def test_every_protocol_method_has_a_gate_class():
     """D1 parity: a new method in protocol.py must be classified on the phone, or the phone refuses it."""
     rules = json.loads(RULES_PATH.read_text())["methods"]
-    classified = set(rules["meta"]) | set(rules["read"]) | set(rules["act"])
+    classified = set(rules["meta"]) | set(rules["read"]) | set(rules["act"]) | set(rules["task"])
     assert set(METHODS) <= classified, set(METHODS) - classified
 
 

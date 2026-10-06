@@ -83,6 +83,7 @@ class GateRules(val d: Map<String, Any?>) {
     val meta = methods["meta"].strings().toSet()
     val read = methods["read"].strings().toSet()
     val act = methods["act"].strings().toSet()
+    val task = methods["task"].strings().toSet()
     val own = d["own_packages"].strings().toSet()
     private val sensitive = d["sensitive_apps"].strings().map { Regex(it) }
     val installers = d["installer_packages"].strings().toSet()
@@ -351,6 +352,12 @@ object GateScreen {
             if (GateText.amounts(line).isNotEmpty() && GateText.anyPhrase(GateText.tokens(line), GateText.MONEY_LABELS) != null) texts.add(line)
         }
         return texts.flatMap { GateText.amounts(it) }.toSortedSet().toList()
+    }
+
+    /** A price or currency on the target's window, or a Google Play billing sheet on screen. */
+    fun priced(screen: GScreen, window: GWindow): Boolean {
+        if (screen.windows.any { it.pkg == "com.android.vending" && (it.type == "application" || it.type == "system") && it !== window }) return true
+        return walk(window.root).any { GateText.amounts("${it.text} ${it.desc}").isNotEmpty() }
     }
 
     /** What a Settings page calls itself: its window title, and headers near the top that aren't rows. */

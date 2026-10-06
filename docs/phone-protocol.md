@@ -752,3 +752,21 @@ the button and on the window's total, cost, price, amount and payout lines, and 
 ("DUN", "Yes") doesn't ask; the commit ("Submit", "Place order", "Swipe to buy") does. Ticker-style labels
 ("YES 63¢", "AAPL +1.2%") never count as an unrecognized language: that rule looks at the script and at
 ordinary lower-case words only.
+
+### 9.7 Task approval
+
+By owner request, a task can be approved once instead of step by step. Phones whose hello lists `"task_grant"`
+answer the call `task_grant {task, text, source}`: the phone shows one prompt worded from the request itself
+("Agent wants to: share PewDiePie's channel with yourself on Messenger. Allow the steps this needs?"), with the
+source on the labeled "Server says" line. It replies `gate_needs_approval` like any gate prompt; after
+`gate_event approved` the server re-sends `task_grant` once and gets `{"granted": true}`. A request typed or
+spoken on the phone itself is granted without a prompt (`rule: task_grant:own_request`).
+
+The grant is bound to the task id and the request text's digest (another text for the same id asks again), and
+lasts until the task ends, 30 minutes on the monotonic clock, or 25 risky steps, whichever comes first. Under it,
+an act call carrying that `task` runs its non-money risky steps without more prompts (send, post, share, delete,
+menus, unlabeled taps, ENTER, unrecognized non-security Settings pages, native-app autofill). Still asked: money
+commits (unless "Also allow purchases"), browser or WebView autofill and runtime permission dialogs. Still
+refused: every hard deny. Declining stops the task (`task_declined`); an unanswered task prompt ends it with
+`task_no_answer`. The server asks in Ask for risky, Trusted apps and Plan first, not in Ask every step or Don't
+ask, and not when the owner turned `task_approval` off; turning it back on is a loosening approved on the phone.

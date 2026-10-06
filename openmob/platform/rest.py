@@ -88,6 +88,7 @@ class PermissionsPatch(BaseModel):
     allow_money: bool | None = None  # with never: purchases too (a loosening: 202 needs_phone_approval)
     # Android permission dialogs (answered by rule): {type: setting}; a loosening is approved on the phone
     permission_prompts: dict[str, str] | None = None
+    task_approval: bool | None = None  # one phone approval per task covers its non-money risky steps
 
 
 class SettingsIn(BaseModel):

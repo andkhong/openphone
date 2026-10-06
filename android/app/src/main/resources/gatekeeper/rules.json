@@ -5,7 +5,8 @@
     "meta": ["device_state", "wait_idle"],
     "read": ["screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "resolve_url",
              "stream_start", "stream_stop", "stream_keyframe"],
-    "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "wake_unlock"]
+    "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "wake_unlock"],
+    "task": ["task_grant"]
   },
   "own_packages": ["dev.openmob.companion"],
   "sensitive_apps": [
@@ -25,7 +26,7 @@
     "dialer": "(?i)dialer|contacts|telecom|\\.phone"
   },
   "words": {
-    "flow_start": ["buy", "buy now", "buy it now", "subscribe", "book", "book now", "top up", "recharge", "donate",
+    "flow_start": ["buy", "buy now", "buy it now", "subscribe", "join", "book", "book now", "top up", "recharge", "donate",
                    "transfer", "send money", "purchase", "rent", "pre order", "preorder"],
     "terminal": ["submit", "place order", "place your order", "confirm purchase", "complete purchase", "pay", "pay now",
                  "confirm", "confirm order", "confirm payment", "submit order", "complete order", "confirm and pay",
@@ -131,7 +132,7 @@
     "act_per_second": 5, "act_burst": 15,
     "asks_per_window": 6, "ask_window_ms": 600000,
     "denials_to_suspend": 3, "denial_window_ms": 600000,
-    "permit_ms": 60000, "pending_ms": 120000, "purchase_followup_ms": 180000,
+    "permit_ms": 60000, "task_grant_ms": 1800000, "task_grant_steps": 25, "own_request_ms": 300000, "pending_ms": 120000, "purchase_followup_ms": 180000,
     "quiet_ms": 150, "requested_ms": 1800000,
     "never_max_ms": 86400000, "grant_default_ms": 604800000, "grant_max_ms": 2592000000,
     "pay_grant_default_ms": 86400000, "pay_grant_max_ms": 604800000

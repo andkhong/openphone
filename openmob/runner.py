@@ -81,6 +81,7 @@ class Coordinator:
         self.current: str | None = None
         self.question: str | None = None
         self.question_kind: str | None = None  # "question" (ask_user), "confirm" (risky action) or "plan"
+        self.requester_for = None  # (task id) -> the API key or client name that asked, or None (DeviceManager)
         self.question_details: dict | None = None  # what a confirm is about ({"approver": "phone"} on gatekeeper phones)
         # (mode or None) -> TaskPermissions for a task on this phone (set by the DeviceManager);
         # None: the agent's default (config's mode, ceiling auto).
@@ -305,6 +306,19 @@ class Coordinator:
         plan. `details` ({kind, action_kind, package, always, plan}) go with the phone's prompt."""
         return self.ask(question, kind="plan" if (details or {}).get("kind") == "plan" else "confirm", details=details)
 
+    def task_source(self) -> str:
+        """Who asked for the running task, for the phone's task prompt: the API key or client's name, else where it
+        was typed (the dashboard, this phone)."""
+        task_id = self.current_task
+        name = None
+        if task_id and self.requester_for is not None:
+            try:
+                name = self.requester_for(task_id)
+            except Exception:
+                name = None
+        source = (self.task_info.get(task_id) or {}).get("source") if task_id else None
+        return name or {"dashboard": "You, on the dashboard", "phone": "You, on this phone"}.get(source or "", "An agent")
+
     def take_approval_digest(self) -> str | None:
         """The digest of the action the last answer approved on a phone (once), or None."""
         with self._lock:
@@ -415,6 +429,9 @@ class Coordinator:
                 if isinstance(getattr(result, "mode", None), str):  # the agent ran under a permission mode
                     data["mode"] = result.mode
                     data["prompts"] = result.prompts  # approval prompts the owner saw (telemetry)
+                    with self._lock:
+                        if task_id in self.task_info:
+                            self.task_info[task_id]["prompts_count"] = result.prompts
                 if getattr(result, "done_via", None):
                     data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
                 summary = result.summary
