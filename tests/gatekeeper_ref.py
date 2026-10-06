@@ -177,13 +177,14 @@ class Window:
     title: str
     bounds: tuple
     root: Node | None
+    since: int = 0  # when the phone first saw this window (uptime ms)
 
     @classmethod
     def of(cls, d: dict) -> "Window":
         return cls(id=int(d.get("id", 0)), type=d.get("type", "application"), layer=int(d.get("layer", 0)),
                    package=d.get("package", ""), title=d.get("title", ""),
                    bounds=tuple(d.get("bounds", (0, 0, 1080, 2400))),
-                   root=Node.of(d["root"]) if d.get("root") else None)
+                   root=Node.of(d["root"]) if d.get("root") else None, since=int(d.get("since", 0)))
 
 
 @dataclass
@@ -214,7 +215,7 @@ class Screen:
                    resolve=d.get("resolve", {}), labels=d.get("labels", {}),
                    focus_expected=bool((d.get("focus") or {}).get("expected")),
                    focus=d.get("focus") or {},
-                   available=d.get("accessibility", True) is not False, event=d.get("event") or {},
+                   available=d.get("accessibility", True) is not False, event=d.get("event") or {},  # {package, text, at}
                    owner=list(d.get("owner") or []), ocr=d.get("ocr"))
 
     def ordered(self) -> list[Window]:
@@ -612,6 +613,7 @@ class Gatekeeper:
         self.ceiling = "auto"
         self.perm_defaults: dict[str, str] = {}  # the owner's signed (or tightened) permission-dialog defaults
         self.accuracy_choice: tuple | None = None  # (window id, precise|approximate): the OCR'd dialog's card tapped
+        self.armed: tuple | None = None  # (binding, card): recorded once that tap's gesture completes
         self.never: dict | None = None  # {issued, duration_ms, allow_money}
         self.tokens = float(self.r.limits["act_burst"])
         self.last_refill = self.clock.elapsed
@@ -1024,23 +1026,16 @@ class Gatekeeper:
             return "builtin:sensitive_apps"
         # A system dialog Android hides from accessibility (a permission dialog: its window has no readable root) is
         # identified from its window-state event: not sensitive, so reads show it; acts on it stay refused.
-        if any(not w.package and w.type == "application" for w in screen.windows) and not self.owner_dialog(screen):
+        dialog = self._ocr_window(screen)
+        if any(not w.package and w.type == "application" and (dialog is None or w.id != dialog.id)
+               for w in screen.windows):
             return "builtin:unknown_window"
         return ""
 
     def owner_dialog(self, screen: Screen) -> str | None:
         """A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and
         default-apps screens from accessibility): only the owner can answer it. Returns what to tell them."""
-        perm = re.compile(self.r.s["permission_packages"])
-        event_pkg = str(screen.event.get("package") or "")
-        hidden = False
-        for w in screen.windows:
-            if w.type != "application":
-                continue
-            unread = w.root is None or not any(n.text or n.desc for n in walk(w.root, []))
-            if unread and (perm.search(w.package or "") or (not w.package and perm.search(event_pkg))):
-                hidden = True
-        if not hidden:
+        if self._ocr_window(screen) is None:
             return None
         text = str(screen.event.get("text") or "")
         m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", text)
@@ -1184,6 +1179,26 @@ class Gatekeeper:
     # --- reverify (right before the side effect, under the gesture lock) ------------------
 
     def reverify(self, adm: Admission, screen: Screen) -> Admission:
+        """Right before the side effect. A Precise/Approximate tap on an OCR'd dialog is only armed here: the phone
+        records it once the gesture completed (completed()); a refused one makes it assume Precise again (B1)."""
+        self.armed = None
+        out = self._reverify(adm, screen)
+        if adm.decision == "allow" and adm.method == "tap":
+            card = self._ocr_card(adm, self.with_ocr(screen))
+            if out.decision != "allow":
+                if card is not None:
+                    self.accuracy_choice = None
+            elif card is not None:
+                self.armed = (adm.binding, card)
+        return out
+
+    def completed(self, adm: Admission) -> None:
+        """The gesture for an admitted action completed on the screen."""
+        if self.armed is not None and self.armed[0] == adm.binding:
+            self.accuracy_choice = self.armed[1]
+        self.armed = None
+
+    def _reverify(self, adm: Admission, screen: Screen) -> Admission:
         if adm.decision != "allow" or adm.method not in self.r.act:
             return adm
         screen = self.with_ocr(screen)
@@ -1224,23 +1239,42 @@ class Gatekeeper:
             if start is not None:
                 self.followup = {**start, "acts": 0,
                                  "expires": self.now() + self.r.limits["purchase_followup_ms"]}
-        self._note_accuracy(adm, screen)
         return adm
 
     # --- permission dialogs Android hides from accessibility (Android 14+): the phone's own OCR -------------
 
-    def _ocr_window(self, screen: Screen) -> Window | None:
-        """The permission-controller window with no readable tree (identified by its package, or by the last
-        window-state event when Android hides even that)."""
+    def _ocr_window(self, screen: Screen, need_title: bool = True) -> Window | None:
+        """The permission-controller window with no readable tree: identified by its own package, or (when Android
+        hides even that) by a window-state event from the permission controller that arrived after the window
+        appeared AND an OCR'd "Allow X to ..." title. A stale event over an app still loading is not a dialog.
+        `need_title=False`: whether the phone should OCR the screen to find out."""
         perm = re.compile(self.r.s["permission_packages"])
         event_pkg = str(screen.event.get("package") or "")
+        event_at = int(screen.event.get("at", 0) or 0)
         for w in screen.ordered():
             if w.type != "application":
                 continue
             unread = w.root is None or not any(n.text or n.desc for n in walk(w.root, []))
-            if unread and (perm.search(w.package or "") or (not w.package and perm.search(event_pkg))):
+            if not unread:
+                continue
+            if perm.search(w.package or ""):
+                return w
+            slack = self.r.d["permission_dialog"]["ocr"]["event_slack_ms"]  # the event may land just before the window
+            if not w.package and perm.search(event_pkg) and event_at >= w.since - slack and (
+                    not need_title or self._ocr_title(screen)):
                 return w
         return None
+
+    def ocr_candidate(self, screen: Screen) -> Window | None:
+        return self._ocr_window(screen, need_title=False)
+
+    def _ocr_title(self, screen: Screen) -> bool:
+        """The phone's OCR shows a permission dialog's title ("Allow Kalshi to ...") with confidence."""
+        if not screen.ocr:
+            return False
+        o = self.r.d["permission_dialog"]["ocr"]
+        return any(float(b.get("conf", 1.0)) >= o["min_conf"] and self.perm_app(" ".join(str(b.get("text", "")).split()))
+                   for b in screen.ocr)
 
     def text_role(self, text: str) -> str | None:
         toks = tokens(text)
@@ -1275,7 +1309,9 @@ class Gatekeeper:
         start = re.compile(o["title_start"])
         title, taking = [], False
         nodes = []
-        choice = self.accuracy_choice if self.accuracy_choice and self.accuracy_choice[0] == w.id else None
+        if self.accuracy_choice and self.accuracy_choice[0] != w.id:
+            self.accuracy_choice = None  # another dialog: assume Precise again
+        choice = self.accuracy_choice
         for b in lines:
             text = " ".join(str(b["text"]).split())
             role = self.text_role(text)
@@ -1301,17 +1337,13 @@ class Gatekeeper:
         rebuilt = Window(w.id, w.type, w.layer, pkg, w.title, w.bounds, root)
         return dc_replace(screen, windows=[rebuilt if x is w else x for x in screen.windows])
 
-    def _note_accuracy(self, adm: Admission, screen: Screen) -> None:
-        """A tap on the OCR'd dialog's Precise or Approximate card that goes ahead: OCR can't see which is chosen,
-        so the phone remembers it (until another dialog)."""
-        if adm.method != "tap":
-            return
+    def _ocr_card(self, adm: Admission, screen: Screen) -> tuple | None:
+        """(window id, precise|approximate) when this tap is on an OCR'd dialog's location card."""
         t = hit_test(self.r, screen, float(adm.params.get("x", -1)), float(adm.params.get("y", -1)))
         if t is None or t.window.root is None or t.window.root.cls != "OCRDialog":
-            return
+            return None
         role = self._perm_role(t)
-        if role in ("precise", "approximate"):
-            self.accuracy_choice = (t.window.id, role)
+        return (t.window.id, role) if role in ("precise", "approximate") else None
 
     # --- the judge: what the action touches and how risky it is ---------------------------
 
@@ -1899,6 +1931,8 @@ def run_step(gk: Gatekeeper, s: dict, screens: dict, state: dict) -> list[str]:
         if adm.decision == "allow":
             again = Screen.of(screens[s.get("reverify_screen", s["screen"])])
             adm = gk.reverify(adm, again)
+            if adm.decision == "allow":
+                gk.completed(adm)  # the gesture ran
         state["persist"] = gk.persist()
         return check(s["expect"], adm)
     if "approve" in s:

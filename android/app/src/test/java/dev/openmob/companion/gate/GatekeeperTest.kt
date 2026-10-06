@@ -196,16 +196,26 @@ class GatekeeperTest {
     }
 
     @Test fun aHiddenSystemDialogIsDetectedFromItsNullRootWindowAndEvent() {
-        assertEquals("Kalshi is asking for location: choose on your phone, then the task continues.",
-            gk.ownerDialog(SCREENS.getValue("hidden_permission_dialog")))
+        // Without a package, the event alone doesn't identify it (review hardening): an OCR'd title is needed.
+        assertNull(gk.ownerDialog(SCREENS.getValue("hidden_permission_dialog")))
+        assertEquals("builtin:unknown_window", gk.hidden(SCREENS.getValue("hidden_permission_dialog")))
         assertEquals("A system dialog needs your answer: choose on your phone, then the task continues.",
             gk.ownerDialog(SCREENS.getValue("hidden_permission_samsung")))
         assertNull(gk.ownerDialog(SCREENS.getValue("permission_dialog_session"))) // readable (Android 11-13)
         assertNull(gk.ownerDialog(SCREENS.getValue("loading_unknown"))) // an app starting, no dialog event
-        val window = GWindow(5, "application", 5, "", "", intArrayOf(0, 0, 1080, 2400), null)
+        val window = GWindow(5, "application", 5, "", "", intArrayOf(0, 0, 1080, 2400), null, since = 5_000)
         assertNull(gk.ownerDialog(GScreen(listOf(window), eventPackage = "com.example.app", eventText = "Allow x to y")))
-        assertEquals("needs_owner_dialog", gk.admit("tap", mapOf("x" to 5L, "y" to 5L),
-            GScreen(listOf(window), eventPackage = "com.android.permissioncontroller")).code)
+        val title = listOf(GOcrLine("Allow Kalshi to access this", intArrayOf(100, 900, 900, 950)))
+        // Fresh event and an OCR'd title: identified, so reads show it.
+        val fresh = GScreen(listOf(window), eventPackage = "com.android.permissioncontroller", eventAt = 5_100, ocr = title)
+        assertEquals("", gk.hidden(fresh))
+        // A stale event (before the window appeared, past the slack): unknown, blacked out and refused.
+        val stale = GScreen(listOf(window), eventPackage = "com.android.permissioncontroller", eventAt = 1_000, ocr = title)
+        assertEquals("builtin:unknown_window", gk.hidden(stale))
+        assertEquals("gate_screen_unstable", gk.admit("tap", mapOf("x" to 5L, "y" to 5L), stale).code)
+        // A package-identified dialog the phone couldn't OCR still waits for the owner.
+        val named = GWindow(5, "application", 5, "com.android.permissioncontroller", "", intArrayOf(0, 0, 1080, 2400), null)
+        assertEquals("needs_owner_dialog", gk.admit("tap", mapOf("x" to 5L, "y" to 5L), GScreen(listOf(named))).code)
     }
 
     @Test fun theRunnerReportsAWrongExpectation() {

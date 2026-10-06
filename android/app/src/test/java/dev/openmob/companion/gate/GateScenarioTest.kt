@@ -44,6 +44,7 @@ class GateScenarioTest {
                         var adm = gk.admit(call.str("method"), call["params"].obj(), screens.getValue(s.str("screen")))
                         if (adm.decision == "ask") last = adm.approvalId
                         if (adm.allowed) adm = gk.reverify(adm, screens.getValue(s.str("reverify_screen", s.str("screen"))))
+                        if (adm.allowed) gk.completed(adm) // the gesture ran
                         saved = gk.persist()
                         val e = s["expect"].obj()
                         for ((k, v) in listOf("decision" to adm.decision, "code" to adm.code, "kind" to adm.kind, "money" to adm.money, "level" to adm.level)) {

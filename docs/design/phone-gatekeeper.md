@@ -660,6 +660,14 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   identified system dialog are no longer blacked out; a window with no package from any source still is.
   Trade-off: OCR misreads fail toward asking, but a dialog drawn by a malicious app to look like the permission
   controller is out of scope (the window's package or event must be the permission controller).
+- **Review of D26:** B1: the Precise/Approximate choice OCR can't see is recorded only after every reverify check
+  passed and the gesture's `onCompleted` fired (`completed()`); a refused card tap, or a new dialog window id,
+  resets it to the assumed Precise. Hardening: a window with no package is a permission dialog only if the
+  permission-controller event is no older than the window's first sighting (1.5 s slack, `event_slack_ms`) and the
+  OCR shows an "Allow X to" title; otherwise it stays `unknown_window` for acts and reads (the live view checks a
+  cached background OCR, black until it's read). B2 (owner decision, accepted residual): camera and microphone
+  stay silent under "Only this time" for the task's app; a compromised server could get one-time foreground mic
+  or camera access in the app the task operates, and the only signal is Android's privacy indicator.
 - **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
   for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
   for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window

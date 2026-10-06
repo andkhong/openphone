@@ -31,6 +31,18 @@ object PermissionOcr {
         return lines
     }
 
+    /** The last reading if it's under 3 s old, without blocking (for the live view's gate, on any thread). */
+    fun cached(): List<GOcrLine>? = cache?.takeIf { SystemClock.uptimeMillis() - it.second < 3_000 }?.third
+
+    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private val busy = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    /** Read in the background (one at a time); [cached] has it afterwards. */
+    fun refreshAsync(service: OpenMobAccessibilityService) {
+        if (!busy.compareAndSet(false, true)) return
+        worker.execute { try { runCatching { read(service) } } finally { busy.set(false) } }
+    }
+
     private fun recognize(bitmap: Bitmap): List<GOcrLine>? = runCatching {
         val text = Tasks.await(recognizer.process(InputImage.fromBitmap(bitmap, 0)), 5, TimeUnit.SECONDS)
         text.textBlocks.flatMap { it.lines }.mapNotNull { line ->

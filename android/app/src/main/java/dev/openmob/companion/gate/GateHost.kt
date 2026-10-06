@@ -79,7 +79,14 @@ object GateHost {
     fun refreshProtected(service: OpenMobAccessibilityService?): Boolean {
         val g = gate ?: return false
         // No accessibility service: the phone can't see what's on screen, so it fails closed.
-        protectedVisible = service == null || g.hidden(GateScreens.windowPackages(service)).isNotEmpty()
+        if (service == null) { protectedVisible = true; return true }
+        var screen = GateScreens.windowPackages(service)
+        // A hidden window a permission-controller event may explain: shown once the phone's OCR finds its title
+        // (black until then; the read runs in the background).
+        if (g.ocrCandidate(screen)?.pkg?.isEmpty() == true) {
+            screen = screen.withOcr(PermissionOcr.cached() ?: null.also { PermissionOcr.refreshAsync(service) })
+        }
+        protectedVisible = g.hidden(screen).isNotEmpty()
         return protectedVisible
     }
 
@@ -96,10 +103,13 @@ object GateHost {
     fun ocrNodes(service: OpenMobAccessibilityService): List<GNode>? {
         val g = gk()
         val base = GateScreens.dialogScreen(service)
-        if (g.ocrWindow(base) == null) return null
+        if (g.ocrCandidate(base) == null) return null
         val read = g.ocrPreview(base.withOcr(PermissionOcr.read(service) ?: return null))
         return read.windows.firstOrNull { it.root?.cls == "OCRDialog" }?.root?.children
     }
+
+    /** The admitted action's gesture completed (PhoneActions): the gate may record what it changed. */
+    fun completed(adm: Admission?) { if (adm != null) runCatching { gk().completed(adm) } }
 
     /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
     fun ownerDialogOpened(message: String) { ownerDialog = message }
@@ -135,8 +145,12 @@ object GateHost {
         }
         if (method in g.rules.meta || service == null) return g.admit(method, params, GScreen(emptyList(), available = service != null))
         if (method in g.rules.read || method.startsWith("stream_")) {
-            val screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
+            var screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
                 GateScreens.windowPackages(service) else GScreen(emptyList())
+            // A hidden window a permission-controller event may explain: shown only if OCR finds its title.
+            if (screen.windows.isNotEmpty() && g.ocrCandidate(screen)?.pkg?.isEmpty() == true) {
+                screen = screen.withOcr(runCatching { PermissionOcr.read(service) }.getOrNull())
+            }
             return g.admit(method, params, screen)
         }
         var adm = g.admit(method, params, screen(service, method, params))
@@ -201,7 +215,7 @@ object GateHost {
         }
         var screen = GateScreens.capture(service, urls, launch, points)
         // A permission dialog Android hides from accessibility: read it with the phone's own OCR (the gate judges it).
-        if (gk().ocrWindow(screen) != null) screen = screen.withOcr(PermissionOcr.read(service))
+        if (gk().ocrCandidate(screen) != null) screen = screen.withOcr(PermissionOcr.read(service))
         if (method == "key" && params["name"]?.toString()?.uppercase() == "ENTER") {
             // ENTER in a browser's URL bar opens what's typed there: resolve it like open_url.
             GateScreen.focusedField(screen)?.node?.text?.trim()?.takeIf { GateText.looksLikeUrl(it) }?.let { text ->
@@ -209,7 +223,7 @@ object GateHost {
                 screen = GScreen(screen.windows, screen.keyguardLocked, screen.keyguardSecure, screen.quietMs,
                     screen.activity, screen.autofillService, mapOf(url to GateScreens.resolve(service.packageManager, url)),
                     screen.labels, screen.focusExpected, screen.focusWindow, screen.focusNode, screen.focusAncestors, eventPackage = screen.eventPackage, eventText = screen.eventText,
-                    owner = screen.owner, ocr = screen.ocr)
+                    owner = screen.owner, ocr = screen.ocr, eventAt = screen.eventAt)
             }
         }
         return screen

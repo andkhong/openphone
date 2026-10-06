@@ -544,9 +544,9 @@ class Gatekeeper(
 
     fun hidden(screen: GScreen): String = when {
         screen.windows.any { rules.blocked(it.pkg) } -> "builtin:sensitive_apps"
-        // A system dialog Android hides from accessibility (a permission dialog: no readable root) is identified from
-        // its window-state event: not sensitive, so reads show it; acts on it stay refused (needs_owner_dialog).
-        screen.windows.any { it.pkg.isEmpty() && it.type == "application" } && ownerDialog(screen) == null -> "builtin:unknown_window"
+        // A permission dialog Android hides from accessibility, identified (a fresh permission-controller event and
+        // an OCR'd "Allow X to" title), isn't sensitive: reads show it. Any other window with no package stays black.
+        screen.windows.any { w -> w.pkg.isEmpty() && w.type == "application" && w.id != ocrWindow(screen)?.id } -> "builtin:unknown_window"
         else -> ""
     }
 
@@ -567,12 +567,7 @@ class Gatekeeper(
     /** A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and
      *  default-apps screens from accessibility): only the owner can answer it. Returns what to tell them, or null. */
     fun ownerDialog(screen: GScreen): String? {
-        val perm = rules.rx(rules.sStr("permission_packages"))
-        val hidden = screen.windows.any { w ->
-            w.type == "application" && (w.root == null || walk(w.root).none { it.text.isNotEmpty() || it.desc.isNotEmpty() }) &&
-                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage)))
-        }
-        if (!hidden) return null
+        if (ocrWindow(screen) == null) return null
         val m = PERMISSION_APP.find(screen.eventText)
             ?: return "A system dialog needs your answer: choose on your phone, then the task continues."
         val kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(screen.eventText) }?.get(0)
@@ -722,7 +717,28 @@ class Gatekeeper(
     fun unsettled(adm: Admission): Admission = refuse("gate_screen_unstable", "builtin:no_focus",
         "The screen is changing (an app is opening). Look again.", adm.method, adm.params)
 
+    /** Right before the side effect. A Precise/Approximate tap on an OCR'd dialog is only armed here: the phone
+     *  records it once the gesture completed ([completed]); a refused one makes it assume Precise again (B1). */
     fun reverify(adm: Admission, rawScreen: GScreen): Admission = synchronized(lock) {
+        armed = null
+        val out = reverifyChecks(adm, rawScreen)
+        if (adm.allowed && adm.method == "tap") {
+            val card = ocrCard(adm, withOcr(rawScreen))
+            if (!out.allowed) { if (card != null) accuracyChoice = null }
+            else if (card != null) armed = adm.binding to card
+        }
+        out
+    }
+
+    /** The gesture for an admitted action completed on the screen. */
+    fun completed(adm: Admission) = synchronized(lock) {
+        armed?.let { (binding, card) -> if (binding == adm.binding) accuracyChoice = card }
+        armed = null
+    }
+
+    private var armed: Pair<String, Pair<Int, String>>? = null
+
+    private fun reverifyChecks(adm: Admission, rawScreen: GScreen): Admission {
         if (!adm.allowed || adm.method !in rules.act) return adm
         val screen = withOcr(rawScreen)
         // No gesture while a prompt is up, or just after one closed: an action admitted a moment before could land on
@@ -759,8 +775,7 @@ class Gatekeeper(
             }
             startPermits.remove(adm.permit)?.let { (pkg, task) -> followup = Followup(pkg, task, now() + lim("purchase_followup_ms")) }
         }
-        noteAccuracy(adm, screen)
-        adm
+        return adm
     }
 
     // --- permission dialogs Android hides from accessibility (Android 14+): the phone's own OCR ---------------
@@ -770,12 +785,23 @@ class Gatekeeper(
 
     /** The permission-controller window with no readable tree (identified by its package, or by the last
      *  window-state event when Android hides even that). */
-    fun ocrWindow(screen: GScreen): GWindow? {
+    fun ocrWindow(screen: GScreen, needTitle: Boolean = true): GWindow? {
         val perm = rules.rx(rules.sStr("permission_packages"))
         return screen.ordered.firstOrNull { w ->
             w.type == "application" && (w.root == null || walk(w.root).none { it.text.isNotEmpty() || it.desc.isNotEmpty() }) &&
-                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage)))
+                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage) &&
+                    screen.eventAt >= w.since - (permRules["ocr"].obj()["event_slack_ms"] as Number).toLong() &&
+                    (!needTitle || ocrTitle(screen))))
         }
+    }
+
+    /** Should the phone OCR the screen to find out whether a hidden permission dialog is up? */
+    fun ocrCandidate(screen: GScreen): GWindow? = ocrWindow(screen, needTitle = false)
+
+    /** The phone's OCR shows a permission dialog's title ("Allow Kalshi to ...") with confidence. */
+    private fun ocrTitle(screen: GScreen): Boolean {
+        val minConf = (permRules["ocr"].obj()["min_conf"] as Number).toDouble()
+        return screen.ocr.orEmpty().any { it.conf >= minConf && permApp(it.text.split(WS).filter { t -> t.isNotEmpty() }.joinToString(" ")) != null }
     }
 
     fun textRole(text: String): String? {
@@ -811,7 +837,8 @@ class Gatekeeper(
         val start = rules.rx(o.str("title_start"))
         val lines = ocr.filter { it.text.isNotBlank() && it.conf >= minConf }
             .sortedWith(compareBy({ it.bounds[1] }, { it.bounds[0] }))
-        val choice = accuracyChoice?.takeIf { it.first == w.id }
+        if (accuracyChoice != null && accuracyChoice?.first != w.id) accuracyChoice = null // another dialog: Precise again
+        val choice = accuracyChoice
         val title = mutableListOf<String>()
         var taking = false
         val nodes = mutableListOf<GNode>()
@@ -837,22 +864,21 @@ class Gatekeeper(
         val message = title.joinToString(" ").ifEmpty { nodes.filter { !it.clickable }.joinToString(" ") { it.text } }.ifEmpty { "?" }
         nodes.add(0, GNode(text = message, id = "permission_message", cls = "OCRText"))
         val root = GNode(cls = "OCRDialog", bounds = w.bounds, clickable = true, children = nodes)
-        val rebuilt = GWindow(w.id, w.type, w.layer, w.pkg.ifEmpty { screen.eventPackage }, w.title, w.bounds, root)
+        val rebuilt = GWindow(w.id, w.type, w.layer, w.pkg.ifEmpty { screen.eventPackage }, w.title, w.bounds, root, w.since)
         return screen.withWindows(screen.windows.map { if (it === w) rebuilt else it })
     }
 
     /** [withOcr] for reads (ui_elements). */
     fun ocrPreview(screen: GScreen): GScreen = synchronized(lock) { withOcr(screen) }
 
-    /** A tap on the OCR'd dialog's Precise or Approximate card that goes ahead: remembered (OCR can't see it). */
-    private fun noteAccuracy(adm: Admission, screen: GScreen) {
-        if (adm.method != "tap") return
-        val x = (adm.params["x"] as? Number)?.toDouble() ?: return
-        val y = (adm.params["y"] as? Number)?.toDouble() ?: return
-        val t = GateScreen.hitTest(rules, screen, x, y) ?: return
-        if (t.window.root?.cls != "OCRDialog") return
+    /** (window id, precise|approximate) when this tap is on an OCR'd dialog's location card. */
+    private fun ocrCard(adm: Admission, screen: GScreen): Pair<Int, String>? {
+        val x = (adm.params["x"] as? Number)?.toDouble() ?: return null
+        val y = (adm.params["y"] as? Number)?.toDouble() ?: return null
+        val t = GateScreen.hitTest(rules, screen, x, y) ?: return null
+        if (t.window.root?.cls != "OCRDialog") return null
         val role = permRole(t)
-        if (role == "precise" || role == "approximate") accuracyChoice = t.window.id to role
+        return if (role == "precise" || role == "approximate") t.window.id to role else null
     }
 
     // --- the judge -------------------------------------------------------------------------------------

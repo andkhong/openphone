@@ -9626,12 +9626,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Kalshi to access this device's location?"
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -9787,12 +9789,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Kalshi to send you notifications?"
+   "text": "Allow Kalshi to send you notifications?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -9918,12 +9922,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.samsung.android.permissioncontroller",
-   "text": "Allow Kalshi to access this device's location?"
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10069,12 +10075,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "¿Permitir que Kalshi acceda a la ubicación de este dispositivo?"
+   "text": "¿Permitir que Kalshi acceda a la ubicación de este dispositivo?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10230,12 +10238,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Tracker to access this device's location?"
+   "text": "Allow Tracker to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10391,12 +10401,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Kalshi to access this device's location?"
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10522,12 +10534,14 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Kalshi to access this device's location?"
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10676,19 +10690,21 @@
     "id": 7,
     "type": "application",
     "layer": 5,
-    "package": "",
+    "package": "com.google.android.permissioncontroller",
     "title": "",
     "bounds": [
      0,
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Kalshi wil toegang tot de locatie van dit apparaat?"
+   "text": "Kalshi wil toegang tot de locatie van dit apparaat?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",
@@ -10771,7 +10787,7 @@
    }
   ]
  },
- "ocr_unavailable": {
+ "ocr_unknown_no_pkg": {
   "windows": [
    {
     "id": 1,
@@ -10824,12 +10840,320 @@
      0,
      1080,
      2400
-    ]
+    ],
+    "since": 5000
    }
   ],
   "event": {
    "package": "com.google.android.permissioncontroller",
-   "text": "Allow Kalshi to access this device's location?"
+   "text": "Kalshi wil toegang tot de locatie van dit apparaat?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Kalshi wil toegang tot de locatie",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "van dit apparaat?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Tijdens gebruik van de app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Alleen deze keer",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Niet toestaan",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_stale_event": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 1000
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to access this",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "device's location?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Precise",
+    "bounds": [
+     200,
+     1260,
+     360,
+     1310
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Approximate",
+    "bounds": [
+     690,
+     1260,
+     910,
+     1310
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_unavailable": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
   },
   "labels": {
    "com.amazon.mShop.android.shopping": "Amazon",

@@ -473,6 +473,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
         if (!latch.await(duration + 5_000, TimeUnit.MILLISECONDS)) throw IllegalStateException("Gesture timed out")
         if (!completed) throw IllegalStateException("Gesture was cancelled")
+        GateHost.completed(admission) // only now does the gate record a location-card choice (review B1)
         null
     }
 

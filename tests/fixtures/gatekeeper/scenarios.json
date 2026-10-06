@@ -3822,21 +3822,8 @@
     "screen": "hidden_permission_dialog",
     "expect": {
      "decision": "refuse",
-     "code": "needs_owner_dialog",
-     "rule": "builtin:owner_dialog"
-    }
-   },
-   {
-    "call": {
-     "method": "key",
-     "params": {
-      "name": "BACK"
-     }
-    },
-    "screen": "hidden_permission_dialog",
-    "expect": {
-     "decision": "refuse",
-     "code": "needs_owner_dialog"
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
     }
    },
    {
@@ -3856,17 +3843,7 @@
     },
     "screen": "hidden_permission_dialog",
     "expect": {
-     "decision": "allow"
-    }
-   },
-   {
-    "call": {
-     "method": "ui_elements",
-     "params": {}
-    },
-    "screen": "hidden_permission_dialog",
-    "expect": {
-     "decision": "allow"
+     "decision": "redact"
     }
    },
    {
@@ -3876,7 +3853,8 @@
     },
     "screen": "hidden_permission_dialog",
     "expect": {
-     "decision": "allow"
+     "decision": "refuse",
+     "code": "gate_blocked_app"
     }
    },
    {
@@ -3887,6 +3865,26 @@
     "screen": "loading_unknown",
     "expect": {
      "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "allow"
     }
    },
    {
@@ -7770,8 +7768,197 @@
      "kind": "permission",
      "level": "tap"
     }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "advance_ms": 2000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_unknown_no_pkg",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_unknown_no_pkg",
+    "expect": {
+     "decision": "redact"
+    }
    }
   ]
+ },
+ {
+  "name": "OCR: a stale permission event over a newer window is not a dialog: unknown, blacked out",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_stale_event",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_stale_event",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: a refused Approximate tap isn't recorded: Only this time is still refused (B1)",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_prompt_open",
+     "rule": "builtin:prompt_cooldown"
+    }
+   },
+   {
+    "advance_ms": 2000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ],
+  "call_ms": 200
  },
  {
   "name": "OCR: without OCR the dialog still pauses for the owner; reads show it",

@@ -160,13 +160,15 @@ class GNode(
 class GWindow(
     val id: Int, val type: String, val layer: Int, val pkg: String, val title: String, val bounds: IntArray,
     val root: GNode?,
+    /** When the phone first saw this window (uptime ms; 0: unknown). */
+    val since: Long = 0,
 ) {
     companion object {
         fun of(d: Map<String, Any?>) = GWindow(
             d.long("id").toInt(), d.str("type", "application"), d.long("layer").toInt(), d.str("package"),
             d.str("title"), d["bounds"].list().map { (it as Number).toInt() }.toIntArray().let {
                 if (it.size == 4) it else intArrayOf(0, 0, 1080, 2400)
-            }, d["root"]?.let { GNode.of(it.obj()) },
+            }, d["root"]?.let { GNode.of(it.obj()) }, d.long("since"),
         )
     }
 }
@@ -189,18 +191,20 @@ class GScreen(
     /** The phone's own OCR of a system dialog Android hides from accessibility (a permission dialog), as text lines.
      *  Null: not read (no such dialog, or OCR unavailable). */
     val ocr: List<GOcrLine>? = null,
+    /** When the last window-state event arrived (uptime ms). */
+    val eventAt: Long = 0,
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
 
     /** The same screen with [ms] of quiet: how long the target itself has been still (GateHost.reverify). */
     fun withQuiet(ms: Long) = GScreen(windows, keyguardLocked, keyguardSecure, ms, activity, autofillService, resolve, labels,
-        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr)
+        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr, eventAt)
 
     fun withWindows(ws: List<GWindow>) = GScreen(ws, keyguardLocked, keyguardSecure, quietMs, activity, autofillService, resolve,
-        labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr)
+        labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr, eventAt)
 
     fun withOcr(lines: List<GOcrLine>?) = GScreen(windows, keyguardLocked, keyguardSecure, quietMs, activity, autofillService,
-        resolve, labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, lines)
+        resolve, labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, lines, eventAt)
 
     companion object {
         fun of(d: Map<String, Any?>): GScreen {
@@ -223,6 +227,7 @@ class GScreen(
                 eventPackage = d["event"].obj().str("package"), eventText = d["event"].obj().str("text"),
                 owner = d["owner"].strings(),
                 ocr = (d["ocr"] as? List<*>)?.map { GOcrLine.of(it.obj()) },
+                eventAt = d["event"].obj().long("at"),
             )
         }
     }

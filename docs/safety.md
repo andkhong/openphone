@@ -430,7 +430,11 @@ prompt is a signed grant); asking more is free. **On Android 14 and later** the 
 dialogs from accessibility services; the phone reads them from its own screenshot with on-device OCR (offline)
 and applies the same rules, so a compromised server can't grant a permission to another app without the
 owner, can never grant background location, and can't get past a `deny` setting. A low-confidence or
-unfamiliar dialog asks. Safety Center and default-app screens (and a permission dialog when OCR is
+unfamiliar dialog asks. A dialog whose window has no package counts only with a permission-controller event no
+older than the window and an "Allow X to" title in the OCR; otherwise it stays an unknown window (refused and
+blacked out). **Owner-accepted residual:** camera and microphone follow "Only this time" with no prompt like the
+other types, so a compromised server could get one-time foreground mic or camera access in the app the task
+operates; the only signal is Android's privacy indicator. Safety Center and default-app screens (and a permission dialog when OCR is
 unavailable) still pause the task until the owner answers them on the phone ("Kalshi is asking for location:
 answer on your phone", also on the dashboard's live view); if nobody answers within
 `owner_dialog_wait_seconds` (5 minutes), the task ends with reason `needs_owner_dialog`.

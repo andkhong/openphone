@@ -24,6 +24,17 @@ class OpenMobAccessibilityService : AccessibilityService() {
     /** The last window-state event from another app: its package and text (GScreen.eventPackage/eventText). */
     @Volatile var lastEventPackage: String = ""
     @Volatile var lastEventText: String = ""
+    /** When that event arrived (uptime ms), and when each window id was first seen: a permission-controller event
+     *  identifies a hidden window only if it isn't older than the window (GScreen.eventAt, GWindow.since). */
+    @Volatile var lastEventAt: Long = 0L
+    val windowSince = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    private fun noteWindows() {
+        val now = SystemClock.uptimeMillis()
+        val ids = runCatching { windows.map { it.id } }.getOrDefault(emptyList())
+        for (id in ids) windowSince.putIfAbsent(id, now)
+        windowSince.keys.retainAll(ids.toSet())
+    }
     private var keepAwake: android.view.View? = null
 
     /**
@@ -75,11 +86,14 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         noteChange(event)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) noteWindows()
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             // Android 14+ hides some system dialogs' trees, but their state events (package, text) still arrive.
             event.packageName?.toString()?.takeIf { it != packageName }?.let {
                 lastEventPackage = it
                 lastEventText = event.text.joinToString(" ") { t -> t?.toString().orEmpty() }.trim()
+                lastEventAt = SystemClock.uptimeMillis()
             }
         }
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||

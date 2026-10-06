@@ -704,14 +704,16 @@ SCREENS.update({
 })
 SCENARIOS += [
     sc("a system dialog the phone can't read pauses for the owner", [
+        # No package and no OCR'd title: the event alone doesn't identify it (review hardening): unknown window.
         step("tap", "hidden_permission_dialog",
-             refuse("needs_owner_dialog", rule="builtin:owner_dialog"), x=540, y=1500),
-        step("key", "hidden_permission_dialog", refuse("needs_owner_dialog"), name="BACK"),
+             refuse("gate_screen_unstable", rule="builtin:unknown_window"), x=540, y=1500),
         step("wake_unlock", "hidden_permission_dialog", allow()),
-        step("screenshot", "hidden_permission_dialog", allow()),  # identified: the live view shows it
-        step("ui_elements", "hidden_permission_dialog", allow()),
-        step("stream_start", "hidden_permission_dialog", allow()),
+        step("screenshot", "hidden_permission_dialog", {"decision": "redact"}),
+        step("stream_start", "hidden_permission_dialog", refuse("gate_blocked_app")),
         step("screenshot", "loading_unknown", {"decision": "redact"}),  # unidentified: still black
+        # Its own package identifies it (Samsung): reads show it; acts wait for the owner without OCR.
+        step("screenshot", "hidden_permission_samsung", allow()),
+        step("ui_elements", "hidden_permission_samsung", allow()),
         step("tap", "hidden_permission_samsung", refuse("needs_owner_dialog"), x=540, y=300),
         step("tap", "kalshi_app", allow(), x=540, y=300)], tags=["hard_deny"]),
     sc("a touch where the phone sees no window is refused", [
@@ -1198,8 +1200,9 @@ def ocr_dialog(title_lines, buttons, cards=True, vendor="com.google.android.perm
     lines += [ocr_line(b, (300, ys[i] - 25, 780, ys[i] + 25), conf) for i, b in enumerate(buttons)]
     lines += list(extra)
     return screen(app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
-                  {"id": 7, "type": "application", "layer": 5, "package": window_pkg, "title": "", "bounds": FULL},
-                  event={"package": vendor, "text": " ".join(title_lines)}, labels=LABELS, ocr=lines)
+                  {"id": 7, "type": "application", "layer": 5, "package": window_pkg, "title": "", "bounds": FULL,
+                   "since": 5000},  # the phone first saw the window at 5 s; the event came after
+                  event={"package": vendor, "text": " ".join(title_lines), "at": 5100}, labels=LABELS, ocr=lines)
 
 
 LOC_TITLE = ["Allow Kalshi to access this", "device's location?"]
@@ -1220,10 +1223,20 @@ SCREENS.update({
     # The OCR couldn't read the buttons with confidence.
     "ocr_location_blurry": ocr_dialog(LOC_TITLE, LOC_BUTTONS, conf=0.3),
     # A wording the phone doesn't know (another language).
+    # A wording the phone doesn't know, in a window that names the permission controller.
     "ocr_location_unknown": ocr_dialog(["Kalshi wil toegang tot de locatie", "van dit apparaat?"],
-                                       ["Tijdens gebruik van de app", "Alleen deze keer", "Niet toestaan"], cards=False),
-    # The dialog is up but the phone couldn't run OCR: pause for the owner, as before.
-    "ocr_unavailable": {**ocr_dialog(LOC_TITLE, LOC_BUTTONS), "ocr": None},
+                                       ["Tijdens gebruik van de app", "Alleen deze keer", "Niet toestaan"], cards=False,
+                                       window_pkg="com.google.android.permissioncontroller"),
+    # The same with no window package: no "Allow X to" title, so only a stale-looking event: unknown window.
+    "ocr_unknown_no_pkg": ocr_dialog(["Kalshi wil toegang tot de locatie", "van dit apparaat?"],
+                                     ["Tijdens gebruik van de app", "Alleen deze keer", "Niet toestaan"], cards=False),
+    # A permission-controller event from before this window appeared (an app still loading): not a dialog.
+    "ocr_stale_event": {**ocr_dialog(LOC_TITLE, LOC_BUTTONS),
+                        "event": {"package": "com.google.android.permissioncontroller",
+                                  "text": "Allow Kalshi to access this device's location?", "at": 1000}},
+    # The dialog names its package, but the phone couldn't run OCR: pause for the owner, as before.
+    "ocr_unavailable": {**ocr_dialog(LOC_TITLE, LOC_BUTTONS, window_pkg="com.google.android.permissioncontroller"),
+                        "ocr": None},
 })
 SCENARIOS += [
     sc("OCR: the Kalshi location dialog: Approximate, then Only this time, no prompt", [
@@ -1266,8 +1279,26 @@ SCENARIOS += [
         KALSHI,
         step("tap", "ocr_location_blurry", ask("permission", rule="risk:permission:unknown"), **ONCE),
         {"cancel": "last"},
-        step("tap", "ocr_location_unknown", ask("permission", level="tap"), x=540, y=1635)],
+        step("tap", "ocr_location_unknown", ask("permission", level="tap"), x=540, y=1635),
+        {"cancel": "last"},
+        {"advance_ms": 2000},
+        step("tap", "ocr_unknown_no_pkg", refuse("gate_screen_unstable", rule="builtin:unknown_window"), x=540, y=1635),
+        step("screenshot", "ocr_unknown_no_pkg", {"decision": "redact"})],
        tags=["permissions", "ocr"]),
+    sc("OCR: a stale permission event over a newer window is not a dialog: unknown, blacked out", [
+        KALSHI,
+        step("tap", "ocr_stale_event", refuse("gate_screen_unstable", rule="builtin:unknown_window"), **ONCE),
+        step("screenshot", "ocr_stale_event", {"decision": "redact"}),
+        step("screenshot", "ocr_location", allow())], tags=["permissions", "ocr"]),
+    sc("OCR: a refused Approximate tap isn't recorded: Only this time is still refused (B1)", [
+        KALSHI,
+        step("tap", "ocr_location", ask("permission", rule="risk:permission:location_accuracy"), **PRECISE),
+        {"cancel": "last"},  # the prompt closes: the next gesture falls in its cooldown
+        step("tap", "ocr_location", refuse("gate_prompt_open", rule="builtin:prompt_cooldown"), **APPROX),
+        {"advance_ms": 2000},
+        step("tap", "ocr_location", refuse("gate_permission_choice", rule="permission:location_accuracy"), **ONCE),
+        step("tap", "ocr_location", allow(), **APPROX),  # this one goes through
+        step("tap", "ocr_location", allow(), **ONCE)], tags=["permissions", "ocr"], call_ms=200),
     sc("OCR: without OCR the dialog still pauses for the owner; reads show it", [
         KALSHI,
         step("tap", "ocr_unavailable", refuse("needs_owner_dialog"), **ONCE),

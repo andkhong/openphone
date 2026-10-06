@@ -36,10 +36,11 @@ object GateScreens {
             val root = w.root
             val pkg = root?.packageName?.toString().orEmpty()
             @Suppress("DEPRECATION") root?.recycle()
-            GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), null)
+            GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), null,
+                service.windowSince[w.id] ?: 0L)
         },
         // A permission dialog Android hides is identified by its window-state event (reads may show it).
-        eventPackage = service.lastEventPackage, eventText = service.lastEventText,
+        eventPackage = service.lastEventPackage, eventText = service.lastEventText, eventAt = service.lastEventAt,
     )
 
     /** What the owner-dialog check needs, cheaply: every window with a shallow read of its tree, and the last
@@ -49,9 +50,10 @@ object GateScreens {
             val root = w.root
             val pkg = root?.packageName?.toString().orEmpty()
             val tree = root?.let { TreeWalk(ADAPTER, emptyList(), budget = 80, maxDepth = 12).read(it) }
-            GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), tree)
+            GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), tree,
+                service.windowSince[w.id] ?: 0L)
         },
-        eventPackage = service.lastEventPackage, eventText = service.lastEventText,
+        eventPackage = service.lastEventPackage, eventText = service.lastEventText, eventAt = service.lastEventAt,
     )
 
     /** [points]: where the call touches; nodes under them are always read in full (TreeWalk). */
@@ -84,7 +86,7 @@ object GateScreens {
             val pkg = root?.packageName?.toString().orEmpty()
             val tree = root?.let { TreeWalk(ADAPTER, pinned, budget = MAX_NODES, maxDepth = MAX_DEPTH).read(it) }
             windows.add(GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(),
-                intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree))
+                intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree, service.windowSince[w.id] ?: 0L))
         }
         val keyguard = service.getSystemService(android.app.KeyguardManager::class.java)
         val pm = service.packageManager
@@ -107,7 +109,7 @@ object GateScreens {
             owner = listOfNotNull(dev.openmob.companion.Settings(service).email.takeIf { it.isNotEmpty() }),
             focusExpected = focusPoint != null,
             focusWindow = focusWindow, focusNode = focusNode, focusAncestors = focusAncestors,
-            eventPackage = service.lastEventPackage, eventText = service.lastEventText,
+            eventPackage = service.lastEventPackage, eventText = service.lastEventText, eventAt = service.lastEventAt,
         )
     }
 

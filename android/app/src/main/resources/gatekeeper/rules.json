@@ -82,7 +82,7 @@
                "(?i)^zulassen,?\\s+dass\\s+(.+?)\\s+(?:auf|dir|fotos|bilder|audio|benachrichtigungen|anrufe|sms|ger[aä]te|deine|deinen)",
                "(?i)^darf\\s+(.+?)\\s+(?:auf|dir|fotos|bilder|audio|benachrichtigungen|anrufe|sms|deine|deinen)"],
     "ocr": {"_doc": "The phone's own screenshot, read with ML Kit (bundled Latin model, offline): text lines below min_conf are dropped; the title starts with title_start and runs to its '?'; a button is a line that reads exactly as a button text, its box padded by pad px. Anything else in the dialog, tapped, asks.",
-            "min_conf": 0.5, "pad": 16, "title_lines": 4,
+            "min_conf": 0.5, "pad": 16, "title_lines": 4, "event_slack_ms": 1500,
             "title_start": "(?i)^(allow\\s|¿?(quieres\\s+)?permitir\\s|zulassen|darf\\s)"},
     "button_ids": [["one_time", "permission_allow_one_time_button$"],
                    ["foreground", "permission_allow_foreground_only_button$"],
