@@ -170,7 +170,7 @@ def test_admin_listings_and_revoke(tmp_path):
     key = s.redeem_pairing_code(code, bob, "bob-phone", "Pixel")
 
     accounts = {a["email"]: a for a in s.admin_list_accounts()}
-    assert set(accounts["bob@example.com"]) == {"id", "email", "created", "is_admin", "device_count"}
+    assert set(accounts["bob@example.com"]) == {"id", "email", "created", "is_admin", "device_count", "api_disabled"}
     assert accounts["bob@example.com"]["device_count"] == 1 and accounts["alice@example.com"]["id"] == alice
 
     [device] = s.admin_list_devices()

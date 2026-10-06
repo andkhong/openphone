@@ -5,8 +5,12 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- Smooth live view on the web dashboard: screen streaming, approved by the owner per connection. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Setup checklist: ask to be exempt from battery optimization, so the connection survives screen-off. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Pairing must be approved with the phone's screen lock (BiometricPrompt). -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <!-- The agent opens any app the user names, so it must see every installed app. -->
@@ -32,7 +36,7 @@
         android:icon="@android:drawable/sym_def_app_icon"
         android:label="@string/app_name"
         android:theme="@android:style/Theme.DeviceDefault.DayNight"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="${usesCleartext}">
 
         <activity
             android:name=".MainActivity"
@@ -56,10 +60,23 @@
             </intent-filter>
         </activity>
 
+        <!-- Approve a risky action with the screen lock; opened from the approval notification. -->
+        <activity
+            android:name=".ApprovalActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity="" />
+
+        <!-- The approval notification's Deny button. -->
+        <receiver
+            android:name=".ApprovalReceiver"
+            android:exported="false" />
+
         <service
             android:name=".ConnectionService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse|mediaProjection">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="Keeps the connection to the user's OpenMob agent server while the agent operates the phone." />

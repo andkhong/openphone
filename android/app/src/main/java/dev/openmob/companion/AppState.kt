@@ -10,9 +10,16 @@ import java.util.concurrent.CopyOnWriteArrayList
 object AppState {
     data class Event(val kind: String, val message: String)
 
+    /** The app sent the owner to Accessibility settings: once the service is on, bring the app back
+     *  (OpenMobAccessibilityService.onServiceConnected) instead of making them navigate back. */
+    @Volatile var returnAfterAccessibility: Boolean = false
+
     @Volatile var connection: String = "Disconnected"
         private set
     @Volatile var connected: Boolean = false
+        private set
+    /** Who the server says is driving the phone right now (e.g. "Claude"); "" for nobody. */
+    @Volatile var controller: String = ""
         private set
 
     private val events = ArrayDeque<Event>()
@@ -24,6 +31,11 @@ object AppState {
     fun setConnection(status: String, isConnected: Boolean) {
         connection = status
         connected = isConnected
+        notifyListeners()
+    }
+
+    fun setController(who: String) {
+        controller = who
         notifyListeners()
     }
 
@@ -69,6 +81,12 @@ class Settings(context: Context) {
     var email: String
         get() = prefs.getString("email", "") ?: ""
         set(value) = prefs.edit().putString("email", value.trim()).apply()
+
+    /** Ask Android for screen sharing on Connect, so the web dashboard shows smooth video. Turned off
+     *  when the owner declines that prompt, so declining is remembered rather than asked every time. */
+    var smoothLiveView: Boolean
+        get() = prefs.getBoolean("smooth_live_view", true)
+        set(value) = prefs.edit().putBoolean("smooth_live_view", value).apply()
 
     /** This phone's device key, sent in the hello message. */
     var deviceKey: String

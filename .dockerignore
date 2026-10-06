@@ -2,7 +2,21 @@
 .venv
 android
 tests
-docs
+# Internal docs stay out of the image; the console's public pages go in (PUBLIC_DOCS).
+docs/*
+!docs/api.md
+!docs/concepts.md
+!docs/conventions.md
+!docs/errors.md
+!docs/examples.md
+!docs/mcp.md
+!docs/memory.md
+!docs/phone-setup.md
+!docs/quickstart.md
+!docs/safety.md
+!docs/self-hosting.md
+!docs/testing.md
+!docs/webhooks.md
 **/__pycache__
 *.png
 *.jpg

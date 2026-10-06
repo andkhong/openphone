@@ -25,21 +25,31 @@ def make_anthropic_client(cfg: Config):
 
 def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=None):
     from .agent import Agent
+    from .agent.models import ModelRouter
     from .jev import JevClient, JevJudge
     from .phone.apps import AppResolver, chain_pickers, make_jev_picker, make_llm_picker
 
-    client = make_anthropic_client(cfg)
+    router = ModelRouter(cfg)
+    if not router.available(cfg.model):
+        usable = [m["id"] for m in cfg.models if router.available(m["id"])]
+        if not usable:
+            sys.exit("No model provider is set up. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY "
+                     "(or a base_url for an OpenAI-compatible endpoint).")
+        print(f"⚠️  {cfg.model} isn't available here (no key for its provider); using {usable[0]}.", flush=True)
+        cfg.model = usable[0]
+    # App names are picked by a small model: the resolver model if its provider is set up, else the default.
+    picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
     judge = None
-    if cfg.jev_api_key:
+    if cfg.jev_api_key and cfg.jev_enabled:
         judge = JevJudge(JevClient(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url))
     picker = chain_pickers(
         make_jev_picker(judge, cfg.jev_min_confidence) if judge else None,
-        make_llm_picker(client, cfg.resolver_model),
+        make_llm_picker(router, picker_model),
     )
     extra = {"label_cache": label_cache} if label_cache else {}
     resolver = AppResolver(driver, cfg.aliases, llm_picker=picker, **extra)
-    return Agent(client, driver, resolver, cfg, io, judge=judge)
+    return Agent(router, driver, resolver, cfg, io, judge=judge)
 
 
 def cmd_do(cfg: Config, args) -> None:
@@ -67,8 +77,11 @@ def cmd_run(cfg: Config, args) -> None:
     speaker = Speaker(cfg.speak and not args.quiet, cfg.voice)
     from .history import History
 
+    from .memory import Memory
+
     history = History()  # saved chats: the data agents will learn from
-    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history)
+    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history,
+                            memory=Memory())  # pinned notes: what the agent remembers about its user
     sessions = manager.refresh()
     for s in sessions:
         print(f"📱 {s.info.model} ({s.info.connection}, {s.info.transport})")
@@ -93,7 +106,7 @@ def cmd_run(cfg: Config, args) -> None:
     else:
         print("🎙  Mic button disabled: install Whisper with  pip install -e '.[voice]'")
 
-    from .server import create_app, lan_ip, serve_in_background
+    from .server import create_app, lan_ip, local_hostname, serve_in_background
 
     store = None
     if args.accounts:
@@ -106,7 +119,11 @@ def cmd_run(cfg: Config, args) -> None:
     # With accounts the dashboard uses a sign-in session, so links carry no secret.
     suffix = "/login" if store else f"/?t={token}"
     print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")
-    print(f"   On your network: http://{lan_ip()}:{cfg.server_port}{suffix}")
+    if local_hostname():  # the name stays the same when the IP changes (sleep, another Wi-Fi)
+        print(f"   On your network: http://{local_hostname()}:{cfg.server_port}{suffix}")
+        print(f"                    (or http://{lan_ip()}:{cfg.server_port}{suffix} until this computer's IP changes)")
+    else:
+        print(f"   On your network: http://{lan_ip()}:{cfg.server_port}{suffix}")
     if args.public:
         from .tunnel import open_tunnel
 
@@ -220,6 +237,8 @@ def cmd_doctor(cfg: Config, args) -> None:
                 hint = " (set ANTHROPIC_WORKSPACE_ID, or use a workspace-scoped key)"
             check("Claude reachable", False, f"{getattr(exc, 'message', exc)}{hint}")
     optional("TYPESAFE_API_KEY (Jev classification)", bool(cfg.jev_api_key), "" if cfg.jev_api_key else "not set; Jev disabled")
+    if cfg.jev_api_key and not cfg.jev_enabled:
+        print("   (Jev is switched off by jev_enabled: false or OPENMOB_JEV=off)")
     if cfg.jev_api_key:
         from .jev import JevClient, JevError, JevJudge
 
@@ -351,6 +370,71 @@ def cmd_account(cfg: Config, args) -> None:
         print(f"{base.rstrip('/')}/auth/link?code={code}")
 
 
+def cmd_key(cfg: Config, args) -> None:
+    """Developer API keys for an account (the same keys /developer makes)."""
+    from .accounts import DEFAULT_SCOPES, AccountStore, AuthError
+    from .ledger import Ledger
+
+    store = AccountStore()
+    account_id = store.account_id_for(args.email)
+    if not account_id:
+        sys.exit(f"✗ No account {args.email}. Create it: openmob account add {args.email}")
+    if args.action == "list":
+        keys = store.list_api_keys(account_id)
+        for k in keys:
+            print(f"{k['prefix']}_…  {k['name']}  [{', '.join(k['scopes'])}]{'  (turned off)' if k['disabled'] else ''}")
+        if not keys:
+            print("No keys.")
+        return
+    ledger = Ledger(store.path.with_name("ledger.sqlite"))
+    if args.action == "create":
+        scopes = [s.strip() for s in args.scopes.split(",")] if args.scopes else list(DEFAULT_SCOPES)
+        try:
+            key_id, key = store.create_api_key(account_id, args.name or "CLI key", scopes)
+        except AuthError as exc:
+            sys.exit(f"✗ {exc}")
+        ledger.audit("key.create", account_id, key_id, outcome=",".join(sorted(set(scopes))))
+        print(f"✓ Created key {key_id}. Copy it now; it won't be shown again:")
+        print(key)
+        return
+    if not args.key_id:
+        sys.exit("openmob key revoke needs a KEY_ID (see: openmob key list EMAIL).")
+    key_id = args.key_id.removeprefix("om_live_").split("_")[0]
+    if not store.revoke_api_key(account_id, key_id):
+        sys.exit(f"✗ {args.email} has no key {key_id}.")
+    ledger.audit("key.revoke", account_id, key_id)
+    # The server re-reads the store, so the key fails on its next request. Revoking from /developer
+    # also cancels the key's running tasks; from here they run to the end.
+    print(f"✓ Revoked {key_id}. It stops working on its next request.")
+
+
+def cmd_mcp(cfg: Config, args) -> None:
+    """A local stdio MCP server for Claude Desktop & co.: a thin proxy to a server's /mcp."""
+    import os
+
+    from .platform import stdio
+
+    stdio.main(args.server or os.environ.get("OPENMOB_SERVER"), args.key or os.environ.get("OPENMOB_API_KEY"))
+
+
+def cmd_timings(cfg: Config, args) -> None:
+    from . import history
+    from .timing_report import format_report, parse_since, summarize
+
+    try:
+        since = parse_since(args.since)
+    except ValueError as exc:
+        sys.exit(str(exc))
+    rows = history.History(history.DEFAULT_PATH).step_timings(since, chat_id=args.chat, model=args.model)
+    print(format_report(summarize(rows)))
+
+
+def cmd_bench(cfg: Config, args) -> None:
+    from .bench import main as bench_main
+
+    bench_main(cfg, args)
+
+
 def _public_url(port: int) -> str | None:
     """The running tunnel's URL, if `openmob run --public` started one."""
     import json as _json
@@ -406,10 +490,37 @@ def main(argv: list[str] | None = None) -> None:
     p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
     p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")
 
+    p_key = sub.add_parser("key", help="developer API keys for an account (create, list, revoke)")
+    p_key.add_argument("action", choices=["create", "list", "revoke"])
+    p_key.add_argument("email")
+    p_key.add_argument("key_id", nargs="?", help="revoke: the key's id or prefix")
+    p_key.add_argument("--name", help="create: a name to recognise the key by")
+    p_key.add_argument("--scopes", help="create: comma-separated, e.g. devices:read,tasks:run,tasks:read (default)")
+
+    p_mcp = sub.add_parser("mcp", help="serve MCP over stdio, forwarding to an OpenMob server's /mcp")
+    p_mcp.add_argument("--server", help="the server, e.g. https://openmob.example.com (default: $OPENMOB_SERVER)")
+    p_mcp.add_argument("--key", help="API key (default: $OPENMOB_API_KEY, which keeps it out of process lists)")
+
+    p_timings = sub.add_parser("timings", help="where agent steps spend their time (per phase, jev on/off, per model)")
+    p_timings.add_argument("--since", default="7d", help="e.g. 7d, 24h, 30m, or all (default: 7d)")
+    p_timings.add_argument("--chat", help="only this chat's steps")
+    p_timings.add_argument("--model", help="only steps decided by this model")
+
+    p_bench = sub.add_parser("bench", help="internal: run tasks under several conditions and compare (docs/benchmarks.md)")
+    p_bench.add_argument("tasks", help="YAML file of task instructions")
+    p_bench.add_argument("--serial", help="adb serial of the phone (default: adb_serial or the only connected phone)")
+    p_bench.add_argument("--model", help="the model to run (default: the config's model)")
+    p_bench.add_argument("--only", choices=["both", "on", "off"], default="both", help="which Jev modes to run")
+    p_bench.add_argument("--conditions", help="compare latency conditions instead of Jev on/off: a comma-separated "
+                                              "list of baseline, settle, fast (round C), fastd (round D), "
+                                              "fast-q200, fastd-q200 (e.g. fast,fastd)")
+    p_bench.add_argument("--no-home", action="store_true", help="don't press HOME before each run")
+
     args = parser.parse_args(argv)
     sys.stdout.reconfigure(line_buffering=True)  # show progress promptly even when logged to a file
     cfg = load_config(args.config)
-    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge}[args.command](cfg, args)
+    {"run": cmd_run, "do": cmd_do, "apps": cmd_apps, "doctor": cmd_doctor, "connect": cmd_connect, "account": cmd_account, "bridge": cmd_bridge,
+     "key": cmd_key, "mcp": cmd_mcp, "timings": cmd_timings, "bench": cmd_bench}[args.command](cfg, args)
 
 
 if __name__ == "__main__":

@@ -1,15 +1,28 @@
 # Copy to config.yaml (or ~/.config/openmob/config.yaml) and edit.
-# Secrets come from the environment: ANTHROPIC_API_KEY, and optionally TYPESAFE_API_KEY for Jev.
+# Secrets come from the environment, never this file: ANTHROPIC_API_KEY, OPENAI_API_KEY,
+# GEMINI_API_KEY (or GOOGLE_API_KEY), OPENAI_COMPATIBLE_API_KEY, and optionally TYPESAFE_API_KEY for Jev.
+# A model whose provider has no key is listed in the dashboard but can't be picked.
 
-# Claude model that looks at the screen and decides each action.
+# Model that looks at the screen and decides each action (any provider below).
 model: claude-sonnet-5-5          # claude-opus-5-5 is smarter but slower
 resolver_model: claude-haiku-4-5-20251001
 # Models the dashboard's "Model" dropdown offers per phone (an allowlist). The default above is always included.
+# provider: anthropic | openai | google | openai_compatible (inferred from claude-*, gpt-*, gemini-* names).
+# Other providers need their SDK: pip install -e '.[openai]' or '.[gemini]'.
 # models:
-#   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)"}
-#   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)"}
-#   - {id: claude-fable-5-1, label: "Fable 5.1"}
-#   - {id: claude-haiku-4-5-20251001, label: "Haiku 4.5 (fastest, cheapest)"}
+#   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)", provider: anthropic}
+#   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)", provider: anthropic}
+#   - {id: claude-haiku-4-5-20251001, label: "Haiku 4.5 (fastest, cheapest)", provider: anthropic}
+#   - {id: gpt-5.5, label: "GPT-5.5", provider: openai}
+#   - {id: gemini-3.5-flash, label: "Gemini 3.5 Flash", provider: google}
+#   # Local or open models on any OpenAI-compatible server. Say what it can do; it needs vision and tools.
+#   - {id: qwen3-vl-32b, label: "Qwen3-VL (local)", provider: openai_compatible,
+#      base_url: "http://localhost:11434/v1", vision: true, tools: true, context: 64000}
+#   # A hosted compatible endpoint whose key is in another environment variable:
+#   - {id: meta-llama/llama-4-maverick, label: "Llama 4", provider: openai_compatible,
+#      base_url: "https://openrouter.ai/api/v1", api_key_env: OPENROUTER_API_KEY}
+# Optional per model: max_tokens (default 1024; raise it for reasoning models, whose thinking counts).
+# openai_compatible_base_url: http://localhost:11434/v1   # default for compatible models without base_url
 max_steps: 40
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
@@ -23,6 +36,9 @@ aliases: {}
 screenshot_max_side: 1280
 settle_delay: 0.8                  # seconds to let the screen update after each action
 launch_settle_delay: 3.0
+adaptive_settle: true              # wait only until the screen stops changing (capped at the delays above)
+settle_quiet_ms: 300               # how long without screen changes counts as settled
+verify_taps: true                  # re-check a tap target just before tapping (OpenMob app phones)
 ui_tree: auto                      # auto | always | never (accessibility tree; empty in games)
 ocr: true                          # Apple Vision OCR for screens without an accessibility tree
 
@@ -32,6 +48,18 @@ jev_model: jev-latest
 jev_min_confidence: 0.6
 jev_risk_threshold: 0.5            # ask before taps Jev rates at least this risky
 jev_auto_wait_seconds: 30          # longest time to wait on screens Jev calls "loading"
+jev_enabled: true                  # false (or OPENMOB_JEV=off) runs without Jev even with TYPESAFE_API_KEY set
+fast_path: "off"                   # off | fast_tier | on: Jev drives labeled screens without the main model
+fast_path_min_probability: 0.7
+fast_path_min_confidence: 0.6
+fast_path_min_elements: 3
+# fast_path_text_model: claude-haiku-4-5-20251001   # writes typed text; default: resolver_model
+fast_path_lazy_screenshot: true    # fast steps skip the screenshot unless the step goes to vision
+jev_one_request: true              # one Jev request per step (screen state, next step, tap risk)
+jev_risk_heads: 40                 # candidate targets whose tap risk that request asks about
+fast_path_direct_launch: true      # an app named exactly in the request opens without the small text model
+fast_path_done: false              # Jev may finish navigation-only tasks without the vision confirmation
+fast_path_done_min_probability: 0.85
 
 # Ask before tapping anything that matches these words.
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,
@@ -44,3 +72,23 @@ speak: true
 # Phone web page (http://<mac-ip>:8765/?t=<token>)
 server_port: 8765
 # server_token: pick-a-fixed-token   # otherwise a new one is generated each run
+
+# Developer API (/v1, accounts mode). Tiers map public names to the model that runs them (any provider;
+# add provider: when the name doesn't show it); API responses show only the tier name. Limits are per API key.
+# api_tiers:
+#   fast:     {model: claude-haiku-4-5-20251001, credits_per_step: 1}
+#   balanced: {model: claude-sonnet-5-5, credits_per_step: 3}
+#   best:     {model: claude-opus-5-5, credits_per_step: 10}
+# api_default_tier: balanced
+# api_rate_per_minute: 60
+# api_max_concurrent_tasks: 2
+# api_daily_tasks: 200
+# api_account_daily_tasks: 1000   # all of an account's keys together
+# api_account_daily_credits: 0    # 0 = unlimited
+# api_max_steps: 40
+# Package-name patterns API tasks may not open unless the phone's owner allows it (see config.py for the defaults).
+# sensitive_apps: [bank, wallet, paypal, 1password]
+
+# Delete task text (saved chats, orchestration plans and results, webhook bodies) older than this
+# many days (0 = keep forever). Billing totals and the hashed audit log are kept.
+# history_retention_days: 30

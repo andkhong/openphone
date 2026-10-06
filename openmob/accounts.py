@@ -5,8 +5,12 @@ as the same account that created it, and each paired phone gets its own revocabl
 code is useless to anyone not signed into the owner's account, and one phone can be revoked
 without touching the others.
 
+Developer API keys live here too: `om_live_<id>_<secret>`, shown once, stored as a hash, each
+with its own scopes. An admin can switch off one key or a whole account's API access.
+
 Storage is a single JSON file guarded by a lock — fine for one host. Only hashes of passwords,
-session tokens and device keys are stored, never the secrets themselves.
+session tokens, device keys and API keys are stored, never the secrets themselves. (Webhook
+signing secrets are the exception: signing needs the secret itself.)
 """
 
 from __future__ import annotations
@@ -25,6 +29,12 @@ PBKDF2_ROUNDS = 200_000
 SESSION_TTL = 30 * 24 * 3600  # dashboard login lasts 30 days
 PAIRING_TTL = 10 * 60  # a pairing code is valid for 10 minutes, once
 LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works once, for 10 minutes
+KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
+# What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
+SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write")
+DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
+LAST_USED_EVERY = 60  # seconds between saves of a key's last-used time
+WEBHOOK_SECRET_OVERLAP = 24 * 3600  # a replaced webhook secret still signs deliveries this long
 # OPENMOB_DATA_DIR points at persistent storage when hosted (e.g. a Fly volume at /data).
 DATA_DIR = Path(os.environ.get("OPENMOB_DATA_DIR") or Path.home() / ".config" / "openmob")
 DEFAULT_STORE = DATA_DIR / "accounts.json"
@@ -32,6 +42,10 @@ DEFAULT_STORE = DATA_DIR / "accounts.json"
 
 class AuthError(RuntimeError):
     """Login failed, or a pairing code was wrong, expired, used, or for another account."""
+
+
+class AccessDisabled(AuthError):
+    """A valid API key whose key or account has been switched off by an admin."""
 
 
 @dataclass
@@ -69,7 +83,7 @@ class AccountStore:
             data = json.loads(self.path.read_text())
         except (OSError, ValueError):
             data = {}
-        for section in ("accounts", "devices", "sessions", "pairings", "logins"):
+        for section in ("accounts", "devices", "sessions", "pairings", "logins", "api_keys"):
             data.setdefault(section, {})
         return data
 
@@ -206,7 +220,8 @@ class AccountStore:
             self._save()
         return code, expires
 
-    def redeem_pairing_code(self, code: str, account_id: str, device_id: str, model: str) -> str:
+    def redeem_pairing_code(self, code: str, account_id: str, device_id: str, model: str,
+                            approval_key: str | None = None) -> str:
         """Bind a phone to the account and return its own device key.
 
         Enforces the rule: the request must be authenticated as the SAME account that made the
@@ -235,6 +250,9 @@ class AccountStore:
                 "created": (existing or {}).get("created", time.time()),
                 "last_seen": time.time(),
                 "revoked": False,
+                # The phone's screen-lock-bound public key: its approvals must be signed with it.
+                # Pairing again replaces it (or clears it, for an app too old to send one).
+                "approval_key": approval_key or None,
             }
             self._save()
             return key
@@ -253,6 +271,33 @@ class AccountStore:
             device["last_seen"] = time.time()
             self._save()
             return device["account_id"]
+
+    @staticmethod
+    def key_fingerprint(key: str) -> str:
+        """What a phone's key is stored as; a socket remembers it to notice a re-pair."""
+        return _hash_token(key or "")
+
+    def device_auth(self, device_id: str) -> dict | None:
+        """A phone's pairing as it stands now: {account_id, revoked, key_hash, approval_key}."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            if d is None:
+                return None
+            return {"account_id": d["account_id"], "revoked": bool(d["revoked"]), "key_hash": d["key_hash"],
+                    "approval_key": d.get("approval_key")}
+
+    def register_approval_key(self, device_id: str, key_hash: str, public_key: str) -> bool:
+        """First connect of an already-paired phone whose app now has an approval key: keep it, once.
+        Never replaces a registered key (only pairing again does) and only for the current device key."""
+        with self._lock:
+            self._refresh()
+            d = self._data["devices"].get(device_id)
+            if not d or d["revoked"] or d.get("approval_key") or d["key_hash"] != key_hash or not public_key:
+                return False
+            d["approval_key"] = public_key
+            self._save()
+            return True
 
     def list_devices(self, account_id: str) -> list[Device]:
         with self._lock:
@@ -305,7 +350,8 @@ class AccountStore:
                     counts[d["account_id"]] = counts.get(d["account_id"], 0) + 1
             accounts = [
                 {"id": account_id, "email": a["email"], "created": a.get("created"),
-                 "is_admin": bool(a.get("is_admin", False)), "device_count": counts.get(account_id, 0)}
+                 "is_admin": bool(a.get("is_admin", False)), "device_count": counts.get(account_id, 0),
+                 "api_disabled": bool(a.get("api_disabled", False))}
                 for account_id, a in self._data["accounts"].items()
             ]
         return sorted(accounts, key=lambda a: a["email"])
@@ -330,5 +376,207 @@ class AccountStore:
             if not device:
                 return False
             device["revoked"] = True
+            self._save()
+            return True
+
+    # --- developer API keys --------------------------------------------------
+
+    def create_api_key(self, account_id: str, name: str, scopes=DEFAULT_SCOPES,
+                       confirm_approve: bool = False) -> tuple[str, str]:
+        """Returns (key id, key). The key is shown once; only its hash is kept.
+        `confirm_approve`: the key may approve risky actions itself (else only the owner can)."""
+        scopes = sorted(set(scopes))
+        unknown = [sc for sc in scopes if sc not in SCOPES]
+        if unknown or not scopes:
+            raise AuthError(f"Unknown or missing scopes: {', '.join(unknown) or 'none'}. Choose from: {', '.join(SCOPES)}")
+        name = " ".join((name or "").split())[:60] or "API key"
+        key_id = secrets.token_hex(4)
+        key = f"{KEY_PREFIX}{key_id}_{secrets.token_urlsafe(24)}"
+        with self._lock:
+            self._refresh()
+            if account_id not in self._data["accounts"]:
+                raise AuthError("Unknown account.")
+            self._data["api_keys"][key_id] = {
+                "account_id": account_id, "name": name, "scopes": scopes, "hash": _hash_token(key),
+                "created": time.time(), "last_used": None, "revoked": False, "disabled": False,
+                "confirm_approve": bool(confirm_approve),
+            }
+            self._save()
+        return key_id, key
+
+    def verify_api_key(self, key: str | None) -> dict:
+        """The key's {id, account_id, scopes, name}, or raise AuthError (AccessDisabled when switched off)."""
+        parts = (key or "").split("_", 3)
+        if len(parts) != 4 or f"{parts[0]}_{parts[1]}_" != KEY_PREFIX:
+            raise AuthError("Invalid API key.")
+        key_id = parts[2]
+        with self._lock:
+            self._refresh()
+            record = self._data["api_keys"].get(key_id)
+            # Always compare a hash, even for unknown ids, so timing doesn't reveal which ids exist.
+            expected = record["hash"] if record else _hash_token(secrets.token_hex(8))
+            if not hmac.compare_digest(expected, _hash_token(key)) or not record or record["revoked"]:
+                raise AuthError("Invalid API key.")
+            account = self._data["accounts"].get(record["account_id"])
+            if account is None:
+                raise AuthError("Invalid API key.")
+            if record.get("disabled") or account.get("api_disabled"):
+                raise AccessDisabled("API access for this key has been disabled. Contact support.")
+            now = time.time()
+            if not record["last_used"] or now - record["last_used"] > LAST_USED_EVERY:
+                record["last_used"] = now
+                self._save()
+            return {"id": key_id, "account_id": record["account_id"], "scopes": list(record["scopes"]),
+                    "name": record["name"], "confirm_approve": bool(record.get("confirm_approve"))}
+
+    @staticmethod
+    def _public_key(key_id: str, k: dict) -> dict:
+        return {"id": key_id, "prefix": f"{KEY_PREFIX}{key_id}", "name": k["name"], "scopes": list(k["scopes"]),
+                "created": k["created"], "last_used": k["last_used"], "disabled": bool(k.get("disabled")),
+                "confirm_approve": bool(k.get("confirm_approve"))}
+
+    def list_api_keys(self, account_id: str) -> list[dict]:
+        """This account's live keys (never the hash)."""
+        with self._lock:
+            self._refresh()
+            keys = [self._public_key(i, k) for i, k in self._data["api_keys"].items()
+                    if k["account_id"] == account_id and not k["revoked"]]
+        return sorted(keys, key=lambda k: k["created"], reverse=True)
+
+    def api_key_count(self, account_id: str) -> int:
+        return len(self.list_api_keys(account_id))
+
+    def revoke_api_key(self, account_id: str, key_id: str) -> bool:
+        """Only the owning account may revoke its key. False if unknown or not theirs."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["account_id"] != account_id or k["revoked"]:
+                return False
+            k["revoked"] = True
+            self._save()
+            return True
+
+    def rotate_api_key(self, account_id: str, key_id: str) -> tuple[str, str] | None:
+        """Give a key a new secret; the old secret stops working now. It stays the same key (same
+        id, name, scopes and settings), so its limits, tasks and running work carry on unchanged."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["account_id"] != account_id or k["revoked"]:
+                return None
+            key = f"{KEY_PREFIX}{key_id}_{secrets.token_urlsafe(24)}"
+            k["hash"] = _hash_token(key)
+            k["rotated"] = time.time()
+            self._save()
+            return key_id, key
+
+    def set_key_confirm_approve(self, account_id: str, key_id: str, on: bool) -> bool:
+        """Let one of the owner's keys approve risky actions itself (or take that back)."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["account_id"] != account_id or k["revoked"]:
+                return False
+            k["confirm_approve"] = bool(on)
+            self._save()
+            return True
+
+    # --- per-account developer settings ------------------------------------------
+
+    def settings(self, account_id: str) -> dict:
+        with self._lock:
+            self._refresh()
+            a = self._data["accounts"].get(account_id, {})
+            hook = a.get("webhook") or {}
+            return {"allow_sensitive_apps": bool(a.get("allow_sensitive_apps", False)),
+                    "webhook_url": hook.get("url"), "api_disabled": bool(a.get("api_disabled", False))}
+
+    def set_allow_sensitive_apps(self, account_id: str, on: bool) -> None:
+        with self._lock:
+            self._refresh()
+            self._data["accounts"][account_id]["allow_sensitive_apps"] = bool(on)
+            self._save()
+
+    def set_webhook(self, account_id: str, url: str | None) -> str | None:
+        """Set (returns the new signing secret, shown once) or clear (url=None) the task webhook."""
+        with self._lock:
+            self._refresh()
+            account = self._data["accounts"][account_id]
+            if not url:
+                account.pop("webhook", None)
+                self._save()
+                return None
+            secret = "whsec_" + secrets.token_urlsafe(24)
+            old = account.get("webhook") or {}
+            account["webhook"] = {"url": url, "secret": secret}
+            if old.get("secret"):  # the previous secret keeps verifying for a day, so receivers can switch over
+                account["webhook"].update(previous_secret=old["secret"], previous_until=time.time() + WEBHOOK_SECRET_OVERLAP)
+            self._save()
+            return secret
+
+    def webhook(self, account_id: str) -> tuple[str, str] | None:
+        """(url, signing secret) for delivering task events, or None."""
+        with self._lock:
+            self._refresh()
+            hook = self._data["accounts"].get(account_id, {}).get("webhook")
+            return (hook["url"], hook["secret"]) if hook else None
+
+    def webhook_secrets(self, account_id: str) -> list[str]:
+        """Secrets to sign with now: the current one, plus the previous one during its 24 h overlap."""
+        with self._lock:
+            self._refresh()
+            hook = self._data["accounts"].get(account_id, {}).get("webhook")
+            if not hook:
+                return []
+            out = [hook["secret"]]
+            if hook.get("previous_secret") and hook.get("previous_until", 0) > time.time():
+                out.append(hook["previous_secret"])
+            return out
+
+    # --- admin: API kill switches -----------------------------------------------
+
+    def admin_list_api_keys(self) -> list[dict]:
+        with self._lock:
+            self._refresh()
+            accounts = self._data["accounts"]
+            keys = [{**self._public_key(i, k), "account_id": k["account_id"],
+                     "email": accounts.get(k["account_id"], {}).get("email")}
+                    for i, k in self._data["api_keys"].items() if not k["revoked"]]
+        return sorted(keys, key=lambda k: k["created"], reverse=True)
+
+    def api_key_principal(self, key_id: str) -> dict | None:
+        """A key's current standing, read fresh (no secret needed): for re-checking long-running work
+        such as orchestrations. {id, account_id, scopes, name, confirm_approve, revoked, disabled,
+        api_disabled}, or None if the key or its account doesn't exist."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            account = self._data["accounts"].get(k["account_id"]) if k else None
+            if not k or account is None:
+                return None
+            return {"id": key_id, "account_id": k["account_id"], "scopes": list(k["scopes"]), "name": k["name"],
+                    "confirm_approve": bool(k.get("confirm_approve")), "revoked": bool(k["revoked"]),
+                    "disabled": bool(k.get("disabled")), "api_disabled": bool(account.get("api_disabled"))}
+
+    def admin_set_key_disabled(self, key_id: str, on: bool) -> str | None:
+        """Switch one key off or on. Returns its account, or None if unknown."""
+        with self._lock:
+            self._refresh()
+            k = self._data["api_keys"].get(key_id)
+            if not k or k["revoked"]:
+                return None
+            k["disabled"] = bool(on)
+            self._save()
+            return k["account_id"]
+
+    def admin_set_api_disabled(self, account_id: str, on: bool) -> bool:
+        """Switch off (or back on) every API key of one account."""
+        with self._lock:
+            self._refresh()
+            account = self._data["accounts"].get(account_id)
+            if account is None:
+                return False
+            account["api_disabled"] = bool(on)
             self._save()
             return True

@@ -31,8 +31,9 @@ class AccountApi(server: String) {
     }
 
     /** Returns this phone's device key. */
-    fun redeem(session: String, code: String, deviceId: String, model: String): String {
+    fun redeem(session: String, code: String, deviceId: String, model: String, approvalKey: String? = null): String {
         val json = JSONObject().put("code", code).put("device_id", deviceId).put("model", model)
+            .apply { if (approvalKey != null) put("approval_key", approvalKey) }
         val body = call(
             Request.Builder().url("$base/api/pair/redeem").header(SESSION_HEADER, session).post(json.toBody()).build()
         )

@@ -22,6 +22,33 @@ from openmob.voice.tts import Speaker
 TOKEN = "secret"
 
 
+def new_signer():
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+def public_key_b64(private_key) -> str:
+    import base64
+
+    from cryptography.hazmat.primitives import serialization
+
+    return base64.b64encode(private_key.public_key().public_bytes(
+        serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).decode()
+
+
+def sign_approval(private_key, approval_id, task_id, approved, timestamp) -> str:
+    import base64
+
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    from openmob.phone.approval_keys import approval_message
+
+    return base64.b64encode(private_key.sign(approval_message(approval_id, task_id, approved, timestamp),
+                                             ec.ECDSA(hashes.SHA256()))).decode()
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -31,13 +58,27 @@ def free_port() -> int:
 class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
-    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None):
+    def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False,
+                 video=False, approve=None, signer=None, approval_key=None, capabilities=None):
         self.url = f"{url}/phone/ws?t={token}"
+        self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
+        # signer: an EC private key standing in for the phone's screen-lock-bound Keystore key; its
+        # public half goes in the hello (approval_key) and approvals are signed with it.
+        self.signer = signer
+        self.approval_key = approval_key or (public_key_b64(signer) if signer else None)
+        self.approval_requests = []  # every approval_request received
+        self.approval_cancels = []  # ids of approval requests the server withdrew
         self.key = key
         self.platform = platform
+        self.binary = binary  # answer binary screenshot requests like the current app (else: like an old one)
         self.driver = driver
+        self.capabilities = capabilities  # hello device.capabilities (None: an older app that sends none)
         self.device_id = device_id
         self.events = []
+        self.calls = []  # (method, params) of every call received
+        self.video = video  # the owner allowed screen streaming: answer stream_* and send packets
+        self.streaming = None  # the task sending fake H.264 packets while a stream runs
+        self.want_key = False
         self.close_code = None
         self.welcome = threading.Event()
         self.loop = asyncio.new_event_loop()
@@ -48,6 +89,8 @@ class FakePhone:
     def handle(self, method, params):
         if method == "launch_app" and params.get("package") == "bad.pkg":
             raise RuntimeError("boom")
+        if method == "wait_idle" and self.capabilities and "wait_idle" in self.capabilities:
+            return {"waited_ms": min(40, params["max_ms"]), "idle": True}
         if method == "screenshot":
             return protocol.encode_screenshot(self.driver.screenshot())
         if method == "ui_elements":
@@ -62,8 +105,14 @@ class FakePhone:
                     "id": self.device_id, "model": "Pixel 9", "manufacturer": "google"}}
                 if self.key:
                     hello["key"] = self.key
+                if self.approval_key:
+                    hello["approval_key"] = self.approval_key
                 if self.platform:
                     hello["device"]["platform"] = self.platform
+                if self.video:
+                    hello["device"]["video"] = True
+                if self.capabilities is not None:
+                    hello["device"]["capabilities"] = self.capabilities
                 await ws.send(json.dumps(hello))
                 async for raw in ws:
                     msg = json.loads(raw)
@@ -71,7 +120,24 @@ class FakePhone:
                         self.welcome.set()
                     elif msg["type"] == "event":
                         self.events.append((msg["kind"], msg["message"]))
+                    elif msg["type"] == "approval_cancel":
+                        self.approval_cancels.append(msg["id"])
+                    elif msg["type"] == "approval_request":
+                        self.approval_requests.append(msg)
+                        if self.approve is not None:
+                            await ws.send(json.dumps(self.approval(msg["id"], msg["task_id"], self.approve)))
                     elif msg["type"] == "call":
+                        self.calls.append((msg["method"], msg["params"]))
+                        if self.video and msg["method"].startswith("stream_"):
+                            try:
+                                reply = {"ok": True, "result": self._stream(ws, msg["method"])}
+                            except Exception as exc:
+                                reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+                            await ws.send(json.dumps({"type": "result", "id": msg["id"], **reply}))
+                            continue
+                        if self.binary and msg["method"] == "screenshot" and msg["params"].get("binary"):
+                            await ws.send(protocol.encode_binary_result(msg["id"], self.driver.screenshot()))
+                            continue
                         try:
                             reply = {"ok": True, "result": self.handle(msg["method"], msg["params"])}
                         except Exception as exc:
@@ -80,11 +146,52 @@ class FakePhone:
         except websockets.ConnectionClosed as exc:
             self.close_code = exc.rcvd.code if exc.rcvd else None
 
+    def _stream(self, ws, method):
+        """Fake encoder: SPS/PPS, a keyframe, then a delta every 20 ms (a keyframe when asked)."""
+        if method == "stream_start":
+            if self.streaming:  # like the app: a new start replaces the running encoder
+                self.streaming.cancel()
+
+            async def packets():
+                try:
+                    await ws.send(protocol.encode_video_packet(b"\x00\x00\x00\x01SPSPPS", 0, config=True))
+                    n = 0
+                    while True:
+                        key = n == 0 or self.want_key
+                        self.want_key = False
+                        data = b"\x00\x00\x00\x01" + (b"IDR" if key else b"P") + bytes([n % 256])
+                        await ws.send(protocol.encode_video_packet(data, n * 20_000, key=key))
+                        n += 1
+                        await asyncio.sleep(0.02)
+                except websockets.ConnectionClosed:
+                    pass  # the test disconnected this phone
+            self.streaming = asyncio.ensure_future(packets())
+            return {"width": 592, "height": 1280}
+        if method == "stream_keyframe":
+            self.want_key = True
+        if method == "stream_stop" and self.streaming:
+            self.streaming.cancel()
+            self.streaming = None
+        return None
+
+    def approval(self, approval_id, task_id, approved, timestamp=None):
+        """An approval message, signed when this phone has a signer and says yes."""
+        message = {"type": "approval", "id": approval_id, "approved": approved}
+        if self.signer is not None and approved:
+            timestamp = int(time.time()) if timestamp is None else timestamp
+            message.update(timestamp=timestamp, signature=sign_approval(self.signer, approval_id, task_id, True, timestamp))
+        return message
+
     def send(self, message):
         asyncio.run_coroutine_threadsafe(self.ws.send(json.dumps(message)), self.loop).result(5)
 
     def disconnect(self):
+        """Close normally (1000), like the user tapping Stop."""
         asyncio.run_coroutine_threadsafe(self.ws.close(), self.loop).result(5)
+
+    def drop(self):
+        """Lose the connection (a network blip), not a deliberate close."""
+        asyncio.run_coroutine_threadsafe(self.ws.close(code=1001), self.loop).result(5)
 
 
 @pytest.fixture
@@ -193,3 +300,258 @@ def test_iphone_hello_sets_platform(server):
     assert android_session.describe()["platform"] == "android" and android_session.coordinator.agent.platform == "android"
     iphone.disconnect()
     android.disconnect()
+
+
+# --- live screen: preview frames, binary results, the viewer socket ----------------------------
+
+def watch(url, frames=2, headers=None, timeout=5.0):
+    """Open a viewer socket and read `frames` messages. Returns (messages, close code or None)."""
+    async def run():
+        received, code = [], None
+        try:
+            async with websockets.connect(url, additional_headers=headers or {}) as ws:
+                while len(received) < frames:
+                    received.append(await asyncio.wait_for(ws.recv(), timeout))
+        except websockets.ConnectionClosed as exc:
+            code = exc.rcvd.code if exc.rcvd else None
+        return received, code
+
+    return asyncio.run(run())
+
+
+def screenshot_params(phone):
+    return [params for method, params in phone.calls if method == "screenshot"]
+
+
+def test_binary_result_round_trips():
+    shot = FakeDriver().screenshot()
+    message = protocol.decode_message(None, protocol.encode_binary_result("c1", shot))
+    assert message["type"] == "result" and message["id"] == "c1" and message["ok"]
+    assert protocol.decode_screenshot(message["result"]) == shot
+    assert protocol.decode_screenshot(protocol.encode_screenshot(shot)) == shot  # JSON path unchanged
+
+
+def test_viewer_socket_pushes_preview_frames(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    frames, code = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=3)
+    assert code is None and len(frames) == 3
+    assert all(isinstance(f, bytes) and f[:2] == b"\xff\xd8" for f in frames)
+    # The live view asked the phone for small binary frames...
+    assert screenshot_params(phone)[0] == {"max_side": 720, "quality": 55, "binary": True}
+    # ...and the feed stops once nobody is watching.
+    time.sleep(0.5)
+    asked = len(phone.calls)
+    time.sleep(0.5)
+    assert len(phone.calls) == asked
+
+    # The agent's own screenshot is a fresh full-quality call: preview frames are never reused for it.
+    manager.get("app-xyz").driver.screenshot(max_age=60)
+    assert screenshot_params(phone)[-1] == {}
+    phone.disconnect()
+
+
+def test_viewer_socket_works_with_an_app_that_ignores_preview_params(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver())  # answers every screenshot with a full JSON frame
+    assert phone.welcome.wait(5)
+    frames, code = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=2)
+    assert code is None and all(f[:2] == b"\xff\xd8" for f in frames)
+    phone.disconnect()
+
+
+def test_viewer_socket_reports_errors_and_refuses_bad_tokens(server):
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    assert watch(f"{url}/api/devices/app-xyz/screen/ws?t=wrong") == ([], 4401)
+    assert watch(f"{url}/api/devices/app-xyz/screen/ws") == ([], 4401)
+    assert watch(f"{url}/api/devices/app-nope/screen/ws?t={TOKEN}") == ([], 4404)
+    phone.disconnect()
+    assert wait_for(lambda: not manager.get("app-xyz").online)
+    (message,), _ = watch(f"{url}/api/devices/app-xyz/screen/ws?t={TOKEN}", frames=1)
+    assert "disconnected" in json.loads(message)["error"]
+
+
+def test_polling_route_sends_newer_preview_frames(server):
+    import httpx
+
+    url, manager, _ = server
+    phone = FakePhone(url, FakeDriver(), binary=True)
+    assert phone.welcome.wait(5)
+    base = url.replace("ws://", "http://")
+    first = httpx.get(f"{base}/api/devices/app-xyz/screen.jpg?t={TOKEN}")
+    assert first.status_code == 200 and first.content[:2] == b"\xff\xd8"
+    taken = first.headers["x-frame-time"]
+    again = httpx.get(f"{base}/api/devices/app-xyz/screen.jpg?t={TOKEN}&after={taken}")
+    assert float(again.headers["x-frame-time"]) > float(taken)  # a new frame, not the one already shown
+    assert screenshot_params(phone) == [{"max_side": 720, "quality": 55, "binary": True}] * 2
+    phone.disconnect()
+
+
+# --- approvals on the phone ------------------------------------------------------------------
+
+@pytest.fixture
+def risky(tmp_path):
+    """A token-mode server whose agent always wants to tap "Buy now", then finishes."""
+    def build_agent(cfg, io, driver, label_cache):
+        script = [[tool_use("tap", "t", x=10, y=10, target="Buy now")],
+                  [tool_use("done", "d", summary="Checked out.", success=True)]] * 5
+        return Agent(ScriptedClient(script), driver, AppResolver(driver, label_cache=tmp_path / "l.json"),
+                     cfg, io, use_ocr=False)
+
+    manager = DeviceManager(Config(settle_delay=0, launch_settle_delay=0), build_agent, Speaker(enabled=False))
+    port = free_port()
+    serve_in_background(create_app(manager, token=TOKEN), "127.0.0.1", port)
+    assert wait_for(lambda: _listening(port))
+    return f"ws://127.0.0.1:{port}", manager
+
+
+def _listening(port):
+    try:
+        socket.create_connection(("127.0.0.1", port), 0.2).close()
+        return True
+    except OSError:
+        return False
+
+
+def _last_status(manager):
+    infos = list(manager.get("app-xyz").coordinator.task_info.values())
+    return infos[-1]["status"] if infos else None
+
+
+def test_phone_approves_a_risky_tap_with_screen_lock(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver, approve=True)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    (request,) = phone.approval_requests
+    assert request["requester"] == "You" and "Buy now" in request["question"] and request["task_id"]
+    assert any(a[0] == "tap" for a in driver.actions)
+    phone.disconnect()
+
+
+def test_phone_denial_means_no_tap(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver, approve=False)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) in ("succeeded", "failed"))
+    assert phone.approval_requests and not any(a[0] == "tap" for a in driver.actions)
+    phone.disconnect()
+
+
+def test_unknown_or_stale_approvals_are_ignored(risky):
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver)  # doesn't answer by itself
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.send({"type": "approval", "id": "not-a-real-id", "approved": True})
+    time.sleep(0.3)
+    assert _last_status(manager) == "needs_confirmation" and not any(a[0] == "tap" for a in driver.actions)
+    request = phone.approval_requests[0]
+    phone.send({"type": "approval", "id": request["id"], "approved": True})
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    phone.send({"type": "approval", "id": request["id"], "approved": True})  # answered already: ignored
+    phone.disconnect()
+
+
+def test_unanswered_approval_times_out_as_no(risky):
+    url, manager = risky
+    manager.approval_timeout = 0.3
+    driver = FakeDriver()
+    phone = FakePhone(url, driver)
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: _last_status(manager) in ("succeeded", "failed"))
+    assert phone.approval_requests and not any(a[0] == "tap" for a in driver.actions)
+    phone.disconnect()
+
+
+# --- reconnect grace -------------------------------------------------------------------------
+
+def test_a_dropped_connection_pauses_the_task_until_the_phone_is_back(risky):
+    url, manager = risky
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    session = manager.get("app-xyz")
+    phone.drop()
+    assert wait_for(lambda: session.reconnecting and not session.online)
+    time.sleep(0.2)
+    assert _last_status(manager) == "needs_confirmation"  # still alive, not cancelled
+    # The phone comes back, gets the same approval again, and approves it.
+    driver = FakeDriver()
+    again = FakePhone(url, driver, approve=True)
+    assert again.welcome.wait(5)
+    assert wait_for(lambda: _last_status(manager) == "succeeded")
+    assert again.approval_requests[0]["id"] == phone.approval_requests[0]["id"]
+    assert not session.reconnecting and any(a[0] == "tap" for a in driver.actions)
+    again.disconnect()
+
+
+def test_the_task_fails_when_the_phone_stays_away(risky):
+    url, manager = risky
+    manager.reconnect_grace, manager.approval_timeout = 0.3, 1.0
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.drop()
+    assert wait_for(lambda: _last_status(manager) == "failed", timeout=5)
+    assert not manager.get("app-xyz").reconnecting
+
+
+def test_a_normal_close_stops_the_task_right_away(risky):
+    url, manager = risky
+    phone = FakePhone(url, FakeDriver())
+    assert phone.welcome.wait(5)
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    phone.disconnect()  # the user tapped Stop: close code 1000
+    assert wait_for(lambda: _last_status(manager) == "cancelled")
+    assert not manager.get("app-xyz").reconnecting
+
+
+class _Link:
+    """A PhoneLink stand-in: records calls; `drop` makes the next call die with the connection."""
+
+    def __init__(self, drop=False):
+        self.closed, self.drop, self.calls = False, drop, []
+
+    def call(self, method, params):
+        self.calls.append(method)
+        if self.drop:
+            self.closed = True
+            raise DeviceError("Phone disconnected")
+        return "com.example"
+
+
+def test_reads_wait_for_the_reconnect_but_taps_are_never_repeated():
+    from openmob.phone.remote import RemoteDriver
+
+    first = _Link(drop=True)
+    driver = RemoteDriver(first)
+    driver.hold(5)
+    with pytest.raises(DeviceError, match="wasn't repeated"):
+        driver.tap(1, 2)
+    assert first.calls == ["tap"]  # sent once, never again
+
+    second = _Link()
+    threading.Timer(0.2, driver.attach, (second,)).start()
+    started = time.time()
+    assert driver.current_app() == "com.example"  # waited for the new connection
+    assert time.time() - started >= 0.15 and second.calls == ["current_app"]
+
+    third = _Link(drop=True)
+    driver.attach(third)
+    driver.hold(None)  # no grace (nothing running, or time's up): fail right away
+    with pytest.raises(DeviceError, match="disconnected"):
+        driver.current_app()

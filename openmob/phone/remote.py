@@ -9,11 +9,17 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import threading
+import time
 import uuid
 
 from .adb import Screenshot, UIElement
-from .base import CachedScreenshots, DeviceError
+from .base import CachedScreenshots, DeviceError, PhoneTimeout
 from .protocol import METHODS, decode_element, decode_screenshot
+
+# Calls that only read, so one cut off by a dropped connection can be asked again after the
+# phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
+REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle"}
 
 
 class PhoneLink:
@@ -21,8 +27,11 @@ class PhoneLink:
         self.websocket = websocket
         self.loop = loop
         self.closed = False
+        self.peer: str | None = None  # the client address it connected from
+        self.key_hash: str | None = None  # the device key it proved at connect (None: token mode)
         self._pending: dict[str, asyncio.Future] = {}
         self._send_lock = asyncio.Lock()
+        self.video_listeners: set = set()  # callables(packet dict), run on the event loop
 
     # --- called from agent / worker threads -------------------------------
 
@@ -36,7 +45,7 @@ class PhoneLink:
             return future.result(timeout + 5)
         except concurrent.futures.TimeoutError:
             future.cancel()
-            raise DeviceError(f"Phone did not answer {method} within {timeout:g}s") from None
+            raise PhoneTimeout(f"Phone did not answer {method} within {timeout:g}s") from None
 
     def notify(self, kind: str, message: str) -> None:
         """Fire-and-forget activity event for the phone to show or speak."""
@@ -44,10 +53,18 @@ class PhoneLink:
             asyncio.run_coroutine_threadsafe(self._notify(kind, message), self.loop)
 
     async def _notify(self, kind: str, message: str) -> None:
+        await self._post({"type": "event", "kind": kind, "message": message})
+
+    def post(self, message: dict) -> None:
+        """Fire-and-forget message to the phone (an approval_request, a controller event)."""
+        if not self.closed:
+            asyncio.run_coroutine_threadsafe(self._post(message), self.loop)
+
+    async def _post(self, message: dict) -> None:
         try:
-            await self.send({"type": "event", "kind": kind, "message": message})
+            await self.send(message)
         except Exception:
-            pass  # events are best-effort; the phone may have just disconnected
+            pass  # best-effort; the phone may have just disconnected (pending approvals are re-sent on reconnect)
 
     # --- event loop side --------------------------------------------------
 
@@ -66,7 +83,7 @@ class PhoneLink:
                 raise DeviceError("Phone disconnected") from exc
             reply = await asyncio.wait_for(future, timeout)
         except asyncio.TimeoutError:
-            raise DeviceError(f"Phone did not answer {method} within {timeout:g}s") from None
+            raise PhoneTimeout(f"Phone did not answer {method} within {timeout:g}s") from None
         finally:
             self._pending.pop(call_id, None)
         if not reply.get("ok"):
@@ -84,6 +101,14 @@ class PhoneLink:
         except Exception:
             pass  # already closed
 
+    def on_video(self, packet: dict) -> None:
+        """A live-view video packet from the phone (event loop)."""
+        for listener in list(self.video_listeners):
+            try:
+                listener(packet)
+            except Exception:  # one broken viewer must not stop the stream for the others
+                pass
+
     def resolve(self, message: dict) -> None:
         future = self._pending.get(message.get("id", ""))
         if future and not future.done():
@@ -99,18 +124,72 @@ class PhoneLink:
 class RemoteDriver(CachedScreenshots):
     def __init__(self, link: PhoneLink):
         self.link = link
+        self.video_available = False  # the owner allowed screen streaming (hello "video", video_state)
+        self._state_unsupported = False  # an older app without device_state
+        self.capabilities: set[str] = set()  # optional methods its hello offered (device.capabilities)
         self._init_screenshot_cache()
+        self._reconnect = threading.Condition()
+        self._wait_until: float | None = None  # monotonic deadline while the phone may come back
 
     def attach(self, link: PhoneLink) -> None:
-        """Swap in a new connection after the phone reconnects."""
-        self.link = link
-        self._last_shot = None
+        """Swap in a new connection after the phone reconnects; calls waiting for it go ahead."""
+        with self._reconnect:
+            self.link = link
+            self._wait_until = None
+            self._last_shot = None
+            self._last_preview = None
+            self._state_unsupported = False  # the app may have been updated
+            self.capabilities = set()  # the new hello says again (DeviceManager.attach_remote)
+            self._reconnect.notify_all()
 
-    def _call(self, method: str, **params):
-        return self.link.call(method, params)
+    def hold(self, seconds: float | None) -> None:
+        """The connection dropped mid-task: let calls wait up to `seconds` for a reconnect.
+        None gives up: waiting calls fail with DeviceError now."""
+        with self._reconnect:
+            self._wait_until = None if seconds is None else time.monotonic() + seconds
+            self._reconnect.notify_all()
+
+    def _usable_link(self, wait: bool) -> PhoneLink:
+        with self._reconnect:
+            while self.link.closed:
+                remaining = (self._wait_until or 0) - time.monotonic()
+                if not wait or remaining <= 0:
+                    raise DeviceError("Phone is disconnected")
+                self._reconnect.wait(remaining)
+            return self.link
+
+    def _call(self, method: str, _wait: bool = True, **params):
+        """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""
+        while True:
+            link = self._usable_link(_wait)
+            try:
+                return link.call(method, params)
+            except DeviceError:
+                if not (_wait and link.closed):
+                    raise
+                if method not in REPEATABLE:
+                    raise DeviceError(f"The phone disconnected during {method}, so it wasn't repeated. "
+                                      "Look at the screen before trying again.") from None
+                # A read cut off by the drop: ask again on the next connection (or fail when time's up).
 
     def _capture(self) -> Screenshot:
         return decode_screenshot(self._call("screenshot"))
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        # Older apps ignore these params and send a full JSON frame; that decodes the same way.
+        return decode_screenshot(self._call("screenshot", _wait=False, max_side=max_side, quality=quality, binary=True))
+
+    # Live-view video (the dashboard's screen panel only; see screencast.ScreenFeed).
+
+    def stream_start(self, max_side: int, bitrate: int, fps: int) -> dict:
+        size = self._call("stream_start", _wait=False, max_side=int(max_side), bitrate=int(bitrate), fps=int(fps)) or {}
+        return {"width": int(size.get("width", 0)), "height": int(size.get("height", 0))}
+
+    def stream_stop(self) -> None:
+        self._call("stream_stop", _wait=False)
+
+    def stream_keyframe(self) -> None:
+        self._call("stream_keyframe", _wait=False)
 
     def ui_elements(self) -> list[UIElement]:
         return [decode_element(i, data) for i, data in enumerate(self._call("ui_elements") or [])]
@@ -148,3 +227,42 @@ class RemoteDriver(CachedScreenshots):
 
     def wake_unlock(self) -> None:
         self._call("wake_unlock")
+
+    # Asking the phone for its accessibility tree is quick (no uiautomator dump), so the agent can
+    # re-check a tap target just before tapping it.
+    fast_ui_tree = True
+
+    def wait_idle(self, quiet_ms: int, max_ms: int) -> dict | None:
+        """Wait until the screen stops changing: {"waited_ms", "idle"}, or None when this phone's app
+        can't (an older app), so the caller sleeps a fixed time instead."""
+        if "wait_idle" not in self.capabilities:
+            return None
+        try:
+            result = self._call("wait_idle", quiet_ms=int(quiet_ms), max_ms=int(max_ms)) or {}
+        except PhoneTimeout:
+            raise
+        except DeviceError:
+            if self.link.closed:
+                raise
+            self.capabilities.discard("wait_idle")  # it said so, but can't after all: stop asking
+            return None
+        return {"waited_ms": int(result.get("waited_ms", 0)), "idle": bool(result.get("idle"))}
+
+    def device_state(self) -> dict | None:
+        """{"interactive", "locked"} right now, or None if this app version can't say. Never waits
+        for a reconnect; PhoneTimeout means connected but not answering."""
+        if self._state_unsupported:
+            return None
+        try:
+            state = self._call("device_state", _wait=False) or {}
+        except PhoneTimeout:
+            raise
+        except DeviceError:
+            if self.link.closed:
+                raise
+            self._state_unsupported = True  # "Unknown method device_state": skip the check from now on
+            return None
+        locked = bool(state.get("locked", False))
+        # "secure" (PIN, pattern, password, biometric) came later: without it, assume a lock is secure.
+        return {"interactive": bool(state.get("interactive", True)), "locked": locked,
+                "secure": bool(state.get("secure", locked))}

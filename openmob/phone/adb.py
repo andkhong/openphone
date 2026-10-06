@@ -42,6 +42,7 @@ KEYCODES = {
 }
 
 BOUNDS_RE = re.compile(r"\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]")
+FOREGROUND_POLL_SECONDS = 0.15
 FOCUS_RE = re.compile(r"\s([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)/")
 
 
@@ -82,6 +83,10 @@ class UIElement:
     clickable: bool
     checked: bool | None
     bounds: tuple[int, int, int, int]
+    # Optional, from apps that report them (older apps and adb leave the defaults):
+    editable: bool = False  # a text field
+    password: bool = False  # a password field (never typed into)
+    covered: bool = False  # its center is under a higher window (a dialog, the keyboard), so a tap would miss
 
     @property
     def center(self) -> tuple[int, int]:
@@ -126,6 +131,8 @@ def parse_ui_xml(xml_text: str, limit: int = 150) -> list[UIElement]:
                 clickable=clickable,
                 checked=(node.get("checked") == "true") if node.get("checkable") == "true" else None,
                 bounds=(x1, y1, x2, y2),
+                editable="EditText" in (node.get("class") or ""),
+                password=node.get("password") == "true",
             )
         )
         if len(elements) >= limit:
@@ -175,6 +182,8 @@ def format_elements(elements: list[UIElement], shot: Screenshot) -> str:
             parts.append("checked" if el.checked else "unchecked")
         if not el.clickable:
             parts.append("(not clickable)")
+        if el.covered:
+            parts.append("(covered by another window)")
         parts.append(f"@ ({x},{y})")
         lines.append(" ".join(parts))
     return "\n".join(lines)
@@ -198,6 +207,7 @@ class PhoneDriver(CachedScreenshots):
         state = self.__dict__.copy()
         state["_shot_lock"] = None
         state["_last_shot"] = None
+        state["_last_preview"] = None
         return state
 
     # --- low level -------------------------------------------------------
@@ -228,7 +238,7 @@ class PhoneDriver(CachedScreenshots):
 
     # --- observation -----------------------------------------------------
 
-    def _capture(self) -> Screenshot:
+    def _capture(self, max_side: int | None = None, quality: int | None = None) -> Screenshot:
         raw = self._exec(["exec-out", "screencap", "-p"], timeout=30)
         try:
             img = Image.open(io.BytesIO(raw))
@@ -236,12 +246,15 @@ class PhoneDriver(CachedScreenshots):
         except Exception as exc:
             raise AdbError(f"Could not decode screenshot ({len(raw)} bytes): {exc}") from None
         dw, dh = img.size
-        ratio = min(1.0, self.max_side / max(dw, dh))
+        ratio = min(1.0, (max_side or self.max_side) / max(dw, dh))
         if ratio < 1.0:
             img = img.resize((round(dw * ratio), round(dh * ratio)), Image.LANCZOS)
         buf = io.BytesIO()
-        img.convert("RGB").save(buf, "JPEG", quality=self.jpeg_quality)
+        img.convert("RGB").save(buf, "JPEG", quality=quality or self.jpeg_quality)
         return Screenshot(buf.getvalue(), img.width, img.height, dw, dh)
+
+    def capture_preview(self, max_side: int, quality: int) -> Screenshot:
+        return self._capture(min(max_side, self.max_side), quality)
 
     def ui_elements(self, timeout: float = 10) -> list[UIElement]:
         """Accessibility tree of the current screen. Empty for most games."""
@@ -253,6 +266,19 @@ class PhoneDriver(CachedScreenshots):
         except AdbError:
             return []
         return parse_ui_xml(out)
+
+    def wait_foreground(self, package: str, timeout: float, cancel=None) -> bool:
+        """After a launch: poll the focused window (`dumpsys window`, ~0.1 s a call) until `package` is
+        in front. True once it is; False at the timeout. adb has no "screen stopped changing" signal,
+        so the agent still waits a short settle after this."""
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if cancel is not None and cancel.is_set():
+                return False
+            if self.current_app() == package:
+                return True
+            time.sleep(FOREGROUND_POLL_SECONDS)
+        return False
 
     def current_app(self) -> str | None:
         try:

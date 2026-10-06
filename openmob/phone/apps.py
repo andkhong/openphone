@@ -6,6 +6,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -35,8 +36,13 @@ class Resolution:
     score: float = 100.0
 
 
+def fold(text: str) -> str:
+    """Drop diacritics: 'Café' -> 'Cafe'."""
+    return "".join(c for c in unicodedata.normalize("NFKD", text) if not unicodedata.combining(c))
+
+
 def normalize(text: str) -> str:
-    return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", fold(text).lower()).split())
 
 
 def package_words(package: str) -> str:
@@ -157,6 +163,20 @@ class AppResolver:
                 return Resolution(picked, "llm", 80)
         return None
 
+    def exact(self, name: str) -> str | None:
+        """The one installed package whose alias or display name is `name`, compared case-, diacritic-
+        and space-insensitively (with no fuzzy guessing), else None. Reads only names already cached,
+        so it never waits on the phone beyond the package list."""
+        query = normalize(name)
+        if not query:
+            return None
+        if query in self.aliases:
+            return self.aliases[query]
+        squeezed = query.replace(" ", "")
+        hits = {p for p in self.packages() if (label := normalize(self.labels.get(p) or ""))
+                and (label == query or label.replace(" ", "") == squeezed)}
+        return hits.pop() if len(hits) == 1 else None
+
     def _match_names(self, query: str, packages: list[str]) -> Resolution | None:
         scored: list[tuple[float, str]] = []
         for package in packages:
@@ -174,24 +194,22 @@ class AppResolver:
         return Resolution(scored[0][1], "fuzzy", scored[0][0])
 
 def make_llm_picker(client, model: str) -> LlmPicker:
-    """Ask Claude which installed package matches a spoken app name."""
+    """Ask a model which installed package matches a spoken app name. `client` is a ModelRouter
+    (any provider) or an Anthropic-shaped client."""
 
     def pick(name: str, packages: list[str], labels: dict[str, str]) -> str | None:
         listing = "\n".join(f"{p} ({labels[p]})" if labels.get(p) else p for p in packages)
-        response = client.messages.create(
-            model=model,
-            max_tokens=100,
-            messages=[{
-                "role": "user",
-                "content": (
-                    f"These Android packages are installed:\n{listing}\n\n"
-                    f'Which one is the app the user calls "{name}"? The name came from speech '
-                    "recognition, so allow for mis-hearings. Reply with only the exact package "
-                    "name, or NONE if none of them matches."
-                ),
-            }],
+        prompt = (
+            f"These Android packages are installed:\n{listing}\n\n"
+            f'Which one is the app the user calls "{name}"? The name came from speech '
+            "recognition, so allow for mis-hearings. Reply with only the exact package "
+            "name, or NONE if none of them matches."
         )
-        text = "".join(b.text for b in response.content if b.type == "text").strip()
+        if hasattr(client, "complete_text"):
+            text = client.complete_text(model, prompt, max_tokens=100)
+        else:
+            response = client.messages.create(model=model, max_tokens=100, messages=[{"role": "user", "content": prompt}])
+            text = "".join(b.text for b in response.content if b.type == "text").strip()
         return text if text in packages else None
 
     return pick

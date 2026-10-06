@@ -112,3 +112,9 @@ class RecordingIO:
 @pytest.fixture
 def fake_driver():
     return FakeDriver()
+
+
+def system_text(request) -> str:
+    """The system prompt of a recorded Anthropic request (sent as one cached text block)."""
+    system = request["system"]
+    return system if isinstance(system, str) else "".join(b["text"] for b in system)

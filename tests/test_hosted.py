@@ -164,9 +164,11 @@ def test_server_sees_accounts_added_by_another_process(hosted, tmp_path):
 
 def test_signed_out_visitors_get_the_landing_page(hosted):
     base, _, store = hosted
-    for page in ("/", "/login", "/login?next=/connect"):
+    body = httpx.get(f"{base}/").text
+    assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
+    for page in ("/login", "/login?next=/connect"):  # the sign-in form, email and password
         body = httpx.get(f"{base}{page}").text
-        assert "Tell your phone what to do" in body and "Accounts are disabled" not in body
+        assert 'id="email"' in body and 'id="password"' in body
     client, _ = signup(base, "owner@example.com")
     assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard
 
@@ -195,3 +197,20 @@ def test_transcribe_endpoint(tmp_path):
 
     big = {"file": ("voice.webm", b"x" * (server_mod.MAX_AUDIO_BYTES + 1), "audio/webm")}
     assert with_whisper.post("/api/transcribe", files=big).status_code == 413
+
+
+def test_pairing_from_localhost_uses_the_computers_network_name(hosted, monkeypatch):
+    # A phone can't reach "localhost" (and the computer's IP changes with sleep or another Wi-Fi):
+    # the QR code points at its network name instead. Behind a tunnel the public address is kept.
+    from openmob import server
+
+    base, _, _ = hosted
+    monkeypatch.setattr(server, "local_hostname", lambda: "my-mac.local")
+    owner, _ = signup(base, "net@example.com")
+    port = base.rsplit(":", 1)[1]
+    p = owner.get("/api/pairing").json()
+    assert p["server"] == f"http://my-mac.local:{port}" and p["pair_url"].startswith(f"http://my-mac.local:{port}/pair?")
+    assert p["local"] is False
+    tunneled = owner.get("/api/pairing", headers={"x-forwarded-host": "abc.trycloudflare.com",
+                                                 "x-forwarded-proto": "https"}).json()
+    assert tunneled["server"] == "https://abc.trycloudflare.com"

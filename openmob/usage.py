@@ -1,4 +1,4 @@
-"""Token counts reported by the Claude and Jev APIs (exact numbers, not estimates)."""
+"""Token counts reported by the model providers and Jev (exact numbers, not estimates)."""
 
 from __future__ import annotations
 
@@ -6,38 +6,60 @@ import threading
 from dataclasses import dataclass, field
 
 
-COUNTERS = ("claude_input", "claude_output", "claude_cache_read", "claude_calls", "jev_input", "jev_calls")
+COUNTERS = ("model_input", "model_output", "model_cache_read", "model_calls", "jev_input", "jev_calls")
+
+
+@dataclass
+class TokenUsage:
+    """One model call's tokens, the same for every provider. `input` excludes cached input."""
+    input: int = 0
+    output: int = 0
+    cache_read: int = 0
+    cache_write: int = 0
+
+    @classmethod
+    def from_anthropic(cls, usage) -> TokenUsage | None:
+        """From the `usage` object on an Anthropic Messages response (None when missing, as in fakes)."""
+        if usage is None:
+            return None
+        return cls(
+            getattr(usage, "input_tokens", 0) or 0,
+            getattr(usage, "output_tokens", 0) or 0,
+            getattr(usage, "cache_read_input_tokens", 0) or 0,
+            getattr(usage, "cache_creation_input_tokens", 0) or 0,
+        )
 
 
 @dataclass
 class Usage:
-    claude_input: int = 0
-    claude_output: int = 0
-    claude_cache_read: int = 0
-    claude_calls: int = 0
+    model_input: int = 0
+    model_output: int = 0
+    model_cache_read: int = 0
+    model_calls: int = 0
     jev_input: int = 0
     jev_calls: int = 0
-    # Claude tokens per model, keyed by the model the API says served the call (not what we asked for).
+    # Model tokens per model, keyed by the model the API says served the call (not what we asked for).
     by_model: dict = field(default_factory=dict)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def add_claude(self, usage, model: str | None = None) -> None:
-        """`usage` is the `usage` object on an Anthropic Messages response (may be missing in tests);
-        `model` is that response's `model` field."""
-        if usage is None:
+    def add_model(self, tokens: TokenUsage | None, model: str | None = None) -> None:
+        """One call to any provider's model; `model` is the id its response reports."""
+        if tokens is None:
             return
-        tokens_in = getattr(usage, "input_tokens", 0) or 0
-        tokens_out = getattr(usage, "output_tokens", 0) or 0
         with self._lock:
-            self.claude_input += tokens_in
-            self.claude_output += tokens_out
-            self.claude_cache_read += getattr(usage, "cache_read_input_tokens", 0) or 0
-            self.claude_calls += 1
+            self.model_input += tokens.input
+            self.model_output += tokens.output
+            self.model_cache_read += tokens.cache_read
+            self.model_calls += 1
             if model:
                 entry = self.by_model.setdefault(model, {"input": 0, "output": 0, "calls": 0})
-                entry["input"] += tokens_in
-                entry["output"] += tokens_out
+                entry["input"] += tokens.input
+                entry["output"] += tokens.output
                 entry["calls"] += 1
+
+    def add_claude(self, usage, model: str | None = None) -> None:
+        """An Anthropic Messages response's `usage` object (may be missing in tests)."""
+        self.add_model(TokenUsage.from_anthropic(usage), model)
 
     def add_jev(self, input_tokens: int) -> None:
         with self._lock:
@@ -62,7 +84,7 @@ class Usage:
             return data
 
     def summary(self) -> str:
-        """Claude tokens per model that served them. Jev usage is counted but not shown."""
+        """Model tokens per model that served them. Jev usage is counted but not shown."""
         if not self.by_model:
-            return f"{self.claude_input:,} in / {self.claude_output:,} out"
+            return f"{self.model_input:,} in / {self.model_output:,} out"
         return " · ".join(f"{m}: {c['input']:,} in / {c['output']:,} out" for m, c in self.by_model.items())

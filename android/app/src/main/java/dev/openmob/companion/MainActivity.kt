@@ -1,10 +1,15 @@
 package dev.openmob.companion
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlertDialog
+import android.app.AppOpsManager
+import android.app.NotificationManager
 import android.content.ActivityNotFoundException
+import android.content.ComponentName
 import android.content.Intent
+import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
@@ -15,12 +20,15 @@ import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
 import android.hardware.biometrics.BiometricManager
 import android.hardware.biometrics.BiometricPrompt
+import android.media.projection.MediaProjectionConfig
+import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings as AndroidSettings
 import android.speech.RecognizerIntent
 import android.text.InputType
@@ -37,12 +45,14 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 import java.util.concurrent.Executors
 
 /**
- * The companion app's only screen: setup checklist, connection, "ask your agent", and activity.
+ * The companion app's main screen: pending approvals, setup checklist, connection, "ask your
+ * agent", and activity.
  * Built in code with plain android.widget views (no AndroidX). Everything visible is derived
  * from AppState / Settings in [render], which runs on every AppState change while resumed.
  */
@@ -50,6 +60,7 @@ class MainActivity : Activity() {
     private companion object {
         const val REQ_SPEECH = 1
         const val REQ_NOTIFICATIONS = 2
+        const val REQ_SCREEN = 3
         const val MAX_EVENTS = 30
         /** Pairing must be approved with a strong biometric or the screen lock PIN/pattern/password. */
         const val APPROVERS = BiometricManager.Authenticators.BIOMETRIC_STRONG or
@@ -73,15 +84,22 @@ class MainActivity : Activity() {
     private val background = Executors.newSingleThreadExecutor() // account/pairing HTTP calls
     private var approval: CancellationSignal? = null
 
+    // Approvals (also the fallback when notifications are off)
+    private lateinit var approvalsBox: LinearLayout
+
     // Setup
     private lateinit var setupProgress: TextView
+    private lateinit var setupSteps: LinearLayout
+    private var setupExpanded = false // once everything is done the steps fold away
     private lateinit var pairStep: Step
     private lateinit var a11yStep: Step
     private lateinit var restrictedHelp: LinearLayout
     private lateinit var restrictedToggle: TextView
     private var restrictedHelpOpen = false
+    private var restrictedHelpAutoOpened = false
     private var sentToA11ySettings = false
     private lateinit var notifStep: Step
+    private lateinit var batteryStep: Step
     private lateinit var pairForm: LinearLayout
     private lateinit var serverInput: EditText
     private lateinit var tokenInput: EditText
@@ -90,7 +108,9 @@ class MainActivity : Activity() {
     // Connection
     private lateinit var statusDot: View
     private lateinit var statusText: TextView
+    private lateinit var controllerText: TextView
     private lateinit var connectButton: Button
+    private lateinit var liveViewSwitch: Switch
     private lateinit var connectionWarning: TextView
 
     // Ask
@@ -166,6 +186,16 @@ class MainActivity : Activity() {
     @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_SCREEN) {
+            // Connect either way: declining only means the web dashboard shows screenshots, not video.
+            if (resultCode != RESULT_OK) {
+                settings.smoothLiveView = false // remembered: Connect won't ask again
+                toast(getString(R.string.ui_live_view_declined))
+            }
+            ConnectionService.start(this, data.takeIf { resultCode == RESULT_OK }, resultCode)
+            render()
+            return
+        }
         if (requestCode != REQ_SPEECH || resultCode != RESULT_OK) return
         val heard = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
         if (!heard.isNullOrBlank()) sendCommand(heard)
@@ -183,15 +213,37 @@ class MainActivity : Activity() {
     private val isAccessibilityOn: Boolean
         get() = OpenMobAccessibilityService.instance != null
 
-    private val notificationsAllowed: Boolean
+    private val notificationPermission: Boolean
         get() = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    private fun isValidServer(url: String): Boolean {
-        val trimmed = url.trim()
-        if (!trimmed.startsWith("https://") && !trimmed.startsWith("http://")) return false
-        return !Uri.parse(trimmed).host.isNullOrBlank()
-    }
+    /** The permission, and not switched off afterwards in the app's notification settings. */
+    private val notificationsAllowed: Boolean
+        get() = notificationPermission && getSystemService(NotificationManager::class.java).areNotificationsEnabled()
+
+    private val batteryUnrestricted: Boolean
+        get() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
+
+    /**
+     * Best guess whether Android 13+ "restricted settings" blocks the Accessibility switch: the app
+     * op Android sets for apps installed from a file, which "Allow restricted settings" clears.
+     * If the op can't be read, guess from how the app was installed.
+     */
+    private val restrictedSettingsBlocked: Boolean
+        get() {
+            if (!restrictedHelpSupported) return false
+            val mode = runCatching {
+                getSystemService(AppOpsManager::class.java)
+                    .unsafeCheckOpNoThrow("android:access_restricted_settings", applicationInfo.uid, packageName)
+            }.getOrNull()
+            if (mode != null) return mode != AppOpsManager.MODE_ALLOWED && mode != AppOpsManager.MODE_DEFAULT
+            val source = runCatching { packageManager.getInstallSourceInfo(packageName).packageSource }.getOrNull()
+            return source == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE ||
+                source == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
+        }
+
+    /** https:// anywhere; http:// only on this phone or the local network (see [ServerPolicy]). */
+    private fun isValidServer(url: String): Boolean = ServerPolicy.isAllowed(url)
 
     private fun hostOf(server: String): String = Uri.parse(server).host ?: server
 
@@ -201,11 +253,27 @@ class MainActivity : Activity() {
         val paired = isPaired
         val a11y = isAccessibilityOn
         val notifs = notificationsAllowed
+        val battery = batteryUnrestricted
         val running = ConnectionService.isRunning
         val connected = AppState.connected
 
-        // Setup checklist
-        setupProgress.text = getString(R.string.ui_setup_progress, listOf(paired, a11y, notifs).count { it })
+        renderApprovals(notifs)
+
+        // Setup checklist: folds to one line once everything is done.
+        val steps = listOf(paired, a11y, notifs, battery)
+        val allDone = steps.all { it }
+        val progress = if (allDone) {
+            getString(R.string.ui_setup_all_done)
+        } else {
+            getString(R.string.ui_setup_progress, steps.count { it }, steps.size)
+        }
+        setupProgress.text = when {
+            !allDone -> progress
+            setupExpanded -> "$progress · ${getString(R.string.ui_setup_hide)}"
+            else -> "$progress · ${getString(R.string.ui_setup_show)}"
+        }
+        setupProgress.setTextColor(color(if (allDone) R.color.om_accent else R.color.om_text_tertiary))
+        setupSteps.visibility = if (allDone && !setupExpanded) View.GONE else View.VISIBLE
         renderStep(pairStep, paired)
         val email = settings.email.takeIf { settings.session.isNotEmpty() }.orEmpty()
         pairStep.body.text = when {
@@ -223,12 +291,27 @@ class MainActivity : Activity() {
         unpairButton.visibility = if (hasCredentials) View.VISIBLE else View.GONE
 
         renderStep(a11yStep, a11y)
-        a11yStep.body.text = getString(if (a11y) R.string.ui_step_a11y_done else R.string.ui_step_a11y_body)
+        // Blocked by "restricted settings": say so up front and open the steps to lift it.
+        val restricted = !a11y && restrictedSettingsBlocked
+        a11yStep.body.text = getString(
+            when {
+                a11y -> R.string.ui_step_a11y_done
+                restricted -> R.string.ui_step_a11y_restricted
+                else -> R.string.ui_step_a11y_body
+            }
+        )
         restrictedToggle.visibility = if (!a11y && restrictedHelpSupported) View.VISIBLE else View.GONE
+        if (restricted && !restrictedHelpAutoOpened) {
+            restrictedHelpOpen = true // once; the toggle can still close it
+            restrictedHelpAutoOpened = true
+        }
         restrictedHelp.visibility = if (!a11y && restrictedHelpOpen) View.VISIBLE else View.GONE
 
         renderStep(notifStep, notifs)
         notifStep.body.text = getString(if (notifs) R.string.ui_step_notif_done else R.string.ui_step_notif_body)
+
+        renderStep(batteryStep, battery)
+        batteryStep.body.text = getString(if (battery) R.string.ui_step_battery_done else R.string.ui_step_battery_body)
 
         // Connection
         val dotColor = when {
@@ -238,7 +321,11 @@ class MainActivity : Activity() {
         }
         (statusDot.background as GradientDrawable).setColor(dotColor)
         statusText.text = AppState.connection
+        val controller = AppState.controller.takeIf { connected }.orEmpty()
+        controllerText.text = getString(R.string.controller_using, controller)
+        controllerText.visibility = if (controller.isEmpty()) View.GONE else View.VISIBLE
         connectButton.text = getString(if (running) R.string.ui_disconnect else R.string.ui_connect)
+        if (liveViewSwitch.isChecked != settings.smoothLiveView) liveViewSwitch.isChecked = settings.smoothLiveView
         styleButton(connectButton, if (running) Style.DANGER else Style.PRIMARY)
         setEnabled(connectButton, running || paired)
         when {
@@ -276,6 +363,50 @@ class MainActivity : Activity() {
             null
         }
         step.button.visibility = if (done) View.GONE else View.VISIBLE
+    }
+
+    /** Pending approval requests, at the top. The only place they show if notifications are off. */
+    private fun renderApprovals(notifications: Boolean) {
+        approvalsBox.removeAllViews()
+        val requests = Approvals.pending()
+        approvalsBox.visibility = if (requests.isEmpty()) View.GONE else View.VISIBLE
+        requests.forEachIndexed { index, request ->
+            val box = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = rounded(color(R.color.om_warning_bg), 16, stroke = color(R.color.om_question))
+                setPadding(dp(16), dp(14), dp(16), dp(16))
+            }
+            box.addView(text(getString(R.string.approval_label), 12f, color(R.color.om_question), bold = true))
+            box.addView(text(request.shownQuestion, 17f, color(R.color.om_text), bold = true), margins(top = 4))
+            box.addView(
+                text(getString(R.string.approval_requester, request.requester), 14f, color(R.color.om_text_secondary)),
+                margins(top = 4),
+            )
+            if (!notifications) {
+                box.addView(
+                    text(getString(R.string.ui_notifications_off_hint), 12f, color(R.color.om_text_tertiary)),
+                    margins(top = 6),
+                )
+            }
+            val buttons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            buttons.addView(
+                button(getString(R.string.approval_deny), Style.DANGER) {
+                    if (!Approvals.answer(this, request.id, false) && Approvals.get(request.id) != null) {
+                        toast(getString(R.string.approval_offline))
+                    }
+                },
+                LinearLayout.LayoutParams(0, wrap, 1f),
+            )
+            // Approving always goes through the review screen and its screen-lock check.
+            buttons.addView(
+                button(getString(R.string.ui_approval_review), Style.PRIMARY) {
+                    startActivity(Intent(this, ApprovalActivity::class.java).putExtra(Approvals.EXTRA_ID, request.id))
+                },
+                LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(10) },
+            )
+            box.addView(buttons, margins(top = 12, width = match))
+            approvalsBox.addView(box, margins(top = if (index == 0) 0 else 10, width = match))
+        }
     }
 
     private fun showWarning(text: String, colorRes: Int) {
@@ -321,7 +452,8 @@ class MainActivity : Activity() {
     }
 
     private fun kindColor(kind: String): Int = when (kind) {
-        "question" -> color(R.color.om_question)
+        "question", "approval" -> color(R.color.om_question)
+        "controller" -> color(R.color.om_accent)
         "result" -> color(R.color.om_result)
         "error" -> color(R.color.om_error)
         "heard", "action" -> color(R.color.om_accent)
@@ -341,22 +473,65 @@ class MainActivity : Activity() {
         }
         val data = intent?.data ?: return
         if (data.scheme != "openmob" || data.host != "connect") return
-        val server = data.getQueryParameter("server")?.trim().orEmpty()
-        val token = (data.getQueryParameter("t") ?: data.getQueryParameter("token"))?.trim().orEmpty()
+        val server = data.getQueryParameter("server")?.trim().orEmpty().trimEnd('/')
+        val hasToken = !(data.getQueryParameter("t") ?: data.getQueryParameter("token")).isNullOrBlank()
         val code = data.getQueryParameter("code")?.trim().orEmpty()
         // Don't re-handle the same link if the activity is recreated from this intent later.
         setIntent(Intent(this, MainActivity::class.java))
-        if (code.isNotEmpty()) {
-            // Accounts mode: a one-time code that only the owner's account can redeem.
-            if (isValidServer(server)) startAccountPairing(server, code) else toast(getString(R.string.ui_bad_link))
+        // A link (from any web page or message) never changes anything by itself. Developer-token
+        // links aren't accepted at all; account links only after the owner confirms the server.
+        if (code.isEmpty()) {
+            toast(getString(if (hasToken) R.string.ui_token_link_refused else R.string.ui_bad_link))
             return
         }
-        if (!isValidServer(server) || token.isEmpty()) {
+        if (!isValidServer(server)) {
             toast(getString(R.string.ui_bad_link))
             return
         }
-        pair(server, token)
-        if (isAccessibilityOn) reconnect()
+        confirmConnect(server) { startAccountPairing(server, code) }
+    }
+
+    /**
+     * "Connect to <host>?" before any pairing: the server named in a link or typed in gets control
+     * of the phone, so its host is shown first, and nothing is saved until the owner says yes.
+     */
+    private fun confirmConnect(server: String, onConfirm: () -> Unit) {
+        val host = hostOf(server)
+        val message = buildString {
+            append(getString(R.string.ui_connect_body, host))
+            if (isPaired) append("\n\n").append(getString(R.string.ui_connect_replaces, hostOf(settings.server)))
+        }
+        AlertDialog.Builder(this)
+            .setTitle(getString(R.string.ui_connect_title, host))
+            .setMessage(message)
+            .setPositiveButton(R.string.ui_connect) { _, _ -> onConfirm() }
+            .setNegativeButton(R.string.ui_cancel) { _, _ -> toast(getString(R.string.ui_pair_cancelled)) }
+            .setOnCancelListener { toast(getString(R.string.ui_pair_cancelled)) }
+            .show()
+    }
+
+    /** Replacing an existing pairing needs the screen lock (a fresh pairing goes straight on). */
+    private fun requireScreenLockToReplace(server: String, onOk: () -> Unit) {
+        if (!isPaired) return onOk()
+        if (!screenLockReady()) return showScreenLockRequired()
+        approval?.cancel()
+        val cancel = CancellationSignal().also { approval = it }
+        BiometricPrompt.Builder(this)
+            .setTitle(getString(R.string.ui_replace_title))
+            .setDescription(getString(R.string.ui_approve_replace, hostOf(settings.server), hostOf(server)))
+            .setAllowedAuthenticators(APPROVERS)
+            .build()
+            .authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
+                    if (approval === cancel) approval = null
+                    onOk()
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
+                    if (approval === cancel) approval = null
+                    if (!isDestroyed) toast(getString(R.string.ui_pair_cancelled))
+                }
+            })
     }
 
     private fun pair(server: String, token: String) {
@@ -380,48 +555,50 @@ class MainActivity : Activity() {
 
     // ---------------------------------------------------------------- account pairing
 
+    /** A pairing in progress. Nothing is saved (the current pairing stays as it is) until it succeeds. */
+    private class Pending(val target: String, val code: String, var session: String, var email: String)
+
+    private var pending: Pending? = null
+
     /**
-     * QR code with a one-time code: sign in (if needed) → approve with the screen lock → redeem
-     * the code for this phone's own device key → connect.
+     * QR code with a one-time code, after the owner confirmed the server: sign in (if needed) →
+     * approve with the screen lock → redeem the code for this phone's own device key → connect.
      */
     private fun startAccountPairing(server: String, code: String) {
-        if (settings.server != server.trim().trimEnd('/') && ConnectionService.isRunning) {
-            ConnectionService.stop(this)
-        }
-        useServer(server)
-        render()
         // Checked first so nobody signs in only to be refused afterwards.
         if (!screenLockReady()) {
             showScreenLockRequired()
             return
         }
-        val target = settings.server
-        val session = settings.session
-        if (session.isEmpty()) {
-            showSignIn(code)
+        val target = server.trim().trimEnd('/')
+        val same = target == settings.server
+        val p = Pending(target, code, if (same) settings.session else "", if (same) settings.email else "")
+        pending = p
+        if (p.session.isEmpty()) {
+            showSignIn(p)
             return
         }
         toast(getString(R.string.ui_checking_account, hostOf(target)))
-        inBackground({ AccountApi(target).me(session) }) { result ->
+        inBackground({ AccountApi(target).me(p.session) }) { result ->
+            if (pending !== p) return@inBackground
             result.onSuccess { me ->
                 when {
                     !me.accounts -> showPairError(getString(R.string.ui_no_accounts))
                     me.email == null -> {
-                        settings.session = "" // expired or signed out elsewhere
-                        settings.email = ""
-                        showSignIn(code)
+                        p.session = "" // expired or signed out elsewhere
+                        showSignIn(p)
                     }
                     else -> {
-                        settings.email = me.email
-                        approve(code)
+                        p.email = me.email
+                        approve(p)
                     }
                 }
             }.onFailure { showPairError(it) }
         }
     }
 
-    private fun showSignIn(code: String) {
-        val target = settings.server
+    private fun showSignIn(p: Pending) {
+        val target = p.target
         val form = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(24), dp(8), dp(24), 0)
@@ -434,7 +611,7 @@ class MainActivity : Activity() {
         val emailInput = input(getString(R.string.ui_email_hint)).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             imeOptions = EditorInfo.IME_ACTION_NEXT
-            setText(settings.email)
+            setText(p.email)
         }
         val passwordInput = input(getString(R.string.ui_password_hint)).apply {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -456,6 +633,7 @@ class MainActivity : Activity() {
             .create()
 
         fun submit(create: Boolean) {
+            if (pending !== p) return dialog.dismiss() // another link was confirmed meanwhile
             val email = emailInput.text.toString().trim()
             val password = passwordInput.text.toString()
             fun showStatus(message: String, colorRes: Int) {
@@ -476,13 +654,12 @@ class MainActivity : Activity() {
             }) { result ->
                 buttons.forEach { it.isEnabled = true }
                 result.onSuccess { signedIn ->
-                    if (settings.server != target) return@onSuccess // another link was scanned meanwhile
-                    settings.session = signedIn.session
-                    settings.email = signedIn.email
+                    if (pending !== p) return@onSuccess // another link was confirmed meanwhile
+                    p.session = signedIn.session
+                    p.email = signedIn.email
                     dialog.dismiss()
                     hideKeyboard()
-                    render()
-                    approve(code)
+                    approve(p)
                 }.onFailure { showStatus(it.message ?: it.javaClass.simpleName, R.color.om_error) }
             }
         }
@@ -495,7 +672,7 @@ class MainActivity : Activity() {
             }
         }
         dialog.show()
-        if (settings.email.isEmpty()) emailInput.requestFocus() else passwordInput.requestFocus()
+        if (p.email.isEmpty()) emailInput.requestFocus() else passwordInput.requestFocus()
     }
 
     private fun screenLockReady(): Boolean =
@@ -516,26 +693,29 @@ class MainActivity : Activity() {
             .show()
     }
 
-    /** The phone's owner approves with fingerprint/face (strong) or the screen lock. */
-    private fun approve(code: String) {
+    /** The phone's owner approves with fingerprint/face (strong) or the screen lock. When this
+     *  replaces an existing pairing, the same prompt says so and names the server it leaves. */
+    private fun approve(p: Pending) {
         if (!screenLockReady()) {
             showScreenLockRequired()
             return
         }
-        val target = settings.server
-        val email = settings.email
+        val target = p.target
+        val email = p.email
         approval?.cancel()
         val cancel = CancellationSignal().also { approval = it }
+        val description = if (isPaired) getString(R.string.ui_approve_replace, hostOf(settings.server), hostOf(target))
+        else getString(R.string.ui_approve_description)
         val prompt = BiometricPrompt.Builder(this)
             .setTitle(getString(R.string.ui_approve_title))
             .setSubtitle(getString(R.string.ui_approve_subtitle, email, hostOf(target)))
-            .setDescription(getString(R.string.ui_approve_description))
+            .setDescription(description)
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
         prompt.authenticate(cancel, mainExecutor, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                 if (approval === cancel) approval = null
-                redeem(target, email, code)
+                if (pending === p) redeem(p)
             }
 
             override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
@@ -549,28 +729,32 @@ class MainActivity : Activity() {
         })
     }
 
-    private fun redeem(target: String, email: String, code: String) {
-        val session = settings.session
+    private fun redeem(p: Pending) {
+        val wasRunning = ConnectionService.isRunning
         inBackground({
-            val key = AccountApi(target).redeem(session, code, settings.deviceId, Build.MODEL)
-            // Saved here, so a pairing finishes even if the screen is recreated meanwhile.
-            if (settings.server == target) {
-                settings.deviceKey = key
-                settings.token = ""
-            }
+            val key = AccountApi(p.target).redeem(p.session, p.code, settings.deviceId, Build.MODEL, ApprovalKeys.publicKey())
+            // Only now, with the new pairing complete, is the old one replaced. Saved here, so a
+            // pairing finishes even if the screen is recreated meanwhile.
+            settings.server = p.target
+            settings.session = p.session
+            settings.email = p.email
+            settings.deviceKey = key
+            settings.token = ""
         }) { result ->
+            if (pending === p) pending = null
             result.onSuccess {
-                toast(getString(R.string.ui_paired_as_toast, hostOf(target), email))
+                toast(getString(R.string.ui_paired_as_toast, hostOf(p.target), p.email))
                 render()
-                if (isAccessibilityOn || ConnectionService.isRunning) reconnect()
+                if (isAccessibilityOn || wasRunning) reconnect()
             }.onFailure { error ->
                 if (error is AccountApi.ApiError && error.status == 401) {
                     // Session no longer valid; the code wasn't used, so sign in and try again.
-                    settings.session = ""
+                    p.session = ""
+                    pending = p
                     toast(error.message ?: "")
-                    showSignIn(code)
+                    showSignIn(p)
                 } else {
-                    showPairError(error)
+                    showPairError(error) // the existing pairing is untouched
                 }
             }
         }
@@ -628,8 +812,35 @@ class MainActivity : Activity() {
     private fun reconnect() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
-            main.postDelayed({ ConnectionService.start(this) }, 600)
+            main.postDelayed({ connect() }, 600)
         } else {
+            connect()
+        }
+    }
+
+    /** Start the connection, first asking Android for screen streaming (the "Start recording or
+     *  casting?" prompt) so the web dashboard can show smooth video. One tap per connection. */
+    @Suppress("DEPRECATION")
+    private fun connect() {
+        if (!settings.smoothLiveView) {
+            ConnectionService.start(this) // no prompt: the dashboard shows screenshots
+            return
+        }
+        askForScreenSharing()
+    }
+
+    /** Android's "Start recording or casting?" prompt; the result lands in onActivityResult. */
+    @Suppress("DEPRECATION")
+    private fun askForScreenSharing() {
+        val projections = getSystemService(MediaProjectionManager::class.java)
+        val consent = if (Build.VERSION.SDK_INT >= 34) {
+            projections.createScreenCaptureIntent(MediaProjectionConfig.createConfigForDefaultDisplay()) // whole screen
+        } else {
+            projections.createScreenCaptureIntent()
+        }
+        try {
+            startActivityForResult(consent, REQ_SCREEN)
+        } catch (e: ActivityNotFoundException) {
             ConnectionService.start(this)
         }
     }
@@ -654,10 +865,16 @@ class MainActivity : Activity() {
             token.isEmpty() -> tokenInput.error = getString(R.string.ui_missing_token)
             else -> {
                 hideKeyboard()
-                pairForm.visibility = View.GONE
-                val wasRunning = ConnectionService.isRunning
-                pair(server, token)
-                if (wasRunning) reconnect()
+                // Developer token pairing (local servers): same confirmation as a link, and the
+                // screen lock when it replaces an existing pairing.
+                confirmConnect(server) {
+                    requireScreenLockToReplace(server) {
+                        pairForm.visibility = View.GONE
+                        val wasRunning = ConnectionService.isRunning
+                        pair(server, token)
+                        if (wasRunning || isAccessibilityOn) reconnect()
+                    }
+                }
             }
         }
     }
@@ -700,6 +917,7 @@ class MainActivity : Activity() {
                 margins(top = if (i == 0) 10 else 6),
             )
         }
+        restrictedHelp.addView(text(getString(R.string.ui_restricted_missing), 13f, color(R.color.om_text_tertiary)), margins(top = 8))
         restrictedHelp.addView(button(getString(R.string.ui_restricted_button), Style.SECONDARY) { openAppInfo() }, margins(top = 12))
         column.addView(restrictedHelp, margins(top = 6, width = match))
     }
@@ -710,24 +928,70 @@ class MainActivity : Activity() {
         )
     }
 
+    /**
+     * Straight to OpenMob's own switch where Android allows it (13+), else the Accessibility list
+     * scrolled to and highlighting OpenMob, else Settings. Once the switch is on, the service brings
+     * the app back by itself (AppState.returnAfterAccessibility).
+     */
     private fun openAccessibilitySettings() {
         sentToA11ySettings = true
-        try {
-            startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
-        } catch (e: ActivityNotFoundException) {
-            startActivity(Intent(AndroidSettings.ACTION_SETTINGS))
+        AppState.returnAfterAccessibility = true
+        val service = ComponentName(this, OpenMobAccessibilityService::class.java)
+        val key = service.flattenToString()
+        val attempts = buildList {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Not in the public SDK constants, but Settings answers it on Android 13+.
+                add(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
+                    .putExtra(Intent.EXTRA_COMPONENT_NAME, service))
+            }
+            add(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)
+                .putExtra(":settings:fragment_args_key", key)
+                .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", key) }))
+            add(Intent(AndroidSettings.ACTION_SETTINGS))
+        }
+        for (intent in attempts) {
+            try {
+                startActivity(intent)
+                return
+            } catch (e: ActivityNotFoundException) {
+                // this phone's Settings doesn't have that screen: try the next one
+            } catch (e: SecurityException) {
+                // some phones keep the per-service screen to themselves
+            }
         }
     }
 
     private fun onNotificationsClicked() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        if (notificationsDenied) {
+        // Permission granted (or not needed) but notifications switched off, or denied for good:
+        // only the system settings can turn them back on.
+        if (notificationPermission || notificationsDenied) {
             startActivity(
                 Intent(AndroidSettings.ACTION_APP_NOTIFICATION_SETTINGS)
                     .putExtra(AndroidSettings.EXTRA_APP_PACKAGE, packageName)
             )
         } else {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_NOTIFICATIONS)
+        }
+    }
+
+    private fun onBatteryClicked() {
+        // Explain first, then Android's own "Let app always run in background?" prompt.
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_battery_title)
+            .setMessage(R.string.ui_battery_body)
+            .setPositiveButton(R.string.ui_battery_continue) { _, _ -> requestBatteryExemption() }
+            .setNegativeButton(R.string.ui_disclosure_decline, null)
+            .show()
+    }
+
+    @SuppressLint("BatteryLife") // a constant connection is the app's core function, not a convenience
+    private fun requestBatteryExemption() {
+        try {
+            startActivity(
+                Intent(AndroidSettings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))
+            )
+        } catch (e: ActivityNotFoundException) {
+            startActivity(Intent(AndroidSettings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
     }
 
@@ -738,7 +1002,7 @@ class MainActivity : Activity() {
             Shortcuts.CONNECT -> when {
                 !isPaired -> toast(getString(R.string.shortcut_need_pairing))
                 ConnectionService.isRunning -> toast(AppState.connection)
-                else -> ConnectionService.start(this)
+                else -> connect()
             }
             Shortcuts.ASK -> if (AppState.connected) startVoiceInput() else toast(getString(R.string.shortcut_need_connection))
         }
@@ -749,7 +1013,7 @@ class MainActivity : Activity() {
         if (ConnectionService.isRunning) {
             ConnectionService.stop(this)
         } else if (isPaired) {
-            ConnectionService.start(this)
+            connect()
         }
         render()
     }
@@ -797,6 +1061,11 @@ class MainActivity : Activity() {
             margins(top = 4, bottom = 8),
         )
 
+        approvalsBox = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            visibility = View.GONE
+        }
+        content.addView(approvalsBox, margins(top = 16, width = match))
         content.addView(buildSetupCard())
         content.addView(buildConnectionCard())
         content.addView(buildAskCard())
@@ -840,25 +1109,38 @@ class MainActivity : Activity() {
             gravity = Gravity.CENTER_VERTICAL
         }
         header.addView(cardTitle(getString(R.string.ui_setup_title)), LinearLayout.LayoutParams(0, wrap, 1f))
-        setupProgress = text("", 13f, color(R.color.om_text_tertiary))
+        setupProgress = text("", 13f, color(R.color.om_text_tertiary)).apply {
+            setPadding(dp(8), dp(6), 0, dp(6)) // a bigger target for Show / Hide
+            setOnClickListener {
+                setupExpanded = !setupExpanded
+                render()
+            }
+        }
         header.addView(setupProgress)
         card.addView(header)
+
+        setupSteps = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        card.addView(setupSteps, margins(width = match))
 
         pairStep = step(getString(R.string.ui_step_pair_title)) { togglePairForm() }
         unpairButton = button(getString(R.string.ui_unpair), Style.DANGER) { onUnpairClicked() }
         (pairStep.button.parent as LinearLayout).addView(unpairButton, margins(top = 8))
-        card.addView(pairStep.row)
+        setupSteps.addView(pairStep.row)
         pairForm = buildPairForm()
-        card.addView(pairForm)
+        setupSteps.addView(pairForm)
 
         a11yStep = step(getString(R.string.ui_step_a11y_title)) { onAccessibilityClicked() }
         a11yStep.button.text = getString(R.string.ui_step_a11y_button)
         buildRestrictedHelp(a11yStep.button.parent as LinearLayout)
-        card.addView(a11yStep.row)
+        setupSteps.addView(a11yStep.row)
 
         notifStep = step(getString(R.string.ui_step_notif_title)) { onNotificationsClicked() }
         notifStep.button.text = getString(R.string.ui_step_notif_button)
-        card.addView(notifStep.row)
+        setupSteps.addView(notifStep.row)
+
+        batteryStep = step(getString(R.string.ui_step_battery_title)) { onBatteryClicked() }
+        batteryStep.button.text = getString(R.string.ui_step_battery_button)
+        setupSteps.addView(batteryStep.row)
         return card
     }
 
@@ -910,6 +1192,10 @@ class MainActivity : Activity() {
         statusRow.addView(statusText, LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(10) })
         card.addView(statusRow, margins(top = 12))
 
+        // "Claude is using your phone", while a controller event says someone is driving it.
+        controllerText = text("", 14f, color(R.color.om_accent), bold = true).apply { visibility = View.GONE }
+        card.addView(controllerText, margins(top = 6, start = 20))
+
         connectionWarning = text("", 13f, color(R.color.om_question)).apply { visibility = View.GONE }
         card.addView(connectionWarning, margins(top = 8))
 
@@ -918,6 +1204,21 @@ class MainActivity : Activity() {
             minHeight = dp(54)
         }
         card.addView(connectButton, margins(top = 14, width = match))
+
+        liveViewSwitch = Switch(this).apply {
+            text = getString(R.string.ui_live_view)
+            textSize = 15f
+            setTextColor(color(R.color.om_text))
+            isChecked = settings.smoothLiveView
+            setOnCheckedChangeListener { _, on ->
+                if (on == settings.smoothLiveView) return@setOnCheckedChangeListener
+                settings.smoothLiveView = on
+                // Turned on while connected: ask now rather than at the next Connect.
+                if (on && ConnectionService.isRunning) askForScreenSharing()
+            }
+        }
+        card.addView(liveViewSwitch, margins(top = 16, width = match))
+        card.addView(text(getString(R.string.ui_live_view_help), 13f, color(R.color.om_grey)), margins(top = 2))
         return card
     }
 

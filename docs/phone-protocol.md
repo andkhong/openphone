@@ -17,9 +17,9 @@ Source of truth in the repo: `openmob/phone/protocol.py` (message types, `METHOD
 ```
 
 * The **phone connects out** to the server, so it works behind NAT and on mobile data. The server never connects to the phone.
-* Transport: one WebSocket. Every frame is a **UTF-8 JSON text frame** holding exactly one object with a `"type"` field. Binary data (screenshots) is base64 inside JSON.
+* Transport: one WebSocket. Every frame is a **UTF-8 JSON text frame** holding exactly one object with a `"type"` field. Binary data (screenshots) is base64 inside JSON. The one exception: a `screenshot` call with `"binary": true` may be answered with a binary frame (§4.1).
 * The server is the **RPC client**: it sends `call`s, and the phone replies with exactly one `result` per call.
-* The phone is also the **user's microphone/keyboard**: it sends `command` messages and shows or speaks `event`s.
+* The phone is also the **user's microphone/keyboard**: it sends `command` messages and shows `event`s.
 
 ### Conventions
 
@@ -64,6 +64,7 @@ URL: `wss://<server>/phone/ws?t=<token>`
 |---|---|
 | Close code **4401** | Bad or missing token. **Do not retry.** Show "Invalid token", stop the service, and ask the user to re-pair. |
 | Close code **4400** | The first message wasn't a valid `hello`, or `protocol` isn't `1`. The server waits 10 s for `hello`. Fix the client; don't retry in a loop. |
+| Close code **4409** | Another connection with this phone's id and key replaced this one: the server keeps **exactly one live socket per phone**, and whatever an older socket sends is ignored. If this phone didn't just reconnect itself, someone else has its key: tell the owner to unpair it from the dashboard and pair it again. Don't reconnect in a loop. |
 | Any other close, network error or failed connect | Reconnect with **exponential backoff**: 1 s, 2 s, 4 s, 8 s, 16 s, 30 s, then 30 s for each further attempt (cap 30 s). Add ±20 % jitter. Reset to 1 s after a successful `welcome`. |
 | Network changes (Wi-Fi to cellular) | Reconnect right away. `ConnectivityManager.NetworkCallback` is a reasonable trigger. |
 | User taps the **kill switch** (§6) | Close with code 1000, cancel any in-flight gestures, **do not reconnect**. |
@@ -95,6 +96,7 @@ While connected, run the socket inside a **foreground service** with a **persist
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -147,6 +149,40 @@ Do speech-to-text on the phone (`SpeechRecognizer` or similar) and send only tex
 
 Treat `kind` as an open set: show unknown kinds as plain log lines.
 
+### 3.3 Approvals and "who's using my phone" (optional)
+
+Both are optional. An app that doesn't know them ignores them (unknown `type`s and `kind`s are skipped), and `PROTOCOL_VERSION` stays `1`. The server must then treat a missing approval as a **no**.
+
+**`approval_request`** (server to phone): a risky action (a purchase, a send, a delete) waits for the person holding the phone. The calling AI model can never answer it.
+```json
+{"type": "approval_request", "id": "a1b2c3", "task_id": "t-42",
+ "question": "Buy 'USB-C cable' for $12.99 on Amazon?", "requester": "Claude"}
+```
+| Field | Type | Meaning |
+|---|---|---|
+| `id` | string | Opaque. Echo it back in the `approval`. |
+| `task_id` | string | The task that asked. Informational. |
+| `question` | string | One plain sentence saying what will happen. Shown as is. |
+| `requester` | string | Who is asking (the client or model name). Shown as "Asked by …". |
+
+**`approval`** (phone to server): the person's answer, sent **at most once per `id`**.
+```json
+{"type": "approval", "id": "a1b2c3", "approved": true}
+```
+
+How the Android app handles it:
+* It shows a high-priority (heads-up) notification, `Approve? <question>`, naming the requester, with **Deny** and **Review** actions. The question is hidden on the lock screen. Pending requests also appear at the top of the app's main screen, which is the only place they show when notifications are off.
+* **Deny** sends `approved: false` straight away, with no authentication.
+* **Review** opens a screen with the question and requester. **Approve** there requires the phone's screen lock (`BiometricPrompt`, strong biometric or device credential), and only then sends `approved: true`. The screen is `FLAG_SECURE`, so it never appears in screenshots or the live view.
+* After **2 minutes** with no answer, the request expires: the notification is dismissed and **nothing is sent**. The server should time out on its own (about 2 minutes) and treat it as denied.
+* A repeated `approval_request` with an `id` already pending, answered or expired is ignored. An answer is only sent while connected. If sending fails, the request stays pending so the person can try again. When the person disconnects, pending requests are dropped unanswered.
+
+**`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
+```json
+{"type": "event", "kind": "controller", "message": "Claude"}
+```
+`message` is a short display name. The app then shows "Claude is using your phone" as the connection notification's title (its Disconnect action reads **Stop**, and still disconnects), on the main screen and on the Quick Settings tile. An empty `message` means nobody: the normal text comes back. The app also clears it when the connection drops, so send it again after a reconnect if someone is still driving. Send it when control starts and ends, not with every step.
+
 ---
 
 ## 4. Methods
@@ -155,7 +191,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 
 | Method | Params | Result | Timeout |
 |---|---|---|---|
-| `screenshot` | none | Screenshot object | 30 s |
+| `screenshot` | optional `max_side`, `quality: int`, `binary: bool` | Screenshot object (or a binary frame) | 30 s |
 | `ui_elements` | none | array of elements (`[]` if unavailable) | 15 s |
 | `current_app` | none | string or `null` | 10 s |
 | `launchable_packages` | none | array of strings | 30 s |
@@ -168,6 +204,8 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `key` | `name: string` | `null` | 10 s |
 | `open_url` | `url: string` | `null` | 15 s |
 | `wake_unlock` | none | `null` | 10 s |
+| `device_state` | none | `{"interactive": bool, "locked": bool, "secure": bool}` | 5 s |
+| `wait_idle` (optional) | `quiet_ms, max_ms: int` | `{"waited_ms": int, "idle": bool}` | 10 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -182,6 +220,20 @@ Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keepi
 
 The server maps model coordinates with `device_x = round(x * device_width / width)`, so both sizes must be exact and in the same orientation. Use the captured bitmap's own size for `device_*`.
 Errors: if capture fails, reply with an error. The server retries once. If the app blocks capture (`FLAG_SECURE`), send an **all-black image** of the normal size rather than an error. The agent recognises black frames as "this app blocks screen capture".
+
+**Live-view params (optional).** The agent's calls carry no params and always get the frame above. The dashboard's live view asks for frames sized for the viewer's panel in device pixels: for example `{"max_side": 1280, "quality": 72, "binary": true}` for a 2x display, or `{"max_side": 720, "quality": 55, "binary": true}` when the viewer didn't give its size:
+
+| Param | Meaning |
+|---|---|
+| `max_side` | Use this long-side limit instead of 1280 (never more than 1280). |
+| `quality` | JPEG quality 1-100 instead of ~80. |
+| `binary` | You may answer with one **binary** WebSocket frame instead of a JSON `result`: a 4-byte big-endian length `N`, then `N` bytes of the UTF-8 JSON `result` message whose `result` object has every field except `jpeg`, then the raw JPEG bytes. |
+
+```
+00 00 00 6c  {"type":"result","id":"9b2f…","ok":true,"result":{"width":324,"height":720,"device_width":1080,"device_height":2400}}  FF D8 FF E0 …
+```
+
+All three are optional to implement: an app that ignores them and sends its usual full JSON frame still works (the live view is then just slower). Errors are always JSON `result`s. `PROTOCOL_VERSION` stays `1`, because nothing changes unless the server asks.
 
 ### 4.2 `ui_elements`
 Flatten the accessibility tree of the current screen into a list. Walk the tree **depth-first, pre-order** (parent before children, children in index order, like `uiautomator dump`). Include a node only if it meets all of these:
@@ -205,6 +257,11 @@ Stop after **150** elements. On any failure (no root, timeout), reply `ok:true` 
 | `clickable` | bool | `isClickable OR isLongClickable OR isCheckable` |
 | `checked` | bool or null | `isChecked` if `isCheckable`, else **`null`** |
 | `bounds` | [int ×4] | `[left, top, right, bottom]` from `getBoundsInScreen`, device pixels |
+| `password` | bool, optional | `true` when `isPassword`; omitted otherwise |
+| `editable` | bool, optional | `true` when `isEditable`; omitted otherwise |
+| `covered` | bool, optional | `true` when the centre of `bounds` lies inside a window stacked above the node's own window (a higher `AccessibilityWindowInfo.getLayer()`: a dialog, the keyboard, a system bar), so a tap there would land on that window; omitted otherwise |
+
+`password`, `editable` and `covered` are optional: servers that don't know them ignore them, and a missing field means `false`. The server uses `password` to keep the model from typing into password fields, and refuses to `tap_element` a `covered` element (the model is told to deal with what covers it first).
 
 The array order defines the element indices the model uses (`tap_element [3]`), so keep it stable for a given screen. The server taps the centre of `bounds`.
 
@@ -242,6 +299,7 @@ Params: `{"x1": 540, "y1": 1755, "x2": 540, "y2": 585, "duration_ms": 400}`. One
 
 ### 4.10 `type_text`
 Params: `{"text": "lofi hip hop"}`. Insert `text` into the **currently focused editable field** at the cursor, replacing any selected text. Do not wipe the field: adb `input text` types at the cursor, and the agent relies on that. When the field shows only its hint (`isShowingHintText`, API 26+), treat it as empty. Any Unicode text must work. Do not press Enter: the server sends `key ENTER` separately when it wants to submit. Error if no editable node has focus: `"No focused text field. Tap the field first."`
+Error if the focused field is a password field (`isPassword`), whatever the server asked: `"I don't type passwords. Please type it yourself."`
 
 ### 4.11 `key`
 Params: `{"name": "BACK"}`. Names are uppercase and come from `adb.KEYCODES`:
@@ -255,6 +313,22 @@ Params: `{"url": "https://youtube.com/results?search_query=lofi"}`. Open the URL
 
 ### 4.13 `wake_unlock`
 Called at the start of every task. Turn the screen on if it is off, and dismiss the lock screen **if it is not secure** (swipe-to-unlock or none). With a secure lock (PIN, pattern, password, biometric), wake the screen and return `null`. The agent sees the lock screen and asks the user. **Never** enter credentials. Reply with an error only if the screen could not be woken.
+
+### 4.14 `device_state`
+Is the phone usable right now? `{"interactive": PowerManager.isInteractive, "locked": KeyguardManager.isKeyguardLocked, "secure": KeyguardManager.isKeyguardSecure}`. Answer it even when accessibility is off, and quickly (it only reads three flags). The server asks before a standalone API task and before each orchestration step:
+
+- `locked` and `secure` (PIN, pattern, password, biometric): "unlock to continue" (`phone_locked`). Nothing is attempted.
+- screen off, or `locked` but not `secure` (a swipe lock): the server calls `wake_unlock`, then asks again. Still `locked` means the swipe didn't take: `phone_locked`. Otherwise the task runs.
+- no answer within 5 s: `phone_unresponsive`.
+
+Optional: an app that answers `Unknown method device_state` is simply not checked. An app that omits `secure` is treated as having a secure lock whenever it's `locked`.
+
+### 4.15 `wait_idle` (optional)
+Params: `{"quiet_ms": 300, "max_ms": 800}`. Block until the screen has stopped changing, then reply `{"waited_ms": <ms spent>, "idle": true}`; at `max_ms`, reply with `"idle": false` (an animated screen or a game may never go quiet). The agent calls it after every action instead of sleeping a fixed time: `max_ms` is that fixed time (0.8 s after a tap, 3 s after `launch_app` or `open_url`), so it never waits longer than before.
+
+"Changing" means accessibility events: `TYPE_WINDOW_STATE_CHANGED`, `TYPE_WINDOWS_CHANGED`, `TYPE_WINDOW_CONTENT_CHANGED` and `TYPE_VIEW_SCROLLED` (add the last two to `accessibilityEventTypes`, §5.2). Ignore your own app's events, and content changes from `com.android.systemui` (the status bar's clock and network meters tick on their own). Record only a timestamp per event, then poll it every ~20 ms. Count the quiet time from the later of the last event and the start of the call, so the reply comes at least `quiet_ms` after the call: the events of the action just performed have time to start (a separate minimum isn't needed). Clamp `quiet_ms` to 50–8000 and `max_ms` to 0–8000.
+
+It's optional: list `"wait_idle"` in the hello's `device.capabilities` only if you implement it. The server then uses it; otherwise (and for adb and iOS phones) it sleeps the fixed time. If a call fails with an error anyway, the server stops calling it on that connection.
 
 ---
 
@@ -300,7 +374,7 @@ An accessibility service cannot inject arbitrary key events. That is why some ke
 ```xml
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
     android:description="@string/a11y_description"
-    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged"
+    android:accessibilityEventTypes="typeWindowStateChanged|typeWindowsChanged|typeWindowContentChanged|typeViewScrolled"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows|flagIncludeNotImportantViews"
     android:canRetrieveWindowContent="true"
@@ -339,7 +413,8 @@ The user must enable the service in **Settings > Accessibility**. Detect when it
 | Requirement | Detail |
 |---|---|
 | Token storage | Store the server URL and token encrypted, with a key in the Android Keystore (for example Jetpack Security / an AES-GCM key from Keystore). Never log the token or put it in crash reports. Exclude it from backups (`android:allowBackup="false"` or backup rules). |
-| TLS only | Release builds refuse `ws://` and any `http` server URL. Use the default trust store, with no "trust all certificates" option. (Public servers run behind HTTPS, for example `openmob run --public`, which uses a cloudflared tunnel.) |
+| TLS only | `https://` for every server, except a developer's own server on this phone or the local network (loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `.local`, IPv6 loopback, link-local and unique-local), which may use `http://`. Check it when a link or the pair form is used **and** again before every connection, so a stored bad URL can't be used. Release builds also turn cleartext off (`usesCleartextTraffic="false"`). Use the default trust store, with no "trust all certificates" option. |
+| Pairing links | `openmob://connect?server=…&code=…` (from the dashboard's QR code) must **never change anything by itself**: any web page or message can open it. Show "Connect to **\<host\>**?" naming the server and what it can do, and do nothing until the owner taps Connect. If the phone is already paired, say which server it will leave and require the screen lock. Keep the current pairing (server, device key, session) until the new one has fully succeeded; cancel or failure leaves it as it was. Never accept a developer token (`t=`) from a link: tokens are typed in by hand, behind the same confirmation. |
 | Visible indicator | While connected, show the persistent notification. While a task runs, also show an always-visible "Agent active" indicator (an accessibility overlay `TYPE_ACCESSIBILITY_OVERLAY`, or a status chip). The user must always know the phone is being driven. |
 | Kill switch | One tap, reachable from the notification and the overlay. It cancels in-flight gestures, sends `command "stop"`, closes the socket (code 1000) and disables auto-reconnect until the user reconnects manually. |
 | Credentials | Never auto-fill passwords, PINs or OTP codes. Refuse `type_text` when the focused node `isPassword`: return an error asking the user to type it themselves. Never dismiss a secure keyguard. |
@@ -382,3 +457,81 @@ Open the dashboard URL (`…/?t=<token>`) in a browser. A connected phone appear
 - [ ] `type_text` inserts at the cursor, handles non-ASCII, and refuses password fields.
 - [ ] Close code 4401 stops retries; other closes back off from 1 s to 30 s.
 - [ ] The kill switch disconnects immediately and stays disconnected.
+
+---
+
+## 8. Approvals and the controller line (server behaviour)
+
+This section describes what the server sends and expects. The phone-side UI is in §3.3.
+
+### 8.1 Risky actions are approved on the phone
+
+When a task is about to do something risky (buy, send, delete…) and the confirmation must come from
+the human, the server sends:
+```json
+{"type": "approval_request", "id": "5d0c…", "task_id": "9c1e0b7a2f44",
+ "question": "I'm about to tap 'Buy now'. Should I go ahead?", "requester": "CI bot"}
+```
+`requester` is the API key's name when an API or MCP client started the task, or `"You"` for the
+owner's own requests (dashboard, phone). Newer servers add `device_id` and `device_name`: the phone
+that would act. The request goes to **every** online phone of the owner, so it may name another
+phone; show it as "On Pixel 9: Send message to Mom?". The phone confirms with the screen lock and
+replies:
+```json
+{"type": "approval", "id": "5d0c…", "approved": true, "timestamp": 1791219700,
+ "signature": "MEUCIQ…"}
+```
+
+**Approvals are signed with a screen-lock-bound key.** So that a leaked device key (or anything
+else that reaches the phone's socket) can't approve purchases, the app keeps an **approval key**: an
+EC P-256 key pair in the Android Keystore, created with `setUserAuthenticationRequired(true)` and
+`setUserAuthenticationParameters(0, AUTH_BIOMETRIC_STRONG | AUTH_DEVICE_CREDENTIAL)`, so it can sign
+only right after the owner passes the screen lock.
+
+- **Registering it.** Send the public key as `approval_key` (base64 of the X.509
+  SubjectPublicKeyInfo, i.e. Java's `PublicKey.encoded`) in `POST /api/pair/redeem` when pairing.
+  Phones paired before this existed send it once in the `hello` (`"approval_key": "MFkw…"`); the
+  server keeps the first one and never lets a later hello replace it. Only pairing again does.
+- **Signing.** Approve through `BiometricPrompt` with a `CryptoObject` wrapping a
+  `SHA256withECDSA` `Signature` initialised with the private key. On success, sign the UTF-8 bytes
+  of `<approval id>|<task id>|true|<timestamp>` (the unix time in seconds, also sent as
+  `timestamp`) and send the base64 DER signature as `signature`.
+- **What the server accepts.** Once a phone has a registered key, a `true` without a valid
+  signature by **that phone's** key, over **this** approval id and task, made within the last 5
+  minutes, is ignored (the prompt stays open on the owner's other phones). A phone without a
+  registered key (an older app) is trusted as before, until it updates.
+- **Denials are never signed.** Anyone may say no: `{"type": "approval", "id": "5d0c…", "approved": false}`.
+| Rule | Server behaviour |
+|---|---|
+| `approved: true` | The task gets "yes" and goes ahead. Anything but the JSON value `true` counts as denied. |
+| `approved: false` | The task gets "no"; the agent doesn't do it. |
+| Unknown id, or the task is no longer waiting | Ignored. The confirmation may have been answered elsewhere (dashboard), timed out, or the task ended. |
+| No reply within **2 minutes** | Treated as denied. The phone sends nothing when its prompt expires. |
+| Phone reconnects while the task still waits | The same `approval_request` (same `id`) is sent again after `welcome`. The phone ignores ids it already answered. |
+| Several phones asked | The first answer wins. Every other phone that was asked gets `{"type": "approval_cancel", "id": "5d0c…"}` and drops its prompt without answering. The same message is sent when the confirmation is settled some other way (dashboard, API decline, timeout, task ended). |
+| Denied on a phone, for a step of an orchestration | The owner's "no" ends the whole run (`cancelled` / `stopped_on_phone`), not just that action. |
+
+API keys can't approve risky actions themselves (`POST /v1/tasks/{id}/answer` with `approve: true`
+returns 403 `confirmation_requires_owner`) unless the owner turned on `confirm_approve` for that key.
+For such keys no `approval_request` is sent.
+
+### 8.2 Who is using the phone
+
+When a task started by an API or MCP client begins running, the server sends
+`{"type": "event", "kind": "controller", "message": "<who>"}` (the key's name), and
+`{"type": "event", "kind": "controller", "message": ""}` when it ends. After a reconnect, the server
+re-sends the current controller event if such a task is still running.
+
+### 8.3 Reconnect grace
+
+| The socket closes… | Server behaviour |
+|---|---|
+| with close code **1000** (the user tapped Stop or disconnected on purpose) | Stops the running task and clears the queue right away, as before. If one of them was an orchestration step, the whole run ends as `cancelled` / `stopped_on_phone`; so does saying "stop" on the phone. |
+| any other way (network change, dead connection) while a task runs or is queued | The phone shows as offline but the task is kept. Its next phone call waits up to **45 s** for the same `device.id` to reconnect, then continues on the new socket. |
+| …and no reconnect within 45 s | The waiting call fails, so the task fails; queued tasks are cancelled. |
+| any way, with nothing running | Nothing to keep. |
+
+Calls are never replayed. A read (`screenshot`, `ui_elements`, `current_app`, …) that was cut off is
+asked again on the new connection; an action (`tap`, `type_text`, `launch_app`, …) that was cut off is
+reported to the agent as "may or may not have happened" and never repeated. Live-view calls don't
+wait for a reconnect.

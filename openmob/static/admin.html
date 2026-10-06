@@ -5,93 +5,73 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>OpenMob Admin</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
 <style>
-  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --ok:#1f9d55; --warn:#c97a00; --bad:#d6383b; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; } }
-  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
-  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
-  .logo small { font-weight:500; color:var(--muted); margin-left:6px; font-size:14px; }
-  header a { margin-left:auto; color:var(--muted); text-decoration:none; font-size:14px; }
-  main { max-width:1100px; margin:0 auto; padding:24px 16px; display:grid; gap:20px; }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); min-width:0; }
-  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; display:flex; gap:8px; align-items:center; }
-  h2 .count { background:var(--bg); border-radius:999px; padding:0 8px; font-size:12px; letter-spacing:0; }
-  .toolbar { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
-  .toolbar input { flex:1; min-width:0; font:inherit; padding:9px 12px; border-radius:10px; border:1px solid var(--line); background:var(--panel); color:var(--fg); }
-  .toolbar input:focus { outline:2px solid var(--accent); outline-offset:-1px; }
-  .updated { color:var(--muted); font-size:13px; white-space:nowrap; }
-  table { width:100%; border-collapse:collapse; font-size:14px; }
-  th { text-align:left; font-weight:600; color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; padding:8px 10px; border-bottom:1px solid var(--line); }
-  td { padding:10px; border-bottom:1px solid var(--line); vertical-align:middle; overflow-wrap:anywhere; }
-  tr:last-child td { border-bottom:0; }
-  tr.revoked td { color:var(--muted); }
-  .badge { display:inline-block; margin-left:8px; padding:1px 8px; border-radius:999px; font-size:11px; font-weight:600; background:rgba(59,91,253,.12); color:var(--accent); vertical-align:1px; }
-  .pill { display:inline-flex; align-items:center; gap:6px; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap; }
-  .pill::before { content:""; width:7px; height:7px; border-radius:50%; background:currentColor; }
-  .pill.on { color:var(--ok); background:rgba(31,157,85,.12); }
-  .pill.off { color:var(--muted); background:var(--bg); }
-  .pill.revoked { color:var(--bad); background:rgba(214,56,59,.1); }
-  .task { color:var(--muted); font-size:13px; }
-  .task b { color:var(--warn); font-weight:600; }
-  .revoke { border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:8px; padding:4px 10px; font:inherit; font-size:13px; cursor:pointer; }
-  .revoke:hover { color:var(--bad); border-color:var(--bad); }
-  .revoke:disabled { opacity:.5; cursor:default; }
-  .empty, .msg { color:var(--muted); font-size:14px; }
-  .msg { text-align:center; padding:40px 16px; }
-  .msg b { display:block; color:var(--fg); font-size:18px; margin-bottom:4px; }
-  .error { color:var(--bad); font-size:13px; }
-  /* Phones: each row becomes a stacked card with labelled fields. */
-  @media (max-width: 700px) {
-    header { padding:12px 16px; }
-    .card { padding:16px; }
-    thead { display:none; }
-    table, tbody, tr, td { display:block; width:100%; }
-    tr { border:1px solid var(--line); border-radius:12px; padding:6px 12px; margin-bottom:10px; }
-    td { display:flex; justify-content:space-between; gap:12px; padding:6px 0; border-bottom:1px dashed var(--line); text-align:right; }
-    td:last-child { border-bottom:0; }
-    td::before { content:attr(data-label); color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.05em; text-align:left; flex:none; }
-    td.empty { justify-content:center; }
-    td.empty::before { content:none; }
-    tr.empty-row { border:0; }
-  }
+  /* ---------- admin ---------- */
+  .page { max-width: 1160px; }
+  .toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+  .toolbar .input { flex: 1; min-width: 0; }
+  .updated { color: var(--muted); font-size: 13px; white-space: nowrap; }
+  .table tr.revoked td { color: var(--muted); }
+  .task { color: var(--muted); font-size: 13px; }
+  .task b { color: var(--warn); font-weight: 600; }
+  .table code { font-size: 12.5px; }
+  .cell-actions { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+  .msg { text-align: center; padding: 40px 16px; color: var(--muted); }
+  .msg b { display: block; color: var(--fg); font-size: 18px; margin-bottom: 4px; }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">Open<span>Mob</span> <small>Admin</small></div>
-  <a href="/">← Dashboard</a>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob<span class="page-name">Admin</span></a>
+  <nav class="topnav"><a class="btn btn-ghost" href="/">← Dashboard</a></nav>
 </header>
-<main id="main">
+<main class="page" id="main">
   <div class="toolbar">
-    <input id="filter" type="search" placeholder="Filter by email or phone model" autocomplete="off" aria-label="Filter">
+    <input class="input" id="filter" type="search" placeholder="Filter by email or phone model" autocomplete="off" aria-label="Filter">
     <span class="updated" id="updated"></span>
   </div>
 
   <section class="card">
-    <h2>Users <span class="count" id="userCount">0</span></h2>
-    <table>
-      <thead><tr><th>Email</th><th>Created</th><th>Phones</th></tr></thead>
-      <tbody id="users"><tr class="empty-row"><td class="empty" colspan="3">Loading…</td></tr></tbody>
-    </table>
+    <div class="card-head"><h2>Users <span class="count" id="userCount">0</span></h2></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Email</th><th>Created</th><th>Phones</th><th>API access</th></tr></thead>
+      <tbody id="users"><tr class="empty-row"><td class="empty" colspan="4">Loading…</td></tr></tbody>
+    </table></div>
   </section>
 
   <section class="card">
-    <h2>Devices <span class="count" id="deviceCount">0</span></h2>
-    <table>
-      <thead><tr><th>Phone</th><th>Owner</th><th>Status</th><th>Activity</th><th>Last seen</th><th>Created</th><th></th></tr></thead>
+    <div class="card-head"><h2>Devices <span class="count" id="deviceCount">0</span></h2></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Phone</th><th>Owner</th><th>Status</th><th>Activity</th><th>Last seen</th><th>Created</th><th><span class="sr-only">Actions</span></th></tr></thead>
       <tbody id="devices"><tr class="empty-row"><td class="empty" colspan="7">Loading…</td></tr></tbody>
-    </table>
-    <div class="error" id="error"></div>
+    </table></div>
+    <div class="error" id="error" role="alert"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>API keys <span class="count" id="keyCount">0</span></h2></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Key</th><th>Owner</th><th>Scopes</th><th>Last used</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody id="keys"><tr class="empty-row"><td class="empty" colspan="6">Loading…</td></tr></tbody>
+    </table></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>API audit log <span class="count" id="auditCount">0</span></h2></div>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Time</th><th>Action</th><th>Owner</th><th>Key</th><th>Phone</th><th>Task</th><th>Outcome</th></tr></thead>
+      <tbody id="audit"><tr class="empty-row"><td class="empty" colspan="7">Loading…</td></tr></tbody>
+    </table></div>
   </section>
 </main>
 <script>
 // Emails and phone models are user-controlled: every value goes in with textContent, never innerHTML.
 const $ = (id) => document.getElementById(id);
-let users = [], devices = [];
+let users = [], devices = [], keys = [], audit = [];
 
 function el(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
@@ -134,14 +114,47 @@ function render() {
   $("userCount").textContent = u.length;
   $("users").replaceChildren(...(u.length ? u.map((a) => {
     const email = cell("Email", el("span", { textContent: a.email }));
-    if (a.is_admin) email.append(el("span", { className: "badge", textContent: "admin" }));
-    return el("tr", {}, email, cell("Created", date(a.created)), cell("Phones", String(a.device_count)));
-  }) : [emptyRow(3, q ? "No users match." : "No users yet.")]));
+    if (a.is_admin) email.append(el("span", { className: "pill info", textContent: "admin", style: "margin-left:8px" }));
+    const apiBtn = el("button", { className: "btn btn-sm", type: "button", textContent: a.api_disabled ? "Turn on" : "Turn off" });
+    apiBtn.onclick = () => toggle(`/api/admin/users/${encodeURIComponent(a.id)}/api`, !a.api_disabled,
+      `Turn off API access for ${a.email}? Every key stops working and running API tasks are cancelled.`, apiBtn);
+    const access = cell("API access", el("span", { className: "cell-actions" }, el("span", { className: `pill dotted ${a.api_disabled ? "bad" : "ok"}`,
+      textContent: a.api_disabled ? "Off" : "On" }), apiBtn));
+    return el("tr", {}, email, cell("Created", date(a.created)), cell("Phones", String(a.device_count)), access);
+  }) : [emptyRow(4, q ? "No users match." : "No users yet.")]));
+
+  const k = keys.filter((x) => matches(q, x.email, x.name, x.prefix));
+  $("keyCount").textContent = k.length;
+  $("keys").replaceChildren(...(k.length ? k.map((x) => {
+    const btn = el("button", { className: "btn btn-sm", type: "button", textContent: x.disabled ? "Turn on" : "Turn off" });
+    btn.onclick = () => toggle(`/api/admin/api-keys/${encodeURIComponent(x.id)}/disable`, !x.disabled,
+      `Turn off key ${x.prefix} (${x.email})? Its running tasks are cancelled.`, btn);
+    return el("tr", { className: x.disabled ? "revoked" : "" },
+      cell("Key", el("code", { textContent: x.prefix }), " ", el("span", { className: "task", textContent: x.name })),
+      cell("Owner", x.email || "(deleted account)"),
+      cell("Scopes", el("span", { className: "task", textContent: x.scopes.join(", ") })),
+      cell("Last used", ago(x.last_used)),
+      cell("Status", el("span", { className: `pill dotted ${x.disabled ? "bad" : "ok"}`, textContent: x.disabled ? "Off" : "On" })),
+      cell("", btn));
+  }) : [emptyRow(6, q ? "No keys match." : "No API keys yet.")]));
+
+  const emails = Object.fromEntries(users.map((a) => [a.id, a.email]));
+  const l = audit.filter((x) => matches(q, emails[x.account_id], x.action, x.task_id, x.key_id));
+  $("auditCount").textContent = l.length;
+  $("audit").replaceChildren(...(l.length ? l.map((x) => el("tr", {},
+    cell("Time", new Date(x.time * 1000).toLocaleString()),
+    cell("Action", el("code", { textContent: x.action })),
+    cell("Owner", emails[x.account_id] || "—"),
+    cell("Key", x.key_id || "—"),
+    cell("Phone", x.device_id || "—"),
+    cell("Task", x.task_id || "—"),
+    cell("Outcome", x.outcome || "—"),
+  )) : [emptyRow(7, q ? "No entries match." : "No API activity yet.")]));
 
   const d = devices.filter((x) => matches(q, x.email, x.model));
   $("deviceCount").textContent = d.length;
   $("devices").replaceChildren(...(d.length ? d.map((x) => {
-    const status = x.revoked ? ["revoked", "Revoked"] : x.online ? ["on", "Connected"] : ["off", "Offline"];
+    const status = x.revoked ? ["bad", "Revoked"] : x.online ? ["ok", "Connected"] : ["", "Offline"];
     const activity = el("span", { className: "task" });
     if (!x.revoked && x.online && x.state && x.state !== "idle") {
       activity.append(el("b", { textContent: x.state }), x.current ? ` · ${x.current}` : "");
@@ -150,14 +163,14 @@ function render() {
     }
     const action = cell("");
     if (!x.revoked) {
-      const btn = el("button", { className: "revoke", textContent: "Revoke" });
+      const btn = el("button", { className: "btn btn-sm btn-danger", type: "button", textContent: "Revoke" });
       btn.onclick = () => revoke(x, btn);
       action.append(btn);
     }
     return el("tr", { className: x.revoked ? "revoked" : "" },
       cell("Phone", x.model || "Android phone"),
       cell("Owner", x.email || "(deleted account)"),
-      cell("Status", el("span", { className: `pill ${status[0]}`, textContent: status[1] })),
+      cell("Status", el("span", { className: `pill dotted ${status[0]}`, textContent: status[1] })),
       cell("Activity", activity),
       cell("Last seen", ago(x.last_seen)),
       cell("Created", date(x.created)),
@@ -188,7 +201,8 @@ async function api(path, opts) {
 
 async function load() {
   try {
-    [users, devices] = await Promise.all([api("/api/admin/users"), api("/api/admin/devices")]);
+    [users, devices, keys, audit] = await Promise.all([api("/api/admin/users"), api("/api/admin/devices"),
+      api("/api/admin/api-keys"), api("/api/admin/audit?limit=200")]);
     $("error").textContent = "";
     $("updated").textContent = "Updated " + new Date().toLocaleTimeString();
     render();
@@ -205,6 +219,17 @@ async function revoke(device, btn) {
     await api(`/api/admin/devices/${encodeURIComponent(device.id)}/revoke`, { method: "POST" });
   } catch (e) {
     if (e.message !== "signed out" && e.message !== "forbidden") alert(`Couldn't revoke: ${e.message}`);
+  }
+  load();
+}
+
+async function toggle(path, disabled, question, btn) {
+  if (disabled && !confirm(question)) return;
+  btn.disabled = true;
+  try {
+    await api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled }) });
+  } catch (e) {
+    if (e.message !== "signed out" && e.message !== "forbidden") alert(`Couldn't change it: ${e.message}`);
   }
   load();
 }

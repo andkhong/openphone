@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What I've Learned · OpenMob</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
+<style>
+  /* ---------- memory ---------- */
+  .toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .toolbar .search { flex: 1; min-width: 200px; position: relative; }
+  .toolbar .search svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; transform: translateY(-50%); color: var(--faint); pointer-events: none; }
+  .toolbar .search .input { padding-left: 36px; }
+  form.add { display: grid; gap: 10px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  .row .push { margin-left: auto; }
+  .card.pending { border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: linear-gradient(var(--warn-soft), var(--warn-soft)) top / 100% 4px no-repeat, var(--surface); }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 4px; overflow-wrap: anywhere; font-family: var(--mono); }
+  h3:first-child { margin-top: 0; }
+  ul.notes { list-style: none; margin: 0; padding: 0; }
+  ul.notes li { display: flex; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  ul.notes li:last-child { border-bottom: 0; }
+  ul.notes li .text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  ul.notes li .meta { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+  ul.notes li .actions { display: flex; gap: 6px; flex: none; }
+  ul.notes li .input { font-size: 14px; }
+  .danger-zone { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: space-between; }
+  .danger-zone p { margin: 0; color: var(--muted); font-size: 14px; }
+  @media (max-width: 560px) {
+    ul.notes li { flex-direction: column; align-items: stretch; gap: 8px; }
+    ul.notes li .actions { justify-content: flex-end; }
+  }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/" id="brandLink"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob<span class="page-name">What I've learned</span></a>
+  <nav class="topnav"><a class="btn btn-ghost" href="/" id="back">← Dashboard</a></nav>
+</header>
+<main class="page narrow">
+  <div class="page-head">
+    <h1>What I've learned</h1>
+    <p class="intro">Notes your agent reads before every task: things about you, and things about your apps. Tell it "remember …" in a chat, or add a note here. Notes are yours: they work with any model you choose, and you can change or delete them any time.</p>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input class="input" type="search" id="noteSearch" placeholder="Search notes and apps" aria-label="Search notes">
+    </div>
+    <button class="btn" type="button" id="exportNotes" title="Download every note as a JSON file">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Export
+    </button>
+  </div>
+
+  <section class="card" aria-labelledby="addTitle">
+    <div class="card-head"><h2 id="addTitle">Add a note</h2></div>
+    <form class="add" id="addForm">
+      <input class="input" type="text" id="addText" maxlength="300" placeholder="e.g. Use my second account in games" aria-label="Note">
+      <div class="row">
+        <label class="check"><input type="checkbox" id="addIsApp"> About one app</label>
+        <input class="input" type="text" id="addApp" placeholder="App package, e.g. com.google.android.youtube" aria-label="App package" hidden style="flex:1; min-width:200px">
+        <button class="btn btn-primary push" type="submit">Save note</button>
+      </div>
+    </form>
+    <div class="error" id="error" role="alert"></div>
+  </section>
+
+  <section class="card pending" id="pendingCard" hidden aria-labelledby="pendingTitle">
+    <div class="card-head"><h2 id="pendingTitle">Waiting for your OK <span class="count" id="pendingCount">0</span></h2></div>
+    <p class="card-sub">Your agent suggested these. They're not used until you keep them.</p>
+    <ul class="notes" id="pending"></ul>
+  </section>
+
+  <section class="card" aria-labelledby="userTitle">
+    <div class="card-head"><h2 id="userTitle">About you <span class="count" id="userCount">0</span></h2></div>
+    <ul class="notes" id="userNotes"></ul>
+  </section>
+
+  <section class="card" aria-labelledby="appTitle">
+    <div class="card-head"><h2 id="appTitle">About your apps <span class="count" id="appCount">0</span></h2></div>
+    <div id="appNotes"></div>
+  </section>
+
+  <section class="card danger-zone">
+    <p>Start over: delete every note, including suggestions.</p>
+    <button class="btn btn-danger" id="forgetAll" type="button">Forget everything</button>
+  </section>
+</main>
+<script>
+// Notes are the user's own words but still user-controlled text: textContent only, never innerHTML.
+const $ = (id) => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("t") || "";  // servers without accounts
+let notes = [];
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json", "X-OpenMob-Token": token }, ...opts });
+  if (res.status === 401) {
+    location.href = "/login?next=" + encodeURIComponent("/memory");
+    throw new Error("signed out");
+  }
+  if (!res.ok) {
+    let detail = res.statusText;
+    try { const body = await res.json(); detail = typeof body.detail === "string" ? body.detail : "Check the note and try again."; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+const fail = (e) => { if (e.message !== "signed out") $("error").textContent = e.message; };
+
+function ago(ts) {
+  const s = Math.max(0, Math.round(Date.now() / 1000 - ts));
+  if (s < 3600) return "just now";
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return new Date(ts * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function meta(n) {
+  const from = n.source === "agent" ? "suggested by your agent" : n.source === "api" ? "added by an API key" : "from you";
+  const used = n.uses ? ` · used in ${n.uses} task${n.uses === 1 ? "" : "s"}` : "";
+  return `${from} · ${ago(n.created)}${used}`;
+}
+
+function noteRow(n) {
+  const text = el("span", { className: "text" }, n.text, el("span", { className: "meta", textContent: meta(n) }));
+  const actions = el("div", { className: "actions" });
+  const li = el("li", {}, text, actions);
+  if (n.status === "proposed") {
+    const keep = el("button", { className: "btn btn-sm btn-primary", type: "button", textContent: "Keep" });
+    keep.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ status: "active" }) }));
+    const dismiss = el("button", { className: "btn btn-sm", type: "button", textContent: "Dismiss" });
+    dismiss.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
+    actions.append(keep, dismiss);
+    return li;
+  }
+  const edit = el("button", { className: "btn btn-sm", type: "button", textContent: "Edit" });
+  edit.setAttribute("aria-label", `Edit note: ${n.text}`);
+  edit.onclick = () => {
+    const input = el("input", { className: "input", type: "text", value: n.text, maxLength: 300 });
+    input.setAttribute("aria-label", "Note text");
+    const save = el("button", { className: "btn btn-sm btn-primary", type: "button", textContent: "Save" });
+    const cancel = el("button", { className: "btn btn-sm", type: "button", textContent: "Cancel" });
+    save.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "PATCH", body: JSON.stringify({ text: input.value }) }));
+    cancel.onclick = render;
+    input.onkeydown = (e) => { if (e.key === "Enter") save.click(); if (e.key === "Escape") render(); };
+    text.replaceChildren(input);
+    actions.replaceChildren(save, cancel);
+    input.focus();
+  };
+  const del = el("button", { className: "btn btn-sm btn-danger", type: "button", textContent: "Delete" });
+  del.setAttribute("aria-label", `Delete note: ${n.text}`);
+  del.onclick = () => change(() => api(`/api/memory/${n.id}`, { method: "DELETE" }));
+  actions.append(edit, del);
+  return li;
+}
+
+function render() {
+  const q = $("noteSearch").value.trim().toLowerCase();
+  const match = (n) => !q || n.text.toLowerCase().includes(q) || (n.package || "").toLowerCase().includes(q);
+  const shown = notes.filter(match);
+  const pending = shown.filter((n) => n.status === "proposed");
+  const user = shown.filter((n) => n.status === "active" && !n.package);
+  const apps = shown.filter((n) => n.status === "active" && n.package);
+  $("pendingCard").hidden = !pending.length;
+  $("pendingCount").textContent = pending.length;
+  $("pending").replaceChildren(...pending.map(noteRow));
+  $("userCount").textContent = user.length;
+  $("userNotes").replaceChildren(...(user.length ? user.map(noteRow)
+    : [el("li", { className: "empty-state" }, q ? "No notes about you match." : 'Nothing yet. Try saying "remember that I prefer dark mode" in a chat.')]));
+  $("appCount").textContent = apps.length;
+  const byApp = {};
+  for (const n of apps) (byApp[n.package] ||= []).push(n);
+  $("appNotes").replaceChildren(...(apps.length ? Object.entries(byApp).flatMap(([pkg, list]) =>
+    [el("h3", { textContent: pkg }), el("ul", { className: "notes" }, ...list.map(noteRow))])
+    : [el("p", { className: "empty-state", textContent: q ? "No app notes match." : "Nothing yet. Notes about how your apps work show up here." })]));
+}
+
+async function load(auto = false) {
+  // A background refresh must not wipe a note being edited.
+  if (auto && document.activeElement && document.activeElement.closest("li")) return;
+  try { notes = (await api("/api/memory")).notes; $("error").textContent = ""; render(); } catch (e) { fail(e); }
+}
+
+async function change(call) {
+  $("error").textContent = "";
+  try { await call(); } catch (e) { fail(e); }
+  load();
+}
+
+// Export: every note, as the server describes it, in a JSON file the user keeps (nothing is uploaded).
+$("exportNotes").onclick = async () => {
+  try { notes = (await api("/api/memory")).notes; render(); } catch (e) { fail(e); return; }
+  const day = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify({ exported_at: new Date().toISOString(), notes }, null, 2)], { type: "application/json" });
+  const a = el("a", { href: URL.createObjectURL(blob), download: `openmob-memory-${day}.json` });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+$("noteSearch").addEventListener("input", render);
+$("addIsApp").onchange = () => { $("addApp").hidden = !$("addIsApp").checked; if ($("addIsApp").checked) $("addApp").focus(); };
+$("addForm").onsubmit = (ev) => {
+  ev.preventDefault();
+  const text = $("addText").value.trim();
+  if (!text) return;
+  const pkg = $("addIsApp").checked ? $("addApp").value.trim() : "";
+  if ($("addIsApp").checked && !pkg) { $("error").textContent = "Enter the app's package name, or untick \"About one app\"."; return; }
+  change(async () => {
+    await api("/api/memory", { method: "POST", body: JSON.stringify({ text, package: pkg || null }) });
+    $("addText").value = "";
+  });
+};
+$("forgetAll").onclick = () => {
+  if (!confirm("Delete every note your agent remembers? This can't be undone.")) return;
+  change(() => api("/api/memory?confirm=true", { method: "DELETE" }));
+};
+
+if (token) $("back").href = $("brandLink").href = "/?t=" + encodeURIComponent(token);
+load();
+setInterval(() => load(true), 15000);
+</script>
+</body>
+</html>

@@ -6,118 +6,121 @@
 <title>OpenMob</title>
 <meta name="description" content="Tell your Android phone what to do, and an AI agent does it for you.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
 <style>
-  :root { --bg:#f6f6f3; --panel:#ffffff; --fg:#141518; --muted:#62666e; --line:#e4e4df; --accent:#3b5bfd; --accent-soft:#eef1ff; --ok:#1f9d55; --shadow:0 1px 2px rgba(0,0,0,.04),0 12px 32px rgba(0,0,0,.06); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0e0f11; --panel:#16181b; --fg:#ecedef; --muted:#9a9ea6; --line:#25282d; --accent:#6f86ff; --accent-soft:#1c2140; --ok:#3ccf7f; --shadow:none; } }
-  :root[data-theme="dark"] { --bg:#0e0f11; --panel:#16181b; --fg:#ecedef; --muted:#9a9ea6; --line:#25282d; --accent:#6f86ff; --accent-soft:#1c2140; --ok:#3ccf7f; --shadow:none; }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.6 Inter, system-ui, sans-serif; }
-  .wrap { max-width:1040px; margin:0 auto; padding:0 20px; }
-  nav { display:flex; align-items:center; justify-content:space-between; padding:20px 0; }
-  .logo { font-weight:800; font-size:20px; letter-spacing:-.02em; } .logo span { color:var(--accent); }
-  .pill { font-size:13px; color:var(--muted); border:1px solid var(--line); border-radius:99px; padding:4px 12px; background:var(--panel); }
-  .hero { display:grid; grid-template-columns:1.15fr .85fr; gap:40px; align-items:center; padding:48px 0 64px; }
-  @media (max-width:820px) { .hero { grid-template-columns:1fr; padding:24px 0 40px; } }
-  h1 { font-size:clamp(34px, 6vw, 54px); line-height:1.07; letter-spacing:-.035em; margin:0 0 18px; font-weight:800; }
-  h1 em { font-style:normal; color:var(--accent); }
-  .lede { font-size:19px; color:var(--muted); margin:0 0 28px; max-width:34em; }
-  .cta { display:flex; gap:12px; flex-wrap:wrap; }
-  .btn { display:inline-block; padding:13px 20px; border-radius:12px; font-weight:600; text-decoration:none; border:1px solid var(--line); color:var(--fg); background:var(--panel); }
-  .btn.primary { background:var(--accent); color:#fff; border-color:transparent; }
-  .phone { justify-self:center; width:min(300px, 80vw); background:#0b0b0c; border-radius:40px; padding:12px; box-shadow:var(--shadow); }
-  .screen { background:linear-gradient(160deg,#1d2440,#0f1220 60%); border-radius:30px; padding:22px 16px; min-height:460px; display:flex; flex-direction:column; gap:10px; color:#e8eaf0; font-size:14px; }
-  .bubble { padding:10px 14px; border-radius:16px; max-width:88%; }
-  .bubble.you { align-self:flex-end; background:var(--accent); color:#fff; border-bottom-right-radius:4px; }
-  .bubble.agent { align-self:flex-start; background:rgba(255,255,255,.08); border-bottom-left-radius:4px; }
-  .step-line { font-size:12px; color:#9aa3c0; display:flex; gap:8px; align-items:center; }
-  .step-line::before { content:""; width:6px; height:6px; border-radius:50%; background:#6f86ff; flex:none; }
-  section { padding:56px 0; border-top:1px solid var(--line); }
-  h2 { font-size:28px; letter-spacing:-.02em; margin:0 0 8px; }
-  .sub { color:var(--muted); margin:0 0 28px; }
-  .grid { display:grid; grid-template-columns:repeat(3, 1fr); gap:16px; }
-  @media (max-width:820px) { .grid { grid-template-columns:1fr; } }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:22px; box-shadow:var(--shadow); }
-  .card .n { width:30px; height:30px; border-radius:50%; background:var(--accent-soft); color:var(--accent); font-weight:700; display:flex; align-items:center; justify-content:center; margin-bottom:12px; }
-  .card h3 { margin:0 0 6px; font-size:17px; }
-  .card p { margin:0; color:var(--muted); font-size:15px; }
-  .checks { list-style:none; padding:0; margin:0; display:grid; grid-template-columns:repeat(2, 1fr); gap:12px 24px; }
-  @media (max-width:820px) { .checks { grid-template-columns:1fr; } }
-  .checks li { display:flex; gap:10px; }
-  .checks li::before { content:"✓"; color:var(--ok); font-weight:700; }
-  .access { background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:28px; box-shadow:var(--shadow); }
-  .access ol { margin:12px 0 0; padding-left:20px; color:var(--muted); }
-  .access ol li { margin:6px 0; }
-  .note { margin-top:16px; padding:12px 14px; border-radius:12px; background:var(--accent-soft); font-size:14px; }
-  code { font-size:13px; background:var(--bg); border:1px solid var(--line); padding:1px 6px; border-radius:6px; }
-  footer { padding:32px 0 48px; color:var(--muted); font-size:14px; border-top:1px solid var(--line); }
+  /* ---------- landing ---------- */
+  body { font-size: 16px; line-height: 1.6; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 0 20px; }
+  .nav { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 0; flex-wrap: wrap; }
+  .brand { font-size: 19px; }
+  .hero { display: grid; grid-template-columns: 1.15fr .85fr; gap: 40px; align-items: center; padding: 40px 0 64px; }
+  @media (max-width: 820px) { .hero { grid-template-columns: 1fr; padding: 20px 0 40px; } }
+  h1 { font-size: clamp(34px, 6vw, 54px); line-height: 1.07; letter-spacing: -.035em; margin: 0 0 18px; font-weight: 800; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .lede { font-size: 19px; color: var(--muted); margin: 0 0 28px; max-width: 34em; }
+  .cta { display: flex; gap: 12px; flex-wrap: wrap; }
+  .device { justify-self: center; width: min(300px, 80vw); background: #0b0b0c; border-radius: 40px; padding: 12px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.08); }
+  .screen { background: linear-gradient(160deg, #1d2440, #0f1220 60%); border-radius: 30px; padding: 22px 16px; min-height: 460px; display: flex; flex-direction: column; gap: 10px; color: #e8eaf0; font-size: 14px; }
+  .bubble { padding: 10px 14px; border-radius: 16px; max-width: 88%; }
+  .bubble.you { align-self: flex-end; background: #3550e8; color: #fff; border-bottom-right-radius: 4px; }
+  .bubble.agent { align-self: flex-start; background: rgba(255,255,255,.08); border-bottom-left-radius: 4px; }
+  .step-line { font-size: 12px; color: #a6aecb; display: flex; gap: 8px; align-items: center; }
+  .step-line::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #8193ff; flex: none; }
+  section.band { padding: 56px 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 28px; letter-spacing: -.02em; margin: 0 0 8px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card .n { width: 30px; height: 30px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .checks { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 24px; }
+  @media (max-width: 820px) { .checks { grid-template-columns: 1fr; } }
+  .checks li { display: flex; gap: 10px; }
+  .checks li::before { content: "✓"; color: var(--ok); font-weight: 700; }
+  .access { padding: 28px; border-radius: 20px; }
+  .access ol { margin: 12px 0 0; padding-left: 20px; color: var(--muted); }
+  .access ol li { margin: 6px 0; }
+  .access ol b { color: var(--fg); }
+  .access .callout { margin-top: 16px; }
+  code { background: var(--code); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
+  footer { padding: 32px 0 48px; color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); }
+  @media (max-width: 560px) { .access { padding: 20px; } section.band { padding: 40px 0; } }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <nav>
-    <div class="logo">Open<span>Mob</span></div>
-    <span class="pill">Invite-only beta · Android</span>
+  <nav class="nav" aria-label="OpenMob">
+    <span class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob</span>
+    <span style="display:flex;align-items:center;gap:10px"><span class="pill">Invite-only beta · Android</span><a class="btn btn-sm" href="/login">Sign in</a></span>
   </nav>
 
-  <div class="hero">
-    <div>
-      <h1>Tell your phone what to do. <em>It does it.</em></h1>
-      <p class="lede">OpenMob is an AI agent for your Android phone. Say "open YouTube and play lofi music" or "message Sam I'm running late", and it taps, types and scrolls through your apps for you.</p>
-      <div class="cta">
-        <a class="btn primary" href="#access">Get access</a>
-        <a class="btn" href="#how">How it works</a>
+  <main>
+    <div class="hero">
+      <div>
+        <h1>Tell your phone what to do. <em>It does it.</em></h1>
+        <p class="lede">OpenMob is an AI agent for your Android phone. Say "open YouTube and play lofi music" or "message Sam I'm running late", and it taps, types and scrolls through your apps for you.</p>
+        <div class="cta">
+          <a class="btn btn-primary btn-lg" href="#access">Get access</a>
+          <a class="btn btn-lg" href="#how">How it works</a>
+        </div>
+      </div>
+      <div class="device" aria-hidden="true">
+        <div class="screen">
+          <div class="bubble you">Open Where Winds Meet and open the menu</div>
+          <div class="step-line">Opening Where Winds Meet…</div>
+          <div class="step-line">Skipping the announcement</div>
+          <div class="step-line">Waiting for the game to load</div>
+          <div class="step-line">Tapping the menu icon</div>
+          <div class="bubble agent">Done. The menu is open.</div>
+          <div class="bubble you">Now open my quests</div>
+          <div class="step-line">Tapping "Quest"…</div>
+        </div>
       </div>
     </div>
-    <div class="phone" aria-hidden="true">
-      <div class="screen">
-        <div class="bubble you">Open Where Winds Meet and open the menu</div>
-        <div class="step-line">Opening Where Winds Meet…</div>
-        <div class="step-line">Skipping the announcement</div>
-        <div class="step-line">Waiting for the game to load</div>
-        <div class="step-line">Tapping the menu icon</div>
-        <div class="bubble agent">Done. The menu is open.</div>
-        <div class="bubble you">Now open my quests</div>
-        <div class="step-line">Tapping "Quest"…</div>
+
+    <section class="band" id="how">
+      <h2>How it works</h2>
+      <p class="sub">Works with the apps you already have. Nothing to root, no cable needed.</p>
+      <div class="grid">
+        <div class="card"><div class="n">1</div><h3>Ask</h3><p>Speak or type a request in the OpenMob app or on your dashboard, from anywhere. Or let your favourite AI agent ask, over MCP.</p></div>
+        <div class="card"><div class="n">2</div><h3>The agent looks</h3><p>It reads your phone's screen, works out where it is, and decides the next tap, one step at a time.</p></div>
+        <div class="card"><div class="n">3</div><h3>Your phone acts</h3><p>The app performs each step and you watch it happen live. It tells you when it's done.</p></div>
       </div>
-    </div>
-  </div>
+    </section>
 
-  <section id="how">
-    <h2>How it works</h2>
-    <p class="sub">Works with the apps you already have. Nothing to root, no cable needed.</p>
-    <div class="grid">
-      <div class="card"><div class="n">1</div><h3>Ask</h3><p>Speak or type a request in the OpenMob app or on your dashboard, from anywhere.</p></div>
-      <div class="card"><div class="n">2</div><h3>The agent looks</h3><p>It reads your phone's screen, works out where it is, and decides the next tap, one step at a time.</p></div>
-      <div class="card"><div class="n">3</div><h3>Your phone acts</h3><p>The app performs each step and you watch it happen live. It tells you when it's done.</p></div>
-    </div>
-  </section>
+    <section class="band">
+      <h2>You stay in control</h2>
+      <p class="sub">Built so that only you can use your phone, and you can stop it any time.</p>
+      <ul class="checks">
+        <li>Each phone pairs only to its owner's account, approved with the phone's fingerprint or PIN.</li>
+        <li>An always-visible notification while the agent can act, with a one-tap Disconnect.</li>
+        <li>Asks before buying, sending or deleting anything you didn't ask for.</li>
+        <li>Never types passwords and can't unlock your phone.</li>
+        <li>Remove a phone from your account at any time; it's cut off instantly.</li>
+        <li>Screenshots aren't stored; they're only used to decide the next step.</li>
+      </ul>
+    </section>
 
-  <section>
-    <h2>You stay in control</h2>
-    <p class="sub">Built so that only you can use your phone, and you can stop it any time.</p>
-    <ul class="checks">
-      <li>Each phone pairs only to its owner's account, approved with the phone's fingerprint or PIN.</li>
-      <li>An always-visible notification while the agent can act, with a one-tap Disconnect.</li>
-      <li>Asks before buying, sending or deleting anything you didn't ask for.</li>
-      <li>Never types passwords and can't unlock your phone.</li>
-      <li>Remove a phone from your account at any time; it's cut off instantly.</li>
-      <li>Screenshots aren't stored; they're only used to decide the next step.</li>
-    </ul>
-  </section>
-
-  <section id="access">
-    <div class="access">
-      <h2>Get access</h2>
-      <p class="sub" style="margin:0">OpenMob is in an invite-only beta for Android 11 and newer.</p>
-      <ol>
-        <li><b>Already invited?</b> Open the one-time sign-in link you were sent. It signs you in and opens your dashboard.</li>
-        <li><b>Link expired?</b> Ask whoever invited you for a new one. Links work once and expire after 10 minutes.</li>
-        <li><b>Want to join?</b> Ask the person running this OpenMob server for an invite.</li>
-      </ol>
-      <div class="note" id="opNote">Running this server? Create an account with <code>openmob account add you@example.com</code>, then make a sign-in link with <code>openmob account link you@example.com</code>.</div>
-    </div>
-  </section>
+    <section class="band" id="access">
+      <div class="card access">
+        <h2>Get access</h2>
+        <p class="sub" style="margin:0">OpenMob is in an invite-only beta for Android 11 and newer.</p>
+        <ol>
+          <li><b>Already invited?</b> Open the one-time sign-in link you were sent. It signs you in and opens your dashboard.</li>
+          <li><b>Link expired?</b> Ask whoever invited you for a new one. Links work once and expire after 10 minutes.</li>
+          <li><b>Want to join?</b> Ask the person running this OpenMob server for an invite.</li>
+        </ol>
+        <div class="callout info" id="opNote">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8v.01"/></svg>
+          <div>Running this server? Create an account with <code>openmob account add you@example.com</code>, then make a sign-in link with <code>openmob account link you@example.com</code>.</div>
+        </div>
+      </div>
+    </section>
+  </main>
 
   <footer>OpenMob · AI agent for Android · Screens are read by Claude (Anthropic) and classified by Jev (TypeSafe) to decide each step.</footer>
 </div>

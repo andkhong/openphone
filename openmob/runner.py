@@ -2,23 +2,36 @@
 
 from __future__ import annotations
 
+import inspect
 import itertools
 import queue
 import re
 import uuid
 import threading
 import time
-from collections import deque
+from collections import OrderedDict, deque
 
 from .agent import Agent
+from .agent.loop import is_yes
+from .phone.base import DeviceError, PhoneTimeout
 from .usage import Usage
 from .voice.tts import Speaker
 
 _CURRENT = object()  # event(): tag with whichever task is running
 
+# The OpenMob companion app itself: no task may operate it (it's where approvals and the kill switch
+# live), so a prompt-injected agent can't approve its own purchase from inside the app.
+OWN_PACKAGES = {"dev.openmob.companion"}
+APPROVE_ON_PROMPT = "Approve this on the approval prompt, with your screen lock. A typed or spoken \"yes\" can't approve it."
+
 STOP_PHRASES = {"stop", "cancel", "abort", "stop it", "never mind", "nevermind", "stop stop"}
 
-ICONS = {"usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
+ICONS = {"correction": "✏️ ", "memory": "📌", "usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
+
+
+FINAL_STATUSES = {"succeeded", "failed", "cancelled"}
+KEEP_TASKS = 200  # per phone: finished tasks stay readable here until they age out (then from History)
+KEEP_TASK_EVENTS = 500
 
 
 def format_event(kind: str, message: str) -> str:
@@ -58,22 +71,37 @@ class Coordinator:
         self.device_model = ""
         self.chat_id: str | None = None  # created on the first request after "New chat"
         self.speaker = speaker
-        self.tasks: queue.Queue[tuple[str, str, int]] = queue.Queue()
+        self.tasks: queue.Queue[tuple[str, str, str, dict]] = queue.Queue()
         self.answers: queue.Queue[str] = queue.Queue()
+        self.corrections: queue.Queue[str] = queue.Queue()  # steer: what the user said mid-task
         self.cancel = threading.Event()
         self.log: deque[dict] = deque(maxlen=500)
         self.current_task: str | None = None  # id of the running task; every event is tagged with one
         self._seq = itertools.count(1)
         self.current: str | None = None
         self.question: str | None = None
+        self.question_kind: str | None = None  # "question" (ask_user) or "confirm" (risky action)
+        self.question_timeout = 300.0  # seconds a question may wait for an answer (0: forever)
+        # Whether a risky action may be approved by typing or saying "yes" (submit). False for app
+        # phones, which approve only through the screen-lock prompt (DeviceManager.resolve_approval).
+        self.text_approvals = True
+        self._unanswered: str | None = None  # the task stopped because nobody answered its question
+        self._stop_reason: str | None = None  # why stop() cancelled the running task, if it said
         self.listeners: list = []
+        self.entry_listeners: list = []  # callables(entry): every log entry, with its task id
+        # Per-task records (status, steps, outcome, events) for the developer API, newest last.
+        self.task_info: OrderedDict[str, dict] = OrderedDict()
+        self._skip: set[str] = set()  # queued tasks cancelled before they started
         self.session_usage = Usage()  # all tasks on this phone since the server started  # callables(kind, message), e.g. forward to the phone app
         self._lock = threading.Lock()
 
     # --- inputs ----------------------------------------------------------
 
-    def submit(self, text: str, source: str) -> str:
-        """Handle one utterance. Returns what happened: queued, answered, stopped, or ignored."""
+    def submit(self, text: str, source: str, mode: str = "auto") -> str:
+        """Handle one utterance. Returns what happened: queued, steered, answered, stopped, or ignored.
+
+        mode "auto": while a task runs (and isn't asking anything), anything but "stop" corrects
+        that task. mode "queue": it's a new task, queued behind the running one."""
         text = text.strip()
         if not text:
             return "ignored"
@@ -81,57 +109,177 @@ class Coordinator:
             running = self.current_task
             if self.question is not None:
                 kind = "stop" if is_stop(text) else "answer"
+                if kind == "answer" and self.question_kind == "confirm" and not self.text_approvals:
+                    # Never approved by text: anyone (or the agent itself, typing into the app) could
+                    # send "yes". A "no" still declines; approving takes the screen-lock prompt.
+                    kind = "approval_required" if is_yes(text) else "decline"
             elif is_stop(text):
                 kind = "stop" if (self.current is not None or not self.tasks.empty()) else "ignore"
+            elif running is not None and mode == "auto":
+                kind = "steer"
             else:
                 kind = "task"
-        # Answers and stops belong to the running task's turn; a new request starts its own.
-        # Ids are random so turns stay unique in the history across server restarts.
-        task_id = uuid.uuid4().hex[:12] if kind == "task" else running
-        if kind == "task" and self.chat_id is None and self.history is not None:
-            self.chat_id = self.history.create_chat(self.account_id, self.device_id, self.device_model, text)
-        self.event("heard", f"[{source}] {text}", task=task_id)
+        if kind == "task":
+            self.enqueue(text, source)
+            return "queued"
+        if kind == "steer":
+            if self.steer(text, source):
+                return "steered"
+            self.enqueue(text, source)  # the task finished in the meantime: it's a new request
+            return "queued"
+        if kind == "approval_required":  # not an answer: the pending approval prompt stays open
+            self.event("status", APPROVE_ON_PROMPT, task=running)
+            return "approval_required"
+        # Answers and stops belong to the running task's turn.
+        self.event("heard", f"[{source}] {text}", task=running)
         if kind == "answer":
             self.answers.put(text)
+            return "answered"
+        if kind == "decline":
+            self.answers.put("no")
             return "answered"
         if kind == "stop":
             self.stop()
             return "stopped"
-        if kind == "ignore":
-            return "ignored"
-        self.tasks.put((text, source, task_id))
+        return "ignored"
+
+    @staticmethod
+    def new_task_id() -> str:
+        # Random, so turns stay unique in the history across server restarts.
+        return uuid.uuid4().hex[:12]
+
+    def enqueue(self, text: str, source: str, options: dict | None = None, task_id: str | None = None) -> str:
+        """Queue a task as-is (never read as an answer or "stop") and return its id.
+
+        `options` go to Agent.run for this task only: model, max_steps, blocked. Pass `task_id`
+        (from new_task_id) to know the id before the task can start."""
+        task_id = task_id or self.new_task_id()
+        with self._lock:
+            running = self.current_task
+            self.task_info[task_id] = {
+                "id": task_id, "status": "queued", "request": text, "source": source,
+                "created": time.time(), "started": None, "finished": None, "steps": 0,
+                "success": None, "summary": None, "reason": None, "question": None, "usage": None, "events": [],
+            }
+            while len(self.task_info) > KEEP_TASKS:
+                self.task_info.popitem(last=False)
+        if self.chat_id is None and self.history is not None:
+            self.chat_id = self.history.create_chat(self.account_id, self.device_id, self.device_model, text)
+        self.event("heard", f"[{source}] {text}", task=task_id)
+        self.tasks.put((text, source, task_id, options or {}))
         if running is not None:
             self.event("status", "Queued until the current task finishes.", task=task_id)
-        return "queued"
+        return task_id
 
-    def stop(self) -> None:
+    def task(self, task_id: str) -> dict | None:
+        """A copy of one task's record (None once it has aged out)."""
+        with self._lock:
+            info = self.task_info.get(task_id)
+            return {**info, "events": list(info["events"])} if info else None
+
+    def cancel_task(self, task_id: str) -> bool:
+        """Cancel one task, queued or running. False if it's unknown or already finished."""
+        with self._lock:
+            info = self.task_info.get(task_id)
+            if not info or info["status"] in FINAL_STATUSES:
+                return False
+            running = self.current_task == task_id
+            if not running:
+                self._skip.add(task_id)
+        if running:
+            self.cancel.set()
+            self.event("status", "Stopping…", task=task_id)
+        else:
+            self.event("error", "Cancelled before it started.", task=task_id,
+                       data={"final": True, "success": False, "cancelled": True})
+        return True
+
+    def steer(self, text: str, source: str = "api") -> bool:
+        """Correct the running task ("no, the other button"). The agent reads it before its next
+        step. False when nothing is running, or a question is pending (that wants an answer)."""
+        text = text.strip()
+        with self._lock:
+            if not text or self.current_task is None or self.question is not None:
+                return False
+            self.corrections.put(text)
+        self.event("correction", f"[{source}] {text}")
+        return True
+
+    def take_corrections(self) -> list[str]:
+        """The agent's side of steer: everything said since its last step, oldest first."""
+        out = []
+        while True:
+            try:
+                out.append(self.corrections.get_nowait())
+            except queue.Empty:
+                return out
+
+    def record_step(self, step: dict) -> None:
+        """The agent's structured record of one tool call (redacted, no screenshot) → history."""
+        if self.history is None or self.chat_id is None or self.current_task is None:
+            return
+        try:
+            self.history.record_step(self.chat_id, self.current_task, step,
+                                     account_id=self.account_id, device_id=self.device_id)
+        except Exception as exc:  # history must never break the agent
+            print(format_event("error", f"Step not saved: {exc}"), flush=True)
+
+    def answer(self, task_id: str, text: str) -> bool:
+        """Answer the running task's pending question. False if that task isn't asking."""
+        with self._lock:
+            if self.current_task != task_id or self.question is None:
+                return False
+        self.event("heard", f"[api] {text}", task=task_id)
+        self.answers.put(text)
+        return True
+
+    def stop(self, reason: str | None = None) -> None:
+        """Cancel the running task and everything queued. `reason` is recorded on each (e.g.
+        device_revoked when the phone is unpaired)."""
+        final = {"final": True, "success": False, "cancelled": True, **({"reason": reason} if reason else {})}
         while not self.tasks.empty():
             try:
-                _, _, task_id = self.tasks.get_nowait()
+                _, _, task_id, _ = self.tasks.get_nowait()
             except queue.Empty:
                 break
-            self.event("error", "Cancelled before it started.", task=task_id, data={"final": True, "success": False})
+            with self._lock:
+                if task_id in self._skip:  # already cancelled on its own
+                    self._skip.discard(task_id)
+                    continue
+            self.event("error", "Cancelled before it started.", task=task_id, data=final)
         if self.current is not None:
+            self._stop_reason = reason
             self.cancel.set()
             self.event("status", "Stopping…")
 
     # --- UserIO ----------------------------------------------------------
 
-    def ask(self, question: str) -> str:
+    def ask(self, question: str, kind: str = "question") -> str:
         with self._lock:
             self.question = question
-        self.event("question", question)
+            self.question_kind = kind
+        self.event("question", question, data={"confirm": True} if kind == "confirm" else None)
         self.speaker.say(question)
+        deadline = time.monotonic() + self.question_timeout if self.question_timeout else None
         try:
             while not self.cancel.is_set():
                 try:
                     return self.answers.get(timeout=0.5)
                 except queue.Empty:
-                    continue
+                    if deadline is not None and time.monotonic() >= deadline:
+                        # Nobody answered: end the task rather than hold the phone (and a task slot) forever.
+                        self._unanswered = self.current_task
+                        self.cancel.set()
             return "no"
         finally:
             with self._lock:
                 self.question = None
+                self.question_kind = None
+            self._set_status(self.current_task, "running")
+
+    def confirm(self, question: str) -> str:
+        """The agent wants approval for a risky action (buy, send, delete…)."""
+        return self.ask(question, kind="confirm")
 
     def event(self, kind: str, message: str, task=_CURRENT, data: dict | None = None) -> None:
         """Log one entry. `task` defaults to the running task; `data` carries structured details
@@ -141,6 +289,7 @@ class Coordinator:
         if data:
             entry["data"] = data
         self.log.append(entry)
+        self._track(entry)
         if self.history is not None and self.chat_id is not None:
             try:
                 self.history.record(self.chat_id, entry)
@@ -152,6 +301,48 @@ class Coordinator:
                 listener(kind, message)
             except Exception:  # a broken listener must never stop the agent
                 pass
+        for listener in self.entry_listeners:
+            try:
+                listener(entry)
+            except Exception:
+                pass
+
+    def _track(self, entry: dict) -> None:
+        """Keep the task's record (for the developer API) in step with its log."""
+        data = entry.get("data") or {}
+        with self._lock:
+            info = self.task_info.get(entry["task"]) if entry["task"] else None
+            if info is None:
+                return
+            info["events"].append(entry)
+            del info["events"][:-KEEP_TASK_EVENTS]
+            kind = entry["kind"]
+            if data.get("final"):
+                info["status"] = "cancelled" if data.get("cancelled") else ("succeeded" if data.get("success") else "failed")
+                info["success"] = bool(data.get("success"))
+                info["summary"] = entry["message"].rsplit(" (", 1)[0] if entry["message"].endswith(" steps)") else entry["message"]
+                info["steps"] = data.get("steps", info["steps"])
+                info["finished"] = entry["time"]
+                info["question"] = None
+                info["reason"] = data.get("reason")  # question_timeout, phone_unresponsive, internal_error…
+            elif kind == "usage":
+                info["usage"] = data
+            elif info["status"] in FINAL_STATUSES:
+                return
+            elif kind == "question":
+                info["status"] = "needs_confirmation" if data.get("confirm") else "needs_input"
+                info["question"] = entry["message"]
+            elif kind in ("action", "error"):
+                info["steps"] += 1
+
+    def _set_status(self, task_id: str | None, status: str) -> None:
+        with self._lock:
+            info = self.task_info.get(task_id) if task_id else None
+            if info and info["status"] not in FINAL_STATUSES:
+                info["status"] = status
+                info["question"] = None
+                if status == "running" and info["started"] is None:
+                    info["started"] = time.time()
 
     # --- worker ----------------------------------------------------------
 
@@ -160,23 +351,53 @@ class Coordinator:
 
     def _work(self) -> None:
         while True:
-            text, source, task_id = self.tasks.get()
+            text, source, task_id, options = self.tasks.get()
+            with self._lock:
+                if task_id in self._skip:  # cancelled while it waited
+                    self._skip.discard(task_id)
+                    continue
             self.cancel.clear()
+            self.take_corrections()  # anything left from an earlier task isn't about this one
             with self._lock:
                 self.current = text
                 self.current_task = task_id
+            self._set_status(task_id, "running")
             self.event("status", f"Working on: {text}")
             self.speaker.say("On it.")
             try:
                 # The phone page is in the phone's browser, so get it out of the way first.
-                result = self.agent.run(text, self.cancel, go_home=(source == "phone"))
-                self.event("result" if result.success else "error", f"{result.summary} ({result.steps} steps)",
-                           data={"final": True, "success": result.success, "steps": result.steps})
+                # go_home: the phone page is in the phone's browser, so get it out of the way first;
+                # orchestrated steps ask for it too, so each starts from a clean screen.
+                go_home = options.pop("go_home", source == "phone") or self._own_app_in_front()
+                self._block_own_app(options)
+                result = self.agent.run(text, self.cancel, go_home=go_home, **options)
+                data = {"final": True, "success": result.success, "steps": result.steps}
+                if getattr(result, "done_via", None):
+                    data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
+                summary = result.summary
+                if self._unanswered == task_id and not result.success:
+                    data["reason"] = "question_timeout"
+                    minutes = self.question_timeout / 60
+                    summary = (f"Stopped: nobody answered the question within "
+                               f"{f'{minutes:g} minutes' if minutes >= 1 else f'{self.question_timeout:g} s'}.")
+                elif self.cancel.is_set() and not result.success:
+                    data["cancelled"] = True
+                    if self._stop_reason:
+                        data["reason"] = self._stop_reason
+                self.event("result" if result.success else "error", f"{summary} ({result.steps} steps)", data=data)
                 self.speaker.say(result.summary)
+                if not data.get("cancelled"):  # a stop is the user's call, not the model's result
+                    self._record_model_run(task_id, result.success, result.steps)
             except Exception as exc:  # keep the worker alive for the next command
-                self.event("error", f"{type(exc).__name__}: {exc}", data={"final": True, "success": False})
+                # Why, for callers and billing: the phone stopped answering, it failed, or we did.
+                reason = ("phone_unresponsive" if isinstance(exc, PhoneTimeout)
+                          else "phone_error" if isinstance(exc, DeviceError) else "internal_error")
+                self.event("error", f"{type(exc).__name__}: {exc}", data={"final": True, "success": False, "reason": reason})
                 self.speaker.say("Sorry, something went wrong.")
+                self._record_model_run(task_id, False, None)
             finally:
+                if self.take_corrections():
+                    self.event("status", "A correction came in as the task ended; send it again as a new request.", task=task_id)
                 # Count tokens even when a task fails or is stopped part-way.
                 usage = getattr(self.agent, "usage", None)
                 if usage is not None:
@@ -185,6 +406,37 @@ class Coordinator:
                 with self._lock:
                     self.current = None
                     self.current_task = None
+                    self._unanswered = None
+                    self._stop_reason = None
+
+    def _own_app_in_front(self) -> bool:
+        """The OpenMob app is on screen (often: the user just spoke to it): start from Home instead."""
+        try:
+            return self.agent.driver.current_app() in OWN_PACKAGES
+        except Exception:
+            return False
+
+    def _block_own_app(self, options: dict) -> None:
+        """Every task, from any source: the agent may not open or operate the OpenMob app (the task
+        stops if it ends up there), on top of whatever the task already blocks (sensitive apps)."""
+        try:
+            accepts = "blocked" in inspect.signature(self.agent.run).parameters
+        except (TypeError, ValueError):
+            accepts = False
+        if not accepts:
+            return
+        other = options.get("blocked")
+        options["blocked"] = lambda package, other=other: package in OWN_PACKAGES or bool(other and other(package))
+
+    def _record_model_run(self, task_id: str, success: bool, steps: int | None) -> None:
+        """Per-model success stats (History.model_stats): which model ran this task, and how it went."""
+        model = getattr(self.agent, "task_model", None)
+        if self.history is None or not model:
+            return
+        try:
+            self.history.record_model_run(self.account_id, task_id, model, success, steps)
+        except Exception as exc:
+            print(format_event("error", f"Model stats not saved: {exc}"), flush=True)
 
     def clear_log(self) -> None:
         """New chat: empty the conversation and the agent's memory of earlier requests.
@@ -222,6 +474,7 @@ class Coordinator:
         with self._lock:
             return {
                 "state": "asking" if self.question else ("running" if self.current else "idle"),
+                "question_kind": self.question_kind,
                 "current": self.current,
                 "question": self.question,
                 "queued": self.tasks.qsize(),

@@ -3,86 +3,92 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Connect a Phone</title>
+<title>Connect a Phone · OpenMob</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<link rel="stylesheet" href="/static/ds.css">
 <style>
-  :root { --bg:#f4f4f1; --panel:#fff; --fg:#17181a; --muted:#6c6f75; --line:#e4e4df; --accent:#3b5bfd; --ok:#1f9d55; --warn:#c97a00; --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); }
-  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; } }
-  :root[data-theme="dark"] { --bg:#0f1012; --panel:#17191c; --fg:#ecedef; --muted:#9a9ea6; --line:#26292e; --accent:#6f86ff; --shadow:none; }
-  * { box-sizing: border-box; }
-  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.5 Inter, system-ui, sans-serif; }
-  header { display:flex; align-items:center; gap:12px; padding:14px 20px; border-bottom:1px solid var(--line); background:var(--panel); }
-  .logo { font-weight:700; font-size:18px; } .logo span { color:var(--accent); }
-  header a { margin-left:auto; color:var(--muted); text-decoration:none; font-size:14px; }
-  main { max-width:960px; margin:0 auto; padding:24px 16px; display:grid; grid-template-columns: 340px 1fr; gap:20px; }
-  @media (max-width: 800px) { main { grid-template-columns:1fr; } }
-  .card { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; box-shadow:var(--shadow); }
-  h1 { font-size:22px; margin:0 0 4px; letter-spacing:-.01em; }
-  .sub { color:var(--muted); margin:0 0 16px; }
-  .qr { background:#fff; padding:14px; border-radius:12px; display:flex; justify-content:center; }
-  .qr img, .qr canvas { width:100% !important; max-width:280px; height:auto !important; }
-  .scan { text-align:center; color:var(--muted); font-size:13px; margin-top:10px; }
-  ol { margin:0; padding-left:20px; } ol li { margin:0 0 12px; }
-  ol li b { display:block; }
-  ol li span { color:var(--muted); font-size:14px; }
-  .warn { margin-top:14px; padding:10px 12px; border-radius:10px; background:rgba(201,122,0,.1); color:var(--warn); font-size:13px; }
-  .note { margin-top:14px; font-size:13px; color:var(--muted); }
-  code { font-size:12px; background:var(--bg); padding:2px 6px; border-radius:6px; overflow-wrap:anywhere; }
-  h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:20px 0 8px; }
-  .devices { list-style:none; margin:0; padding:0; }
-  .devices li { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line); }
-  .devices li:last-child { border-bottom:0; }
-  .dot { width:9px; height:9px; border-radius:50%; background:var(--muted); flex:none; }
-  .dot.on { background:var(--ok); }
-  .devices small { color:var(--muted); margin-left:auto; }
-  .empty { color:var(--muted); font-size:14px; }
-  .qr.expired { opacity:.15; filter:blur(3px); }
-  .revoke { margin-left:10px; border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:8px; padding:4px 10px; font:inherit; font-size:13px; cursor:pointer; }
-  .revoke:hover { color:#d6383b; border-color:#d6383b; }
-  .btn { display:inline-block; margin-top:6px; padding:9px 14px; border-radius:10px; background:var(--accent); color:#fff; text-decoration:none; font-weight:600; font-size:14px; }
+  /* ---------- connect ---------- */
+  .grid { display: grid; grid-template-columns: 340px 1fr; gap: 20px; align-items: start; }
+  @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
+  .qr { background: #fff; padding: 14px; border-radius: var(--r); display: flex; justify-content: center; border: 1px solid var(--line); transition: opacity .2s, filter .2s; }
+  .qr img, .qr canvas { width: 100% !important; max-width: 280px; height: auto !important; }
+  .qr.expired { opacity: .15; filter: blur(3px); }
+  .scan { text-align: center; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .scan.expiry { font-variant-numeric: tabular-nums; }
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; counter-reset: step; }
+  ol.steps li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; counter-increment: step; }
+  ol.steps li::before { content: counter(step); width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 700; font-size: 14px; display: flex; align-items: center; justify-content: center; }
+  ol.steps li b { display: block; }
+  ol.steps li span { color: var(--muted); font-size: 14px; }
+  .callout { margin-top: 14px; }
+  .note { margin-top: 16px; font-size: 13px; color: var(--muted); }
+  .note code { background: var(--code); padding: 2px 6px; border-radius: 6px; overflow-wrap: anywhere; font-size: 12px; }
+  .devices { list-style: none; margin: 0; padding: 0; }
+  .devices li { display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .devices li:last-child { border-bottom: 0; }
+  .devices li .name { flex: 1; min-width: 0; overflow-wrap: anywhere; font-weight: 500; }
+  .devices li.empty { color: var(--muted); font-size: 14px; display: flex; gap: 10px; }
+  .devices li.empty::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); animation: om-pulse 1.4s ease-in-out infinite; flex: none; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+  .dot.on { background: var(--ok); }
+  .devices small { color: var(--muted); }
+  .stack { display: grid; gap: 20px; }
 </style>
 </head>
 <body>
-<header>
-  <div class="logo">Open<span>Mob</span></div>
-  <a id="back" href="/">← Dashboard</a>
+<header class="topbar">
+  <a class="brand" href="/" id="brandLink"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob<span class="page-name">Connect a phone</span></a>
+  <nav class="topnav"><a class="btn btn-ghost" id="back" href="/">← Dashboard</a></nav>
 </header>
-<main>
-  <div class="card">
-    <div class="qr" id="qr"></div>
-    <div class="scan">Scan with the phone's camera</div>
-    <div class="scan" id="expiry" hidden></div>
-    <div style="text-align:center"><a class="btn" id="newCode" href="#" hidden>New code</a></div>
-    <div class="warn" id="localWarn" hidden>You're on a localhost address, which phones can't reach. Start the server with <code>openmob run --public</code> and open this page from the public link.</div>
-  </div>
-
-  <div>
+<main class="page">
+  <div class="grid">
     <div class="card">
-      <h1>Connect a phone</h1>
-      <p class="sub">Any Android phone (Android 11+) can join this agent. No cable, no developer mode.</p>
-      <ol>
-        <li><b>Scan the QR code</b><span>It opens a page on the phone with everything below.</span></li>
-        <li><b>Install the OpenMob app</b><span id="apkLine">Download it from that page and allow the install.</span></li>
-        <li><b>Open the app from that page</b><span>It arrives already paired with this server.</span></li>
-        <li><b>Turn on OpenMob in Accessibility, then tap Connect</b><span>This lets the agent see the screen and tap. Disconnect any time from the notification.</span></li>
-      </ol>
-      <div class="note">Can't scan? On the phone, open <code id="pairUrl">…</code></div>
-      <div class="warn" id="codeWarn">This code works like a password: anyone who scans it can connect a phone to this agent. Only show it to people you trust.</div>
+      <div class="qr" id="qr" role="img" aria-label="Pairing QR code"></div>
+      <div class="scan">Scan with the phone's camera</div>
+      <div class="scan" id="serverLine" hidden>The phone connects to <b id="serverName"></b>. Keep it on the same network as this computer.</div>
+      <div class="scan expiry" id="expiry" hidden aria-live="polite"></div>
+      <div style="text-align:center; margin-top:10px"><a class="btn btn-sm" id="newCode" href="#" hidden>Make a new code</a></div>
+      <div class="callout warn" id="localWarn" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19zM12 10v4M12 17.5v.01"/></svg>
+        <div>You're on a localhost address, which phones can't reach. Open this page with your computer's network address instead (the one <code>openmob run</code> prints under "On your network"), or start the server with <code>openmob run --public</code> and open the public link.</div>
+      </div>
     </div>
 
-    <div class="card" style="margin-top:20px">
-      <h2 style="margin-top:0">Phones</h2>
-      <ul class="devices" id="devices"><li class="empty">Waiting for a phone to connect…</li></ul>
-      <a class="btn" id="open" href="/" hidden>Open dashboard</a>
+    <div class="stack">
+      <div class="card">
+        <div class="page-head" style="margin-bottom:18px">
+          <h1>Connect a phone</h1>
+          <p>Any Android phone (Android 11+) can join. No cable, no developer mode.</p>
+        </div>
+        <ol class="steps">
+          <li><div><b>Scan the QR code</b><span>It opens a page on the phone with everything below.</span></div></li>
+          <li><div><b>Install the OpenMob app</b><span id="apkLine">Download it from that page and allow the install.</span></div></li>
+          <li><div><b>Open the app from that page</b><span>It arrives already paired with this server.</span></div></li>
+          <li><div><b>Turn on OpenMob in Accessibility, then tap Connect</b><span>This lets the agent see the screen and tap. Disconnect any time from the notification.</span></div></li>
+        </ol>
+        <div class="note">Can't scan? On the phone, open <code id="pairUrl">…</code></div>
+        <div class="callout warn">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>
+          <div id="codeWarn">This code works like a password: anyone who scans it can connect a phone to this agent. Only show it to people you trust.</div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Your phones</h2></div>
+        <ul class="devices" id="devices" aria-live="polite"><li class="empty">Waiting for a phone to connect…</li></ul>
+        <a class="btn btn-primary" id="open" href="/" hidden style="margin-top:12px">Open dashboard</a>
+      </div>
     </div>
   </div>
 </main>
 <script>
 const token = new URLSearchParams(location.search).get("t") || "";
 const $ = (id) => document.getElementById(id);
-$("back").href = $("open").href = `/?t=${encodeURIComponent(token)}`;
+$("back").href = $("open").href = $("brandLink").href = `/?t=${encodeURIComponent(token)}`;
 let accounts = false;
 let expiresAt = 0;
 
@@ -102,7 +108,7 @@ async function checkAccount() {
       return false;
     }
     if (accounts) {
-      $("back").href = $("open").href = "/";
+      $("back").href = $("open").href = $("brandLink").href = "/";
       $("codeWarn").textContent = `This code works once, for 10 minutes, and only for ${me.email}. ` +
         "Whoever scans it must sign in as you and approve with the phone's screen lock.";
     }
@@ -115,6 +121,9 @@ async function init() {
     const p = await api("/api/pairing");  // in account mode this issues a fresh one-time code
     $("pairUrl").textContent = p.pair_url;
     $("localWarn").hidden = !p.local;
+    const host = (() => { try { return new URL(p.server).host; } catch { return ""; } })();
+    $("serverName").textContent = host;
+    $("serverLine").hidden = !host || p.local || p.server.startsWith("https://");  // only for local-network servers
     $("apkLine").textContent = p.apk_url ? "Download it from that page and allow the install." : "The app isn't built on this server yet (cd android && ./gradlew assembleDebug).";
     $("qr").replaceChildren();
     $("qr").classList.remove("expired");
@@ -150,11 +159,12 @@ async function poll(again = true) {
     $("devices").replaceChildren(...(devices.length ? devices.map((d) => {
       const li = document.createElement("li");
       const dot = Object.assign(document.createElement("span"), { className: `dot ${d.online ? "on" : ""}` });
-      const name = Object.assign(document.createElement("span"), { textContent: d.model });
+      const name = Object.assign(document.createElement("span"), { className: "name", textContent: d.model });
       const state = Object.assign(document.createElement("small"), { textContent: d.online ? "connected" : "offline" });
       li.append(dot, name, state);
       if (accounts) {
-        const btn = Object.assign(document.createElement("button"), { className: "revoke", textContent: "Revoke" });
+        const btn = Object.assign(document.createElement("button"), { className: "btn btn-sm btn-danger", type: "button", textContent: "Remove" });
+        btn.setAttribute("aria-label", `Remove ${d.model} from your account`);
         btn.onclick = () => revoke(d);
         li.append(btn);
       }

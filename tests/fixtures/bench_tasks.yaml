@@ -1,0 +1,9 @@
+# Sample task list for `openmob bench` (docs/benchmarks.md). Keep tasks harmless and repeatable:
+# each one runs twice (Jev on, then off), starting from the home screen.
+tasks:
+  - name: wifi settings
+    instruction: Open Settings and show the Wi-Fi page
+    max_steps: 8
+  - name: youtube
+    instruction: Open YouTube
+    max_steps: 5

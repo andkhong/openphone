@@ -7,3 +7,6 @@ config.yaml
 *.png
 deploy/OpenMob.apk
 !deploy/config.yaml
+
+# Claude Code agents work in private checkouts here
+.claude/worktrees/
