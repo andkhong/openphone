@@ -114,12 +114,10 @@ def test_follow_up_ends_on_an_app_switch_and_after_three_minutes(tmp_path, monke
     a, driver, io, perms, _ = agent(steps, tmp_path, IO(["yes", "no"]), package=SHOP)
     a.run("buy the cable", permissions=perms)
     assert len(io.questions) == 2
-    clock = [1000.0]
-    monkeypatch.setattr("openmob.agent.loop.time.monotonic", lambda: clock[0])
+    # Past the follow-up window (shrunk here from 3 minutes so the test needn't wait): it asks again.
+    monkeypatch.setattr("openmob.agent.loop.FOLLOWUP_SECONDS", 0.2)
     a, driver, io, perms, _ = agent([tap("Buy now"), [tool_use("wait", "w", seconds=0.5)], tap("Place order", "b")],
                                     tmp_path, IO(["yes", "no"]), package=SHOP)
-    orig = a._sleep
-    a._sleep = lambda s, c: (clock.__setitem__(0, clock[0] + 200), orig(0, c))
     a.run("buy the cable", permissions=perms)
     assert len(io.questions) == 2
 
