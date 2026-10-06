@@ -206,5 +206,12 @@ class GatekeeperTest {
         assertEquals(0L, gk.settleMs(Admission("allow", method = "type_text"), 0))
         assertEquals(0L, gk.settleMs(Admission("refuse", method = "tap"), 0))
         assertTrue(Gatekeeper.SETTLE_MS > 100) // the service's notificationTimeout (accessibility_service_config.xml)
+        // An app is starting (nothing listed has focus): keep waiting however quiet the list looks...
+        assertEquals(Gatekeeper.SETTLE_MS, gk.settleMs(tap, 5_000, anyFocused = false))
+        assertEquals(0L, gk.settleMs(Admission("allow", method = "key"), 5_000, anyFocused = false))
+        // ...and refuse if it's still starting at the deadline.
+        val out = gk.unsettled(tap)
+        assertFalse(out.allowed)
+        assertEquals("gate_screen_unstable", out.code)
     }
 }

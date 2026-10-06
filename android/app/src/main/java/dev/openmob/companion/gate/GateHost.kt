@@ -114,11 +114,14 @@ object GateHost {
         if (adm == null || !adm.allowed) return null
         val g = gk()
         val deadline = SystemClock.uptimeMillis() + QUIET_WAIT_MS
+        var focused = true
         while (SystemClock.uptimeMillis() < deadline) { // a window that just appeared reaches the list first (B7)
-            val wait = g.settleMs(adm, SystemClock.uptimeMillis() - service.lastChangeAt)
+            focused = runCatching { service.windows.any { it.isFocused } }.getOrDefault(false)
+            val wait = g.settleMs(adm, SystemClock.uptimeMillis() - service.lastChangeAt, focused)
             if (wait <= 0) break
-            SystemClock.sleep(minOf(wait, deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
+            SystemClock.sleep(minOf(wait, 50L, deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
         }
+        if (!focused && adm.method in Gatekeeper.GESTURES) return g.unsettled(adm)
         while (true) {
             val out = g.reverify(adm, screen(service, adm.method, adm.params))
             if (out.code != "gate_screen_unstable" || SystemClock.uptimeMillis() >= deadline) return out.takeIf { !it.allowed }
@@ -172,7 +175,9 @@ object GateHost {
     private fun grantText(offer: GrantOffer, adm: Admission): Approvals.Always {
         val days = offer.durationMs / 86_400_000.0
         val span = if (days >= 2) "${days.toInt()} days" else "24 hours"
-        val app = offer.binding.substringBefore('>')
+        // The owner reads the app's name ("Example Shop"), not its package (seen as com.example.shop on the emulator).
+        val pkg = offer.binding.substringBefore('>')
+        val app = runCatching { GateScreens.labels(this.app.packageManager, listOf(pkg))[pkg] }.getOrNull() ?: pkg
         val text = "for $span, OpenMob (or a compromised server) could " + when (offer.kind) {
             "send" -> "send any $app message as you without asking"
             "post" -> "post anything on $app as you without asking"

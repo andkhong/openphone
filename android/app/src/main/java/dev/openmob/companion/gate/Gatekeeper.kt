@@ -481,13 +481,21 @@ class Gatekeeper(
 
     // --- reverify: right before the side effect, under the gesture lock (D8) ------------------------
 
-    /** How much longer an admitted gesture waits for the window list to settle before [reverify] (B7): the list the
-     *  gate reads lags the screen by the accessibility event delay, so right after a window change (an app's launch
-     *  screen giving way to its first frame) a tap judged on the old list could land in a window that just appeared,
-     *  such as a blocked app. Waiting until nothing has changed for [SETTLE_MS] lets that window show up in the list
-     *  first. Never longer than the caller's deadline; a screen that never settles is judged as it is. */
-    fun settleMs(adm: Admission, quietMs: Long): Long =
-        if (adm.allowed && adm.method in GESTURES) maxOf(0L, SETTLE_MS - quietMs) else 0L
+    /** How much longer an admitted gesture waits for the window list to settle before [reverify] (B7). The list the
+     *  gate reads lags the screen: an app's launch screen isn't in it at all (the previous app stays listed, and
+     *  nothing has input focus), and the app's own window is listed a moment after it can take touches. So a tap
+     *  judged on that list could land in a window that just appeared, such as a blocked app's. It waits while no
+     *  listed window has focus (an app is starting) and until nothing has changed for [SETTLE_MS]. Never longer
+     *  than the caller's deadline; then [unsettled] refuses if nothing has focus yet. */
+    fun settleMs(adm: Admission, quietMs: Long, anyFocused: Boolean = true): Long = when {
+        !adm.allowed || adm.method !in GESTURES -> 0L
+        !anyFocused -> SETTLE_MS
+        else -> maxOf(0L, SETTLE_MS - quietMs)
+    }
+
+    /** The refusal for a gesture whose screen never settled: no window had focus by the deadline. */
+    fun unsettled(adm: Admission): Admission = refuse("gate_screen_unstable", "builtin:no_focus",
+        "The screen is changing (an app is opening). Look again.", adm.method, adm.params)
 
     fun reverify(adm: Admission, screen: GScreen): Admission = synchronized(lock) {
         if (!adm.allowed || adm.method !in rules.act) return adm
