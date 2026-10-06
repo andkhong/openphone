@@ -498,8 +498,9 @@
     },
     "screen": "amazon_product",
     "expect": {
-     "decision": "refuse",
-     "code": "gate_prompt_open"
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
     }
    }
   ]

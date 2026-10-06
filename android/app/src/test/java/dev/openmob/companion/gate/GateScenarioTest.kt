@@ -62,6 +62,7 @@ class GateScenarioTest {
                     }
                     "deny" in s -> gk.deny(last)
                     "cancel" in s -> gk.cancel(last)
+                    "shown" in s -> gk.markShown(last)
                     "advance_ms" in s -> { clock.elapsed += s.long("advance_ms"); saved = gk.persist() }
                     "set_wall_ms" in s -> Unit // the engine never reads the wall clock
                     "reboot" in s -> {

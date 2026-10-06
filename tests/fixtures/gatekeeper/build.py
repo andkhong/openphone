@@ -322,7 +322,7 @@ SCENARIOS = [
         {"advance_ms": 61000}, step("tap", "whatsapp_chat", ask("send"), **SEND)], tags=["permits"]),
     sc("a badly signed approval mints nothing", [
         step("tap", "whatsapp_chat", ask("send"), **SEND), {"approve": "last", "sig": "bad", "expect_accepted": False},
-        step("tap", "whatsapp_chat", refuse("gate_prompt_open"), **SEND)], tags=["permits"]),
+        step("tap", "whatsapp_chat", ask("send"), **SEND)], tags=["permits"]),
     sc("an unanswered prompt expires after 2 minutes", [
         step("tap", "whatsapp_chat", ask("send"), **SEND), {"advance_ms": 121000},
         step("tap", "whatsapp_chat", ask("send"), **SEND)], tags=["permits"]),
@@ -764,6 +764,74 @@ SCENARIOS += [
         step("type_text", "compose_webview", ask("fill", rule="risk:card_field"), text="4242")], tags=["hard_deny"]),
 ]
 
+# --- live screens: a prediction market whose odds tick every second (real-device report, Kalshi) ------------
+KALSHI_PKG = "com.kalshi.mobile"
+LABELS[KALSHI_PKG] = "Kalshi"
+
+
+def kalshi_market(dun="42%", jan="58%", volume="$1.2M"):
+    return screen(app(KALSHI_PKG, [
+        node(text="Jane Smith vs Dun Lee", bounds=(40, 150, 1040, 230)),
+        node(text=f"Volume {volume}", bounds=(40, 250, 600, 300)),
+        node(text="Live · Set 2", bounds=(40, 320, 600, 370)),
+        button(f"DUN · {dun}", "", (40, 1200, 520, 1320)),
+        button(f"JAN · {jan}", "", (560, 1200, 1040, 1320))]), labels=LABELS, quiet_ms=40)
+
+
+def kalshi_ticket(cost="$5.00", payout="$11.90", odds="42%"):
+    return screen(app(KALSHI_PKG, [
+        node(text="Buy Yes · DUN", bounds=(40, 150, 1040, 230)),
+        node(text=f"Chance {odds}", bounds=(40, 250, 1040, 300)),
+        node(text=f"Cost {cost}", bounds=(40, 600, 1040, 660)),
+        node(text=f"Payout {payout}", bounds=(40, 680, 1040, 740)),
+        button("Submit", "submit_order", (40, 1600, 1040, 1720)),
+        node(desc="Swipe to buy", id="swipe_buy", cls="android.widget.SeekBar", bounds=(40, 1800, 1040, 1900),
+             clickable=True)]), labels=LABELS)
+
+
+SCREENS.update({
+    "kalshi_market": kalshi_market(),
+    "kalshi_market_tick": kalshi_market(dun="47%", jan="53%", volume="$1.3M"),
+    "kalshi_ticket": kalshi_ticket(),
+    "kalshi_ticket_odds": kalshi_ticket(odds="44%"),
+    "kalshi_ticket_repriced": kalshi_ticket(cost="$5.40", payout="$12.80"),
+    "ticker_board": screen(app("com.example.trading", [
+        node(text=t, bounds=(40, 200 + 90 * i, 1040, 280 + 90 * i))
+        for i, t in enumerate(["AAPL 189.20 +1.2%", "TSLA 242.10 −0.8%", "NVDA 121.50 +2.4%", "YES 63¢",
+                               "NO 37¢", "BTC $67,120"])] + [button("AAPL", "", (40, 900, 1040, 1000))]),
+        labels=LABELS),
+})
+DUN = dict(x=280, y=1260)
+SUBMIT = dict(x=540, y=1660)
+SCENARIOS += [
+    sc("choosing a side on a live market doesn't ask, and odds ticking don't block it", [
+        step("tap", "kalshi_market", allow(), **DUN),
+        step("tap", "kalshi_market", allow(), reverify="kalshi_market_tick", **DUN)], tags=["risk", "toctou"]),
+    sc("the commit asks; a tick elsewhere keeps the permit, a changed cost voids it", [
+        step("tap", "kalshi_ticket", ask("pay", rule="risk:words:submit"), **SUBMIT),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "kalshi_ticket", allow(), reverify="kalshi_ticket_odds", **SUBMIT),
+        step("tap", "kalshi_ticket", ask("pay"), **SUBMIT),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "kalshi_ticket", refuse("gate_screen_changed", rule="builtin:price_changed"),
+             reverify="kalshi_ticket_repriced", **SUBMIT),
+        step("tap", "kalshi_ticket", ask("pay"), **SUBMIT)], tags=["permits", "toctou"]),
+    sc("swipe to buy asks", [
+        step("swipe", "kalshi_ticket", ask("pay"), x1=60, y1=1850, x2=1000, y2=1850, duration_ms=400)], tags=["risk"]),
+    sc("ticker labels are not an unrecognized language", [
+        step("tap", "ticker_board", allow(), x=540, y=950)], tags=["risk"]),
+    sc("only prompts the owner saw count toward the limit; the same action reuses its prompt", [
+        *[s for _ in range(8) for s in (step("tap", "whatsapp_chat", ask("send"), **SEND), {"cancel": "last"})],
+        *[step("tap", "loading_unknown", refuse("gate_screen_unstable"), x=540, y=900) for _ in range(5)],
+        step("tap", "whatsapp_chat", ask("send"), **SEND),
+        step("tap", "whatsapp_chat", ask("send"), **SEND),  # asked again: the same prompt, not a new one
+        {"shown": "last"}, {"cancel": "last"},
+        *[s for _ in range(5) for s in (step("tap", "whatsapp_chat", ask("send"), **SEND), {"shown": "last"},
+                                        {"cancel": "last"})],
+        step("tap", "whatsapp_chat", refuse("gate_rate_limited", rule="builtin:prompt_rate"), **SEND)],
+       tags=["limits"], keep_open=True),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap
@@ -846,7 +914,7 @@ ADVERSARIAL = [
     sc("forge an approval for a different action", [
         step("tap", "amazon_product", ask("pay"), **BUY),
         {"approve": "last", "sig": "valid", "binding": "other", "expect_accepted": False},
-        step("tap", "amazon_product", refuse("gate_prompt_open"), **BUY)]),
+        step("tap", "amazon_product", ask("pay"), **BUY)]),
     sc("claim never without a signature", [step("tap", "amazon_product", ask("pay"), mode="never", **BUY)]),
     sc("claim trusted without a signature", [step("tap", "whatsapp_chat", ask("send"), mode="trusted", **SEND)]),
     sc("claim allow_money without a signature", [

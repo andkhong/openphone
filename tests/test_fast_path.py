@@ -261,6 +261,20 @@ def test_the_same_element_that_settled_somewhere_else_is_tapped_there(tmp_path):
     assert taps == [("tap", *display.center)] and not steps[0]["is_error"]
 
 
+def test_a_live_label_whose_numbers_tick_is_the_same_target(tmp_path):
+    # A prediction market's odds change every second: "DUN · 42%" re-read as "DUN · 47%" is the same button.
+    market = [el(0, "Jane Smith vs Dun Lee"), el(1, "DUN · 42%"), el(2, "JAN · 58%")]
+    ticked = [el(0, "Jane Smith vs Dun Lee"), el(1, "DUN · 47%"), el(2, "JAN · 53%")]
+    driver = Shifty(market, ticked)
+    agent, _, steps = make([[tool_use("tap_element", "a", index=1, target="DUN")], DONE], driver, None, tmp_path)
+    agent.run("bet on Dun")
+    assert [a for a in driver.actions if a[0] == "tap"] == [("tap", *market[1].center)]
+    assert not steps[0]["is_error"]
+    from openmob.agent import gate
+    assert gate.volatile("DUN · 42%") == gate.volatile("DUN · 47%") != gate.volatile("JAN · 42%")
+    assert gate.volatile("Cost $5.00 at 10:42") == "Cost $# at #"
+
+
 def test_a_moved_target_is_refused_when_gone_ambiguous_moving_or_covered(tmp_path):
     cases = {
         "gone": ([el(0, "Network & internet"), el(1, "Sound")],) * 2,

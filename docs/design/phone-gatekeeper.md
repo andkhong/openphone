@@ -600,6 +600,14 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   11–13. A tap where no window is under the point is refused (`builtin:no_window`), and every act is refused
   with `gate_unavailable` while the accessibility service is unbound. Not done: checking the screenshot for a
   dialog (the detection uses windows and events only).
+- **Live screens (real-device report, Kalshi):** target identity and fingerprints blank numbers; D5 stillness
+  is target-scoped (the target's normalized fingerprint unchanged over 150 ms) and the launch-race wait counts
+  window changes only; transient unreadable windows are re-read for up to 0.6 s before refusing; money-commit
+  permits bind the currency amounts (button plus total/cost/price/amount/payout lines) and any change re-asks;
+  only prompts actually shown count toward the 6-per-10-minutes limit, and re-asking the same action reuses
+  the open prompt; the language rule uses script and lower-case words, not dictionary misses on tickers;
+  "Submit" is a terminal money word in money apps (now including prediction markets and trading apps). A
+  Compose text field missing from the walked tree is resolved from findFocus.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

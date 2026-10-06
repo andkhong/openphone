@@ -47,6 +47,16 @@ object GateText {
 
     fun anyPhrase(toks: List<String>, phrases: List<String>): String? = phrases.firstOrNull { hasPhrase(toks, it) }
 
+    private val VOLATILE = Regex("\\d+(?:[.,:]\\d+)*")
+    private val AMOUNT = Regex("[$€£¥₹]\\s?\\d+(?:[.,]\\d+)*|\\d+(?:[.,]\\d+)*\\s?[¢€$£]")
+    private val SPACE = Regex("\\s+")
+    val MONEY_LABELS = listOf("total", "cost", "price", "amount", "subtotal", "you pay", "pay", "order total", "payout")
+
+    /** A label with its volatile numbers (odds, prices, counts, times) blanked: the same element across reads. */
+    fun vol(text: String?): String = VOLATILE.replace(text ?: "", "#")
+
+    fun amounts(text: String?): List<String> = AMOUNT.findAll(text ?: "").map { SPACE.replace(it.value, "") }.toList()
+
     fun sha256(text: String): String = sha256(text.toByteArray(Charsets.UTF_8))
 
     fun sha256(bytes: ByteArray): String =
@@ -128,7 +138,7 @@ class GNode(
 ) {
     fun contains(x: Double, y: Double) = bounds[0] <= x && x < bounds[2] && bounds[1] <= y && y < bounds[3]
     fun fp(withBounds: Boolean): String {
-        val parts = mutableListOf(id, text, desc, cls)
+        val parts = mutableListOf(id, GateText.vol(text), GateText.vol(desc), cls)
         if (withBounds) parts.add(bounds.joinToString(","))
         return parts.joinToString("/")
     }
@@ -175,6 +185,10 @@ class GScreen(
     val eventPackage: String = "", val eventText: String = "",
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
+
+    /** The same screen with [ms] of quiet: how long the target itself has been still (GateHost.reverify). */
+    fun withQuiet(ms: Long) = GScreen(windows, keyguardLocked, keyguardSecure, ms, activity, autofillService, resolve, labels,
+        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText)
 
     companion object {
         fun of(d: Map<String, Any?>): GScreen {
@@ -305,12 +319,38 @@ object GateScreen {
         return false
     }
 
+    private val NOT_LETTERS = Regex("[^\\p{L}]+")
+
+    /** Is the screen in a language the shipped lexicon covers? By script (mostly non-Latin letters: no), then by
+     *  real words only: lower-case alphabetic words of 4+ letters. Ticker labels ("DUN · 42%", "YES 63¢"),
+     *  abbreviations and names don't count. */
     fun languageCovered(rules: GateRules, screen: GScreen): Boolean {
-        val words = GateText.tokens(screenText(screen, setOf("application", "system")))
-            .filter { it.length >= 2 && !it.all(Char::isDigit) }
+        val parts = mutableListOf<String>()
+        for (w in screen.windows) if (w.type == "application" || w.type == "system") for (n in walk(w.root)) parts.add("${n.text} ${n.desc}")
+        val text = parts.joinToString(" ")
+        val letters = GateText.norm(text).filter { it.isLetter() }
+        if (letters.length >= 20 && letters.count { it !in 'a'..'z' }.toDouble() / letters.length >= 0.4) return false
+        val words = NOT_LETTERS.split(text).filter { it.length >= 4 && it.all(Char::isLetter) && it == it.lowercase() }
+            .map { GateText.norm(it) }
         if (words.size < rules.minTokens) return true
         val known = words.count { it in rules.lexicon }
         return known.toDouble() / words.size >= rules.threshold
+    }
+
+    /** The currency amounts a money commit is about: in the target's own label, and on the window's total, cost,
+     *  price or amount lines. A permit for a money commit binds them: any change asks again. */
+    fun moneyAmounts(window: GWindow, target: GTarget?): List<String> {
+        val texts = mutableListOf<String>()
+        if (target != null) {
+            for (n in listOfNotNull(target.pressed) + walk(target.pressed, limit = 40).drop(1) + listOfNotNull(target.hit)) {
+                texts.add(n.text); texts.add(n.desc)
+            }
+        }
+        for (n in walk(window.root)) {
+            val line = "${n.text} ${n.desc}"
+            if (GateText.amounts(line).isNotEmpty() && GateText.anyPhrase(GateText.tokens(line), GateText.MONEY_LABELS) != null) texts.add(line)
+        }
+        return texts.flatMap { GateText.amounts(it) }.toSortedSet().toList()
     }
 
     /** What a Settings page calls itself: its window title, and headers near the top that aren't rows. */

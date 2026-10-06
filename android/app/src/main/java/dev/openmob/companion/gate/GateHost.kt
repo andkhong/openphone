@@ -123,10 +123,21 @@ object GateHost {
                 GateScreens.windowPackages(service) else GScreen(emptyList())
             return g.admit(method, params, screen)
         }
-        val adm = g.admit(method, params, screen(service, method, params))
+        var adm = g.admit(method, params, screen(service, method, params))
+        // A window that is briefly unreadable or missing from the list (a live screen redrawing): look again for a
+        // moment before refusing. Refusals have no side effects, so a retry costs nothing but time.
+        val until = SystemClock.uptimeMillis() + TRANSIENT_MS
+        while (adm.code == "gate_screen_unstable" && adm.rule in TRANSIENT && SystemClock.uptimeMillis() < until) {
+            SystemClock.sleep(100)
+            adm = g.admit(method, params, screen(service, method, params))
+        }
         if (adm.decision == "ask") prompt(service, adm)
         return adm
     }
+
+    private const val STILL_MS = 150L
+    private const val TRANSIENT_MS = 600L
+    private val TRANSIENT = setOf("builtin:unknown_window", "builtin:no_window", "builtin:focus_unread")
 
     /** Right before the side effect (PhoneActions, under the gesture lock). Waits up to a second for a quiet screen
      *  when the action is risky. Returns the refusal, or null to go ahead. */
@@ -137,13 +148,22 @@ object GateHost {
         var focused = true
         while (SystemClock.uptimeMillis() < deadline) { // a window that just appeared reaches the list first (B7)
             focused = runCatching { service.windows.any { it.isFocused } }.getOrDefault(false)
-            val wait = g.settleMs(adm, SystemClock.uptimeMillis() - service.lastChangeAt, focused)
+            // Window changes only: content updating inside a window (live odds, a clock) doesn't hold this up.
+            val wait = g.settleMs(adm, SystemClock.uptimeMillis() - service.lastWindowChangeAt, focused)
             if (wait <= 0) break
             SystemClock.sleep(minOf(wait, 50L, deadline - SystemClock.uptimeMillis()).coerceAtLeast(1))
         }
         if (!focused && adm.method in Gatekeeper.GESTURES) return g.unsettled(adm)
         while (true) {
-            val out = g.reverify(adm, screen(service, adm.method, adm.params))
+            var now = screen(service, adm.method, adm.params)
+            if (adm.strict) {
+                // D5's stillness is the target's: the same element, bounds and window over STILL_MS, numbers blanked.
+                // The rest of the screen may keep changing.
+                SystemClock.sleep(STILL_MS)
+                val later = screen(service, adm.method, adm.params)
+                now = later.withQuiet(if (g.stableKey(adm, now) == g.stableKey(adm, later)) 60_000L else 0L)
+            }
+            val out = g.reverify(adm, now)
             if (out.code != "gate_screen_unstable" || SystemClock.uptimeMillis() >= deadline) return out.takeIf { !it.allowed }
             SystemClock.sleep(50)
         }
@@ -222,6 +242,9 @@ object GateHost {
     }
 
     fun deny(id: String) = gk().deny(id)
+
+    /** The prompt is on the owner's screen (ApprovalActivity): it counts toward the prompt limit now. */
+    fun markShown(id: String) { gate?.markShown(id) }
     fun cancel(id: String) = gk().cancel(id)
 
     private fun onEvent(id: String, state: String) {

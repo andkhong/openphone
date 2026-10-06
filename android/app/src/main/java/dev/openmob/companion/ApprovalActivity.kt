@@ -105,6 +105,8 @@ class ApprovalActivity : Activity() {
         Approvals.get(requestId)?.let { shown = it }
         val request = shown
         val open = Approvals.get(requestId) != null
+        // The owner sees this gate prompt now: only prompts actually shown count toward the prompt limit.
+        if (open && request?.gate == true && !isFinishing) dev.openmob.companion.gate.GateHost.markShown(requestId)
         questionText.text = request?.shownQuestion ?: getString(R.string.approval_gone)
         val kind = request?.kind ?: "action"
         labelText.text = getString(when (kind) {

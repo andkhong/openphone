@@ -16,7 +16,7 @@
   ],
   "installer_packages": ["com.android.packageinstaller", "com.google.android.packageinstaller",
                          "com.samsung.android.packageinstaller", "com.miui.packageinstaller"],
-  "money_app": "(?i)shop|store|amazon|ebay|etsy|walmart|target|aliexpress|temu|shein|bestbuy|ikea|zalando|flipkart|doordash|ubereats|uber|lyft|grubhub|deliveroo|instacart|postmates|swiggy|zomato|bolt|grab|booking|expedia|airbnb|hotels|trivago|kayak|skyscanner|ryanair|airline|pay|wallet|bank|cash|venmo|zelle|revolut|coinbase|binance|checkout|billing|vending",
+  "money_app": "(?i)shop|store|amazon|ebay|etsy|walmart|target|aliexpress|temu|shein|bestbuy|ikea|zalando|flipkart|doordash|ubereats|uber|lyft|grubhub|deliveroo|instacart|postmates|swiggy|zomato|bolt|grab|booking|expedia|airbnb|hotels|trivago|kayak|skyscanner|ryanair|airline|pay|wallet|bank|cash|venmo|zelle|revolut|coinbase|binance|checkout|billing|vending|kalshi|polymarket|robinhood|predict|betting|sportsbook|trading",
   "categories": {
     "messaging": "(?i)messaging|\\.mms|whatsapp|telegram|signal|messenger|\\.orca|discord|slack|viber|\\.line|kakao|wechat|tencent\\.mm|skype|teams|\\.sms",
     "email": "(?i)\\.gm$|email|mail|outlook|protonmail|fastmail",
@@ -27,7 +27,7 @@
   "words": {
     "flow_start": ["buy", "buy now", "buy it now", "subscribe", "book", "book now", "top up", "recharge", "donate",
                    "transfer", "send money", "purchase", "rent", "pre order", "preorder"],
-    "terminal": ["place order", "place your order", "confirm purchase", "complete purchase", "pay", "pay now",
+    "terminal": ["submit", "place order", "place your order", "confirm purchase", "complete purchase", "pay", "pay now",
                  "confirm", "confirm order", "confirm payment", "submit order", "complete order", "confirm and pay",
                  "confirm booking"],
     "send": ["send", "send message", "reply all"],

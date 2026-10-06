@@ -75,6 +75,20 @@ def any_phrase(toks: list[str], phrases: list[str]) -> str | None:
     return None
 
 
+VOLATILE = re.compile(r"\d+(?:[.,:]\d+)*")
+AMOUNT = re.compile(r"[$€£¥₹]\s?\d+(?:[.,]\d+)*|\d+(?:[.,]\d+)*\s?[¢€$£]")
+MONEY_LABELS = ["total", "cost", "price", "amount", "subtotal", "you pay", "pay", "order total", "payout"]
+
+
+def vol(text: str | None) -> str:
+    """A label with its volatile numbers (odds, prices, counts, times) blanked: the same element across reads."""
+    return VOLATILE.sub("#", text or "")
+
+
+def amounts(text: str | None) -> list[str]:
+    return [re.sub(r"\s+", "", a) for a in AMOUNT.findall(text or "")]
+
+
 def sha256(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -148,7 +162,7 @@ class Node:
         return l <= x < r and t <= y < b
 
     def fp(self, bounds: bool) -> str:
-        parts = [self.id, self.text, self.desc, self.cls]
+        parts = [self.id, vol(self.text), vol(self.desc), self.cls]
         if bounds:
             parts.append(",".join(str(v) for v in self.bounds))
         return "/".join(parts)
@@ -350,11 +364,34 @@ def payment_context(rules: Rules, screen: Screen) -> bool:
 
 
 def language_covered(rules: Rules, screen: Screen) -> bool:
-    words = [t for t in screen_tokens(screen) if len(t) >= 2 and not t.isdigit()]
+    """Is the screen in a language the shipped lexicon covers? Judged by script (mostly non-Latin letters: no),
+    then by real words only: lower-case alphabetic words of 4+ letters. Ticker labels ("DUN · 42%", "YES 63¢"),
+    abbreviations and names don't count, so they never make a screen "uncovered"."""
+    text = " ".join(f"{n.text} {n.desc}" for w in screen.windows if w.type in ("application", "system")
+                    for n in walk(w.root, []))
+    letters = [c for c in norm(text) if c.isalpha()]
+    if len(letters) >= 20 and sum(1 for c in letters if not ("a" <= c <= "z")) / len(letters) >= 0.4:
+        return False
+    words = [norm(t) for t in re.split(r"[\W_\d]+", text) if len(t) >= 4 and t.isalpha() and t == t.lower()]
     if len(words) < rules.d["language"]["min_tokens"]:
         return True
     known = sum(1 for t in words if t in rules.lexicon)
     return known / len(words) >= rules.d["language"]["threshold"]
+
+
+def money_amounts(window: Window, target) -> list[str]:
+    """The currency amounts a money commit is about: in the target's own label, and on the window's total, cost,
+    price or amount lines. A permit for a money commit binds them: any change asks again."""
+    texts = []
+    if target is not None:
+        for n in ([target.pressed] if target.pressed is not None else []) + walk(target.pressed, [], 40)[1:] \
+                + ([target.hit] if target.hit is not None else []):
+            texts += [n.text, n.desc]
+    for n in walk(window.root, []):
+        line = f"{n.text} {n.desc}"
+        if amounts(line) and any_phrase(tokens(line), MONEY_LABELS):
+            texts.append(line)
+    return sorted(set(a for t in texts for a in amounts(t)))
 
 
 def page_title(window: Window) -> list[str]:
@@ -423,6 +460,7 @@ class Judgement:
     payment: bool = False
     app: bool = False  # the target is an app window (an app switch ends a purchase flow)
     label: list = field(default_factory=list)  # the target's words (a cart or checkout word ends a purchase flow)
+    money_fp: str = ""  # strict_fp plus the currency amounts a money commit is about (any change voids a permit)
 
 
 @dataclass
@@ -442,6 +480,7 @@ class Admission:
     method: str = ""
     params: dict = field(default_factory=dict)
     money: str | None = None
+    plain: str = ""  # the binding with every number blanked (tells a price change from a moved target)
 
 
 @dataclass
@@ -462,6 +501,7 @@ class Pending:
     package: str
     task: str
     grant_offer: dict | None
+    counted: bool = False  # shown to the owner (only shown prompts count toward the prompt limit)
 
 
 class TestVerifier:
@@ -681,9 +721,6 @@ class Gatekeeper:
             return Admission("allow", method=method, params=params)
         if method not in self.r.act:
             return self._refuse("gate_unknown_method", "builtin:methods", f"Unknown method {method}.", method, params)
-        if self.pending:
-            return self._refuse("gate_prompt_open", "builtin:prompt_open",
-                                "Waiting for the owner to answer a prompt on the phone.", method, params)
         if not screen.available:
             return self._refuse("gate_unavailable", "builtin:no_accessibility",
                                 "OpenMob's accessibility service is off, so the phone can't check this. Turn it on.",
@@ -699,9 +736,22 @@ class Gatekeeper:
         if self.suspended:
             return self._refuse("gate_rate_limited", "builtin:suspended",
                                 "Paused on the phone after repeated denials. The owner can resume.", method, params)
+        money_fp = j.money_fp if (j.risk is not None and j.risk.money) else j.strict_fp
+        bind = binding(method, params, money_fp)
+        plain = binding(method, params, j.strict_fp)
+        if self.pending:
+            same = next((p for p in self.pending.values() if p.binding == bind), None)
+            if same is not None:  # the same action asked again: the prompt already showing, not a new one
+                return Admission("ask", code="gate_needs_approval", rule=f"risk:{same.risk.reason}",
+                                 kind=same.risk.kind, approval_id=same.approval_id, wording=same.risk.wording,
+                                 grant_offer=same.grant_offer, binding=bind, money=same.risk.money, plain=plain,
+                                 message="Waiting for the owner's approval on the phone.", method=method,
+                                 params=params, package=j.package)
+            return self._refuse("gate_prompt_open", "builtin:prompt_open",
+                                "Waiting for the owner to answer a prompt on the phone.", method, params)
         if not self._take_token(now):
-            return self._refuse("gate_rate_limited", "builtin:act_rate", "Too many actions. Slow down.", method, params)
-        bind = binding(method, params, j.strict_fp)
+            return self._refuse("gate_rate_limited", "builtin:act_rate", "Too many actions: wait a second.",
+                                method, params)
         if method != "wake_unlock" and bind not in self.permits:
             # Any other action voids every outstanding approval: what the owner saw may no longer be true (a
             # quantity "+", another item scrolled into place). The honest server re-sends at once.
@@ -717,7 +767,7 @@ class Gatekeeper:
             risk = Risk("other", "server_hint", wording=self._wording(method, params, j, screen))
         if mode == "ask" and j.changing and risk is None:
             risk = Risk("step", "mode:ask", wording=self._wording(method, params, j, screen))
-        base = dict(method=method, params=params, package=j.package)
+        base = dict(method=method, params=params, package=j.package, plain=plain)
         if risk is None:
             return Admission("allow", strict=j.payment, binding=bind, **base)
         if mode == "never":
@@ -728,7 +778,7 @@ class Gatekeeper:
                 return self._refuse("gate_denied", f"never:{risk.reason}",
                                     "Nobody can be asked while agents act without asking, so this is refused.",
                                     method, params, j.package)
-            return Admission("allow", strict=True, binding=bind, kind=risk.kind, **base)
+            return Admission("allow", strict=True, binding=bind, kind=risk.kind, money=risk.money, **base)
         if bind in self.permits:
             return Admission("allow", strict=True, binding=bind, permit=bind, kind=risk.kind, money=risk.money, **base)
         if mode != "ask" and (why := self._covered(risk, j.package, params)):
@@ -736,9 +786,10 @@ class Gatekeeper:
         window = self.r.limits["ask_window_ms"]
         self.asks = [t for t in self.asks if now - t < window]
         if len(self.asks) >= self.r.limits["asks_per_window"]:
-            return self._refuse("gate_rate_limited", "builtin:prompt_rate", "Too many approval prompts. Try later.",
+            wait = max(1, -(-(self.asks[0] + window - now) // 60000))
+            return self._refuse("gate_rate_limited", "builtin:prompt_rate",
+                                f"Too many approval prompts on the phone: try again in {wait} min.",
                                 method, params, j.package)
-        self.asks.append(now)
         aid = "gk" + uuid.uuid4().hex  # gate prompts are "gk…"; the legacy approval path refuses such ids
         offer = self._offer(risk, mode)
         self.pending[aid] = Pending(aid, bind, now, risk, j.package, str(params.get("task") or ""), offer)
@@ -851,6 +902,7 @@ class Gatekeeper:
         p = self.pending.get(approval_id)
         if p is None:
             return False
+        self.mark_shown(approval_id)  # answered, so it was seen
         plain = f"gk1|{self.device}|{approval_id}|{p.binding}"
         grant = None
         if message != plain:
@@ -869,6 +921,13 @@ class Gatekeeper:
         self.events.append({"state": "approved", "approval_id": approval_id})
         return True
 
+    def mark_shown(self, approval_id: str) -> None:
+        """The prompt is on the owner's screen: now it counts toward the prompt limit."""
+        p = self.pending.get(approval_id)
+        if p is not None and not p.counted:
+            p.counted = True
+            self.asks.append(self.now())
+
     def cancel(self, approval_id: str) -> bool:
         """The prompt ended unanswered (dismissed, or the connection closed): no permit, and not a denial."""
         if self.pending.pop(approval_id, None) is None:
@@ -878,6 +937,7 @@ class Gatekeeper:
 
     def deny(self, approval_id: str) -> bool:
         now = self.now()
+        self.mark_shown(approval_id)
         if self.pending.pop(approval_id, None) is None:
             return False
         self.denials = [t for t in self.denials if now - t < self.r.limits["denial_window_ms"]] + [now]
@@ -896,8 +956,12 @@ class Gatekeeper:
             self.permits.pop(adm.permit or "", None)
             return self._refuse(*j.refuse, adm.method, adm.params, j.package)
         if adm.strict:
-            if binding(adm.method, adm.params, j.strict_fp) != adm.binding:
+            if binding(adm.method, adm.params, j.money_fp if adm.money else j.strict_fp) != adm.binding:
                 self.permits.pop(adm.permit or "", None)
+                if adm.money and binding(adm.method, adm.params, j.strict_fp) == adm.plain:
+                    return self._refuse("gate_screen_changed", "builtin:price_changed",
+                                        "The amount or price changed since it was approved. Look again.",
+                                        adm.method, adm.params, j.package)
                 return self._refuse("gate_screen_changed", "builtin:toctou",
                                     "The screen changed before the action ran. Look again.", adm.method, adm.params,
                                     j.package)
@@ -1122,8 +1186,8 @@ class Gatekeeper:
         terminal = any_phrase(words, r.w["terminal"]) or next(
             (w for w in id_words if w in ("pay", "place order", "placeorder", "confirm")), None)
         if terminal:
-            if terminal == "confirm" and not money_ctx:
-                return Risk("other", "words:confirm")
+            if terminal in ("confirm", "submit") and not money_ctx:
+                return Risk("other", f"words:{terminal}")
             return Risk("pay", f"words:{terminal}", money="terminal", grant=package)
         for kind in ("send", "post", "delete"):
             w = any_phrase(words, r.w[kind])
@@ -1147,6 +1211,7 @@ class Gatekeeper:
         w = t.window
         j = Judgement(package=w.package, fp=t.fp(False), strict_fp=t.fp(True), changing=True,
                       app=self._app_window(w))
+        j.money_fp = j.strict_fp + "|$" + ",".join(money_amounts(w, t))
         if refusal := self._surface_refusal(w, t):
             j.refuse = refusal
             return j
@@ -1237,6 +1302,8 @@ class Gatekeeper:
         j = Judgement(package=pkg, changing=False,
                       fp="#".join(t.fp(False) if t else "" for t in (start, end)),
                       strict_fp="#".join(t.fp(True) if t else "" for t in (start, end)),
+                      money_fp="#".join(t.fp(True) + "|$" + ",".join(money_amounts(t.window, t)) if t else ""
+                                        for t in (start, end)),
                       app=bool(start and self._app_window(start.window)))
         for t in (start, end):
             if t is None:
@@ -1285,6 +1352,7 @@ class Gatekeeper:
         w, node, path = found
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}/{int(node.password)}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)), changing=True,
+                      money_fp=fp + "/" + ",".join(map(str, node.bounds)) + "|$" + ",".join(money_amounts(w, None)),
                       app=self._app_window(w))
         if refusal := self._surface_refusal(w, None):
             j.refuse = refusal
@@ -1316,6 +1384,7 @@ class Gatekeeper:
         w, node, path = found
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)),
+                      money_fp=fp + "/" + ",".join(map(str, node.bounds)) + "|$" + ",".join(money_amounts(w, None)),
                       changing=name == "ENTER", app=self._app_window(w))
         if refusal := self._surface_refusal(w, None):
             j.refuse = refusal
@@ -1436,6 +1505,9 @@ def run_step(gk: Gatekeeper, s: dict, screens: dict, state: dict) -> list[str]:
         return []
     if "cancel" in s:
         gk.cancel(state.get("last", ""))
+        return []
+    if "shown" in s:
+        gk.mark_shown(state.get("last", ""))
         return []
     if "advance_ms" in s:
         gk.clock.elapsed += int(s["advance_ms"])

@@ -148,6 +148,22 @@ def gen_call(rng, screen):
     return {"method": kind, "params": params}
 
 
+def tick(screen):
+    """The same screen a moment later: every digit in every label moved on by one."""
+    def walk(n):
+        out = dict(n)
+        for k in ("text", "desc"):
+            if out.get(k):
+                out[k] = "".join(str((int(c) + 1) % 10) if c.isdigit() else c for c in out[k])
+        out["children"] = [walk(c) for c in n.get("children", [])]
+        return out
+    copy = json.loads(json.dumps(screen))
+    for w in copy["windows"]:
+        if w.get("root"):
+            w["root"] = walk(w["root"])
+    return copy
+
+
 def build(n=400, seed=7):
     rng = random.Random(seed)
     rules = Rules.load()
@@ -167,7 +183,11 @@ def build(n=400, seed=7):
         if any(w["id"] == 9 for w in screens[name]["windows"]):  # first the app itself (the task's app)
             steps.append({"call": {"method": "tap", "params": {"x": 540, "y": 200}}, "screen": name, "expect": {}})
         for _ in range(rng.choice([1, 2, 3])):
-            steps.append({"call": gen_call(rng, screens[name]), "screen": name, "expect": {}})
+            s = {"call": gen_call(rng, screens[name]), "screen": name, "expect": {}}
+            if rng.random() < 0.3:  # the screen ticks between the check and the gesture (odds, prices, counts)
+                screens[name + "_tick"] = tick(screens[name])
+                s["reverify_screen"] = name + "_tick"
+            steps.append(s)
         case = {"name": name, "tags": ["fuzz"], "steps": steps}
         # The reference engine's answers become the expectations.
         original = gatekeeper_ref.check

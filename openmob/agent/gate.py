@@ -167,6 +167,15 @@ SAFE_SCHEMES = {"http", "https", "mailto", "tel", "geo", "sms", "smsto", "market
 DANGEROUS_SCHEMES = ("javascript", "vbscript", "intent", "file", "content", "data", "android-app", "jar")
 
 
+VOLATILE = re.compile(r"\d+(?:[.,:]\d+)*")
+
+
+def volatile(text: str | None) -> str:
+    """A label with its volatile numbers blanked (odds, prices, counts, times): the same element across reads of a
+    live screen. The phone's gatekeeper blanks numbers the same way for its target fingerprints."""
+    return VOLATILE.sub("#", text or "")
+
+
 def readable_id(resource_id: str) -> str:
     """A resource id as words: "buy_now_button" -> "buy now button", "sendButton" -> "send Button"."""
     rid = (resource_id or "").rsplit("/", 1)[-1]

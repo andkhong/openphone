@@ -55,7 +55,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -254,7 +255,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "amazon_checkout": {
@@ -366,7 +368,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "amazon_checkout_card": {
@@ -467,7 +470,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "amazon_autofill": {
@@ -583,7 +587,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "slide_to_pay": {
@@ -655,7 +660,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "chase": {
@@ -714,7 +720,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "login_form": {
@@ -803,7 +810,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "otp_form": {
@@ -864,7 +872,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "chrome_url_js": {
@@ -924,7 +933,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "chrome_url_bank": {
@@ -984,7 +994,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1050,7 +1061,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "web_checkout_enter": {
@@ -1165,7 +1177,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "whatsapp_chat": {
@@ -1253,7 +1266,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "gmail_list": {
@@ -1353,7 +1367,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_main": {
@@ -1608,7 +1623,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_internet": {
@@ -1767,7 +1783,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_security": {
@@ -1910,7 +1927,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_dev": {
@@ -2013,7 +2031,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_keyboards": {
@@ -2116,7 +2135,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_datetime": {
@@ -2275,7 +2295,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_bluetooth": {
@@ -2418,7 +2439,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_system": {
@@ -2549,7 +2571,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_app_info_amazon": {
@@ -2748,7 +2771,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_app_info_chase": {
@@ -2891,7 +2915,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "samsung_accessibility": {
@@ -2993,7 +3018,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "openmob_app": {
@@ -3052,7 +3078,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "keyguard_secure": {
@@ -3249,7 +3276,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "share_sheet": {
@@ -3348,7 +3376,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "german_shop": {
@@ -3460,7 +3489,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "permission_dialog_session": {
@@ -3586,7 +3616,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "permission_dialog_other": {
@@ -3698,7 +3729,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "whatsapp_chat_busy": {
@@ -3786,7 +3818,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   },
   "quiet_ms": 40
  },
@@ -3844,7 +3877,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "deep_truncated": {
@@ -3917,7 +3951,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "settings_about": {
@@ -4060,7 +4095,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "vpn_consent": {
@@ -4185,7 +4221,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "contacts_app": {
@@ -4257,7 +4294,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4369,7 +4407,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "inapp_webview_autofill": {
@@ -4486,7 +4525,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "native_autofill": {
@@ -4589,7 +4629,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "kalshi_app": {
@@ -4648,7 +4689,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_google": {
@@ -4818,7 +4860,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_approx": {
@@ -4988,7 +5031,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_samsung": {
@@ -5158,7 +5202,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_always_only": {
@@ -5284,7 +5329,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "notifications_kalshi": {
@@ -5410,7 +5456,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "camera_kalshi": {
@@ -5550,7 +5597,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_other_app": {
@@ -5720,7 +5768,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "location_oem_unknown": {
@@ -5832,7 +5881,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "otp_focus_unread": {
@@ -5893,7 +5943,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "focus_unknown_window": {
@@ -5956,7 +6007,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "hidden_permission_dialog": {
@@ -6031,7 +6083,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "hidden_permission_samsung": {
@@ -6119,7 +6172,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "partial_window": {
@@ -6178,7 +6232,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "no_accessibility": {
@@ -6196,7 +6251,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_field": {
@@ -6318,7 +6374,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_password": {
@@ -6440,7 +6497,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_otp": {
@@ -6562,7 +6620,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_blocked": {
@@ -6684,7 +6743,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_unknown_window": {
@@ -6806,7 +6866,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_unlisted_window": {
@@ -6928,7 +6989,8 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  },
  "compose_webview": {
@@ -7036,7 +7098,752 @@
    "com.google.android.contacts": "Contacts",
    "com.example.app": "Example",
    "com.kalshi": "Kalshi",
-   "com.google.android.apps.messaging": "Messages"
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  }
+ },
+ "kalshi_market": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi.mobile",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Jane Smith vs Dun Lee",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Volume $1.2M",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        250,
+        600,
+        300
+       ],
+       "children": []
+      },
+      {
+       "text": "Live · Set 2",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        320,
+        600,
+        370
+       ],
+       "children": []
+      },
+      {
+       "text": "DUN · 42%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1200,
+        520,
+        1320
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "JAN · 58%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        560,
+        1200,
+        1040,
+        1320
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  },
+  "quiet_ms": 40
+ },
+ "kalshi_market_tick": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi.mobile",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Jane Smith vs Dun Lee",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Volume $1.3M",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        250,
+        600,
+        300
+       ],
+       "children": []
+      },
+      {
+       "text": "Live · Set 2",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        320,
+        600,
+        370
+       ],
+       "children": []
+      },
+      {
+       "text": "DUN · 47%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1200,
+        520,
+        1320
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "JAN · 53%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        560,
+        1200,
+        1040,
+        1320
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  },
+  "quiet_ms": 40
+ },
+ "kalshi_ticket": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi.mobile",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Buy Yes · DUN",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Chance 42%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        250,
+        1040,
+        300
+       ],
+       "children": []
+      },
+      {
+       "text": "Cost $5.00",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        660
+       ],
+       "children": []
+      },
+      {
+       "text": "Payout $11.90",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        680,
+        1040,
+        740
+       ],
+       "children": []
+      },
+      {
+       "text": "Submit",
+       "desc": "",
+       "id": "submit_order",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Swipe to buy",
+       "id": "swipe_buy",
+       "cls": "android.widget.SeekBar",
+       "bounds": [
+        40,
+        1800,
+        1040,
+        1900
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  }
+ },
+ "kalshi_ticket_odds": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi.mobile",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Buy Yes · DUN",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Chance 44%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        250,
+        1040,
+        300
+       ],
+       "children": []
+      },
+      {
+       "text": "Cost $5.00",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        660
+       ],
+       "children": []
+      },
+      {
+       "text": "Payout $11.90",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        680,
+        1040,
+        740
+       ],
+       "children": []
+      },
+      {
+       "text": "Submit",
+       "desc": "",
+       "id": "submit_order",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Swipe to buy",
+       "id": "swipe_buy",
+       "cls": "android.widget.SeekBar",
+       "bounds": [
+        40,
+        1800,
+        1040,
+        1900
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  }
+ },
+ "kalshi_ticket_repriced": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi.mobile",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Buy Yes · DUN",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Chance 42%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        250,
+        1040,
+        300
+       ],
+       "children": []
+      },
+      {
+       "text": "Cost $5.40",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        660
+       ],
+       "children": []
+      },
+      {
+       "text": "Payout $12.80",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        680,
+        1040,
+        740
+       ],
+       "children": []
+      },
+      {
+       "text": "Submit",
+       "desc": "",
+       "id": "submit_order",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Swipe to buy",
+       "id": "swipe_buy",
+       "cls": "android.widget.SeekBar",
+       "bounds": [
+        40,
+        1800,
+        1040,
+        1900
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
+  }
+ },
+ "ticker_board": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.trading",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "AAPL 189.20 +1.2%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        200,
+        1040,
+        280
+       ],
+       "children": []
+      },
+      {
+       "text": "TSLA 242.10 −0.8%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        290,
+        1040,
+        370
+       ],
+       "children": []
+      },
+      {
+       "text": "NVDA 121.50 +2.4%",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        380,
+        1040,
+        460
+       ],
+       "children": []
+      },
+      {
+       "text": "YES 63¢",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        470,
+        1040,
+        550
+       ],
+       "children": []
+      },
+      {
+       "text": "NO 37¢",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        560,
+        1040,
+        640
+       ],
+       "children": []
+      },
+      {
+       "text": "BTC $67,120",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        650,
+        1040,
+        730
+       ],
+       "children": []
+      },
+      {
+       "text": "AAPL",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        900,
+        1040,
+        1000
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi"
   }
  }
 }

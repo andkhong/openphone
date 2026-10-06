@@ -150,7 +150,8 @@ def test_prompt_flood_is_capped():
         reply = server.call("tap", x=990, y=2250)
         codes.append(reply["code"])
         if reply.get("approval_id"):
-            phone.gk.cancel(reply["approval_id"])  # the owner ignores it
+            phone.gk.mark_shown(reply["approval_id"])  # the owner sees it…
+            phone.gk.cancel(reply["approval_id"])  # …and ignores it
         phone.gk.clock.elapsed += 5000
     assert codes.count("gate_needs_approval") == 6
     assert codes[6:] == ["gate_rate_limited"] * 6

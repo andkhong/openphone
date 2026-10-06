@@ -660,7 +660,7 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
 | `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
 | `gate_prompt_open` | Another prompt is still open on the phone | Wait for it to be answered |
-| `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts in 10 minutes, or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
+| `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts the owner was shown in 10 minutes (refused calls and prompts never shown don't count, and the same action asked again reuses the open prompt; `error` says how long to wait), or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
 | `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt) | Report to the agent; never retried automatically |
 | `gate_screen_unstable` | The screen didn't settle within a second for a risky action | Report; look again |
 | `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
@@ -736,3 +736,15 @@ per-permission defaults can't be applied automatically: the owner answers the di
 apply as described in docs/safety.md.
 
 A tap where the phone sees no window under the point is refused as `gate_screen_unstable` (`builtin:no_window`).
+
+### 9.6 Live screens
+
+Screens whose numbers change all the time (odds, prices, timers) don't block actions. The phone recognizes "the
+same element" by its id, class, bounds and window with numbers blanked ("DUN · 42%" = "DUN · 47%"); a risky
+action waits for *its target* to hold still for 150 ms, not the whole screen; and the launch-race wait counts
+window changes, not content updates. A money commit is the exception: its permit binds the currency amounts on
+the button and on the window's total, cost, price, amount and payout lines, and any change voids it
+(`gate_screen_changed`, rule `builtin:price_changed`): the owner is asked again. Choosing a side or outcome
+("DUN", "Yes") doesn't ask; the commit ("Submit", "Place order", "Swipe to buy") does. Ticker-style labels
+("YES 63¢", "AAPL +1.2%") never count as an unrecognized language: that rule looks at the script and at
+ordinary lower-case words only.

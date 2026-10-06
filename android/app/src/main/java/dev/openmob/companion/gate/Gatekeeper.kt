@@ -30,6 +30,8 @@ class Judgement(
     var app: Boolean = false,
     /** The target's words (a cart or checkout word ends a purchase flow). */
     var label: List<String> = emptyList(),
+    /** strictFp plus the currency amounts a money commit is about (any change voids a permit). */
+    var moneyFp: String = "",
     /** How a prompt names this action from what the phone sees (used when only the server's hint makes it ask). */
     var wording: String = "",
 )
@@ -44,6 +46,8 @@ class Admission(
     val grantOffer: GrantOffer? = null, val binding: String = "", val strict: Boolean = false,
     val permit: String? = null, val method: String = "", val params: Map<String, Any?> = emptyMap(),
     val money: String? = null,
+    /** The binding with every number blanked: tells a price change from a moved target. */
+    val plain: String = "",
 ) {
     val allowed get() = decision == "allow"
 }
@@ -65,6 +69,8 @@ class Gatekeeper(
     class Pending(val id: String, val binding: String, val created: Long, val risk: Risk, val pkg: String,
                   val task: String, val offer: GrantOffer?, val method: String, val params: Map<String, Any?>) {
         var cropHash = ""
+        /** Shown to the owner: only shown prompts count toward the prompt limit. */
+        var counted = false
     }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
     private class Followup(val pkg: String, val task: String, val expires: Long, var acts: Int = 0)
@@ -311,8 +317,6 @@ class Gatekeeper(
             return Admission("allow", method = method, params = params)
         }
         if (method !in rules.act) return refuse("gate_unknown_method", "builtin:methods", "Unknown method $method.", method, params)
-        if (pending.isNotEmpty()) return refuse("gate_prompt_open", "builtin:prompt_open",
-            "Waiting for the owner to answer a prompt on the phone.", method, params)
         if (!screen.available) return refuse("gate_unavailable", "builtin:no_accessibility",
             "OpenMob's accessibility service is off, so the phone can't check this. Turn it on.", method, params)
         if (method != "wake_unlock" && screen.keyguardLocked && screen.keyguardSecure) {
@@ -325,8 +329,19 @@ class Gatekeeper(
         j.refuse?.let { return refuse(it.first, it.second, it.third, method, params, j.pkg) }
         if (suspended) return refuse("gate_rate_limited", "builtin:suspended",
             "Paused on the phone after repeated denials. The owner can resume.", method, params)
-        if (!takeToken(now)) return refuse("gate_rate_limited", "builtin:act_rate", "Too many actions. Slow down.", method, params)
-        val bind = GateScreen.binding(method, params, j.strictFp)
+        val bind = GateScreen.binding(method, params, if (j.risk?.money != null) j.moneyFp else j.strictFp)
+        val plain = GateScreen.binding(method, params, j.strictFp)
+        if (pending.isNotEmpty()) {
+            // The same action asked again: the prompt already showing, not a new one.
+            pending.values.firstOrNull { it.binding == bind }?.let { p ->
+                return Admission("ask", code = "gate_needs_approval", rule = "risk:${p.risk.reason}", kind = p.risk.kind,
+                    approvalId = p.id, wording = p.risk.wording, grantOffer = p.offer, binding = bind, money = p.risk.money,
+                    plain = plain, message = "Waiting for the owner's approval on the phone.", method = method,
+                    params = params, pkg = j.pkg)
+            }
+            return refuse("gate_prompt_open", "builtin:prompt_open", "Waiting for the owner to answer a prompt on the phone.", method, params)
+        }
+        if (!takeToken(now)) return refuse("gate_rate_limited", "builtin:act_rate", "Too many actions: wait a second.", method, params)
         if (method != "wake_unlock" && bind !in permits) {
             // Any other action voids every outstanding approval: what the owner saw may no longer be true (a
             // quantity "+", another item scrolled into place). The honest server re-sends at once.
@@ -340,30 +355,34 @@ class Gatekeeper(
         val hint = params["hint"]?.toString()?.trim().orEmpty()
         if (risk == null && hint.isNotEmpty() && mode != "never") risk = Risk("other", "server_hint", wording = j.wording.ifEmpty { wording(method, params, j, screen) })
         if (mode == "ask" && j.changing && risk == null) risk = Risk("step", "mode:ask", wording = wording(method, params, j, screen))
-        if (risk == null) return Admission("allow", strict = j.payment, binding = bind, method = method, params = params, pkg = j.pkg)
+        if (risk == null) return Admission("allow", strict = j.payment, binding = bind, method = method, params = params, pkg = j.pkg, plain = plain)
         if (mode == "never") {
             if (risk.money != null && never?.allowMoney != true) return refuse("gate_denied", "never:money",
                 "Purchases are off while agents act without asking.", method, params, j.pkg)
             if (risk.always) return refuse("gate_denied", "never:${risk.reason}",
                 "Nobody can be asked while agents act without asking, so this is refused.", method, params, j.pkg)
-            return Admission("allow", strict = true, binding = bind, kind = risk.kind, method = method, params = params, pkg = j.pkg)
+            return Admission("allow", strict = true, binding = bind, kind = risk.kind, money = risk.money, method = method,
+                params = params, pkg = j.pkg, plain = plain)
         }
         if (bind in permits) return Admission("allow", strict = true, binding = bind, permit = bind, kind = risk.kind,
-            money = risk.money, method = method, params = params, pkg = j.pkg)
+            money = risk.money, method = method, params = params, pkg = j.pkg, plain = plain)
         if (mode != "ask") covered(risk, j.pkg, params)?.let {
             return Admission("allow", strict = true, binding = bind, kind = risk.kind, rule = it, money = risk.money,
-                method = method, params = params, pkg = j.pkg)
+                method = method, params = params, pkg = j.pkg, plain = plain)
         }
-        asks.removeAll { now - it >= lim("ask_window_ms") }
-        if (asks.size >= lim("asks_per_window")) return refuse("gate_rate_limited", "builtin:prompt_rate",
-            "Too many approval prompts. Try later.", method, params, j.pkg)
-        asks.add(now)
+        val window = lim("ask_window_ms")
+        asks.removeAll { now - it >= window }
+        if (asks.size >= lim("asks_per_window")) {
+            val wait = maxOf(1L, (asks[0] + window - now + 59_999) / 60_000)
+            return refuse("gate_rate_limited", "builtin:prompt_rate",
+                "Too many approval prompts on the phone: try again in $wait min.", method, params, j.pkg)
+        }
         val id = "gk" + UUID.randomUUID().toString().replace("-", "") // the legacy approval path refuses gk ids
         val offer = offer(risk, mode)
         pending[id] = Pending(id, bind, now, risk, j.pkg, params["task"]?.toString().orEmpty(), offer, method, params)
         onEvent?.invoke(id, "pending")
         Admission("ask", code = "gate_needs_approval", rule = "risk:${risk.reason}", kind = risk.kind, approvalId = id,
-            wording = risk.wording, grantOffer = offer, binding = bind, money = risk.money,
+            wording = risk.wording, grantOffer = offer, binding = bind, money = risk.money, plain = plain,
             message = "Waiting for the owner's approval on the phone.", method = method, params = params, pkg = j.pkg)
     }
 
@@ -462,6 +481,7 @@ class Gatekeeper(
         val now = now()
         expire(now)
         val p = pending[id] ?: return false
+        markShown(id) // answered, so it was seen
         val plain = approvalMessage(id, false)
         var grant: GrantOffer? = null
         if (message != plain) {
@@ -484,6 +504,12 @@ class Gatekeeper(
         true
     }
 
+    /** The prompt is on the owner's screen: now it counts toward the prompt limit. */
+    fun markShown(id: String) = synchronized(lock) {
+        val p = pending[id] ?: return@synchronized
+        if (!p.counted) { p.counted = true; asks.add(now()) }
+    }
+
     fun cancel(id: String): Boolean = synchronized(lock) {
         if (pending.remove(id) == null) return false
         onEvent?.invoke(id, "expired")
@@ -492,6 +518,7 @@ class Gatekeeper(
 
     fun deny(id: String): Boolean = synchronized(lock) {
         val now = now()
+        markShown(id)
         if (pending.remove(id) == null) return false
         denials.removeAll { now - it >= lim("denial_window_ms") }
         denials.add(now)
@@ -514,6 +541,13 @@ class Gatekeeper(
         else -> maxOf(0L, SETTLE_MS - quietMs)
     }
 
+    /** What must hold still for a risky action: the target's identity, bounds and window, numbers blanked (a
+     *  live screen's odds or prices ticking elsewhere, or in its label, don't count). */
+    fun stableKey(adm: Admission, screen: GScreen): String = synchronized(lock) {
+        val j = judge(adm.method, adm.params, screen)
+        j.refuse?.second ?: GateScreen.binding(adm.method, adm.params, j.strictFp)
+    }
+
     /** The refusal for a gesture whose screen never settled: no window had focus by the deadline. */
     fun unsettled(adm: Admission): Admission = refuse("gate_screen_unstable", "builtin:no_focus",
         "The screen is changing (an app is opening). Look again.", adm.method, adm.params)
@@ -526,8 +560,12 @@ class Gatekeeper(
             return refuse(it.first, it.second, it.third, adm.method, adm.params, j.pkg)
         }
         if (adm.strict) {
-            if (GateScreen.binding(adm.method, adm.params, j.strictFp) != adm.binding) {
+            if (GateScreen.binding(adm.method, adm.params, if (adm.money != null) j.moneyFp else j.strictFp) != adm.binding) {
                 adm.permit?.let(permits::remove)
+                if (adm.money != null && GateScreen.binding(adm.method, adm.params, j.strictFp) == adm.plain) {
+                    return refuse("gate_screen_changed", "builtin:price_changed",
+                        "The amount or price changed since it was approved. Look again.", adm.method, adm.params, j.pkg)
+                }
                 return refuse("gate_screen_changed", "builtin:toctou", "The screen changed before the action ran. Look again.",
                     adm.method, adm.params, j.pkg)
             }
@@ -748,7 +786,7 @@ class Gatekeeper(
         val terminal = GateText.anyPhrase(words, rules.w.getValue("terminal"))
             ?: idWords.firstOrNull { it in setOf("pay", "place order", "placeorder", "confirm") }
         if (terminal != null) {
-            if (terminal == "confirm" && !moneyCtx) return Risk("other", "words:confirm")
+            if ((terminal == "confirm" || terminal == "submit") && !moneyCtx) return Risk("other", "words:$terminal")
             return Risk("pay", "words:$terminal", money = "terminal", grant = pkg)
         }
         for (kind in listOf("send", "post", "delete")) {
@@ -773,6 +811,7 @@ class Gatekeeper(
             refuse = Triple("gate_screen_unstable", "builtin:no_window", "The phone can't see what's there. Look again."))
         val w = t.window
         val j = Judgement(pkg = w.pkg, fp = t.fp(false), strictFp = t.fp(true), changing = true, app = appWindow(w))
+        j.moneyFp = j.strictFp + "|$" + GateScreen.moneyAmounts(w, t).joinToString(",")
         surfaceRefusal(w)?.let { j.refuse = it; return j }
         val pressed = t.pressed
         if (pressed != null && (pressed.editable || "EditText" in pressed.cls)) j.changing = false
@@ -855,6 +894,7 @@ class Gatekeeper(
         val ends = listOf(start, end)
         val j = Judgement(pkg = start?.window?.pkg.orEmpty(), changing = false,
             fp = ends.joinToString("#") { it?.fp(false).orEmpty() }, strictFp = ends.joinToString("#") { it?.fp(true).orEmpty() },
+            moneyFp = ends.joinToString("#") { t -> t?.let { it.fp(true) + "|$" + GateScreen.moneyAmounts(it.window, it).joinToString(",") }.orEmpty() },
             app = start != null && appWindow(start.window))
         for (t in ends) if (t != null) surfaceRefusal(t.window)?.let { j.refuse = it; return j }
         j.payment = GateScreen.paymentContext(rules, screen)
@@ -888,7 +928,8 @@ class Gatekeeper(
         val w = f.window
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}/${if (node.password) 1 else 0}"
-        val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = true, app = appWindow(w))
+        val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = true, app = appWindow(w),
+            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","))
         surfaceRefusal(w)?.let { j.refuse = it; return j }
         if (node.password) {
             j.refuse = Triple("gate_password_field", "builtin:password_field",
@@ -916,7 +957,8 @@ class Gatekeeper(
         val w = f.window
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}"
-        val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = name == "ENTER", app = appWindow(w))
+        val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = name == "ENTER", app = appWindow(w),
+            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","))
         surfaceRefusal(w)?.let { j.refuse = it; return j }
         if (name == "DELETE") return j
         val browser = rules.isCat("browser", w.pkg)

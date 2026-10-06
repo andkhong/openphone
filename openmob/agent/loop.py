@@ -1745,8 +1745,10 @@ class Agent:
 
     @staticmethod
     def _identity(element: UIElement) -> tuple:
-        """What makes two reads of the screen the same element, wherever it is (_recheck_target)."""
-        return element.text, element.desc, element.resource_id, element.cls
+        """What makes two reads of the screen the same element, wherever it is (_recheck_target). Volatile numbers
+        (live odds, prices, counts, times) are blanked: "DUN · 42%" and "DUN · 47%" are the same button. A money
+        commit approved on the phone is still bound to its exact amounts (the phone's permit, the approval digest)."""
+        return gate.volatile(element.text), gate.volatile(element.desc), element.resource_id, element.cls
 
     def _recheck_target(self, element: UIElement) -> UIElement | Outcome:
         """Just before a tap_element: re-read the elements and return where to tap, or refuse.
@@ -1766,7 +1768,7 @@ class Agent:
         if not fresh:
             return element  # nothing to compare with (a tree that's briefly empty): tap as decided
         identity = self._identity(element)
-        if any((el.text, el.desc, el.resource_id, el.cls, el.bounds) == identity + (element.bounds,) for el in fresh):
+        if any(self._identity(el) == identity and el.bounds == element.bounds for el in fresh):
             return element
         refused = Outcome(f"Didn't tap [{element.index}] {element.label!r}: the screen changed and it is no longer "
                           "where it was. Look at the new screen.", is_error=True, settle=0)

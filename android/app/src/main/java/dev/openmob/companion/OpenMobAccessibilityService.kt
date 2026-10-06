@@ -53,6 +53,10 @@ class OpenMobAccessibilityService : AccessibilityService() {
      *  old enough (PhoneActions.waitIdle). */
     @Volatile var lastChangeAt: Long = 0L
         private set
+    /** Uptime of the last window change (a window or pane appeared or went): content updating inside a window,
+     *  such as live odds, doesn't count. The gate's launch-race wait uses this, not [lastChangeAt]. */
+    @Volatile var lastWindowChangeAt: Long = 0L
+        private set
 
     override fun onServiceConnected() {
         instance = this
@@ -103,7 +107,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == SYSTEM_UI) return
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> Unit
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> lastWindowChangeAt = SystemClock.uptimeMillis()
             else -> return
         }
         lastChangeAt = SystemClock.uptimeMillis()
