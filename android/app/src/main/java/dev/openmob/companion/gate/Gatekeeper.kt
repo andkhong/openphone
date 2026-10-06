@@ -59,7 +59,9 @@ class Gatekeeper(
 ) {
     private class Grant(val kind: String, val binding: String, val durationMs: Long, var issued: Long, val canon: String)
     class Pending(val id: String, val binding: String, val created: Long, val risk: Risk, val pkg: String,
-                  val task: String, val offer: GrantOffer?, val method: String, val params: Map<String, Any?>)
+                  val task: String, val offer: GrantOffer?, val method: String, val params: Map<String, Any?>) {
+        var cropHash = ""
+    }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
     private class Followup(val pkg: String, val task: String, val expires: Long)
     private class Credit(val kind: String, val expires: Long)
@@ -241,6 +243,9 @@ class Gatekeeper(
 
     fun resume() = synchronized(lock) { suspended = false; denials.clear() }
 
+    /** The `never` window ends now (a tightening: no signature needed). */
+    fun revokeNeverOnly() = synchronized(lock) { never = null; entries.removeAll { it.record["type"] == "never" } }
+
     /** Stop / Disconnect: every permit, pending prompt, purchase flow and requested credit goes, and `never`
      *  drops back to the ceiling at once. "Always allow" grants stay (they're listed and revocable in the app). */
     fun revokeAll() = synchronized(lock) {
@@ -351,9 +356,13 @@ class Gatekeeper(
     fun approvalMessage(id: String, grant: Boolean = false): String? = synchronized(lock) {
         val p = pending[id] ?: return null
         var m = "gk1|$device|$id|${p.binding}"
+        if (p.cropHash.isNotEmpty()) m += "|crop:${p.cropHash}"
         if (grant && p.offer != null) m += "|grant:" + canon(p.offer.record())
         m
     }
+
+    /** The SHA-256 of the crop the prompt shows (the owner checks item and price in it): the signature covers it. */
+    fun setCrop(id: String, hash: String) = synchronized(lock) { pending[id]?.cropHash = hash }
 
     /** The owner passed the screen lock on the phone's own prompt: mint a one-shot permit for exactly that
      *  action, and, if they ticked it, the "Always allow" grant. */
@@ -361,7 +370,7 @@ class Gatekeeper(
         val now = now()
         expire(now)
         val p = pending[id] ?: return false
-        val plain = "gk1|$device|$id|${p.binding}"
+        val plain = approvalMessage(id, false)
         var grant: GrantOffer? = null
         if (message != plain) {
             if (p.offer == null || message != approvalMessage(id, true)) return false

@@ -10,6 +10,7 @@ import android.content.Intent
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
+import dev.openmob.companion.gate.ModeChange
 import org.json.JSONObject
 
 /**
@@ -45,9 +46,16 @@ object Approvals {
         val kind: String = "action", val plan: List<String> = emptyList(), val always: Always? = null,
         val action: Map<String, String> = emptyMap(), val digest: String = "", val signatureRequired: Boolean = false,
         val canApprove: Boolean = true, val cannotApproveReason: String = "",
+        /** `gate`: the gatekeeper's own prompt (worded by this phone from what it sees; [crop] shows the target). */
+        val gate: Boolean = false, val crop: ByteArray? = null, val serverSays: String = "",
     ) {
-        /** For a permission change, the question as signed (it names "including purchases"), else the question. */
-        private val asked: String get() = ActionDigest.signedQuestion(action).ifEmpty { question }
+        /** The phone's own words: a gate prompt as worded by the gatekeeper, a permission change described from the
+         *  signed change itself (the server's question is only "Server says"), else the question. */
+        private val asked: String get() = when {
+            gate -> question
+            kind == "mode_change" && action["input"].orEmpty().contains('\n') -> ModeChange.describe(action["input"].orEmpty())
+            else -> ActionDigest.signedQuestion(action).ifEmpty { question }
+        }
 
         /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
         val shownQuestion: String get() = if (deviceName.isEmpty()) asked else "On $deviceName: $asked"
@@ -93,6 +101,9 @@ object Approvals {
 
     /** A new `approval_request` from the server. Repeats of a known id are ignored. */
     fun request(context: Context, message: JSONObject) {
+        // S3 / D9: this phone owns approval for actions. A server-worded prompt behind the screen lock would be
+        // phishing, so only permission changes are taken, and those are worded from the signed change itself.
+        if (message.optString("kind") != "mode_change") return
         val id = message.optString("id")
         if (id.isEmpty() || id in pending || id in finished) return
         val app = context.applicationContext
@@ -129,6 +140,8 @@ object Approvals {
         always: Boolean = false,
     ): Boolean {
         val request = pending[id] ?: return false
+        // A gate prompt: this path only denies. A yes is the signed one in ApprovalActivity (no unsigned fallback).
+        if (request.gate) return !approved && answerGate(context, id, false)
         if (!ConnectionService.sendApproval(id, approved, signature, timestamp, always && approved)) return false
         finish(context, id)
         val app = context.applicationContext
@@ -137,6 +150,45 @@ object Approvals {
             app.getString(if (approved) R.string.approval_event_approved else R.string.approval_event_denied, request.question),
         )
         return true
+    }
+
+    /**
+     * The gatekeeper's own prompt (D5): worded by this phone from what it sees, with a crop of the target. Approving
+     * signs the gatekeeper's message with the screen-lock key and mints a one-shot permit here; nothing is sent to
+     * the server but a `gate_event`. The prompt opens right away (the accessibility service may start it), with a
+     * notification as well.
+     */
+    fun requestGate(context: Context, id: String, wording: String, serverSays: String, crop: ByteArray?, always: Always?) {
+        if (id in pending || id in finished) return
+        val app = context.applicationContext
+        val request = Request(
+            id = id, taskId = "", question = wording, requester = app.getString(R.string.gate_requester),
+            kind = "gate", always = always, gate = true, crop = crop, serverSays = serverSays.take(200),
+        )
+        pending[id] = request
+        main.postDelayed({ expire(app, id); dev.openmob.companion.gate.GateHost.cancel(id) }, id, EXPIRY_MS)
+        notify(app, request)
+        AppState.addEvent("approval", app.getString(R.string.gate_event_asked, wording))
+        runCatching {
+            (OpenMobAccessibilityService.instance ?: app).startActivity(
+                Intent(app, ApprovalActivity::class.java).putExtra(EXTRA_ID, id).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+    }
+
+    /** The owner answered a gate prompt on this phone (approve: already signed and accepted by the gatekeeper). */
+    fun answerGate(context: Context, id: String, approved: Boolean): Boolean {
+        val request = pending[id] ?: return false
+        if (!approved) dev.openmob.companion.gate.GateHost.deny(id)
+        finish(context, id)
+        AppState.addEvent("approval", context.applicationContext.getString(
+            if (approved) R.string.approval_event_approved else R.string.approval_event_denied, request.question))
+        return true
+    }
+
+    /** Stop: drop every gate prompt (their permits are gone too). */
+    fun clearGate(context: Context) {
+        pending.values.filter { it.gate }.map { it.id }.forEach { finish(context, it) }
+        AppState.notifyListeners()
     }
 
     /** The server withdrew a request (answered on another phone, or the task moved on): drop it unanswered. */

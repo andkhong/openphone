@@ -19,6 +19,32 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     /** Foreground app, from window changes. Keyboards and system overlays are ignored. */
     @Volatile var currentPackage: String? = null
+    /** Its activity class (e.g. com.android.settings.SubSettings). */
+    @Volatile var currentActivity: String? = null
+    private var keepAwake: android.view.View? = null
+
+    /**
+     * Keep the screen on while the agent works (the lock screen appearing mid-task stalls it): a 1-pixel,
+     * untouchable accessibility overlay with FLAG_KEEP_SCREEN_ON. Held only while there is active work
+     * ([ScreenKeeper]) and removed as soon as it goes idle. Main thread only.
+     */
+    fun keepScreenOn(on: Boolean) {
+        val wm = getSystemService(android.view.WindowManager::class.java)
+        if (on && keepAwake == null) {
+            val view = android.view.View(this)
+            val lp = android.view.WindowManager.LayoutParams(
+                1, 1, android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                android.graphics.PixelFormat.TRANSLUCENT,
+            ).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.START }
+            if (runCatching { wm.addView(view, lp) }.isSuccess) keepAwake = view
+        } else if (!on) {
+            keepAwake?.let { runCatching { wm.removeView(it) } }
+            keepAwake = null
+        }
+    }
 
     /** Uptime (ms) of the last window or content change on screen: wait_idle returns once this is
      *  old enough (PhoneActions.waitIdle). */
@@ -47,6 +73,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
         // Activities only: IME and dialog windows would otherwise look like "the current app".
         if (cls.endsWith("Activity") || cls.contains(".activities.")) {
             event.packageName?.toString()?.let { currentPackage = it }
+            currentActivity = cls // the gatekeeper recognizes Settings pages by their activity too
         }
     }
 
@@ -69,6 +96,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
+        keepScreenOn(false)
         instance = null
         AppState.notifyListeners()
         return super.onUnbind(intent)

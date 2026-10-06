@@ -17,6 +17,9 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
+import dev.openmob.companion.gate.Admission
+import dev.openmob.companion.gate.GateHost
 import android.service.quicksettings.TileService
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -47,6 +50,9 @@ class ConnectionService : Service() {
         private const val ACTION_START = "dev.openmob.START"
         private const val ACTION_STOP = "dev.openmob.STOP"
         private const val ACTION_NEVER_OFF = "dev.openmob.NEVER_OFF"
+        private const val ACTION_RESUME = "dev.openmob.GATE_RESUME"
+        private const val LOCK_ID = 4 // "Unlock your phone to continue"
+        private const val RESUME_ID = 5 // "Paused after repeated denials"
         private const val CHANNEL = "agent"
         private const val NOTIFICATION_ID = 1
         private const val OFFER_ID = 3 // "Share your screen for the live view?"
@@ -85,10 +91,14 @@ class ConnectionService : Service() {
         /** "Turn off" agents acting without asking: back to auto. A tightening, so nothing to sign. */
         fun turnOffNever(): Boolean = AppState.connected && running?.send(JSONObject().put("type", "permissions_off")) ?: false
 
-        /** Send a spoken or typed request to the agent. False if not connected. */
-        fun sendCommand(text: String): Boolean = running?.send(
+        /** Send a spoken or typed request to the agent. False if not connected. Typed or spoken on this phone, it
+         *  is a phone-known instruction: one matching send, post or delete it names runs without a prompt (D6). */
+        fun sendCommand(text: String): Boolean = (running?.send(
             JSONObject().put("type", "command").put("text", text)
-        ) ?: false
+        ) ?: false).also { if (it) GateHost.noteInstruction(text) }
+
+        /** The gatekeeper paused after repeated denials: offer Resume in a notification. */
+        fun showResume() { running?.let { s -> s.main.post { s.postResume() } } }
 
         /**
          * http(s)://host[/prefix] or ws(s)://… → ws(s)://host[/prefix]/phone/ws?t=<token>
@@ -128,6 +138,11 @@ class ConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
+        GateHost.init(this)
+        GateHost.sink = { message -> if (running === this) send(message) }
+        registerReceiver(lockWatcher, android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT); addAction(Intent.ACTION_SCREEN_ON)
+        })
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -135,7 +150,13 @@ class ConnectionService : Service() {
             shutDown("Disconnected")
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_RESUME) {
+            GateHost.resume()
+            getSystemService(NotificationManager::class.java).cancel(RESUME_ID)
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_NEVER_OFF) {
+            GateHost.dropNever() // local and immediate: a tightening needs nothing
             if (turnOffNever()) {
                 AppState.setNeverUntil(0)
                 AppState.addEvent("status", getString(R.string.never_turned_off))
@@ -218,6 +239,7 @@ class ConnectionService : Service() {
     }
 
     override fun onDestroy() {
+        runCatching { unregisterReceiver(lockWatcher) }
         shutDown(null)
         calls.shutdownNow()
         super.onDestroy()
@@ -257,6 +279,10 @@ class ConnectionService : Service() {
         getSystemService(NotificationManager::class.java).cancel(OFFER_ID)
         wakeLock?.takeIf { it.isHeld }?.release()
         running = null
+        // The kill switch acts locally: every permit, prompt and purchase flow goes, and `never` ends (2.7).
+        GateHost.revokeAll()
+        ScreenKeeper.release()
+        getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         Approvals.clear(this)
         setController("")
         status?.let { AppState.setConnection(it, false) }
@@ -301,7 +327,10 @@ class ConnectionService : Service() {
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
-                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url"))
+                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("gatekeeper").put("device_lock"))
+                // Which built-in rules and owner policy this phone enforces (the dashboard shows "Phone protection: on").
+                .put("policy_hash", GateHost.policyHash())
+                .put("gatekeeper_rules", GateHost.rulesVersion)
         )
 
     private fun handleCall(message: JSONObject) {
@@ -311,6 +340,21 @@ class ConnectionService : Service() {
         calls.execute {
             val reply = JSONObject().put("type", "result").put("id", id)
             try {
+                // D1: the gatekeeper decides first, for every method. A server can at most request.
+                val started = SystemClock.elapsedRealtime()
+                val service = OpenMobAccessibilityService.instance
+                val admission = GateHost.admit(service, method, toMap(params))
+                if (method != "device_state") ScreenKeeper.touch()
+                if (admission.decision == "refuse" || admission.decision == "ask") {
+                    send(gateReply(reply, admission, SystemClock.elapsedRealtime() - started))
+                    return@execute
+                }
+                if (admission.decision == "redact" && service != null) { // a blocked app is visible: black, or []
+                    val result = PhoneActions(service).redacted(method, params)
+                    if (result is PhoneActions.Frame) sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
+                    else send(reply.put("ok", true).put("result", result))
+                    return@execute
+                }
                 if (method == "device_state") { // no accessibility needed: is the phone usable right now?
                     reply.put("ok", true).put("result", deviceState())
                     send(reply)
@@ -323,17 +367,99 @@ class ConnectionService : Service() {
                 }
                 val handler = actions
                     ?: error("Accessibility is off. Turn on OpenMob in Settings › Accessibility.")
-                val result = handler.handle(method, params)
+                val result = handler.handle(method, params, admission)
                 if (result is PhoneActions.Frame) {
                     sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
                     return@execute
                 }
                 reply.put("ok", true).put("result", result ?: JSONObject.NULL)
+            } catch (e: GateRefusal) { // refused right before the side effect (the screen changed, D8)
+                gateReply(reply, e.admission, 0)
             } catch (e: Throwable) {
                 reply.put("ok", false).put("error", "${e.javaClass.simpleName}: ${e.message}")
             }
             send(reply)
         }
+    }
+
+    /** A refusal or a pending approval, with its stable code (docs/phone-protocol.md, "Gatekeeper"). */
+    private fun gateReply(reply: JSONObject, a: Admission, ms: Long): JSONObject {
+        reply.put("ok", false).put("code", a.code).put("error", a.message)
+        val gate = JSONObject().put("rule", a.rule).put("package", a.pkg).put("ms", ms)
+        if (a.decision == "ask") {
+            reply.put("approval_id", a.approvalId)
+            gate.put("kind", a.kind).put("question", a.wording)
+        }
+        if (a.code == "phone_locked") main.post { lockedMidTask() }
+        return reply.put("gate", gate)
+    }
+
+    private fun toMap(o: JSONObject): Map<String, Any?> = o.keys().asSequence().associateWith { k ->
+        when (val v = o.opt(k)) {
+            is Int -> v.toLong()
+            JSONObject.NULL -> null
+            is JSONObject, is org.json.JSONArray -> v.toString()
+            else -> v
+        }
+    }
+
+    // --- the lock screen mid-task ---------------------------------------------------------------
+
+    /** The screen went off or the keyguard came up while the agent was working. A swipe-only lock is woken and
+     *  dismissed; a secure one pauses the task with "Unlock your phone to continue" until the owner unlocks. */
+    private val lockWatcher = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (running !== this@ConnectionService) return
+            when (intent.action) {
+                Intent.ACTION_USER_PRESENT -> unlocked()
+                Intent.ACTION_SCREEN_OFF, Intent.ACTION_SCREEN_ON ->
+                    if (ScreenKeeper.busy || AppState.controller.isNotEmpty()) main.postDelayed({ checkLock() }, 700)
+            }
+        }
+    }
+
+    private var pausedByLock = false
+
+    private fun checkLock() {
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        if (!keyguard.isKeyguardLocked) return
+        if (!keyguard.isKeyguardSecure) {
+            OpenMobAccessibilityService.instance?.let { s -> calls.execute { runCatching { PhoneActions(s).handle("wake_unlock", JSONObject()) } } }
+            return
+        }
+        lockedMidTask()
+    }
+
+    private fun lockedMidTask() {
+        if (pausedByLock) return
+        pausedByLock = true
+        send(JSONObject().put("type", "device_lock").put("locked", true).put("secure", true))
+        AppState.addEvent("status", getString(R.string.lock_paused_event))
+        val open = PendingIntent.getActivity(this, 3, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
+        getSystemService(NotificationManager::class.java).notify(LOCK_ID, Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_lock_lock)
+            .setContentTitle(getString(R.string.lock_paused_title))
+            .setContentText(getString(R.string.lock_paused_text))
+            .setContentIntent(open).setAutoCancel(true).build())
+    }
+
+    private fun unlocked() {
+        if (!pausedByLock) return
+        pausedByLock = false
+        send(JSONObject().put("type", "device_lock").put("locked", false).put("secure", true))
+        getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
+        AppState.addEvent("status", getString(R.string.lock_resumed_event))
+    }
+
+    private fun postResume() {
+        val resume = PendingIntent.getService(this, 4, Intent(this, ConnectionService::class.java).setAction(ACTION_RESUME),
+            PendingIntent.FLAG_IMMUTABLE)
+        getSystemService(NotificationManager::class.java).notify(RESUME_ID, Notification.Builder(this, CHANNEL)
+            .setSmallIcon(android.R.drawable.ic_dialog_alert)
+            .setContentTitle("OpenMob paused agents on this phone")
+            .setContentText("You denied 3 requests in 10 minutes. Tap Resume when you want agents to continue.")
+            .addAction(Notification.Action.Builder(null, getString(R.string.gate_resume), resume).build())
+            .build())
     }
 
     /** Screen on and keyguard state, so the server can say "unlock to continue" instead of timing out.
@@ -372,8 +498,8 @@ class ConnectionService : Service() {
             return
         }
         AppState.addEvent(kind, text)
-        if (kind == "status" && text.startsWith("Working on:")) updateNotification(text)
-        if (kind == "result" || kind == "error") updateNotification("Agent connected · ready")
+        if (kind == "status" && text.startsWith("Working on:")) { updateNotification(text); ScreenKeeper.touch() }
+        if (kind == "result" || kind == "error") { updateNotification("Agent connected · ready"); ScreenKeeper.release() }
     }
 
     private inner class Listener : WebSocketListener() {
@@ -398,9 +524,9 @@ class ConnectionService : Service() {
                 "approval_cancel" -> main.post { Approvals.cancel(this@ConnectionService, message.optString("id")) }
                 // The phone's permission mode: while agents may act without asking, the notification says so.
                 "permissions" -> main.post {
-                    val until = message.optDouble("never_until", 0.0).let { if (it.isNaN()) 0L else it.toLong() }
-                    AppState.setNeverUntil(if (message.optString("ceiling") == "never") until else 0,
-                                           message.optBoolean("never_money"))
+                    // The banner and the mode come from this phone's own signed policy (GateHost), never from the
+                    // server's claim. A server saying `never` is off is a tightening, taken from anywhere.
+                    if (message.optString("ceiling") != "never") GateHost.dropNever() else GateHost.refreshBanner()
                     updateNotification(statusLine)
                     scheduleNeverExpiry()
                 }

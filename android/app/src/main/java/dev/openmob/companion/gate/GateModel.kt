@@ -47,8 +47,10 @@ object GateText {
 
     fun anyPhrase(toks: List<String>, phrases: List<String>): String? = phrases.firstOrNull { hasPhrase(toks, it) }
 
-    fun sha256(text: String): String =
-        MessageDigest.getInstance("SHA-256").digest(text.toByteArray(Charsets.UTF_8)).joinToString("") { "%02x".format(it) }
+    fun sha256(text: String): String = sha256(text.toByteArray(Charsets.UTF_8))
+
+    fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private val SCHEME = Regex("^([A-Za-z][A-Za-z0-9+.\\-]*):")
     private val URL_LIKE = Regex("^(www\\.)?[\\w-]+(\\.[\\w-]+)+(/|$|:\\d)")

@@ -33,6 +33,9 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
 import android.view.Display
+import android.view.ViewConfiguration
+import dev.openmob.companion.gate.Admission
+import dev.openmob.companion.gate.GateHost
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -46,14 +49,35 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** The gatekeeper refused the call right before its side effect (GateHost.reverify): sent back with its code. */
+class GateRefusal(val admission: Admission) : RuntimeException(admission.message)
+
 class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     private val pm: PackageManager get() = service.packageManager
-    private val gestureLock = Any()
+    /** What the gatekeeper admitted for this call; re-checked right before each side effect (D8). */
+    private var admission: Admission? = null
+
+    /** Re-check the admitted action on the screen as it is now (throws [GateRefusal]). */
+    private fun gate() {
+        GateHost.reverify(service, admission)?.let { throw GateRefusal(it) }
+    }
 
     /** Runs one protocol call. Called on a background thread (never the main thread); may block up to the
      *  method's timeout. Returns a value org.json can serialize as `result`; throws on failure. */
-    fun handle(method: String, params: JSONObject): Any? = when (method) {
+    fun handle(method: String, params: JSONObject, admitted: Admission? = null): Any? {
+        admission = admitted
+        return run(method, params)
+    }
+
+    /** A read the gatekeeper redacted: a blocked app is visible in some window, so a black frame or no elements. */
+    fun redacted(method: String, params: JSONObject): Any? = when (method) {
+        "screenshot" -> blackFrame(params.optInt("max_side", MAX_SIDE).coerceIn(MIN_SIDE, MAX_SIDE),
+            params.optInt("quality", JPEG_QUALITY).coerceIn(MIN_QUALITY, 100)).let { if (params.optBoolean("binary")) it else it.toJson() }
+        else -> JSONArray()
+    }
+
+    private fun run(method: String, params: JSONObject): Any? = when (method) {
         "screenshot" -> {
             // The dashboard's live view asks for smaller frames, as raw bytes; the agent sends no params.
             val frame = screenshot(
@@ -73,7 +97,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
         "long_press" -> {
             val (x, y) = point(params.reqInt("x"), params.reqInt("y"))
-            gesture(Path().apply { moveTo(x, y) }, params.optLong("duration_ms", 800))
+            // Always a real long press: a "long press" too short to be one is a tap (judged as one by the gate anyway).
+            gesture(Path().apply { moveTo(x, y) },
+                    max(params.optLong("duration_ms", 800), ViewConfiguration.getLongPressTimeout() + 100L))
         }
         "swipe" -> {
             val (x1, y1) = point(params.reqInt("x1"), params.reqInt("y1"))
@@ -161,6 +187,37 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             })
         if (!latch.await(10, TimeUnit.SECONDS)) throw IllegalStateException("Screenshot timed out")
         return capture
+    }
+
+    /** The gatekeeper's prompt picture: the screen around device point (x, y) with a crosshair on it, as JPEG.
+     *  Null when the screen can't be captured (the prompt then shows only its words). */
+    fun crop(x: Int, y: Int): ByteArray? {
+        val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+        if (wait > 0) SystemClock.sleep(wait)
+        val result = captureOnce().result ?: return null
+        lastCaptureAt = SystemClock.uptimeMillis()
+        return result.hardwareBuffer.use { buffer ->
+            val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+            val full = try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() } ?: return null
+            val cw = min(CROP_W, full.width)
+            val ch = min(CROP_H, full.height)
+            val left = (x - cw / 2).coerceIn(0, full.width - cw)
+            val top = (y - ch / 2).coerceIn(0, full.height - ch)
+            val part = Bitmap.createBitmap(full, left, top, cw, ch).copy(Bitmap.Config.ARGB_8888, true)
+            full.recycle()
+            val paint = android.graphics.Paint().apply { color = Color.RED; strokeWidth = 5f; style = android.graphics.Paint.Style.STROKE }
+            android.graphics.Canvas(part).apply {
+                val cx = (x - left).toFloat()
+                val cy = (y - top).toFloat()
+                drawCircle(cx, cy, 36f, paint)
+                drawLine(cx - 60, cy, cx + 60, cy, paint)
+                drawLine(cx, cy - 60, cx, cy + 60, paint)
+            }
+            val out = ByteArrayOutputStream()
+            part.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            part.recycle()
+            out.toByteArray()
+        }
     }
 
     private fun blackFrame(maxSide: Int, quality: Int): Frame {
@@ -332,12 +389,14 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             ?: throw IllegalStateException("$pkg has no launchable activity")
         // A bound accessibility service is exempt from background activity-start restrictions.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        gate()
         service.startActivity(intent)
         return null
     }
 
     private fun openUrl(url: String): Any? {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        gate()
         try {
             service.startActivity(intent) // ACTION_VIEW on tel: opens the dialer; it never places a call
         } catch (_: ActivityNotFoundException) {
@@ -373,6 +432,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** Dispatches one stroke and blocks until it completes. Serialized: a new gesture would cancel one
      *  still in flight. */
     private fun gesture(path: Path, durationMs: Long): Any? = synchronized(gestureLock) {
+        gate() // under the gesture lock, right before the stroke
         val duration = durationMs.coerceIn(1, GestureDescription.getMaxGestureDuration())
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
@@ -398,6 +458,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     private fun typeText(text: String): Any? {
         val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
+        gate()
         // Defense in depth: the server should never ask, but a password is never typed for anyone.
         if (node.isPassword) throw IllegalStateException("I don't type passwords. Please type it yourself.")
         val old = currentText(node)
@@ -511,8 +572,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             "HOME" -> global(AccessibilityService.GLOBAL_ACTION_HOME, name)
             "APP_SWITCH" -> global(AccessibilityService.GLOBAL_ACTION_RECENTS, name)
             "POWER" -> global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, name)
-            "ENTER" -> imeEnter()
-            "DELETE" -> deleteBackward()
+            "ENTER" -> { gate(); imeEnter() }
+            "DELETE" -> { gate(); deleteBackward() }
             "WAKEUP" -> wakeScreen()
             "VOLUME_UP", "VOLUME_DOWN" -> service.getSystemService(AudioManager::class.java).adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
@@ -592,6 +653,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private fun JSONObject.reqArray(name: String): JSONArray = param(name).getJSONArray(name)
 
     private companion object {
+        /** One gesture at a time across calls (each call has its own PhoneActions). */
+        val gestureLock = Any()
+        const val CROP_W = 900
+        const val CROP_H = 600
         const val MAX_SIDE = 1280
         const val JPEG_QUALITY = 80
         const val MIN_SIDE = 160 // floor for the live view's max_side param

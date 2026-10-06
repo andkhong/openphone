@@ -62,6 +62,24 @@ object ApprovalKeys {
         ((if (digest.isEmpty()) "$approvalId|$taskId" else "$approvalId|$taskId|$digest") +
             "|true|$timestamp" + if (always) "|always" else "").toByteArray()
 
+    /** Sign raw bytes (the gatekeeper's own approval message) with a Signature the BiometricPrompt just unlocked. */
+    fun signRaw(unlocked: Signature, message: String): String {
+        unlocked.update(message.toByteArray(Charsets.UTF_8))
+        return Base64.encodeToString(unlocked.sign(), Base64.NO_WRAP)
+    }
+
+    /** Was [signature] made by this phone's approval key over [message]? (Verifying needs no screen lock.) */
+    fun verify(message: String, signature: String): Boolean = try {
+        val cert = store().getCertificate(ALIAS) ?: throw IllegalStateException("no key")
+        Signature.getInstance("SHA256withECDSA").run {
+            initVerify(cert.publicKey)
+            update(message.toByteArray(Charsets.UTF_8))
+            verify(Base64.decode(signature, Base64.NO_WRAP))
+        }
+    } catch (e: Exception) {
+        false // no key (or a malformed signature): nothing verifies, so nothing is granted
+    }
+
     /** Sign with a Signature the BiometricPrompt just unlocked. */
     fun sign(
         unlocked: Signature, approvalId: String, taskId: String, digest: String, timestamp: Long, always: Boolean = false,

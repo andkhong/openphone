@@ -212,4 +212,14 @@
     <string name="ui_step_screen_button">Share screen</string>
     <string name="live_view_offer_title">Show this screen on your dashboard?</string>
     <string name="live_view_offer_text">Tap to share it as smooth video. Until then the live view shows screenshots.</string>
+    <!-- The gatekeeper (docs/design/phone-gatekeeper.md) -->
+    <string name="gate_requester">This phone</string>
+    <string name="gate_event_asked">Asked on this phone: %1$s</string>
+    <string name="gate_server_says">Server says: “%1$s”</string>
+    <string name="gate_explain">This phone stopped the agent to ask you. The question and the picture come from what this phone sees, not from the server. Approving needs your screen lock and allows this one action only.</string>
+    <string name="lock_paused_title">Unlock your phone to continue</string>
+    <string name="lock_paused_text">Your agent paused because the phone locked. It carries on when you unlock it.</string>
+    <string name="lock_paused_event">The phone locked mid-task. Unlock it to continue.</string>
+    <string name="lock_resumed_event">Unlocked: the agent carries on.</string>
+    <string name="gate_resume">Resume</string>
 </resources>

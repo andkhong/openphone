@@ -19,6 +19,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -54,6 +55,7 @@ class ApprovalActivity : Activity() {
     private lateinit var questionText: TextView
     private lateinit var actionText: TextView
     private lateinit var requesterText: TextView
+    private lateinit var cropView: ImageView
     private lateinit var statusText: TextView
     private lateinit var approveButton: Button
     private lateinit var denyButton: Button
@@ -113,6 +115,7 @@ class ApprovalActivity : Activity() {
         })
         explainText.text = getString(when {
             request?.allowsMoney == true -> R.string.approval_explain_mode_money
+            request?.gate == true -> R.string.gate_explain
             kind == "mode_change" -> R.string.approval_explain_mode
             kind == "plan" -> R.string.approval_explain_plan
             else -> R.string.approval_explain
@@ -120,8 +123,14 @@ class ApprovalActivity : Activity() {
         val always = request?.always
         alwaysBox.visibility = if (always != null && open) View.VISIBLE else View.GONE
         if (always != null) alwaysBox.text = "${getString(R.string.approval_always)}\n${always.text}"
-        requesterText.text = request?.let { getString(R.string.approval_requester, it.requester) }.orEmpty()
-        requesterText.visibility = if (request == null) View.GONE else View.VISIBLE
+        requesterText.text = request?.let {
+            if (it.gate) (if (it.serverSays.isEmpty()) "" else getString(R.string.gate_server_says, it.serverSays))
+            else getString(R.string.approval_requester, it.requester)
+        }.orEmpty()
+        val crop = request?.crop?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+        cropView.setImageBitmap(crop)
+        cropView.visibility = if (crop == null) View.GONE else View.VISIBLE
+        requesterText.visibility = if (requesterText.text.isNullOrEmpty()) View.GONE else View.VISIBLE
         // What exactly will happen, built here from the action's own fields (what the signature binds).
         val line = request?.actionLine.orEmpty()
         actionText.text = if (line.isEmpty()) "" else getString(R.string.approval_action, line)
@@ -188,7 +197,8 @@ class ApprovalActivity : Activity() {
         // The approval key only signs once this prompt is passed: that signature is what the server
         // trusts, so nothing else on the phone (or holding its device key) can approve.
         val signer = ApprovalKeys.signer()
-        if (signer == null && request.signatureRequired) {
+        if (signer == null && (request.signatureRequired || request.gate)) {
+            // A gate permit is minted only from the screen-lock signature: there is no unsigned fallback (D5).
             // Without the key there is nothing the server would accept: never send an unsigned yes.
             showStatus(getString(R.string.approval_no_key))
             return
@@ -208,6 +218,21 @@ class ApprovalActivity : Activity() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                     if (prompt === cancel) prompt = null
                     val unlocked = result?.cryptoObject?.signature
+                    if (request.gate) {
+                        // Sign the gatekeeper's own message (this device, this prompt, this exact action and crop),
+                        // which it verifies before minting the one-shot permit.
+                        val message = dev.openmob.companion.gate.GateHost.approvalMessage(request.id, grantAlways)
+                        val signature = if (unlocked == null || message == null) null
+                        else runCatching { ApprovalKeys.signRaw(unlocked, message) }.getOrNull()
+                        if (signature == null || !dev.openmob.companion.gate.GateHost.approve(request.id, message!!, signature)) {
+                            showStatus(getString(if (message == null) R.string.approval_gone else R.string.approval_not_confirmed))
+                            return
+                        }
+                        Approvals.answerGate(this@ApprovalActivity, request.id, true)
+                        Toast.makeText(this@ApprovalActivity, R.string.approval_sent_approved, Toast.LENGTH_SHORT).show()
+                        finish()
+                        return
+                    }
                     if (unlocked == null) {
                         // No approval key: only a server that doesn't require signatures (token/dev mode)
                         // takes an unsigned yes; accounts mode refused this above.
@@ -240,7 +265,14 @@ class ApprovalActivity : Activity() {
     }
 
     private fun send(approved: Boolean, signature: String? = null, timestamp: Long = 0, always: Boolean = false) {
+        val request = Approvals.get(requestId)
         if (Approvals.answer(this, requestId, approved, signature, timestamp, always)) {
+            // A permission change the owner just signed becomes this phone's own policy (the gatekeeper enforces
+            // the ceiling and `never`; the server's copy is only for its dashboard).
+            if (approved && signature != null && request?.kind == "mode_change") {
+                dev.openmob.companion.gate.GateHost.applyModeChange(request.id, request.taskId, request.action,
+                                                                    timestamp, always, signature)
+            }
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,
             ).show()
@@ -269,6 +301,9 @@ class ApprovalActivity : Activity() {
         card.addView(labelText)
         questionText = text("", 20f, getColor(R.color.om_text), bold = true)
         card.addView(questionText, margins(top = 6))
+        // The gatekeeper's crop of the target (with a crosshair): what exactly would be tapped, item and price.
+        cropView = ImageView(this).apply { adjustViewBounds = true; visibility = View.GONE }
+        card.addView(cropView, margins(top = 10, width = ViewGroup.LayoutParams.MATCH_PARENT))
         actionText = text("", 15f, getColor(R.color.om_text))
         card.addView(actionText, margins(top = 8))
         requesterText = text("", 14f, getColor(R.color.om_text_secondary))
