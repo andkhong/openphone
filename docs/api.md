@@ -437,7 +437,7 @@ becomes `cancelled` shortly after.
 ## Permission settings
 
 A phone's [permission settings](safety.md#permission-modes): its default mode, its ceiling (the
-loosest mode it allows), trusted apps and whether Never ask is on. Tightening applies at once.
+loosest mode it allows), trusted apps and whether Don't ask is on. Tightening applies at once.
 **Loosening never applies from the API**: it asks the owner on that phone, with its screen lock.
 
 ### GET /v1/devices/{device_id}/permissions
@@ -451,8 +451,8 @@ Scope `devices:read`.
  "key_max_mode": "auto"}
 ```
 
-`ceiling` is `never` while Never ask is on (until `never_until`); `standing_ceiling` is what it
-returns to. `never_money` is `true` while Never ask also allows purchases (it ends with the window).
+`ceiling` is `never` while Don't ask is on (until `never_until`); `standing_ceiling` is what it
+returns to. `never_money` is `true` while Don't ask also allows purchases (it ends with the window).
 
 ### PATCH /v1/devices/{device_id}/permissions
 
@@ -463,11 +463,11 @@ Scope `tasks:run`. Any of:
 | `default_mode` | The mode tasks get when they don't say (`ask` … `never`; `never` only while it's on) |
 | `ceiling` | The loosest mode allowed: `ask`, `plan`, `auto` or `trusted` |
 | `trusted` | The whole new list of entries `{app` or `category, kinds, expires_at?}`. Kinds: `send`, `delete`, `post`, `pay`, `fill`. `pay` and `fill` only for one named `app`, never a category; `pay` lasts 7 days at most |
-| `never` | `1h`, `24h` or `7d` to turn on Never ask, `off` to turn it off |
+| `never` | `1h`, `24h` or `7d` to turn on Don't ask, `off` to turn it off |
 | `allow_money` | With a `never` duration: `true` also lets purchases run without asking ("Also allow purchases"), off by default. Always a loosening (`202`), asked on the phone as "…including purchases for 1 hour?". `false` turns it off (a tightening); sending `never` without it turns it off too. `400 invalid_permissions` without `never` |
 
 A pure tightening returns `200 {"status": "applied", "settings": {…}}`. Anything that loosens
-(a mode past the ceiling, a new or wider trusted entry, turning Never ask on, `allow_money: true`) returns `202`:
+(a mode past the ceiling, a new or wider trusted entry, turning Don't ask on, `allow_money: true`) returns `202`:
 
 ```json
 {"status": "needs_phone_approval", "code": "needs_phone_approval", "approval_id": "9f0c…",

@@ -78,7 +78,7 @@ Recognition works by intent action, window title and fragment class, across AOSP
 | Tier | Pages | Gate |
 |---|---|---|
 | Security-critical | The hard-deny list above, plus **enabling a keyboard** (on-screen keyboards / manage keyboards) | Refused in every mode |
-| **Everyday (generous allowlist)** | Wi-Fi, mobile data, hotspot, Bluetooth on/off and connecting to already-paired devices, NFC toggle, airplane mode, display (brightness, dark mode, font size, screen timeout), sound, vibration, Do Not Disturb, battery and battery saver, storage overview, location toggle, per-app notifications, per-app permissions and runtime-permission dialogs **for the session's app** (see below), app info **Force stop and Clear cache only**, switching among **already-enabled** keyboards, About, search inside Settings | **Never asks** |
+| **Everyday (generous allowlist)** | Wi-Fi, mobile data, hotspot, Bluetooth on/off and connecting to already-paired devices, NFC toggle, airplane mode, display (brightness, dark mode, font size, screen timeout), sound, vibration, Do Not Disturb, battery and battery saver, storage overview, location toggle, per-app notifications, per-app permissions and runtime-permission dialogs **for the session's app** (see below), app info **Force stop and Clear cache only**, switching among **already-enabled** keyboards, About, search inside Settings | **Don't asks** |
 | Unrecognized, plus these named pages: manual date and time, pairing a new Bluetooth device, app-info actions other than Force stop and Clear cache (Clear storage, Disable, Uninstall) | Any page in a Settings package that isn't on either list | Asks. "Always allow" is bound to the exact page fingerprint (D20) |
 
 Scroll and BACK are always allowed.
@@ -406,7 +406,7 @@ Failing a friction criterion means tuning the word classes, the categories or th
 | Audience | Default |
 |---|---|
 | Personal phone | `auto`, ceiling `auto` |
-| Developer **test phone** (chosen at pairing, confirmed with the screen lock) | `never`, renewable up to 30 days on the monotonic clock, with the phone's own persistent banner. Hard denies, blocked apps and the refusal of money commits still apply, unless the owner opts into **"Never ask + allow purchases"** for that window: a separate option, off by default, signed on the phone with the explicit wording "…including purchases for 1 hour?" and a second confirmation, expiring with the window and shown in the banner ("…including purchases"). MDM caps and blocked apps still win (decided by owner, 2026-10-05) |
+| Developer **test phone** (chosen at pairing, confirmed with the screen lock) | `never`, renewable up to 30 days on the monotonic clock, with the phone's own persistent banner. Hard denies, blocked apps and the refusal of money commits still apply, unless the owner opts into **"Don't ask + allow purchases"** for that window: a separate option, off by default, signed on the phone with the explicit wording "…including purchases for 1 hour?" and a second confirmation, expiring with the window and shown in the banner ("…including purchases"). MDM caps and blocked apps still win (decided by owner, 2026-10-05) |
 | Enterprise | Whatever MDM sets (D18), typically `auto` with `never` and `pay` forbidden |
 
 ## 7. Performance
@@ -458,7 +458,7 @@ Failing a friction criterion means tuning the word classes, the categories or th
 
 **Open questions:**
 1. **Reads need a session?** Decided by owner, 2026-10-05: yes. Agent reads need a session, with a phone-driven indicator (the reviewer's default stands); the owner's live view is implicit under the OS capture consent.
-2. **Remote "buy X" prompts by default?** Decided by owner, 2026-10-05: purchases always ask (and under `never` are refused) unless the owner opts into **"Never ask + allow purchases"** for a session: a separate, explicit option when enabling `never`, signed on that phone with its screen lock (with explicit "including purchases" wording and a second confirmation for the money part), and ending with that `never` window. MDM caps and blocked apps still win, and an API key's `max_mode` still caps its tasks. See the updated D21 and N3; the server implements it as `allow_money` / `never_money` (docs/safety.md, "Never ask").
+2. **Remote "buy X" prompts by default?** Decided by owner, 2026-10-05: purchases always ask (and under `never` are refused) unless the owner opts into **"Don't ask + allow purchases"** for a session: a separate, explicit option when enabling `never`, signed on that phone with its screen lock (with explicit "including purchases" wording and a second confirmation for the money part), and ending with that `never` window. MDM caps and blocked apps still win, and an API key's `max_mode` still caps its tasks. See the updated D21 and N3; the server implements it as `allow_money` / `never_money` (docs/safety.md, "Don't ask").
 3. **Desktop companion?** Decided by owner, 2026-10-05: deferred (D12). Approvals stay on the owner's phones; the dashboard can only decline.
 4. Should enterprise policy be signed for fleets without MDM?
 5. Is the 60% lexicon threshold right? Phase 0 decides.
@@ -511,7 +511,7 @@ Failing a friction criterion means tuning the word classes, the categories or th
 | N1 app info | Only Force stop and Clear cache are on the allowlist. Clear storage, Disable and Uninstall ask. Any app-info action on a blocked app is refused |
 | N1 keyboards | Enabling a keyboard is security-critical; switching among already-enabled keyboards stays on the allowlist |
 | N2 | "Always allow" is bound per kind: not offered for autofill in browsers or WebViews; for native apps, bound to the filled package; settings grants bound to the exact page fingerprint; share grants bound to (source, target) (D20) |
-| N3 | Under `never`, money commits are refused unless the owner opted into "Never ask + allow purchases" for that `never` window, signed on the phone and time-limited (§2.10, D21; decided by owner, 2026-10-05). A per-app `pay` grant doesn't count under `never`. No new prompts |
+| N3 | Under `never`, money commits are refused unless the owner opted into "Don't ask + allow purchases" for that `never` window, signed on the phone and time-limited (§2.10, D21; decided by owner, 2026-10-05). A per-app `pay` grant doesn't count under `never`. No new prompts |
 | Q7 | Accepted: one terminal follow-up tap, minted only by a flow-starting commit, same app and task, 3 min on the monotonic clock; flow-starting words always ask again (D4) |
 | S1 | Accepted: listed as a gap in §5, with D15 measured per locale |
 | S2 | Accepted: the phone decides "the session's app" from the dialog's requesting package (D2) |

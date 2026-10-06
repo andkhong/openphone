@@ -1239,9 +1239,9 @@ const MODE_ORDER = ["ask", "plan", "auto", "trusted", "never"];
 const MODE_TEXT = {
   ask: ["Ask every step", "Ask", "Approve every tap, typed text and app launch on your phone."],
   plan: ["Plan first", "Plan", "Approve a short plan once; asks again only off-plan or to pay."],
-  auto: ["Auto", "Auto", "Asks at the final step of sends, deletes and payments you didn't ask for."],
+  auto: ["Ask for risky", "Ask for risky", "Asks at the final step of sends, deletes and payments you didn't ask for."],
   trusted: ["Trusted apps", "Trusted", "Like Auto, and apps you trust act without asking."],
-  never: ["Never ask", "Never ask", "No prompts for a while. Purchases (unless you also allowed them) and blocked apps stay off."],
+  never: ["Don't ask", "Don't ask", "No prompts for a while. Purchases (unless you also allowed them) and blocked apps stay off."],
 };
 const KIND_TEXT = { send: "send", delete: "delete", post: "post", pay: "pay", fill: "autofill" };
 const rankOf = (m) => MODE_ORDER.indexOf(m);
@@ -1249,7 +1249,7 @@ const tightestMode = (...ms) => ms.filter((m) => rankOf(m) >= 0).sort((a, b) => 
 let perms = null;            // the phone's permission settings (from each status poll)
 let permView = null;         // GET /permissions: plus categories and whether the phone can approve
 let neverSpan = "1h";
-let neverMoney = false;      // "Also allow purchases" when enabling Never ask (off by default, every time)
+let neverMoney = false;      // "Also allow purchases" when enabling Don't ask (off by default, every time)
 let modeStatus = "";         // a line in the menu: "Approve on your phone…", "Not approved."
 let modeChatSeen = null;     // the chat the mode menu last saw (a new chat's pick moves to its id)
 const clock = (t) => new Date(t * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -1287,12 +1287,12 @@ function renderMode() {
   const m = effectiveMode();
   const never = m === "never" && perms && perms.never_until;
   const money = perms && perms.never_money ? ", including purchases" : "";
-  $("modeLabel").textContent = never ? `Never ask${money} · until ${clock(perms.never_until)}` : MODE_TEXT[m][1];
+  $("modeLabel").textContent = never ? `Don't ask${money} · until ${clock(perms.never_until)}` : MODE_TEXT[m][1];
   $("modeChip").classList.toggle("never", !!never);
   $("modeChip").title = `Permission mode: ${MODE_TEXT[m][0]}. ${MODE_TEXT[m][2]}`;
   const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
   $("neverChip").hidden = !neverOn;
-  if (neverOn) $("neverChip").textContent = `Never ask${perms.never_money ? ", including purchases," : ""} · until ${clock(perms.never_until)}`;
+  if (neverOn) $("neverChip").textContent = `Don't ask${perms.never_money ? ", including purchases," : ""} · until ${clock(perms.never_until)}`;
   if (!$("modeMenu").hidden) renderModeMenu();
 }
 
@@ -1325,7 +1325,7 @@ function renderModeMenu() {
   const rows = ["ask", "plan", "auto", "trusted"].map((m, i) => modeRow(m, i + 1));
   const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
   const box = el("div", `mode-never${neverOn ? " on" : ""}`);
-  box.append(el("span", "t", neverOn ? `Never ask${perms.never_money ? ", including purchases," : ""} · on until ${untilText(perms.never_until)}` : "Never ask"));
+  box.append(el("span", "t", neverOn ? `Don't ask${perms.never_money ? ", including purchases," : ""} · on until ${untilText(perms.never_until)}` : "Don't ask"));
   const action = el("button", `btn btn-sm${neverOn ? "" : " btn-primary"}`, neverOn ? "Turn off" : "Enable");
   action.type = "button";
   action.dataset.mode = "never";
@@ -1352,12 +1352,12 @@ function renderModeMenu() {
     check.onchange = () => { neverMoney = check.checked; renderModeMenu(); };
     money.append(check, el("span", "", "Also allow purchases"));
     box.append(money);
-    if (neverMoney) box.append(el("span", "money-warn", "Agents could buy, pay and subscribe on this phone without asking until Never ask ends. Your phone asks you to confirm this separately."));
+    if (neverMoney) box.append(el("span", "money-warn", "Agents could buy, pay and subscribe on this phone without asking until Don't ask ends. Your phone asks you to confirm this separately."));
   }
   const status = el("div", "mode-status");
   if (modeStatus) status.append(el("span", `pill ${modeStatus.startsWith("Approve") ? "dotted warn live" : "bad"}`, modeStatus));
   const foot = el("div", "mode-foot");
-  const def = perms ? MODE_TEXT[perms.default_mode][0] : "Auto";
+  const def = perms ? MODE_TEXT[perms.default_mode][0] : "Ask for risky";
   foot.append(el("span", "", `This chat${chatMode() ? "" : " (phone default)"} · default ${def}`));
   const settings = el("button", "", "Phone settings");
   settings.type = "button";
@@ -1444,7 +1444,7 @@ function pickMode(m) {
 const enableNever = () => {
   const body = neverMoney ? { never: neverSpan, allow_money: true } : { never: neverSpan };
   neverMoney = false;  // never remembered: each time it's a fresh, explicit choice
-  return changePerms(body, () => { setChatMode("never"); setHint(`Never ask${body.allow_money ? ", including purchases," : ""} for this chat, until it expires.`); });
+  return changePerms(body, () => { setChatMode("never"); setHint(`Don't ask${body.allow_money ? ", including purchases," : ""} for this chat, until it expires.`); });
 };
 const turnOffNever = () => changePerms({ never: "off" }, () => { if (chatMode() === "never") setChatMode(null); setHint("Agents ask again on this phone."); });
 
@@ -1479,7 +1479,7 @@ function renderPerms() {
   $("permCeiling").value = p.standing_ceiling;
   $("permNever").replaceChildren();
   if (p.never_until) {
-    $("permNever").append(document.createTextNode(`Never ask${p.never_money ? ", including purchases," : ""} is on until ${untilText(p.never_until)}. `));
+    $("permNever").append(document.createTextNode(`Don't ask${p.never_money ? ", including purchases," : ""} is on until ${untilText(p.never_until)}. `));
     const off = el("button", "btn btn-sm", "Turn off");
     off.type = "button";
     off.onclick = () => changePerms({ never: "off" }, renderPerms, permShow);
@@ -1892,16 +1892,20 @@ let screenSocketAfter = 0;  // after a failed socket, poll until this time, then
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
   const reconnecting = !!(last && last.device && last.device.reconnecting);
-  const cover = !deviceId || !hasFrame;
+  const phone = last && last.state;
+  const confirming = phone === "asking" && last.question_kind === "confirm";
+  // The phone's approval screen keeps itself out of screenshots and video on purpose (so neither the
+  // agent nor a server can see or work it), which shows here as a black picture: say what's going on.
+  const approving = !!deviceId && confirming && !offline && !reconnecting;
+  const cover = !deviceId || !hasFrame || approving;
   const message = !deviceId ? "No phone connected yet." : reconnecting ? "Reconnecting to your phone…" : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
+    : approving ? "Waiting for your approval on the phone. The approval screen is hidden from the live view for your security."
     : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
   $("screenOverlay").hidden = !cover && !screenError && !reconnecting;
   $("screenOverlay").classList.toggle("banner", !cover);
   $("screenMsg").textContent = message;
   const badge = $("liveBadge");
-  const phone = last && last.state;
-  const confirming = phone === "asking" && last.question_kind === "confirm";
   const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"]
     : confirming ? ["Approve on phone", "warn dotted live"] : phone === "asking" ? ["Needs you", "warn dotted live"]
     : phone === "running" ? ["Working", "info dotted live"] : screenError ? ["Unavailable", "warn dotted"]

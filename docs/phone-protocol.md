@@ -227,7 +227,7 @@ in its connection notification ("Agents can act without asking until 21:00", or 
 clears it at `never_until`.
 
 **`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
-Never ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
+Don't ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
 
 **`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
 ```json

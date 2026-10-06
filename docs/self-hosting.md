@@ -100,7 +100,7 @@ callers only ever see the tier names, never which model or provider runs them.
 | `confirm_actions` | `unrequested` | Ask before risky taps the instruction didn't ask for (`always`: every risky tap; `never`: none) |
 | `confirm_keywords` | buy, pay, send, delete, … | Words that make a tap risky |
 | `default_permission_mode` | `auto` | A phone's [permission mode](safety.md#permission-modes) until its owner picks one: `ask`, `plan` or `auto` (looser modes need the phone's own approval) |
-| `money_keywords` | buy, pay, order, checkout, … | Payment words: they ask even when requested and are refused under Never ask (unless the owner allowed purchases with it) |
+| `money_keywords` | buy, pay, order, checkout, … | Payment words: they ask even when requested and are refused under Don't ask (unless the owner allowed purchases with it) |
 | `confirm_skip_phrases` | add to cart, proceed to checkout, … | Steps on the way to a commit point, never asked about |
 | `settings_refuse_terms`, `settings_everyday_terms`, `settings_ask_terms` | see `openmob/permissions.py` | The Settings tiers: refused, never asked, asked |
 | `app_categories` | messaging, email, social, notes, photos | Categories a trusted entry may name (package-name parts) |

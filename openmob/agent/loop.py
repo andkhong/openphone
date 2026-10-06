@@ -1085,11 +1085,11 @@ class Agent:
         share = gate.is_share(hits)
         settings = state.perms.current_settings()
         if mode == "never" or cfg.confirm_actions == "never":
-            # Purchases run unasked only when the owner turned on "Also allow purchases" with Never ask
+            # Purchases run unasked only when the owner turned on "Also allow purchases" with Don't ask
             # (signed on the phone, ending with that window). A per-app pay entry doesn't count here.
             if money and not settings.get("never_money"):
                 return self._refuse(shown, "purchases are off while agents act without asking (the owner can "
-                                           "turn on \"Also allow purchases\" with Never ask, on the phone).")
+                                           "turn on \"Also allow purchases\" with Don't ask, on the phone).")
             return None
         if mode == "ask" and state.step_approved:
             return None  # the owner just approved this very action
