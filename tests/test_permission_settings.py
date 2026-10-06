@@ -124,9 +124,11 @@ def test_a_phone_without_an_approval_key_cant_loosen(hosted):
 def test_always_allow_creates_a_trusted_entry_only_when_signed(hosted):
     h = hosted
     dev = h.ids.a1
+    assert h.alice.post(f"/api/devices/app-{h.ids.a2}/trust").status_code == 200  # so it's asked too
     h.pa1.driver.package = "com.example.shop"
     h.alice.post(f"/api/devices/app-{dev}/command", json={"text": "check the cart"})
     assert wait_for(lambda: h.status(dev) == "needs_confirmation")
+    assert wait_for(lambda: h.pa2.approval_requests)
     request = h.pa1.approval_requests[-1]
     offer = request["always"]
     assert offer["kind"] == "pay" and offer["days"] == 1 and offer["confirm_twice"]

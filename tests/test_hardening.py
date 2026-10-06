@@ -281,6 +281,8 @@ def test_denying_on_the_phone_cancels_the_whole_run(orc):
 
 def test_approval_goes_to_every_phone_and_the_first_answer_wins(orc):
     phone, tablet = orc.alice.phones["alice-phone"], orc.alice.phones["alice-tablet"]
+    # The tablet was paired second: the owner trusts it for approvals on her other phones first.
+    assert orc.alice.console.post("/api/devices/app-alice-tablet/trust").status_code == 200
     r = new_task(orc.alice, A, "check the cart")
     assert wait_for(lambda: phone.approval_requests and tablet.approval_requests)
     on_phone, on_tablet = phone.approval_requests[-1], tablet.approval_requests[-1]
@@ -298,6 +300,7 @@ def test_approval_goes_to_every_phone_and_the_first_answer_wins(orc):
 
 def test_approval_answered_elsewhere_is_withdrawn_from_every_phone(orc):
     orc.alice.console.patch(f"/api/developer/keys/{orc.alice.key_id}", json={"confirm_approve": False})
+    assert orc.alice.console.post("/api/devices/app-alice-tablet/trust").status_code == 200
     r = new_task(orc.alice, A, "check the cart")
     phone, tablet = orc.alice.phones["alice-phone"], orc.alice.phones["alice-tablet"]
     assert wait_for(lambda: tablet.approval_requests)

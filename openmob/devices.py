@@ -102,6 +102,9 @@ class DeviceManager:
         # approval id -> {status: pending|approved|denied|expired|replaced, device_id, account_id, patch,
         # loosens, created, decided}: permission changes waiting for (or decided on) the phone.
         self.permission_requests: dict[str, dict] = {}
+        # (session) -> bool: may this phone answer approvals for the owner's OTHER phones? A newly
+        # paired phone may not until the owner trusts it. None: every phone may (local mode).
+        self.approval_trust = None
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -299,8 +302,19 @@ class DeviceManager:
     # holding another. The first answer wins (screen lock on that phone); the others are told to
     # dismiss their prompt with approval_cancel.
 
+    def _may_answer(self, answering: Session, acting: Session) -> bool:
+        """A phone may always answer for its own actions (the owner is holding it); for another
+        phone's, only once the owner has trusted it for approvals."""
+        if answering is acting or self.approval_trust is None:
+            return True
+        try:
+            return bool(self.approval_trust(answering))
+        except Exception:
+            return False  # fail closed
+
     def _approval_targets(self, acting: Session) -> list[Session]:
-        return [s for s in list(self.sessions.values()) if s.link and s.account_id == acting.account_id]
+        return [s for s in list(self.sessions.values())
+                if s.link and s.account_id == acting.account_id and self._may_answer(s, acting)]
 
     @staticmethod
     def _bound_action(kind: str, question: str, details: dict) -> dict:
@@ -391,8 +405,14 @@ class DeviceManager:
             record = self.approvals.get(str(approval_id or ""))
             if record is None or record["session"].account_id != session.account_id:
                 return False
+        # A permission change is answered only by the phone being loosened (its own key, checked in
+        # _resolve_permission_change): trusting another phone never lets it loosen this one.
         if record.get("kind") == "mode_change":
             return self._resolve_permission_change(session, str(approval_id), record, approved, message)
+        if not self._may_answer(session, record["session"]):
+            session.coordinator.event("status", "This phone isn't trusted for approvals on your other phones yet, "
+                                                "so its answer was ignored. Trust it on your dashboard.", task=None)
+            return False
         # "Always allow this": only from the phone that would act, where it was offered.
         always = (approved and message.get("always") is True and bool((record.get("details") or {}).get("always"))
                   and session is record["session"] and self._may_loosen(session))
@@ -484,7 +504,7 @@ class DeviceManager:
                     self._send_approval(session, approval_id, record)
                 continue
             info = record["session"].coordinator.task(record["task_id"])
-            if info and info["status"] == "needs_confirmation":
+            if info and info["status"] == "needs_confirmation" and self._may_answer(session, record["session"]):
                 self._send_approval(session, approval_id, record)  # same id: phones ignore ones they answered
         self.push_permissions(session)
 

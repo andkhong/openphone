@@ -36,6 +36,7 @@
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
   .dot.on { background: var(--ok); }
   .devices small { color: var(--muted); }
+  .devices li.fresh .name::after { content: "New phone added"; margin-left: 8px; font-size: 12px; font-weight: 600; color: var(--ok); background: var(--ok-soft); padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .stack { display: grid; gap: 20px; }
 </style>
 </head>
@@ -65,12 +66,13 @@
           <p>Any Android phone (Android 11+) can join. No cable, no developer mode.</p>
         </div>
         <ol class="steps">
-          <li><div><b>Scan the QR code</b><span>It opens a page on the phone with everything below.</span></div></li>
-          <li><div><b>Install the OpenMob app</b><span id="apkLine">Download it from that page and allow the install.</span></div></li>
-          <li><div><b>Open the app from that page</b><span>It arrives already paired with this server.</span></div></li>
-          <li><div><b>Turn on OpenMob in Accessibility, then tap Connect</b><span>This lets the agent see the screen and tap. Disconnect any time from the notification.</span></div></li>
+          <li><div><b>Scan the QR code</b><span>With the phone's camera. It opens a page on the phone.</span></div></li>
+          <li><div><b>Install the OpenMob app</b><span id="apkLine">First time only: download it from that page and allow the install.</span></div></li>
+          <li><div><b>Tap Open OpenMob, then confirm</b><span id="confirmLine">The phone asks once, with its fingerprint or PIN. No sign-in on the phone.</span></div></li>
+          <li><div><b>Follow the app's checklist</b><span>Turn on OpenMob in Accessibility, allow notifications and background use. Disconnect any time from the notification.</span></div></li>
         </ol>
         <div class="note">Can't scan? On the phone, open <code id="pairUrl">…</code></div>
+        <div class="note" id="usbNote" hidden>Developer with a USB cable? <code>openmob phone add --server <span id="usbServer"></span></code> installs, sets up and pairs the phone in one go (see Phone setup in the docs).</div>
         <div class="callout warn">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>
           <div id="codeWarn">This code works like a password: anyone who scans it can connect a phone to this agent. Only show it to people you trust.</div>
@@ -109,8 +111,10 @@ async function checkAccount() {
     }
     if (accounts) {
       $("back").href = $("open").href = $("brandLink").href = "/";
-      $("codeWarn").textContent = `This code works once, for 10 minutes, and only for ${me.email}. ` +
-        "Whoever scans it must sign in as you and approve with the phone's screen lock.";
+      $("codeWarn").textContent = `This code works once, for 2 minutes, and pairs a phone to ${me.email}. ` +
+        "The phone names this server and your email and asks for its screen lock first. Every new phone shows up " +
+        "below and on your dashboard, where you can remove it.";
+      $("usbNote").hidden = false;
     }
   } catch {}
   return true;
@@ -120,11 +124,13 @@ async function init() {
   try {
     const p = await api("/api/pairing");  // in account mode this issues a fresh one-time code
     $("pairUrl").textContent = p.pair_url;
+    $("usbServer").textContent = location.origin;
     $("localWarn").hidden = !p.local;
     const host = (() => { try { return new URL(p.server).host; } catch { return ""; } })();
+    if (p.email) $("confirmLine").textContent = `The phone asks once, with its fingerprint or PIN: "Connect this phone to ${host} as ${p.email}?" No sign-in on the phone.`;
     $("serverName").textContent = host;
     $("serverLine").hidden = !host || p.local || p.server.startsWith("https://");  // only for local-network servers
-    $("apkLine").textContent = p.apk_url ? "Download it from that page and allow the install." : "The app isn't built on this server yet (cd android && ./gradlew assembleDebug).";
+    $("apkLine").textContent = p.apk_url ? "First time only: download it from that page and allow the install." : "The app isn't built on this server yet (cd android && ./gradlew assembleDebug).";
     $("qr").replaceChildren();
     $("qr").classList.remove("expired");
     if (window.QRCode) new QRCode($("qr"), { text: p.pair_url, width: 560, height: 560, correctLevel: QRCode.CorrectLevel.M });
@@ -147,10 +153,16 @@ function tick() {
 setInterval(tick, 1000);
 $("newCode").onclick = (e) => { e.preventDefault(); init(); };
 
-async function revoke(device) {
-  if (!confirm(`Remove ${device.model} from your account? It disconnects now and must be paired again to reconnect.`)) return;
+const openedAt = Date.now() / 1000;
+
+async function revoke(device) {  // one click: removing is safe, pairing again takes a scan
   try { await api(`/api/devices/${encodeURIComponent(device.id)}/revoke`, { method: "POST" }); } catch (e) { alert(e.message); }
   poll(false);
+}
+
+function ago(t) {
+  const s = Math.max(0, Date.now() / 1000 - (t || 0));
+  return !t ? "never" : s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : new Date(t * 1000).toLocaleDateString();
 }
 
 async function poll(again = true) {
@@ -158,9 +170,13 @@ async function poll(again = true) {
     const devices = (await api("/api/devices")).filter((d) => d.connection === "app");
     $("devices").replaceChildren(...(devices.length ? devices.map((d) => {
       const li = document.createElement("li");
+      if (d.paired_at && d.paired_at >= openedAt - 5) {  // paired from this page: the code was used
+        li.className = "fresh";
+        if (expiresAt) { expiresAt = 0; $("expiry").textContent = "Code used. Make a new one to add another phone."; $("qr").classList.add("expired"); }
+      }
       const dot = Object.assign(document.createElement("span"), { className: `dot ${d.online ? "on" : ""}` });
-      const name = Object.assign(document.createElement("span"), { className: "name", textContent: d.model });
-      const state = Object.assign(document.createElement("small"), { textContent: d.online ? "connected" : "offline" });
+      const name = Object.assign(document.createElement("span"), { className: "name", textContent: d.name || d.model });
+      const state = Object.assign(document.createElement("small"), { textContent: d.online ? "connected" : d.paired ? `offline · last seen ${ago(d.last_seen)}` : "offline" });
       li.append(dot, name, state);
       if (accounts) {
         const btn = Object.assign(document.createElement("button"), { className: "btn btn-sm btn-danger", type: "button", textContent: "Remove" });

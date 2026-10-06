@@ -43,6 +43,10 @@ DOCS_DIRS += [Path(__file__).parent.parent / "docs", Path.cwd() / "docs"]
 PAGE = STATIC / "index.html"
 LOGIN_MAX_FAILURES = 10  # failed sign-ins per address or email…
 LOGIN_WINDOW = 600  # …in this many seconds, then 429
+SIGNUP_MAX_PER_IP = 20  # sign-up attempts per address in LOGIN_WINDOW
+PAIR_MAX_FAILURES_IP = 10  # wrong pairing codes per address in LOGIN_WINDOW, then 429
+PAIR_MAX_FAILURES_ACCOUNT = 10  # wrong secrets for one account's codes in LOGIN_WINDOW, then 429
+SIGNUP_REPLY = "If this email can be used, your account is ready: sign in with it and your password."
 # Debug build of the companion app (built from android/ in this repo).
 APK = Path(
     os.environ.get("OPENMOB_APK")
@@ -106,6 +110,54 @@ class RedeemIn(BaseModel):
     device_id: str
     model: str = ""
     approval_key: str | None = None  # the app's screen-lock-bound public key (see phone/approval_keys.py)
+
+
+class CodeIn(BaseModel):
+    code: str
+
+
+class PhoneUnpairIn(BaseModel):
+    device_id: str
+
+
+class PhoneTrustIn(BaseModel):
+    device_id: str  # the trusted phone signing
+    target: str  # the phone to trust (raw id or "app-<id>")
+    timestamp: int
+    signature: str
+
+
+class EnrollIn(BaseModel):
+    device_id: str | None = None  # the app's id, when the CLI could read it: already paired → no new code
+
+
+class FailureWindow:
+    """Recent failures per key (address, email, account) within `window` seconds, for 429s."""
+
+    def __init__(self, window: float = LOGIN_WINDOW):
+        self.window = window
+        self.hits: dict[str, list[float]] = {}
+        self.lock = threading.Lock()
+
+    def count(self, key: str) -> int:
+        now = time.time()
+        with self.lock:
+            recent = [t for t in self.hits.get(key, []) if now - t < self.window]
+            if recent:
+                self.hits[key] = recent
+            else:
+                self.hits.pop(key, None)
+            return len(recent)
+
+    def add(self, *keys: str) -> None:
+        now = time.time()
+        with self.lock:
+            for key in keys:
+                self.hits.setdefault(key, []).append(now)
+
+
+def client_ip(request) -> str:
+    return request.client.host if request.client else "?"
 
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speech
@@ -179,6 +231,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     def connect_page() -> str:
         return (STATIC / "connect.html").read_text()
 
+    @app.get("/phones", response_class=HTMLResponse)
+    def phones_page() -> str:
+        return (STATIC / "phones.html").read_text()  # all data comes from /api/devices
+
     @app.get("/pair", response_class=HTMLResponse)
     def pair_page() -> str:
         return (STATIC / "pair.html").read_text()
@@ -203,30 +259,34 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         response.set_cookie("openmob_session", tok, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
         return tok
 
+    signups = FailureWindow()
+
     @app.post("/api/auth/signup")
-    def signup(body: Credentials, response: Response) -> dict:
+    def signup(body: Credentials, request: Request) -> dict:
+        """Create an account. The reply is the same whether or not the email already had one (there's
+        no email sending yet to tell the owner instead), and it never signs in: the client signs in
+        next with /api/auth/login, whose failures are rate-limited. Only a malformed email or a short
+        password gets a 400, which says nothing about other accounts."""
         if store is None:
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
-        from .accounts import AuthError
+        from .accounts import AccountExists, AuthError
 
+        ip = f"ip:{client_ip(request)}"
+        if signups.count(ip) >= SIGNUP_MAX_PER_IP:
+            raise HTTPException(status_code=429, detail="Too many sign-ups from this address. Try again in a few minutes.",
+                                headers={"Retry-After": str(LOGIN_WINDOW)})
+        signups.add(ip)
         try:
-            account_id = store.create_account(body.email, body.password)
+            store.create_account(body.email, body.password)
+        except AccountExists:
+            pass  # same reply as a new account
         except AuthError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
-        return {"email": store.account_email(account_id), "session": _set_session(response, account_id)}
+        return {"ok": True, "message": SIGNUP_REPLY}
 
     # Failed sign-ins per client address and per email, in the last LOGIN_WINDOW seconds: the
     # password form mustn't be a free password-guessing oracle.
-    login_failures: dict[str, list[float]] = {}
-    login_lock = threading.Lock()
-
-    def _recent_failures(key: str, now: float) -> list[float]:
-        recent = [t for t in login_failures.get(key, []) if now - t < LOGIN_WINDOW]
-        if recent:
-            login_failures[key] = recent
-        else:
-            login_failures.pop(key, None)
-        return recent
+    login_failures = FailureWindow()
 
     @app.post("/api/auth/login")
     def login(body: Credentials, request: Request, response: Response) -> dict:
@@ -234,18 +294,14 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
         from .accounts import AuthError
 
-        now = time.time()
-        keys = (f"ip:{request.client.host if request.client else '?'}", f"email:{body.email.strip().lower()}")
-        with login_lock:
-            if any(len(_recent_failures(k, now)) >= LOGIN_MAX_FAILURES for k in keys):
-                raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in a few minutes.",
-                                    headers={"Retry-After": str(LOGIN_WINDOW)})
+        keys = (f"ip:{client_ip(request)}", f"email:{body.email.strip().lower()}")
+        if any(login_failures.count(k) >= LOGIN_MAX_FAILURES for k in keys):
+            raise HTTPException(status_code=429, detail="Too many sign-in attempts. Try again in a few minutes.",
+                                headers={"Retry-After": str(LOGIN_WINDOW)})
         try:
             account_id = store.verify_login(body.email, body.password)
         except AuthError as exc:
-            with login_lock:
-                for k in keys:
-                    login_failures.setdefault(k, []).append(now)
+            login_failures.add(*keys)
             raise HTTPException(status_code=401, detail=str(exc)) from None
         return {"email": store.account_email(account_id), "session": _set_session(response, account_id)}
 
@@ -282,27 +338,152 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             "admin": bool(acct and store.is_admin(acct)),
         }
 
-    @app.post("/api/pair/redeem")
-    def redeem(body: RedeemIn, request: Request) -> dict:
-        """The phone app calls this after the owner has signed in and passed the screen-lock check."""
+    def audit(action: str, account_id: str | None, **fields) -> None:
+        """Into the account's audit log (/developer › Logs), when the ledger is on (accounts mode)."""
+        service = getattr(app.state, "v1_service", None)
+        if service is not None and account_id:
+            service.ledger.audit(action, account_id, **fields)
+
+    # Wrong pairing codes per client address and per account the code's id belongs to: a code has
+    # 128 bits of secret, so this is defense in depth, and it voids itself after a few wrong tries.
+    pair_failures = FailureWindow()
+
+    def pairing_guard(request: Request) -> str:
+        ip = f"ip:{client_ip(request)}"
+        if pair_failures.count(ip) >= PAIR_MAX_FAILURES_IP:
+            raise HTTPException(status_code=429, detail="Too many pairing attempts. Try again in a few minutes.",
+                                headers={"Retry-After": str(LOGIN_WINDOW)})
+        return ip
+
+    def pairing_failed(ip: str, exc) -> None:
+        from .accounts import PairingRefused
+
+        pair_failures.add(ip)
+        if isinstance(exc, PairingRefused) and exc.account_id:
+            pair_failures.add(f"acct:{exc.account_id}")
+
+    def account_locked(account_id: str) -> bool:
+        return pair_failures.count(f"acct:{account_id}") >= PAIR_MAX_FAILURES_ACCOUNT
+
+    def finish_pairing(body: RedeemIn, request: Request, acct: str | None) -> dict:
+        """Redeem a code for this phone's own device key. `acct`: the signed-in account (older apps)
+        or None (the code is the credential). The phone gets a device key, never a session."""
+        from .accounts import AuthError
+        from .phone.approval_keys import valid_public_key
+
+        ip = pairing_guard(request)
+        if body.approval_key and not valid_public_key(body.approval_key):
+            raise HTTPException(status_code=400, detail="approval_key must be a base64 EC P-256 public key.")
+        try:
+            owner = store.check_pairing_code(body.code)["account_id"]
+            if account_locked(owner):
+                raise HTTPException(status_code=429, detail="Too many pairing attempts for this account. "
+                                    "Try again in a few minutes.", headers={"Retry-After": str(LOGIN_WINDOW)})
+            key = store.redeem_pairing_code(body.code, acct, body.device_id, body.model, body.approval_key)
+        except AuthError as exc:
+            pairing_failed(ip, exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        raw_id = body.device_id.strip()
+        # A new key for this phone: any socket still using the old one is cut off now.
+        manager.close_links(f"app-{raw_id}", 4401, "This phone was paired again. Reconnect with its new key.")
+        audit("device.paired", owner, device_id=raw_id, outcome=" ".join(body.model.split())[:80] or None)
+        print(f"📱 New phone paired: {body.model or raw_id}", flush=True)
+        return {"key": key, "server": public_base(request), "email": store.account_email(owner),
+                "device_id": raw_id, "trusted_for_approvals": store.trusted_for_approvals(raw_id)}
+
+    @app.post("/api/pair/check")
+    def pair_check(body: CodeIn, request: Request) -> dict:
+        """Before the phone asks its owner to confirm: which account this code would pair it to. The
+        code isn't used up. Wrong codes count toward the same limits as redeeming."""
         if store is None:
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
         from .accounts import AuthError
 
+        ip = pairing_guard(request)
+        try:
+            info = store.check_pairing_code(body.code)
+        except AuthError as exc:
+            pairing_failed(ip, exc)
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        return {"email": info["email"], "expires": info["expires"], "server": public_base(request)}
+
+    @app.post("/api/pair/claim")
+    def pair_claim(body: RedeemIn, request: Request) -> dict:
+        """The phone, after its owner confirmed with the screen lock: the code is the credential."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        return finish_pairing(body, request, None)
+
+    @app.post("/api/pair/redeem")
+    def redeem(body: RedeemIn, request: Request) -> dict:
+        """Older apps and `openmob bridge --email`: the same, from a signed-in session of the code's account."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
         acct = account(request)
         if acct is None:
             raise HTTPException(status_code=401, detail="Sign in on the phone first.")
-        from .phone.approval_keys import valid_public_key
+        return finish_pairing(body, request, acct)
 
-        if body.approval_key and not valid_public_key(body.approval_key):
-            raise HTTPException(status_code=400, detail="approval_key must be a base64 EC P-256 public key.")
+    @app.post("/api/phone/unpair")
+    def phone_unpair(body: PhoneUnpairIn, request: Request) -> dict:
+        """The phone unpairs itself with its own device key (X-OpenMob-Device-Key), no session needed."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        from .accounts import AuthError
+
+        raw_id = body.device_id.strip()
         try:
-            key = store.redeem_pairing_code(body.code, acct, body.device_id, body.model, body.approval_key)
-        except AuthError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
-        # A new key for this phone: any socket still using the old one is cut off now.
-        manager.close_links(f"app-{body.device_id}", 4401, "This phone was paired again. Reconnect with its new key.")
-        return {"key": key, "server": public_base(request)}
+            owner = store.unpair_by_key(raw_id, request.headers.get("x-openmob-device-key") or "")
+        except AuthError:
+            raise HTTPException(status_code=401, detail="This phone isn't paired, or its key is wrong.") from None
+        manager.close_links(f"app-{raw_id}", 4401, "This phone was unpaired.")
+        manager.remove(f"app-{raw_id}")
+        audit("device.unpaired", owner, device_id=raw_id, outcome="from the phone")
+        return {"ok": True}
+
+    def trusted(account_id: str, raw_id: str, how: str) -> dict:
+        audit("device.trusted", account_id, device_id=raw_id, outcome=how)
+        s = manager.get(f"app-{raw_id}")
+        if s is not None and s.link is not None:
+            manager.resume(s)  # it can answer the approvals still waiting on the other phones now
+        return {"ok": True, "trusted_for_approvals": True}
+
+    @app.post("/api/devices/{device_id}/trust", dependencies=[Depends(require_auth)])
+    def trust(device_id: str, request: Request) -> dict:
+        """The owner, signed in on the dashboard, trusts a phone for approvals on their other phones.
+        Only a dashboard session can do this (an API key can't reach /api), or a trusted phone's
+        screen-lock signature (/api/phone/trust)."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        raw_id = device_id.removeprefix("app-")
+        if not store.trust_device(account(request), raw_id):
+            raise HTTPException(status_code=404, detail="Not your phone.")
+        return trusted(account(request), raw_id, "from the dashboard")
+
+    @app.post("/api/phone/trust")
+    def phone_trust(body: PhoneTrustIn, request: Request) -> dict:
+        """A trusted phone vouches for another of the owner's phones, signing
+        "openmob-trust-1|trust|<target>|<time>" (approval_keys.trust_message: never valid as an approval)
+        with its screen-lock approval key (X-OpenMob-Device-Key authenticates the phone itself)."""
+        if store is None:
+            raise HTTPException(status_code=404, detail="Accounts are not enabled.")
+        from .accounts import AuthError
+        from .phone.approval_keys import verify_trust
+
+        signer = body.device_id.strip()
+        target = body.target.removeprefix("app-").strip()
+        try:
+            owner = store.verify_device(signer, request.headers.get("x-openmob-device-key") or "")
+        except AuthError:
+            raise HTTPException(status_code=401, detail="This phone isn't paired, or its key is wrong.") from None
+        auth = store.device_auth(signer)
+        if not store.trusted_for_approvals(signer) or not auth or not auth["approval_key"]:
+            raise HTTPException(status_code=403, detail="Only a phone trusted for approvals can trust another.")
+        if not verify_trust(auth["approval_key"], target, body.timestamp, body.signature):
+            raise HTTPException(status_code=403, detail="The trust wasn't signed with this phone's screen lock.")
+        if not store.trust_device(owner, target):
+            raise HTTPException(status_code=404, detail="Not your phone.")
+        return trusted(owner, target, f"by phone {signer}")
 
     @app.post("/api/devices/{device_id}/revoke", dependencies=[Depends(require_auth)])
     def revoke(device_id: str, request: Request) -> dict:
@@ -312,23 +493,50 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         raw_id = device_id.removeprefix("app-")
         if not store.revoke_device(account(request), raw_id):
             raise HTTPException(status_code=404, detail="Not your phone.")
-        manager.close_links(f"app-{raw_id}", 4401, "This phone was unpaired from its account.")  # every socket, now
+        manager.close_links(f"app-{raw_id}", 4401, "This phone was unpaired from its account.")  # every socket
         manager.remove(f"app-{raw_id}")  # and drop it from the phone lists
+        audit("device.removed", account(request), device_id=raw_id, outcome="from the dashboard")
         return {"ok": True}
 
     # --- pairing / device lists ------------------------------------------
 
-    @app.get("/api/pairing", dependencies=[Depends(require_auth)])
-    def pairing(request: Request) -> dict:
-        """Data for the QR code on /connect. Hosted mode issues a one-time, account-bound code."""
-        from urllib.parse import quote
-
+    def phone_base(request: Request) -> str:
+        """The server address a phone should use. A phone can't reach "localhost": pair it with this
+        computer's network name instead, which also keeps working when the computer's IP changes.
+        (Not behind a tunnel: that's public.)"""
         base = public_base(request)
-        # A phone can't reach "localhost": pair it with this computer's network name instead, which
-        # also keeps working when the computer's IP changes. (Not behind a tunnel: that's public.)
         tunneled = "x-forwarded-host" in request.headers
         if base.startswith(("http://localhost", "http://127.0.0.1")) and not tunneled and local_hostname():
             base = f"http://{local_hostname()}:{request.url.port or 80}"
+        return base
+
+    def mint_pairing(account_id: str, base: str, purpose: str) -> dict:
+        from urllib.parse import quote
+
+        from .accounts import PairingLimit
+
+        try:
+            code, expires = store.create_pairing_code(account_id, purpose)
+        except PairingLimit as exc:
+            raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": "600"}) from None
+        audit("pairing.code_created", account_id, outcome=purpose)
+        return {
+            "pair_url": f"{base}/pair?code={quote(code)}",
+            "app_link": f"openmob://connect?server={quote(base, safe='')}&code={quote(code)}",
+            "code": code,
+            "enrollment_id": code[:8],
+            "expires": expires,
+            "ttl": round(expires - time.time()),
+            "email": store.account_email(account_id),
+        }
+
+    @app.api_route("/api/pairing", methods=["GET", "POST"], dependencies=[Depends(require_auth)])
+    def pairing(request: Request) -> dict:
+        """Data for the QR code on /connect, made when the owner opens "Connect a phone". Accounts
+        mode issues a single-use, account-bound code that works for 2 minutes."""
+        from urllib.parse import quote
+
+        base = phone_base(request)
         common = {
             "server": base,
             "apk_url": f"{base}/download/openmob.apk" if APK.exists() else None,
@@ -342,21 +550,35 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 "app_link": f"openmob://connect?server={quote(base, safe='')}&t={quote(tok)}",
                 "accounts": False,
             }
-        code, expires = store.create_pairing_code(account(request))
-        return {
-            **common,
-            "pair_url": f"{base}/pair?code={quote(code)}",
-            "app_link": f"openmob://connect?server={quote(base, safe='')}&code={quote(code)}",
-            "code": code,
-            "expires": expires,
-            "accounts": True,
-        }
+        return {**common, **mint_pairing(account(request), base, "dashboard"), "accounts": True}
+
+    def paired_phones(account_id: str) -> list[dict]:
+        """Every phone paired to the account, from the store, with its live state when connected:
+        offline and never-connected phones are listed too, so a leaked pairing can't hide."""
+        rows = []
+        for d in store.list_devices(account_id):
+            s = manager.get(f"app-{d.id}")
+            live = s is not None and s.account_id == account_id
+            row = s.describe() if live else {
+                "id": f"app-{d.id}", "model": d.model, "connection": "app", "platform": "android",
+                "online": False, "reconnecting": False, "state": "offline", "current": None,
+            }
+            rows.append({**row, "paired": True, "session": live, "name": d.model, "last_seen": d.last_seen,
+                         "paired_at": d.paired_at, "trusted_for_approvals": d.trusted})
+        return rows
 
     @app.get("/api/devices", dependencies=[Depends(require_auth)])
     def devices(request: Request, rescan: bool = False) -> list[dict]:
-        if store is None and (rescan or not manager.sessions):
-            manager.refresh()
-        return [s.describe() for s in manager.sessions_for(account(request))]
+        if store is None:
+            if rescan or not manager.sessions:
+                manager.refresh()
+            return [s.describe() for s in manager.sessions_for(None)]
+        acct = account(request)
+        rows = paired_phones(acct)
+        listed = {r["id"] for r in rows}
+        # Phones with a live session but no stored pairing (none in practice) still show.
+        rows += [s.describe() for s in manager.sessions_for(acct) if s.info.id not in listed]
+        return rows
 
     @app.get("/api/devices/{device_id}/screen.jpg")
     def screen(device_id: str, request: Request, after: float = 0.0, side: int = 0, quality: str = "") -> Response:
@@ -393,6 +615,13 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             except HTTPException:
                 return False
 
+        # Screen sharing isn't asked for at setup: the first time someone opens the live view of a phone
+        # without it, the phone offers it once (a notification), and the view uses screenshots meanwhile.
+        link = getattr(session, "link", None)
+        if link is not None and not getattr(session.driver, "video_available", True) \
+                and not getattr(link, "live_view_offered", False):
+            link.live_view_offered = True
+            link.notify("live_view", "Your dashboard opened the live view.")
         feed = screen_feeds.get(session) or screen_feeds.setdefault(session, ScreenFeed(session.driver))
         await feed.serve(ws, allowed, View.parse(ws.query_params.get("side"), ws.query_params.get("quality")))
 
@@ -699,6 +928,35 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         app.include_router(developer_api.console)
         app.include_router(developer_api.admin)
 
+        @app.post("/v1/enrollments", status_code=201)
+        def enroll(request: Request, body: EnrollIn | None = None,
+                   p=Depends(developer_api.need("devices:add"))) -> dict:
+            """`openmob phone add`: a pairing code for a phone on the developer's USB cable. The phone
+            still has to confirm on its own screen (host and account, with the screen lock) before
+            it's paired. Already paired to this account (the app's id is known): no new code."""
+            device_id = ((body.device_id if body else None) or "").strip()
+            if device_id and store.is_paired(p.account_id, device_id):
+                s = manager.get(f"app-{device_id}")
+                return {"already_paired": True, "device_id": f"app-{device_id}",
+                        "online": bool(s and s.account_id == p.account_id and s.online),
+                        "email": store.account_email(p.account_id)}
+            out = mint_pairing(p.account_id, phone_base(request), "cli")
+            return {"already_paired": False, "server": phone_base(request), **out}
+
+        @app.get("/v1/enrollments/{enrollment_id}")
+        def enrollment(enrollment_id: str, p=Depends(developer_api.need("devices:add"))) -> dict:
+            """pending → paired (the owner confirmed on the phone) → online (its app connected)."""
+            status = store.pairing_status(p.account_id, enrollment_id)
+            if status is None:
+                raise HTTPException(status_code=404, detail="Unknown enrollment.")
+            device_id = status["device_id"]
+            s = manager.get(f"app-{device_id}") if device_id else None
+            online = bool(s and s.account_id == p.account_id and s.online)
+            return {"status": status["status"], "device_id": f"app-{device_id}" if device_id else None,
+                    "online": online, "model": s.info.model if s else None,
+                    # devices:add can't change this: trusting needs the dashboard or a trusted phone.
+                    "trusted_for_approvals": bool(device_id and store.trusted_for_approvals(device_id))}
+
         @app.get("/developer", response_class=HTMLResponse)
         def developer_page() -> str:
             return (STATIC / "developer.html").read_text()  # all data comes from /api/developer
@@ -763,6 +1021,9 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         auth = store.device_auth(session.info.id.removeprefix("app-"))
         return bool(auth and not auth["revoked"] and auth["approval_key"])
 
+    def may_approve_for_others(session) -> bool:
+        return store.trusted_for_approvals(session.info.id.removeprefix("app-"))
+
     if hasattr(manager, "replaced_listeners"):  # (test doubles may not have these)
         manager.approval_verifier = verify_phone_approval
         if store is not None:  # hosted: settings live on each phone's pairing; loosening needs its key
@@ -770,6 +1031,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
             manager.can_loosen = phone_can_loosen
             manager.approval_blocker = approval_blocker  # approving at all needs the key
             manager.requires_signature = lambda session: session.info.id.startswith("app-")
+            # Approvals for the owner's OTHER phones go only to (and are taken only from) trusted ones.
+            # A trusted phone still signs each yes over the action digest with its own key; a permission
+            # change is only ever answered by the phone being loosened (DeviceManager.resolve_approval).
+            manager.approval_trust = may_approve_for_others
 
     def phone_reconnected_elsewhere(session, old, new) -> None:
         service = getattr(app.state, "v1_service", None)

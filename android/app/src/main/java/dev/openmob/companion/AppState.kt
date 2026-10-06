@@ -18,6 +18,12 @@ object AppState {
         private set
     @Volatile var connected: Boolean = false
         private set
+    /** Someone opened this phone's live view on the dashboard while it had no screen sharing: the
+     *  setup checklist then offers it (screen sharing is never asked for at setup). */
+    @Volatile var liveViewRequested: Boolean = false
+    /** The connection holds a screen-sharing approval right now (smooth video on the dashboard). */
+    @Volatile var screenSharing: Boolean = false
+
     /** Who the server says is driving the phone right now (e.g. "Claude"); "" for nobody. */
     @Volatile var controller: String = ""
         private set
@@ -65,9 +71,9 @@ object AppState {
 }
 
 /**
- * Server address, credentials, and this phone's stable id. Accounts mode uses [session] (the
- * signed-in OpenMob account) and [deviceKey] (this phone's own key from /api/pair/redeem);
- * legacy token mode uses [token]. Empty string means "none".
+ * Server address, credentials, and this phone's stable id. Accounts mode uses [deviceKey] (this
+ * phone's own key from pairing, kept encrypted by a Keystore key: see [SecureStore]); legacy token
+ * mode uses [token]. The phone never keeps a dashboard session. Empty string means "none".
  */
 class Settings(context: Context) {
     private val prefs = context.getSharedPreferences("openmob", Context.MODE_PRIVATE)
@@ -76,34 +82,62 @@ class Settings(context: Context) {
         get() = prefs.getString("server", "") ?: ""
         set(value) = prefs.edit().putString("server", value.trim()).apply()
 
+    /** Legacy token mode (a developer's own server): also kept encrypted. */
     var token: String
-        get() = prefs.getString("token", "") ?: ""
-        set(value) = prefs.edit().putString("token", value.trim()).apply()
+        get() = secret("token")
+        set(value) = putSecret("token", value)
 
-    /** Account session for [server] (sent as X-OpenMob-Session). */
-    var session: String
-        get() = prefs.getString("session", "") ?: ""
-        set(value) = prefs.edit().putString("session", value.trim()).apply()
-
-    /** Email of the signed-in account, for display. */
+    /** Email of the account this phone is paired to, for display only (not a credential). */
     var email: String
         get() = prefs.getString("email", "") ?: ""
         set(value) = prefs.edit().putString("email", value.trim()).apply()
 
-    /** Ask Android for screen sharing on Connect, so the web dashboard shows smooth video. Turned off
-     *  when the owner declines that prompt, so declining is remembered rather than asked every time. */
+    /** Offer screen sharing when someone opens the live view, so the web dashboard shows smooth video.
+     *  Turned off when the owner declines Android's prompt, so declining is remembered. */
     var smoothLiveView: Boolean
         get() = prefs.getBoolean("smooth_live_view", true)
         set(value) = prefs.edit().putBoolean("smooth_live_view", value).apply()
 
     /** This phone's device key, sent in the hello message. */
     var deviceKey: String
-        get() = prefs.getString("device_key", "") ?: ""
-        set(value) = prefs.edit().putString("device_key", value.trim()).apply()
+        get() = secret("device_key")
+        set(value) = putSecret("device_key", value)
+
+    private companion object {
+        val decrypted = java.util.concurrent.ConcurrentHashMap<String, String>()
+    }
 
     /** Stable across reconnects and app restarts, so the server keeps this phone's session. */
     val deviceId: String
         get() = prefs.getString("device_id", null) ?: UUID.randomUUID().toString().also {
             prefs.edit().putString("device_id", it).apply()
         }
+
+    /**
+     * A dashboard session an older version of the app kept after pairing (enough to make API keys).
+     * Returned once so it can be signed out on the server, and deleted from the phone.
+     */
+    fun takeLegacySession(): String {
+        val session = prefs.getString("session", "") ?: ""
+        if (prefs.contains("session")) prefs.edit().remove("session").apply()
+        return session
+    }
+
+    /** Encrypted values live under "<name>_enc"; a plaintext one from an older app is moved over once. */
+    private fun secret(name: String): String {
+        prefs.getString("${name}_enc", null)?.let { blob ->
+            // Keystore operations take milliseconds (more with StrongBox) and the screen reads this often.
+            return decrypted[blob] ?: SecureStore.decrypt(blob).orEmpty().also { if (it.isNotEmpty()) decrypted[blob] = it }
+        }
+        val legacy = prefs.getString(name, "") ?: ""
+        if (legacy.isNotEmpty()) putSecret(name, legacy)
+        return legacy
+    }
+
+    private fun putSecret(name: String, value: String) {
+        val v = value.trim()
+        val edit = prefs.edit().remove(name)
+        if (v.isEmpty()) edit.remove("${name}_enc") else edit.putString("${name}_enc", SecureStore.encrypt(v))
+        edit.commit() // written before anything connects with it
+    }
 }

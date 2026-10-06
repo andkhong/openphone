@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Your Phones · OpenMob</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
+<style>
+  /* ---------- your phones ---------- */
+  .wrap { max-width: 720px; }
+  .phones { list-style: none; margin: 0; padding: 0; }
+  .phones li { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .phones li:last-child { border-bottom: 0; }
+  .phones .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
+  .phones .dot.on { background: var(--ok); }
+  .phones .info { flex: 1; min-width: 180px; }
+  .phones .name { font-weight: 600; overflow-wrap: anywhere; }
+  .phones .meta { color: var(--muted); font-size: 13px; }
+  .phones li.empty { color: var(--muted); font-size: 14px; }
+  .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg></span>OpenMob<span class="page-name">Your phones</span></a>
+  <nav class="topnav"><a class="btn btn-ghost" href="/">← Dashboard</a></nav>
+</header>
+<main class="page wrap">
+  <div class="card">
+    <div class="head-row">
+      <div class="page-head" style="margin:0">
+        <h1>Your phones</h1>
+        <p>Every phone paired to your account, connected or not. Remove one you don't recognise: it disconnects at once and can't reconnect without pairing again. A phone added after your first can approve only its own actions until you trust it.</p>
+      </div>
+      <a class="btn btn-primary" href="/connect">Connect a phone</a>
+    </div>
+    <ul class="phones" id="phones" aria-live="polite"><li class="empty">Loading…</li></ul>
+    <p class="error" id="err" role="alert"></p>
+    <p class="note">Each pairing and removal is recorded in your account's log (Developer › Logs).</p>
+  </div>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const el = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text !== undefined) n.textContent = text; return n; };
+
+function ago(t) {
+  if (!t) return "never";
+  const s = Math.max(0, Date.now() / 1000 - t);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.round(s / 60)} min ago`;
+  if (s < 86400) return `${Math.round(s / 3600)} h ago`;
+  return new Date(t * 1000).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+async function api(path, opts = {}) {
+  const res = await fetch(path, opts);
+  if (res.status === 401) { location.href = "/login?next=" + encodeURIComponent(location.pathname); throw new Error("Signed out."); }
+  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText);
+  return res.json();
+}
+
+async function remove(d, btn) {
+  btn.disabled = true;
+  try { await api(`/api/devices/${encodeURIComponent(d.id)}/revoke`, { method: "POST" }); $("err").textContent = ""; }
+  catch (e) { $("err").textContent = e.message; btn.disabled = false; }
+  load();
+}
+
+async function trust(d, btn) {
+  btn.disabled = true;
+  try { await api(`/api/devices/${encodeURIComponent(d.id)}/trust`, { method: "POST" }); $("err").textContent = ""; }
+  catch (e) { $("err").textContent = e.message; btn.disabled = false; }
+  load();
+}
+
+async function load() {
+  try {
+    const phones = (await api("/api/devices")).filter((d) => d.connection === "app");
+    $("phones").replaceChildren(...(phones.length ? phones.map((d) => {
+      const li = el("li");
+      const info = el("div", "info");
+      info.append(el("div", "name", d.name || d.model),
+                  el("div", "meta", `${d.online ? "Online" : `Offline · last seen ${ago(d.last_seen)}`} · paired ${ago(d.paired_at)}` +
+                     (d.trusted_for_approvals === false ? " · can approve only its own actions" : "")));
+      const btn = el("button", "btn btn-sm btn-danger", "Remove");
+      btn.type = "button";
+      btn.setAttribute("aria-label", `Remove ${d.name || d.model} from your account`);
+      btn.onclick = () => remove(d, btn);
+      li.append(Object.assign(el("span", `dot ${d.online ? "on" : ""}`), { title: d.online ? "Online" : "Offline" }), info);
+      if (d.trusted_for_approvals === false) {
+        const t = el("button", "btn btn-sm btn-primary", "Trust for approvals");
+        t.type = "button";
+        t.title = "Let this phone approve risky actions on your other phones too";
+        t.onclick = () => trust(d, t);
+        li.append(t);
+      }
+      li.append(btn);
+      return li;
+    }) : [el("li", "empty", "No phones paired yet.")]));
+  } catch (e) { $("err").textContent = e.message; }
+}
+load();
+setInterval(load, 5000);
+</script>
+</body>
+</html>

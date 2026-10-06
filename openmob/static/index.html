@@ -99,6 +99,13 @@
   .menu.account .menu-items { position: absolute; top: auto; right: 0; left: 0; bottom: calc(100% + 6px); min-width: 0; max-width: none; }
   .menu.account .who { display: none; }
   .menu-label { padding: 4px 10px 2px; color: var(--faint); font-size: 12px; font-weight: 600; }
+  /* "New phone added": a pairing the owner should notice, with one-click Remove. */
+  .new-phone { position: fixed; top: 64px; right: var(--gutter); width: min(420px, calc(100vw - 2 * var(--gutter))); z-index: 45; background: var(--surface); border-color: var(--warn); box-shadow: var(--shadow-lg); flex-wrap: wrap; }
+  .new-phone > svg { color: var(--warn); }
+  .new-phone .np-text { flex: 1; min-width: 180px; }
+  .new-phone .np-text b { display: block; overflow-wrap: anywhere; }
+  .new-phone .np-text span { color: var(--muted); font-size: 13px; }
+  .new-phone .np-actions { display: flex; gap: 8px; margin-left: auto; }
   .side-link { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; color: var(--fg); text-decoration: none; font-size: 14px; }
   .side-link:hover { background: var(--surface-2); }
   .side-link svg { width: 17px; height: 17px; color: var(--muted); flex: none; }
@@ -359,6 +366,7 @@
           <div class="who" id="who" hidden></div>
           <a id="memoryLink" href="/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>What I've learned</a>
           <a id="connectPhone" href="/connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Connect a phone</a>
+          <a id="phonesLink" href="/phones" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>Your phones</a>
           <a id="developerLink" href="/developer" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>Developer API &amp; AI agents</a>
           <a id="adminLink" href="/admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Admin</a>
           <hr>
@@ -382,6 +390,7 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg>
   </button>
 </header>
+<div class="callout new-phone" id="newPhone" role="status" aria-live="polite" hidden></div>
 
 <div class="layout">
   <div class="scrim" id="scrim" hidden></div>
@@ -593,6 +602,7 @@ async function checkAccount() {
       $("acctName").textContent = me.email;
       $("acctSub").textContent = me.admin ? "Admin" : "Signed in";
       $("connectPhone").href = "/connect";
+      $("phonesLink").hidden = false;
     } else {
       $("connectPhone").href = `/connect?t=${encodeURIComponent(token)}`;
     }
@@ -652,16 +662,76 @@ async function loadDevices(rescan = false) {
   try {
     const devices = await api(`/api/devices${rescan ? "?rescan=true" : ""}`);
     deviceCount = devices.length;
+    // Every paired phone is listed; one that hasn't connected since the server started can't be picked yet.
+    const usable = devices.filter((d) => d.session !== false);
     $("device").replaceChildren(...devices.map((d) => {
       const o = el("option", "", `${d.model}${d.online ? "" : " · offline"}`);
       o.value = d.id;
+      o.disabled = d.session === false;
       return o;
     }));
     $("device").hidden = !devices.length;
-    if (!devices.length) { deviceId = null; render(null); return; }
-    if (!devices.some((d) => d.id === deviceId)) { deviceId = (devices.find((d) => d.online) || devices[0]).id; resetScreen(); }
+    showNewPhone(devices);
+    if (!usable.length) { deviceId = null; render(null); return; }
+    if (!usable.some((d) => d.id === deviceId)) { deviceId = (usable.find((d) => d.online) || usable[0]).id; resetScreen(); }
     $("device").value = deviceId;
   } catch (e) { $("state").textContent = e.message; }
+}
+
+// "New phone added: SM-S948U1" for a pairing in the last 15 minutes that this browser hasn't
+// acknowledged, with one-click Remove (each pairing is also in the account's audit log).
+const SEEN_PAIRINGS = "openmob.seenPairings";
+function seenPairings() {
+  try { return JSON.parse(localStorage.getItem(SEEN_PAIRINGS) || "[]"); } catch { return []; }
+}
+function markPairingSeen(tag) {
+  try { localStorage.setItem(SEEN_PAIRINGS, JSON.stringify(seenPairings().concat(tag).slice(-50))); } catch {}
+}
+function showNewPhone(devices) {
+  const box = $("newPhone");
+  const now = Date.now() / 1000;
+  const seen = seenPairings();
+  const fresh = accounts && ([...devices].sort((a, b) => (b.paired_at || 0) - (a.paired_at || 0)).find((d) => d.trusted_for_approvals === false) ||
+    devices.find((d) => d.paired_at && now - d.paired_at < 900 && !seen.includes(`${d.id}:${d.paired_at}`)));
+  if (!fresh) { box.hidden = true; return; }
+  const untrusted = fresh.trusted_for_approvals === false;
+  const tag = `${fresh.id}:${fresh.paired_at}:${untrusted}`;
+  if (box.dataset.tag === tag && !box.hidden) return;
+  box.dataset.tag = tag;
+  const mins = Math.round((now - fresh.paired_at) / 60);
+  const text = el("div", "np-text");
+  text.append(el("b", "", `New phone added: ${fresh.name || fresh.model}`),
+              el("span", "", `Paired ${mins < 1 ? "just now" : mins < 120 ? `${mins} min ago` : "earlier"}. ` +
+                (untrusted ? "It can't approve actions on your other phones until you trust it. Not yours? Remove it."
+                           : "If this wasn't you, remove it.")));
+  const remove = el("button", "btn btn-sm btn-danger", "Remove");
+  remove.type = "button";
+  remove.setAttribute("aria-label", `Remove ${fresh.name || fresh.model} from your account`);
+  remove.onclick = async () => {
+    remove.disabled = true;
+    try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/revoke`, { method: "POST" }); box.hidden = true; }
+    catch (e) { remove.disabled = false; alert(e.message); }
+    loadDevices();
+  };
+  const ok = el("button", untrusted ? "btn btn-sm btn-primary" : "btn btn-sm", untrusted ? "Trust for approvals" : "It's mine");
+  ok.type = "button";
+  ok.onclick = async () => {
+    if (untrusted) {
+      ok.disabled = true;
+      try { await api(`/api/devices/${encodeURIComponent(fresh.id)}/trust`, { method: "POST" }); }
+      catch (e) { ok.disabled = false; alert(e.message); return; }
+    }
+    markPairingSeen(`${fresh.id}:${fresh.paired_at}:false`);
+    box.hidden = true;
+    loadDevices();
+  };
+  const actions = el("div", "np-actions");
+  actions.append(ok, remove);
+  const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  mark.setAttribute("viewBox", "0 0 24 24");
+  mark.innerHTML = '<rect x="6.5" y="2.5" width="11" height="19" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10.5 18h3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>';
+  box.replaceChildren(mark, text, actions);
+  box.hidden = false;
 }
 
 // mode "auto": while a task runs, the message corrects it (or answers its question);

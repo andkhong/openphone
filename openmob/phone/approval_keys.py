@@ -80,11 +80,42 @@ def valid_public_key(public_key: str | None) -> bool:
         return False
 
 
+TRUST_TAG = "openmob-trust-1"
+
+
+def trust_message(target_device_id: str, timestamp: int) -> bytes:
+    """What a trusted phone signs (with its screen lock) to trust another phone for approvals:
+    `openmob-trust-1|trust|<target device id>|<unix time>`.
+
+    Domain-separated from approvals so neither can be replayed as the other: an approval message
+    starts with the server's approval id (32 hex characters, never this tag) and has a 64-hex digest
+    in its third field, while this one starts with the tag and has the literal `trust` second. The
+    target may not contain `|` (verify_trust refuses one), so it can't forge more fields."""
+    return f"{TRUST_TAG}|trust|{target_device_id}|{int(timestamp)}".encode()
+
+
+def verify_trust(public_key: str, target_device_id: str, timestamp, signature: str | None,
+                 now: float | None = None) -> bool:
+    """True only for a fresh, valid trust signature (trust_message) by this phone's approval key."""
+    if not target_device_id or "|" in target_device_id:
+        return False
+    return _verify(public_key, lambda ts: trust_message(target_device_id, ts), timestamp, signature, now)
+
+
 def verify_approval(public_key: str, approval_id: str, task_id: str, approved: bool,
                     timestamp, signature: str | None, now: float | None = None, extra: str | None = None,
                     digest: str | None = None) -> bool:
-    """True only for a fresh, valid signature by this phone's approval key over this action's digest."""
-    if not signature or not digest or not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+    """True only for a fresh, valid signature by this phone's approval key over this action's digest
+    (`id|task|digest|true|ts[|always]`). The old digest-less format is refused, and so is anything that
+    could be read as a trust message (trust_message)."""
+    if not digest or not approval_id or "|" in str(approval_id) or str(approval_id).startswith(TRUST_TAG):
+        return False
+    return _verify(public_key, lambda ts: approval_message(approval_id, task_id, approved, ts, extra, digest),
+                   timestamp, signature, now)
+
+
+def _verify(public_key: str, message, timestamp, signature: str | None, now: float | None = None) -> bool:
+    if not signature or not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
         return False
     now = time.time() if now is None else now
     if abs(now - timestamp) > MAX_AGE:
@@ -96,8 +127,7 @@ def verify_approval(public_key: str, approval_id: str, task_id: str, approved: b
         from cryptography.hazmat.primitives.serialization import load_der_public_key
 
         key = load_der_public_key(base64.b64decode(public_key, validate=True))
-        key.verify(base64.b64decode(signature, validate=True),
-                   approval_message(approval_id, task_id, approved, int(timestamp), extra, digest), ec.ECDSA(hashes.SHA256()))
+        key.verify(base64.b64decode(signature, validate=True), message(int(timestamp)), ec.ECDSA(hashes.SHA256()))
         return True
     except (InvalidSignature, ValueError, TypeError, binascii.Error):
         return False

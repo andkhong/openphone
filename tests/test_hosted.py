@@ -45,6 +45,8 @@ def _up(base):
 def signup(base, email):
     client = httpx.Client(base_url=base)
     r = client.post("/api/auth/signup", json={"email": email, "password": "password123"})
+    assert r.status_code == 200 and "session" not in r.json(), r.text  # sign-up never signs in
+    r = client.post("/api/auth/login", json={"email": email, "password": "password123"})
     assert r.status_code == 200, r.text
     return client, r.json()["session"]
 
@@ -190,7 +192,9 @@ def test_transcribe_endpoint(tmp_path):
     audio = {"file": ("voice.webm", b"fake-audio-bytes", "audio/webm")}
     assert with_whisper.post("/api/transcribe", files=audio).status_code == 401  # signed out
     for client in (with_whisper, without):
-        client.post("/api/auth/signup", json={"email": f"u{id(client)}@example.com", "password": "password123"})
+        creds = {"email": f"u{id(client)}@example.com", "password": "password123"}
+        client.post("/api/auth/signup", json=creds)
+        client.post("/api/auth/login", json=creds)
     assert with_whisper.post("/api/transcribe", files=audio).json() == {"text": "open youtube"}
     assert without.post("/api/transcribe", files=audio).status_code == 501
     import openmob.server as server_mod

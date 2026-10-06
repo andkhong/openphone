@@ -53,10 +53,53 @@ phone's screen-lock yes is accepted as before, and a phone over USB is approved 
 - **Unpairing or pairing a phone again** closes every connection that used its old key, at once,
   and the old key can't reconnect.
 - **Pairing links can't take over a phone.** Scanning the dashboard's QR code opens the OpenMob app,
-  which first asks "Connect to **\<server\>**?" and changes nothing until you tap Connect. Replacing
-  an existing pairing also needs your screen lock, and your current pairing stays until the new one
-  has fully worked. Links can't carry developer tokens, and the app only talks to `https://`
-  servers (plain `http://` only on your own network).
+  which changes nothing until you pass one screen-lock prompt (strong biometric or the phone's
+  PIN, pattern or password) titled "Connect this phone to **\<server\>**?" with the account's email
+  under it. Your current pairing stays until the new one has fully worked. Links can't carry
+  developer tokens, and the app only talks to `https://` servers (plain `http://` only on your own
+  network). `openmob phone add` over USB opens the same prompt: adb access plus that one touch.
+
+### Pairing
+
+- **The pairing code is the credential**, so it's made to be short-lived: the dashboard makes one
+  only when you open **Connect a phone**; it works once, for 2 minutes, only for your account, and
+  making a new one voids the old. It's an 8-character id plus 128 bits of secret, and the server
+  stores only a hash of the secret.
+- **Guessing doesn't pay.** Five wrong secrets for a code void it. Wrong codes are limited to 10 per
+  network address and 10 per account in 10 minutes (then `429`), and an account can make at most
+  30 codes an hour.
+- **The phone never holds a dashboard session.** It redeems the code for its own device key
+  (`POST /api/pair/claim`, no session), which can only operate that phone. The key is encrypted
+  with an AES key in the Android Keystore (StrongBox when the phone has one). Sessions kept by
+  older versions of the app are signed out and deleted on update. The sign-in fallback on the phone
+  uses a session only to make a code, and signs out before the confirmation.
+- **Every phone shows.** The dashboard lists every paired phone, connected or not, and shows **New
+  phone added** with one-click **Remove** after a pairing. Pairings, removals and unpairs go in
+  the audit log (`device.paired`, `device.removed`, `device.unpaired`, `pairing.code_created`).
+- **A new phone can't approve for your other phones until you trust it.** Approval requests go
+  to every online phone of the owner, so a phone added with a stolen QR code or a leaked
+  `devices:add` key could otherwise approve purchases on the others. A newly paired phone can be
+  operated, and it can approve its **own** actions (that's the same exposure as the phone itself),
+  but it isn't sent approval requests for your other phones, and its answers to them are rejected
+  by the server. You trust it in one click: **Trust for approvals** in the "New phone added" banner
+  or under **Your phones**, or from an already-trusted phone signed with that phone's screen lock
+  (`POST /api/phone/trust`, signing `openmob-trust-1|trust|<target device id>|<unix time>`: a
+  domain-separated message that can't be replayed as an approval, nor an approval as a trust).
+  Trust only decides **who is asked**: a trusted phone's yes must still be signed with its own
+  key over the action's digest, and only the phone being loosened can approve a permission change
+  or "Always allow" for itself. An API key, even with `devices:add`, can't trust a phone. Your
+  account's **first** phone is trusted automatically (there's nothing to compare it with), including
+  one added with `openmob phone add`. Pairing a phone again resets its trust, because device ids
+  aren't secret. Trusting is recorded as `device.trusted` in the audit log. The phone-gatekeeper
+  design's cross-signing ceremony (D7/D11 in `docs/design/phone-gatekeeper.md`: a QR or 6-digit
+  code between two phones, each confirmed with its own screen lock) is the planned replacement for
+  the dashboard click.
+- **Unpairing** works from the dashboard (Remove), from the phone (with its device key, no session),
+  or from the API's admin tools; each closes the phone's connections at once.
+- **Sign-up doesn't reveal accounts.** `POST /api/auth/signup` gives the same reply whether or not
+  the email already had an account, and never signs in. With no email sending yet, the remaining
+  signal is whether signing in with that password works afterwards, which is the rate-limited
+  sign-in (10 failures per address or email in 10 minutes).
 
 A key can't approve on its own:
 
