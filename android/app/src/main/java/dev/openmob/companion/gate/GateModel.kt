@@ -123,6 +123,8 @@ class GNode(
     val bounds: IntArray = IntArray(4), val clickable: Boolean = false, val longClickable: Boolean = false,
     val editable: Boolean = false, val password: Boolean = false, val hint: String = "", val checked: Boolean? = null,
     val focused: Boolean = false, val children: List<GNode> = emptyList(),
+    /** The phone stopped reading below this node (its children aren't all here). */
+    val truncated: Boolean = false,
 ) {
     fun contains(x: Double, y: Double) = bounds[0] <= x && x < bounds[2] && bounds[1] <= y && y < bounds[3]
     fun fp(withBounds: Boolean): String {
@@ -139,6 +141,7 @@ class GNode(
             clickable = d.bool("clickable"), longClickable = d.bool("long_clickable"), editable = d.bool("editable"),
             password = d.bool("password"), hint = d.str("hint"), checked = d["checked"] as? Boolean,
             focused = d.bool("focused"), children = d["children"].list().map { of(it.obj()) },
+            truncated = d.bool("truncated"),
         )
     }
 }
@@ -199,6 +202,7 @@ class GTarget(val window: GWindow, val path: List<GNode>) {
         val p = pressed
         val h = hit
         if (p != null && p.clicks) for (n in walk(p, limit = 40)) { parts.add(n.text); parts.add(n.desc) }
+        else if (p != null) { parts.add(p.text); parts.add(p.desc) }
         if (h != null && h !== p) { parts.add(h.text); parts.add(h.desc) }
         return GateText.tokens(parts.filter { it.isNotEmpty() }.joinToString(" "))
     }

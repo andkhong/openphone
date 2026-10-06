@@ -131,6 +131,7 @@ class Node:
     hint: str = ""
     checked: bool | None = None
     focused: bool = False
+    truncated: bool = False  # the phone stopped reading below this node (its children aren't all here)
     children: list = field(default_factory=list)
 
     @classmethod
@@ -139,7 +140,8 @@ class Node:
                    bounds=tuple(d.get("bounds", (0, 0, 0, 0))), clickable=bool(d.get("clickable")),
                    long_clickable=bool(d.get("long_clickable")), editable=bool(d.get("editable")),
                    password=bool(d.get("password")), hint=d.get("hint", ""), checked=d.get("checked"),
-                   focused=bool(d.get("focused")), children=[Node.of(c) for c in d.get("children", [])])
+                   focused=bool(d.get("focused")), truncated=bool(d.get("truncated")),
+                   children=[Node.of(c) for c in d.get("children", [])])
 
     def contains(self, x: float, y: float) -> bool:
         l, t, r, b = self.bounds
@@ -229,6 +231,8 @@ class Target:
         if pressed is not None and (pressed.clickable or pressed.long_clickable):
             for n in walk(pressed, [], 40):  # a button's label often sits in its children
                 parts += [n.text, n.desc]
+        elif pressed is not None:
+            parts += [pressed.text, pressed.desc]
         if hit is not None and hit is not pressed:
             parts += [hit.text, hit.desc]
         return tokens(" ".join(p for p in parts if p))
@@ -403,6 +407,7 @@ class Judgement:
     changing: bool = False
     payment: bool = False
     app: bool = False  # the target is an app window (an app switch ends a purchase flow)
+    label: list = field(default_factory=list)  # the target's words (a cart or checkout word ends a purchase flow)
 
 
 @dataclass
@@ -480,7 +485,8 @@ class Gatekeeper:
         self.device = device
         self.permits: dict[str, int] = {}  # binding -> expiry (monotonic ms)
         self.pending: dict[str, Pending] = {}
-        self.followup: dict | None = None  # {package, task, expires}
+        self.followup: dict | None = None  # {package, task, expires, acts}
+        self.start_permits: dict[str, dict] = {}  # binding -> {package, task}: a flow-starting money approval
         self.credits: list[dict] = []  # {kind, expires}
         self.grants: list[Grant] = []
         self.ceiling = "auto"
@@ -542,6 +548,7 @@ class Gatekeeper:
                           if remaining and remaining > 0 else None)
         # In-memory state does not survive a restart.
         self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
+        self.start_permits = {}
         self.tokens, self.last_refill = float(self.r.limits["act_burst"]), now
         self.asks, self.denials = [], []
         self.last_app, self.suspended = "", False
@@ -612,6 +619,7 @@ class Gatekeeper:
         for aid in list(self.pending):
             self.events.append({"state": "expired", "approval_id": aid})
         self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
+        self.start_permits = {}
         self.never = None
         self.suspended = False
 
@@ -624,8 +632,12 @@ class Gatekeeper:
         if method in self.r.meta:
             return Admission("allow", method=method, params=params)
         if method in self.r.read or method.startswith("stream_"):
-            if method in ("screenshot", "ui_elements") and any(self.r.blocked(w.package) for w in screen.windows):
-                return Admission("redact", rule="builtin:sensitive_apps", method=method, params=params)
+            hidden = self._hidden(screen)
+            if method in ("screenshot", "ui_elements") and hidden:
+                return Admission("redact", rule=hidden, method=method, params=params)
+            if method == "stream_start" and hidden:
+                return self._refuse("gate_blocked_app", hidden, "A protected app is on screen, so the live view "
+                                    "can't start now.", method, params)
             return Admission("allow", method=method, params=params)
         if method not in self.r.act:
             return self._refuse("gate_unknown_method", "builtin:methods", f"Unknown method {method}.", method, params)
@@ -643,8 +655,13 @@ class Gatekeeper:
                                 "Paused on the phone after repeated denials. The owner can resume.", method, params)
         if not self._take_token(now):
             return self._refuse("gate_rate_limited", "builtin:act_rate", "Too many actions. Slow down.", method, params)
-        if j.app and j.package and self.followup and j.package != self.followup["package"]:
-            self.followup = None  # an app switch ends a purchase flow
+        bind = binding(method, params, j.strict_fp)
+        if method != "wake_unlock" and bind not in self.permits:
+            # Any other action voids every outstanding approval: what the owner saw may no longer be true (a
+            # quantity "+", another item scrolled into place). The honest server re-sends at once.
+            self.permits.clear()
+            self.start_permits.clear()
+        self._track_followup(method, params, j)
         if j.app and j.package:
             self.last_app = j.package
         mode = self.mode(params.get("mode"))
@@ -656,7 +673,7 @@ class Gatekeeper:
             risk = Risk("step", "mode:ask", wording=self._wording(method, params, j, screen))
         base = dict(method=method, params=params, package=j.package)
         if risk is None:
-            return Admission("allow", strict=j.payment, binding=binding(method, params, j.strict_fp), **base)
+            return Admission("allow", strict=j.payment, binding=bind, **base)
         if mode == "never":
             if risk.money and not (self.never and self.never["allow_money"]):
                 return self._refuse("gate_denied", "never:money",
@@ -665,8 +682,7 @@ class Gatekeeper:
                 return self._refuse("gate_denied", f"never:{risk.reason}",
                                     "Nobody can be asked while agents act without asking, so this is refused.",
                                     method, params, j.package)
-            return Admission("allow", strict=True, binding=binding(method, params, j.strict_fp), kind=risk.kind, **base)
-        bind = binding(method, params, j.strict_fp)
+            return Admission("allow", strict=True, binding=bind, kind=risk.kind, **base)
         if bind in self.permits:
             return Admission("allow", strict=True, binding=bind, permit=bind, kind=risk.kind, money=risk.money, **base)
         if mode != "ask" and (why := self._covered(risk, j.package, params)):
@@ -677,7 +693,7 @@ class Gatekeeper:
             return self._refuse("gate_rate_limited", "builtin:prompt_rate", "Too many approval prompts. Try later.",
                                 method, params, j.package)
         self.asks.append(now)
-        aid = uuid.uuid4().hex
+        aid = "gk" + uuid.uuid4().hex  # gate prompts are "gk…"; the legacy approval path refuses such ids
         offer = self._offer(risk, mode)
         self.pending[aid] = Pending(aid, bind, now, risk, j.package, str(params.get("task") or ""), offer)
         self.events.append({"state": "pending", "approval_id": aid})
@@ -685,8 +701,33 @@ class Gatekeeper:
                          approval_id=aid, wording=risk.wording, grant_offer=offer, binding=bind, money=risk.money,
                          message="Waiting for the owner's approval on the phone.", **base)
 
+    def _hidden(self, screen: Screen) -> str:
+        """Why reads must not see this screen ("" if they may): a blocked app in any window, or an app window the
+        phone can't identify yet (it may be a blocked app still loading)."""
+        if any(self.r.blocked(w.package) for w in screen.windows):
+            return "builtin:sensitive_apps"
+        if any(not w.package and w.type == "application" for w in screen.windows):
+            return "builtin:unknown_window"
+        return ""
+
     def _refuse(self, code, rule, message, method, params, package="") -> Admission:
         return Admission("refuse", code=code, rule=rule, message=message, method=method, params=params, package=package)
+
+    def _track_followup(self, method: str, params: dict, j: Judgement) -> None:
+        """A purchase flow's one terminal follow-up ends at an app switch, at BACK/HOME/recents, a launch or a link,
+        a tap on a cart or checkout word, and after 3 other actions."""
+        f = self.followup
+        if f is None:
+            return
+        name = str(params.get("name", "")).upper()
+        if (method in ("launch_app", "open_url") or (method == "key" and name in ("BACK", "HOME", "APP_SWITCH"))
+                or (j.app and j.package and j.package != f["package"])
+                or (j.label and any_phrase(j.label, self.r.d["cart_words"]))):
+            self.followup = None
+            return
+        f["acts"] += 1
+        if f["acts"] > 3:
+            self.followup = None
 
     def _take_token(self, now: int) -> bool:
         lim = self.r.limits
@@ -700,7 +741,7 @@ class Gatekeeper:
     def _covered(self, risk: Risk, package: str, params: dict) -> str | None:
         now = self.now()
         if risk.money == "terminal" and self.followup and self.followup["package"] == package \
-                and self.followup["task"] == str(params.get("task") or ""):
+                and self.followup["task"] == str(params.get("task") or ""):  # acts <= 3 (_track_followup)
             self.followup = None
             return "permit:purchase_flow"
         if risk.kind in ("send", "post", "delete") and not risk.money:
@@ -749,9 +790,8 @@ class Gatekeeper:
             return False
         del self.pending[approval_id]
         self.permits[p.binding] = now + self.r.limits["permit_ms"]
-        if p.risk.money == "start":
-            self.followup = {"package": p.package, "task": p.task,
-                             "expires": now + self.r.limits["purchase_followup_ms"]}
+        if p.risk.money == "start":  # the follow-up starts only when this very tap runs (reverify)
+            self.start_permits[p.binding] = {"package": p.package, "task": p.task}
         if grant:
             record = {"type": "grant", **{k: grant[k] for k in ("kind", "binding", "duration_ms")}}
             self._apply_policy(record, policy_canon(record))
@@ -802,6 +842,10 @@ class Gatekeeper:
             if self.permits.pop(adm.permit, None) is None:
                 return self._refuse("gate_screen_changed", "builtin:permit", "That approval was already used.",
                                     adm.method, adm.params, j.package)
+            start = self.start_permits.pop(adm.permit, None)
+            if start is not None:
+                self.followup = {**start, "acts": 0,
+                                 "expires": self.now() + self.r.limits["purchase_followup_ms"]}
         return adm
 
     # --- the judge: what the action touches and how risky it is ---------------------------
@@ -839,6 +883,9 @@ class Gatekeeper:
 
     def _surface_refusal(self, w: Window, t: Target | None) -> tuple | None:
         r = self.r
+        if not w.package:
+            return ("gate_screen_unstable", "builtin:unknown_window",
+                    "That part of the screen can't be read yet (an app may still be loading). Look again.")
         if w.package in r.own:
             return ("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if w.package == r.surf["systemui"]:
@@ -871,6 +918,8 @@ class Gatekeeper:
         s = self.r.s
         title = page_title(w)
         activity = screen.activity if w.type == "application" else ""
+        if w.package in s["ask_packages"]:  # e.g. the VPN consent dialog
+            return ("ask", w.package)
         if any_phrase(title, s["refuse"]) or any_phrase(label, s["refuse"]) or (
                 activity and re.compile(s["refuse_activities"]).search(activity)):
             return ("refuse", "builtin:settings_security")
@@ -893,13 +942,28 @@ class Gatekeeper:
             return ("ask", page)
         if re.compile(s["permission_packages"]).search(w.package or "") or has_phrase(title, "permissions") \
                 or has_phrase(title, "permission"):
-            session = tokens(screen.labels.get(self.last_app, "")) if self.last_app else []
-            if session and has_phrase(screen_toks, " ".join(session)):
+            if self._session_app_asks(w, screen, title):
                 return ("allow", "")
             return ("ask", page) if self._changing_tap(t, label) else ("none", "")
         if any_phrase(title, s["everyday"]) or any_phrase(label, s["everyday"]):
             return ("allow", "")
         return ("ask", page) if self._changing_tap(t, label) else ("none", "")
+
+    def _session_app_asks(self, w: Window, screen: Screen, title: list[str]) -> bool:
+        """Is this permission request from the app the task is using? The dialog names the app in one place
+        ("Allow <app> to ..."); without that line, the requesting app's window must be right underneath; on a
+        Settings permission page, its header must name the app."""
+        session = tokens(screen.labels.get(self.last_app, "")) if self.last_app else []
+        if not session:
+            return False
+        message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
+        if message:
+            m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", message)
+            return bool(m) and tokens(m.group(1)) == session
+        if re.compile(self.r.s["permission_packages"]).search(w.package or ""):
+            below = [x for x in screen.ordered() if x.layer < w.layer and x.type == "application"]
+            return bool(below) and below[0].package == self.last_app
+        return has_phrase(title, " ".join(session))
 
     def _changing_tap(self, t: Target | None, label: list[str]) -> bool:
         if t is not None and any(n.checked is not None for n in (t.pressed, t.hit) if n is not None):
@@ -954,6 +1018,7 @@ class Gatekeeper:
         if pressed is not None and (pressed.editable or "EditText" in pressed.cls):
             j.changing = False  # focusing a field changes nothing
         label = t.label_tokens()
+        j.label = label
         ids = t.ids()
         j.payment = payment_context(r, screen)
         shown = t.shown()
@@ -981,9 +1046,13 @@ class Gatekeeper:
                    or (screen.autofill_service and w.package == screen.autofill_service)
                    or (w.package == r.s["gms_package"] and cred_title.search(w.title or "")))
         if surface or any_phrase(label, r.w["credential"]):
-            grant = None if in_browser or r.blocked(screen.autofill_service) else source
+            # What gets filled is the focused field: grants bind to its app, never to a browser or WebView page.
+            field_ = focused_field(screen)
+            filled = field_[0].package if field_ else ""
+            web = bool(field_) and (r.is_cat("browser", filled) or any("WebView" in n.cls for n in field_[2]))
+            grant = None if (not filled or web or r.blocked(screen.autofill_service)) else filled
             j.risk = Risk("fill", "autofill", always=True, grant=grant,
-                          wording=f"Fill your saved card or password into {self.label(screen, source)}?")
+                          wording=f"Fill your saved card or password into {self.label(screen, filled or source)}?")
             return j
         # Share sheets
         if w.package in r.surf["share_packages"] and (re.compile(r.surf["share_titles"]).search(w.title or "")
@@ -1002,6 +1071,8 @@ class Gatekeeper:
             if slider or any_phrase(label, r.w["slide"]):
                 risk = Risk("pay" if j.payment else "other", "slider", money="terminal" if j.payment else None,
                             grant=w.package if j.payment else None)
+        if risk is None and t.path and t.path[-1].truncated:
+            risk = Risk("other", "truncated")  # the phone couldn't read what's under the point: ask
         money_app = bool(r.money_app.search(w.package or "")) or j.payment
         if risk is None and money_app and not t.labeled():
             risk = Risk("pay" if j.payment else "other", "unlabeled", money="terminal" if j.payment else None)

@@ -53,7 +53,7 @@ def screen(*windows, **extra):
 AMAZON = "com.amazon.mShop.android.shopping"
 LABELS = {AMAZON: "Amazon", "com.whatsapp": "WhatsApp", "com.chase.sig.android": "Chase", "com.android.chrome": "Chrome",
           "com.android.settings": "Settings", "dev.openmob.companion": "OpenMob", "com.chess": "Chess.com",
-          "com.google.android.gm": "Gmail"}
+          "com.google.android.gm": "Gmail", "com.google.android.contacts": "Contacts", "com.example.app": "Example"}
 
 
 def settings(title, rows, activity="com.android.settings.SubSettings", extra_nodes=()):
@@ -483,6 +483,104 @@ SCENARIOS = [
 ]
 
 SCREENS["whatsapp_chat_busy"] = {**SCREENS["whatsapp_chat"], "quiet_ms": 40}
+
+# --- review round 1 (B2, B4, B5, B6, Build number, VPN consent, N3) ---------------------------------------
+SCREENS.update({
+    # An app window the phone can't read yet (null root: an app still starting, maybe a bank).
+    "loading_unknown": screen(app("com.google.android.apps.nexuslauncher", []),
+                              {"id": 6, "type": "application", "layer": 6, "package": "", "title": "",
+                               "bounds": FULL}, labels=LABELS),
+    # A deep tree the phone stopped reading under the point.
+    "deep_truncated": screen(app("com.example.news", [
+        node(cls="android.webkit.WebView", bounds=(0, 200, W, H), children=[
+            node(cls="android.view.View", bounds=(0, 1500, W, 1800), truncated=True)])]), labels=LABELS),
+    "settings_about": settings("About phone", ["Model", "Android version", "Build number"]),
+    "vpn_consent": screen(
+        app("com.whatsapp", [node(text="Chats", bounds=(0, 200, W, 400))]),
+        {"id": 5, "type": "application", "layer": 5, "package": "com.android.vpndialogs", "title": "",
+         "bounds": [0, 1000, W, 1800], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1000, W, 1800), children=[
+             node(text="Connection request", bounds=(40, 1020, 1040, 1100)),
+             node(text="Example wants to set up a connection that allows it to monitor network traffic.",
+                  bounds=(40, 1120, 1040, 1300)),
+             button("OK", "android:id/button1", (540, 1600, 1040, 1700))])}, labels=LABELS),
+    "contacts_app": screen(app("com.google.android.contacts", [node(text="Contacts", bounds=(0, 200, W, 400)),
+                                                               button("Ann", "", (0, 500, W, 650))]), labels=LABELS),
+    "permission_dialog_contacts_word": screen(
+        app("com.google.android.contacts", [node(text="Ann", bounds=(0, 200, W, 400))]),
+        {"id": 5, "type": "application", "layer": 5, "package": "com.google.android.permissioncontroller",
+         "title": "", "bounds": [0, 1200, W, 2000], "root": node(cls="android.widget.FrameLayout",
+         bounds=(0, 1200, W, 2000), children=[
+             node(text="Allow Spyware to access your contacts?",
+                  id="com.android.permissioncontroller:id/permission_message", bounds=(40, 1250, 1040, 1400)),
+             button("Allow", "com.android.permissioncontroller:id/permission_allow_button", (40, 1500, 1040, 1600))])},
+        labels=LABELS),
+    # In-app WebView (not a browser) with a focused card field, and the autofill suggestion over it.
+    "inapp_webview_autofill": screen(
+        app("com.example.app", [node(cls="android.webkit.WebView", bounds=(0, 200, W, 1600), children=[
+            node(id="card", cls="android.widget.EditText", hint="Card", editable=True, focused=True,
+                 bounds=(40, 400, 1040, 500))])]),
+        {"id": 7, "type": "system", "layer": 5, "package": "com.google.android.gms", "title": "Autofill",
+         "bounds": [0, 1700, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1700, W, 2000), children=[
+             button("Visa •••• 4242", "autofill_dataset", (40, 1720, 1040, 1820))])},
+        autofill_service="com.google.android.gms", labels=LABELS),
+    "native_autofill": screen(
+        app("com.example.app", [node(id="email", cls="android.widget.EditText", hint="Email", editable=True,
+                                     focused=True, bounds=(40, 400, 1040, 500))]),
+        {"id": 7, "type": "system", "layer": 5, "package": "com.google.android.gms", "title": "Autofill",
+         "bounds": [0, 1700, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1700, W, 2000), children=[
+             button("ann@example.com", "autofill_dataset", (40, 1720, 1040, 1820))])},
+        autofill_service="com.google.android.gms", labels=LABELS),
+})
+FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
+              "sig": "valid", "expect_accepted": True}
+TITLE = dict(x=540, y=440)  # the product title: a non-risky tap
+SCENARIOS += [
+    sc("an unreadable app window: taps refused, reads blacked out, no live view", [
+        step("tap", "loading_unknown", refuse("gate_screen_unstable", rule="builtin:unknown_window"), x=540, y=900),
+        step("screenshot", "loading_unknown", {"decision": "redact"}),
+        step("stream_start", "loading_unknown", refuse("gate_blocked_app")),
+        step("stream_start", "chase", refuse("gate_blocked_app")),
+        step("stream_start", "amazon_product", allow())], tags=["hard_deny"]),
+    sc("a tap the phone couldn't read to the end asks", [
+        step("tap", "deep_truncated", ask("other", rule="risk:truncated"), x=540, y=1650)], tags=["risk"]),
+    sc("any other action voids an approval", [
+        step("tap", "whatsapp_chat", ask("send"), **SEND), {"approve": "last", "sig": "valid"},
+        step("tap", "whatsapp_chat", allow(), x=300, y=160),
+        step("tap", "whatsapp_chat", ask("send"), **SEND)], tags=["permits"]),
+    sc("an approved Buy now that never ran starts no purchase flow", [
+        step("tap", "amazon_product", ask("pay"), **BUY), {"approve": "last", "sig": "valid"},
+        step("tap", "amazon_product", allow(), **ADD_TO_CART),
+        step("tap", "amazon_checkout", ask("pay"), **PLACE_ORDER)], tags=["permits"]),
+    sc("the purchase flow ends at a cart or checkout tap", [
+        step("tap", "amazon_product", ask("pay"), **BUY), {"approve": "last", "sig": "valid"},
+        step("tap", "amazon_product", allow(), **BUY),
+        step("tap", "amazon_product", allow(), **ADD_TO_CART),
+        step("tap", "amazon_checkout", ask("pay"), **PLACE_ORDER)], tags=["permits"]),
+    sc("the purchase flow ends at BACK", [
+        step("tap", "amazon_product", ask("pay"), **BUY), {"approve": "last", "sig": "valid"},
+        step("tap", "amazon_product", allow(), **BUY), step("key", "amazon_product", allow(), name="BACK"),
+        step("tap", "amazon_checkout", ask("pay"), **PLACE_ORDER)], tags=["permits"]),
+    sc("the purchase flow survives 2 other actions, not 3", [
+        step("tap", "amazon_product", ask("pay"), **BUY), {"approve": "last", "sig": "valid"},
+        step("tap", "amazon_product", allow(), **BUY),
+        step("tap", "amazon_product", allow(), **TITLE), step("tap", "amazon_product", allow(), **TITLE),
+        step("tap", "amazon_checkout", allow(rule="permit:purchase_flow"), **PLACE_ORDER),
+        step("tap", "amazon_product", ask("pay"), **BUY), {"approve": "last", "sig": "valid"},
+        step("tap", "amazon_product", allow(), **BUY),
+        *[step("tap", "amazon_product", allow(), **TITLE) for _ in range(3)],
+        step("tap", "amazon_checkout", ask("pay"), **PLACE_ORDER)], tags=["permits"]),
+    sc("a fill grant binds to the focused field's app, never an in-app web page", [
+        FILL_GRANT,
+        step("tap", "native_autofill", allow(rule="grant"), x=540, y=1770),
+        step("tap", "inapp_webview_autofill", ask("fill"), x=540, y=1770)], tags=["grants"]),
+    sc("Build number and the VPN consent dialog ask", [
+        step("tap", "settings_about", ask("settings"), x=540, y=760),
+        step("tap", "settings_about", allow(), x=540, y=480),
+        step("tap", "vpn_consent", ask("settings"), x=790, y=1650)], tags=["settings"]),
+    sc("another app's permission dialog asks even when it shares a word with the task's app", [
+        step("tap", "contacts_app", allow(), x=540, y=560),
+        step("tap", "permission_dialog_contacts_word", ask("settings"), x=540, y=1550)], tags=["settings"]),
+]
 
 # The adversarial suite: a compromised server's raw calls. Every one must be refused or approval-gated.
 ADVERSARIAL = [

@@ -55,6 +55,7 @@
   "search_field": "(?i)search|query|SearchView",
   "url_bar": "(?i)url_bar|url_field|urlbar|omnibox|location_bar|address_bar|mozac_browser_toolbar_edit|search_or_type_url|url_edit",
   "currency": "(?i)([$€£¥₹]\\s?\\d|\\d[.,]\\d{2}\\s?(usd|eur|gbp|€|\\$))",
+  "cart_words": ["cart", "basket", "bag", "trolley", "checkout", "check out"],
   "payment_words": ["pay", "pay now", "place order", "place your order", "buy now", "checkout", "complete purchase",
                     "confirm purchase", "order total", "total due"],
   "schemes": {
@@ -73,10 +74,11 @@
     "share_titles": "(?i)share|quick share|nearby share|chooser|resolver"
   },
   "settings": {
-    "packages": "(?i)^com\\.android\\.settings$|^com\\.google\\.android\\.settings|^com\\.samsung\\.android\\.settings|^com\\.android\\.settings\\.intelligence$|^com\\.miui\\.securitycenter$|^com\\.samsung\\.accessibility$|^com\\.android\\.permissioncontroller$|^com\\.google\\.android\\.permissioncontroller$|^com\\.coloros\\.safecenter$|^com\\.oneplus\\.security$|^com\\.huawei\\.systemmanager$",
+    "packages": "(?i)^com\\.android\\.settings$|^com\\.google\\.android\\.settings|^com\\.samsung\\.android\\.settings|^com\\.android\\.settings\\.intelligence$|^com\\.miui\\.securitycenter$|^com\\.samsung\\.accessibility$|^com\\.android\\.permissioncontroller$|^com\\.google\\.android\\.permissioncontroller$|^com\\.coloros\\.safecenter$|^com\\.oneplus\\.security$|^com\\.huawei\\.systemmanager$|^com\\.android\\.vpndialogs$",
     "gms_package": "com.google.android.gms",
     "gms_settings_titles": "(?i)google account|manage your google account|security|passwords|passkeys|devices|third.party",
     "permission_packages": "(?i)permissioncontroller",
+    "ask_packages": ["com.android.vpndialogs"],
     "refuse": ["screen lock", "lock screen", "security", "security & privacy", "passwords", "passkeys",
                "passwords & accounts", "passwords, passkeys & accounts", "fingerprint", "face unlock", "biometric",
                "biometrics", "accounts", "users", "multiple users", "add account", "remove account",
@@ -92,7 +94,7 @@
                "manage your google account", "device & app notifications"],
     "refuse_activities": "(?i)Accessibility|Development|Security|Vpn|PrivateDns|Locale|Language|UserSettings|AccountSettings|ManageAccounts|DeviceAdmin|NotificationAccess|SpecialAccess|UsageAccess|ManageExternalStorage|WirelessDebugging|AdbWireless|DefaultApp|ChooseLock|ScreenLock|Biometric|Fingerprint|FaceSettings|InputMethodAndLanguage|AvailableVirtualKeyboard|ManageInputMethods|UnknownSources|ExternalSources|OverlaySettings|WriteSettings|TrustedCredentials|FactoryReset|MasterClear|ResetDashboard",
     "everyday": ["wi-fi", "wifi", "internet", "network & internet", "mobile data", "mobile network", "sim", "hotspot", "hotspot & tethering", "airplane mode", "bluetooth", "connected devices", "connection preferences", "nfc", "display", "dark theme", "dark mode", "brightness", "adaptive brightness", "font size", "display size", "screen timeout", "sound", "sound & vibration", "volume", "vibration", "vibration & haptics", "do not disturb", "ringtone", "battery", "battery saver", "storage", "location", "use location", "notifications", "app notifications", "flashlight", "auto-rotate", "night light", "about phone", "search settings"],
-    "ask_pages": ["date & time", "date and time", "set time", "set date", "time zone", "automatic date & time",
+    "ask_pages": ["build number", "date & time", "date and time", "set time", "set date", "time zone", "automatic date & time",
                   "pair new device", "pair a new device", "pair new", "pair"],
     "app_info_markers": ["app info", "force stop"],
     "app_info_allowed": ["force stop", "clear cache", "ok"],

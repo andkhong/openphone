@@ -52,6 +52,28 @@ def test_every_refusal_code_is_documented_in_the_protocol():
     assert all(code in docs for code in GATE_CODES)
 
 
+def test_fuzz_fixtures_match_the_reference_engine():
+    """fuzz.json holds the reference engine's answers to random screens; JUnit checks the Kotlin engine gives the
+    same ones (the differential test). Regenerated here, so a change to either engine shows up."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("build_fuzz", FIXTURES / "build_fuzz.py")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    screens, cases = module.build()
+    saved = json.loads((FIXTURES / "fuzz.json").read_text())
+    assert saved == json.loads(json.dumps({"screens": screens, "cases": cases})), \
+        "run tests/fixtures/gatekeeper/build_fuzz.py and commit fuzz.json"
+
+
+def test_gate_prompt_ids_are_namespaced():
+    from gatekeeper_ref import Screen
+
+    gk = Gatekeeper()
+    adm = gk.admit("tap", {"x": 990, "y": 2250}, Screen.of(SCREENS["whatsapp_chat"]))
+    assert adm.decision == "ask" and adm.approval_id.startswith("gk")
+
+
 def test_the_scenarios_cover_every_area():
     tags = {t for s in SCENARIOS for t in s["tags"]}
     assert {"friction", "permits", "grants", "clock", "modes", "hard_deny", "settings", "risk", "limits",

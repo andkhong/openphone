@@ -28,6 +28,8 @@ class Judgement(
     var refuse: Triple<String, String, String>? = null, var pkg: String = "", var fp: String = "",
     var strictFp: String = "", var risk: Risk? = null, var changing: Boolean = false, var payment: Boolean = false,
     var app: Boolean = false,
+    /** The target's words (a cart or checkout word ends a purchase flow). */
+    var label: List<String> = emptyList(),
     /** How a prompt names this action from what the phone sees (used when only the server's hint makes it ask). */
     var wording: String = "",
 )
@@ -65,13 +67,15 @@ class Gatekeeper(
         var cropHash = ""
     }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
-    private class Followup(val pkg: String, val task: String, val expires: Long)
+    private class Followup(val pkg: String, val task: String, val expires: Long, var acts: Int = 0)
     private class Credit(val kind: String, val expires: Long)
 
     private val lock = Any()
     private val permits = HashMap<String, Long>()
     private val pending = LinkedHashMap<String, Pending>()
     private var followup: Followup? = null
+    /** binding -> (package, task): an approved flow-starting money tap; the follow-up starts when it runs. */
+    private val startPermits = HashMap<String, Pair<String, String>>()
     private val credits = mutableListOf<Credit>()
     private val grants = mutableListOf<Grant>()
     var ceiling = "auto"
@@ -252,7 +256,7 @@ class Gatekeeper(
      *  drops back to the ceiling at once. "Always allow" grants stay (they're listed and revocable in the app). */
     fun revokeAll() = synchronized(lock) {
         pending.keys.toList().forEach { onEvent?.invoke(it, "expired") }
-        permits.clear(); pending.clear(); followup = null; credits.clear()
+        permits.clear(); pending.clear(); followup = null; credits.clear(); startPermits.clear()
         never = null
         entries.removeAll { it.record["type"] == "never" }
         suspended = false
@@ -268,9 +272,12 @@ class Gatekeeper(
         expire(now)
         if (method in rules.meta) return Admission("allow", method = method, params = params)
         if (method in rules.read || method.startsWith("stream_")) {
-            if ((method == "screenshot" || method == "ui_elements") && screen.windows.any { rules.blocked(it.pkg) }) {
-                return Admission("redact", rule = "builtin:sensitive_apps", method = method, params = params)
+            val hidden = hidden(screen)
+            if ((method == "screenshot" || method == "ui_elements") && hidden.isNotEmpty()) {
+                return Admission("redact", rule = hidden, method = method, params = params)
             }
+            if (method == "stream_start" && hidden.isNotEmpty()) return refuse("gate_blocked_app", hidden,
+                "A protected app is on screen, so the live view can't start now.", method, params)
             return Admission("allow", method = method, params = params)
         }
         if (method !in rules.act) return refuse("gate_unknown_method", "builtin:methods", "Unknown method $method.", method, params)
@@ -284,14 +291,20 @@ class Gatekeeper(
         if (suspended) return refuse("gate_rate_limited", "builtin:suspended",
             "Paused on the phone after repeated denials. The owner can resume.", method, params)
         if (!takeToken(now)) return refuse("gate_rate_limited", "builtin:act_rate", "Too many actions. Slow down.", method, params)
-        if (j.app && j.pkg.isNotEmpty() && followup != null && j.pkg != followup!!.pkg) followup = null
+        val bind = GateScreen.binding(method, params, j.strictFp)
+        if (method != "wake_unlock" && bind !in permits) {
+            // Any other action voids every outstanding approval: what the owner saw may no longer be true (a
+            // quantity "+", another item scrolled into place). The honest server re-sends at once.
+            permits.clear()
+            startPermits.clear()
+        }
+        trackFollowup(method, params, j)
         if (j.app && j.pkg.isNotEmpty()) lastApp = j.pkg
         val mode = mode(params["mode"] as? String)
         var risk = j.risk
         val hint = params["hint"]?.toString()?.trim().orEmpty()
         if (risk == null && hint.isNotEmpty() && mode != "never") risk = Risk("other", "server_hint", wording = j.wording.ifEmpty { wording(method, params, j, screen) })
         if (mode == "ask" && j.changing && risk == null) risk = Risk("step", "mode:ask", wording = wording(method, params, j, screen))
-        val bind = GateScreen.binding(method, params, j.strictFp)
         if (risk == null) return Admission("allow", strict = j.payment, binding = bind, method = method, params = params, pkg = j.pkg)
         if (mode == "never") {
             if (risk.money != null && never?.allowMoney != true) return refuse("gate_denied", "never:money",
@@ -310,13 +323,35 @@ class Gatekeeper(
         if (asks.size >= lim("asks_per_window")) return refuse("gate_rate_limited", "builtin:prompt_rate",
             "Too many approval prompts. Try later.", method, params, j.pkg)
         asks.add(now)
-        val id = UUID.randomUUID().toString().replace("-", "")
+        val id = "gk" + UUID.randomUUID().toString().replace("-", "") // the legacy approval path refuses gk ids
         val offer = offer(risk, mode)
         pending[id] = Pending(id, bind, now, risk, j.pkg, params["task"]?.toString().orEmpty(), offer, method, params)
         onEvent?.invoke(id, "pending")
         Admission("ask", code = "gate_needs_approval", rule = "risk:${risk.reason}", kind = risk.kind, approvalId = id,
             wording = risk.wording, grantOffer = offer, binding = bind, money = risk.money,
             message = "Waiting for the owner's approval on the phone.", method = method, params = params, pkg = j.pkg)
+    }
+
+    /** Why reads must not see this screen ("" if they may): a blocked app in any window, or an app window the
+     *  phone can't identify yet (it may be a blocked app still loading). */
+    fun hidden(screen: GScreen): String = when {
+        screen.windows.any { rules.blocked(it.pkg) } -> "builtin:sensitive_apps"
+        screen.windows.any { it.pkg.isEmpty() && it.type == "application" } -> "builtin:unknown_window"
+        else -> ""
+    }
+
+    /** A purchase flow's one terminal follow-up ends at an app switch, at BACK/HOME/recents, a launch or a link,
+     *  a tap on a cart or checkout word, and after 3 other actions. */
+    private fun trackFollowup(method: String, params: Map<String, Any?>, j: Judgement) {
+        val f = followup ?: return
+        val name = params["name"]?.toString().orEmpty().uppercase()
+        if (method == "launch_app" || method == "open_url" || (method == "key" && name in setOf("BACK", "HOME", "APP_SWITCH")) ||
+            (j.app && j.pkg.isNotEmpty() && j.pkg != f.pkg) || (j.label.isNotEmpty() && has(j.label, rules.list("cart_words")))) {
+            followup = null
+            return
+        }
+        f.acts++
+        if (f.acts > 3) followup = null
     }
 
     private fun refuse(code: String, rule: String, message: String, method: String, params: Map<String, Any?>, pkg: String = "") =
@@ -381,7 +416,7 @@ class Gatekeeper(
         if (!verifier.verify(message, signature)) return false
         pending.remove(id)
         permits[p.binding] = now + lim("permit_ms")
-        if (p.risk.money == "start") followup = Followup(p.pkg, p.task, now + lim("purchase_followup_ms"))
+        if (p.risk.money == "start") startPermits[p.binding] = p.pkg to p.task // the follow-up starts when this tap runs
         if (grant != null) {
             val record = grant.record()
             val c = canon(record)
@@ -431,8 +466,11 @@ class Gatekeeper(
             return refuse("gate_screen_changed", "builtin:toctou", "The screen changed before the action ran. Look again.",
                 adm.method, adm.params, j.pkg)
         }
-        if (adm.permit != null && permits.remove(adm.permit) == null) {
-            return refuse("gate_screen_changed", "builtin:permit", "That approval was already used.", adm.method, adm.params, j.pkg)
+        if (adm.permit != null) {
+            if (permits.remove(adm.permit) == null) {
+                return refuse("gate_screen_changed", "builtin:permit", "That approval was already used.", adm.method, adm.params, j.pkg)
+            }
+            startPermits.remove(adm.permit)?.let { (pkg, task) -> followup = Followup(pkg, task, now() + lim("purchase_followup_ms")) }
         }
         adm
     }
@@ -476,6 +514,8 @@ class Gatekeeper(
     }
 
     private fun surfaceRefusal(w: GWindow): Triple<String, String, String>? {
+        if (w.pkg.isEmpty()) return Triple("gate_screen_unstable", "builtin:unknown_window",
+            "That part of the screen can't be read yet (an app may still be loading). Look again.")
         if (w.pkg in rules.own) return Triple("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if (w.pkg == rules.surfStr("systemui")) {
             val title = rules.rx(rules.surfStr("prompt_titles"))
@@ -505,6 +545,7 @@ class Gatekeeper(
     private fun settingsTier(w: GWindow, t: GTarget?, screen: GScreen, label: List<String>): Pair<String, String> {
         val title = GateScreen.pageTitle(w)
         val activity = if (w.type == "application") screen.activity else ""
+        if (w.pkg in rules.sList("ask_packages")) return "ask" to w.pkg // e.g. the VPN consent dialog
         if (has(title, rules.sList("refuse")) || has(label, rules.sList("refuse")) ||
             (activity.isNotEmpty() && rules.rx(rules.sStr("refuse_activities")).containsMatchIn(activity))) {
             return "refuse" to "builtin:settings_security"
@@ -526,12 +567,29 @@ class Gatekeeper(
         }
         if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg) || GateText.hasPhrase(title, "permissions") ||
             GateText.hasPhrase(title, "permission")) {
-            val session = if (lastApp.isNotEmpty()) GateText.tokens(screen.labels[lastApp].orEmpty()) else emptyList()
-            if (session.isNotEmpty() && GateText.hasPhrase(screenToks, session.joinToString(" "))) return "allow" to ""
+            if (sessionAppAsks(w, screen, title)) return "allow" to ""
             return if (changingTap(t, label)) "ask" to page else "none" to ""
         }
         if (has(title, rules.sList("everyday")) || has(label, rules.sList("everyday"))) return "allow" to ""
         return if (changingTap(t, label)) "ask" to page else "none" to ""
+    }
+
+    /** Is this permission request from the app the task is using? The dialog names the app in one place
+     *  ("Allow <app> to ..."); without that line, the requesting app's window must be right underneath; on a
+     *  Settings permission page, its header must name the app. */
+    private fun sessionAppAsks(w: GWindow, screen: GScreen, title: List<String>): Boolean {
+        val session = if (lastApp.isNotEmpty()) GateText.tokens(screen.labels[lastApp].orEmpty()) else emptyList()
+        if (session.isEmpty()) return false
+        val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
+        if (message.isNotEmpty()) {
+            val m = PERMISSION_APP.find(message) ?: return false
+            return GateText.tokens(m.groupValues[1]) == session
+        }
+        if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)) {
+            val below = screen.ordered.filter { it.layer < w.layer && it.type == "application" }
+            return below.isNotEmpty() && below[0].pkg == lastApp
+        }
+        return GateText.hasPhrase(title, session.joinToString(" "))
     }
 
     private fun changingTap(t: GTarget?, label: List<String>): Boolean {
@@ -581,6 +639,7 @@ class Gatekeeper(
         val pressed = t.pressed
         if (pressed != null && (pressed.editable || "EditText" in pressed.cls)) j.changing = false
         val label = t.labelTokens()
+        j.label = label
         val ids = t.ids()
         j.payment = GateScreen.paymentContext(rules, screen)
         val shown = t.shown()
@@ -604,9 +663,13 @@ class Gatekeeper(
             (screen.autofillService.isNotEmpty() && w.pkg == screen.autofillService) ||
             (w.pkg == rules.sStr("gms_package") && rules.rx(rules.surfStr("credential_titles")).containsMatchIn(w.title))
         if (surface || has(label, rules.w.getValue("credential"))) {
-            val grant = if (inBrowser || rules.blocked(screen.autofillService)) null else source
+            // What gets filled is the focused field: grants bind to its app, never to a browser or WebView page.
+            val field = GateScreen.focusedField(screen)
+            val filled = field?.window?.pkg.orEmpty()
+            val web = field != null && (rules.isCat("browser", filled) || field.path.any { "WebView" in it.cls })
+            val grant = if (filled.isEmpty() || web || rules.blocked(screen.autofillService)) null else filled
             j.risk = Risk("fill", "autofill", always = true, grant = grant,
-                wording = "Fill your saved card or password into ${label(screen, source)}?")
+                wording = "Fill your saved card or password into ${label(screen, filled.ifEmpty { source })}?")
             return j
         }
         if (w.pkg in rules.surfList("share_packages") &&
@@ -625,6 +688,7 @@ class Gatekeeper(
             risk = Risk(if (j.payment) "pay" else "other", "slider", money = if (j.payment) "terminal" else null,
                 grant = if (j.payment) w.pkg else null)
         }
+        if (risk == null && t.path.lastOrNull()?.truncated == true) risk = Risk("other", "truncated") // couldn't read it: ask
         val moneyApp = rules.moneyApp.containsMatchIn(w.pkg) || j.payment
         if (risk == null && moneyApp && !t.labeled()) {
             risk = Risk(if (j.payment) "pay" else "other", "unlabeled", money = if (j.payment) "terminal" else null)
@@ -778,6 +842,7 @@ class Gatekeeper(
     }
 
     companion object {
+        private val PERMISSION_APP = Regex("(?i)^allow\\s+(.+?)\\s+to\\s")
         val RANK = mapOf("ask" to 0, "plan" to 1, "auto" to 1, "trusted" to 2, "never" to 3)
 
         /** A record's canonical text: sorted key=value pairs (booleans as 1/0). */

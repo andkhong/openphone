@@ -51,7 +51,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -246,7 +248,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "amazon_checkout": {
@@ -354,7 +358,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "amazon_checkout_card": {
@@ -451,7 +457,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "amazon_autofill": {
@@ -563,7 +571,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "slide_to_pay": {
@@ -631,7 +641,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "chase": {
@@ -686,7 +698,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "login_form": {
@@ -771,7 +785,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "otp_form": {
@@ -828,7 +844,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "chrome_url_js": {
@@ -884,7 +902,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "chrome_url_bank": {
@@ -940,7 +960,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1002,7 +1024,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "web_checkout_enter": {
@@ -1113,7 +1137,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "whatsapp_chat": {
@@ -1197,7 +1223,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "gmail_list": {
@@ -1293,7 +1321,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_main": {
@@ -1544,7 +1574,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_internet": {
@@ -1699,7 +1731,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_security": {
@@ -1838,7 +1872,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_dev": {
@@ -1937,7 +1973,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_keyboards": {
@@ -2036,7 +2074,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_datetime": {
@@ -2191,7 +2231,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_bluetooth": {
@@ -2330,7 +2372,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_system": {
@@ -2457,7 +2501,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_app_info_amazon": {
@@ -2652,7 +2698,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "settings_app_info_chase": {
@@ -2791,7 +2839,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "samsung_accessibility": {
@@ -2889,7 +2939,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "openmob_app": {
@@ -2944,7 +2996,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "keyguard_secure": {
@@ -3137,7 +3191,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "share_sheet": {
@@ -3232,7 +3288,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "german_shop": {
@@ -3340,7 +3398,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "permission_dialog_session": {
@@ -3462,7 +3522,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "permission_dialog_other": {
@@ -3570,7 +3632,9 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   }
  },
  "whatsapp_chat_busy": {
@@ -3654,8 +3718,796 @@
    "com.android.settings": "Settings",
    "dev.openmob.companion": "OpenMob",
    "com.chess": "Chess.com",
-   "com.google.android.gm": "Gmail"
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
   },
   "quiet_ms": 40
+ },
+ "loading_unknown": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.nexuslauncher",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": []
+    }
+   },
+   {
+    "id": 6,
+    "type": "application",
+    "layer": 6,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ]
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "deep_truncated": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.news",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.view.View",
+         "bounds": [
+          0,
+          1500,
+          1080,
+          1800
+         ],
+         "children": [],
+         "truncated": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "settings_about": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "About phone",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "About phone",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Model",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Android version",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Build number",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "vpn_consent": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.whatsapp",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Chats",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.android.vpndialogs",
+    "title": "",
+    "bounds": [
+     0,
+     1000,
+     1080,
+     1800
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1000,
+      1080,
+      1800
+     ],
+     "children": [
+      {
+       "text": "Connection request",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1020,
+        1040,
+        1100
+       ],
+       "children": []
+      },
+      {
+       "text": "Example wants to set up a connection that allows it to monitor network traffic.",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1120,
+        1040,
+        1300
+       ],
+       "children": []
+      },
+      {
+       "text": "OK",
+       "desc": "",
+       "id": "android:id/button1",
+       "cls": "android.widget.Button",
+       "bounds": [
+        540,
+        1600,
+        1040,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "contacts_app": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.contacts",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Contacts",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      },
+      {
+       "text": "Ann",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        500,
+        1080,
+        650
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "permission_dialog_contacts_word": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.contacts",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Ann",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1200,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1200,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Spyware to access your contacts?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1250,
+        1040,
+        1400
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        1040,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "inapp_webview_autofill": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        1600
+       ],
+       "children": [
+        {
+         "text": "",
+         "desc": "",
+         "id": "card",
+         "cls": "android.widget.EditText",
+         "bounds": [
+          40,
+          400,
+          1040,
+          500
+         ],
+         "children": [],
+         "hint": "Card",
+         "editable": true,
+         "focused": true
+        }
+       ]
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "system",
+    "layer": 5,
+    "package": "com.google.android.gms",
+    "title": "Autofill",
+    "bounds": [
+     0,
+     1700,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1700,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Visa •••• 4242",
+       "desc": "",
+       "id": "autofill_dataset",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1720,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "autofill_service": "com.google.android.gms",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
+ },
+ "native_autofill": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "email",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "hint": "Email",
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "system",
+    "layer": 5,
+    "package": "com.google.android.gms",
+    "title": "Autofill",
+    "bounds": [
+     0,
+     1700,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1700,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "ann@example.com",
+       "desc": "",
+       "id": "autofill_dataset",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1720,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "autofill_service": "com.google.android.gms",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example"
+  }
  }
 }

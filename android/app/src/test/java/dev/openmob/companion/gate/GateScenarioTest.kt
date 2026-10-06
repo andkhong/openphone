@@ -25,7 +25,7 @@ class GateScenarioTest {
         fun newGate(clock: FakeClock) = Gatekeeper(RULES, clock, VERIFIER, "dev")
 
         /** Runs one scenario; returns the problems (empty: it passed). */
-        fun run(scenario: Map<String, Any?>): List<String> {
+        fun run(scenario: Map<String, Any?>, screens: Map<String, GScreen> = SCREENS): List<String> {
             val clock = FakeClock()
             var gk = newGate(clock)
             val callMs = scenario.long("call_ms", 200)
@@ -39,9 +39,9 @@ class GateScenarioTest {
                     "call" in s -> {
                         clock.elapsed += callMs
                         val call = s["call"].obj()
-                        var adm = gk.admit(call.str("method"), call["params"].obj(), SCREENS.getValue(s.str("screen")))
+                        var adm = gk.admit(call.str("method"), call["params"].obj(), screens.getValue(s.str("screen")))
                         if (adm.decision == "ask") last = adm.approvalId
-                        if (adm.allowed) adm = gk.reverify(adm, SCREENS.getValue(s.str("reverify_screen", s.str("screen"))))
+                        if (adm.allowed) adm = gk.reverify(adm, screens.getValue(s.str("reverify_screen", s.str("screen"))))
                         saved = gk.persist()
                         val e = s["expect"].obj()
                         for ((k, v) in listOf("decision" to adm.decision, "code" to adm.code, "kind" to adm.kind, "money" to adm.money)) {
@@ -100,6 +100,17 @@ class GateScenarioTest {
     @Test fun scenarios() = runAll("scenarios.json")
 
     @Test fun adversarialSuite() = runAll("adversarial.json")
+
+    /** Differential: random screens and calls (tests/fixtures/gatekeeper/build_fuzz.py) must get exactly the Python
+     *  reference engine's answers. */
+    @Test fun fuzzMatchesTheReferenceEngine() {
+        val fuzz = fixture("fuzz.json").obj()
+        val screens = fuzz["screens"].obj().mapValues { GScreen.of(it.value.obj()) }
+        val cases = fuzz["cases"].list().map { it.obj() }
+        assertTrue(cases.size >= 300)
+        val failures = cases.mapNotNull { sc -> run(sc, screens).takeIf { it.isNotEmpty() }?.let { "${sc["name"]}: $it" } }
+        assertEquals(failures.take(20).joinToString("\n"), 0, failures.size)
+    }
 
     @Test fun fixturesAreThere() {
         assertTrue(fixture("scenarios.json").list().size > 40)
