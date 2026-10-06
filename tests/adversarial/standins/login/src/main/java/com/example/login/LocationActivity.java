@@ -13,7 +13,7 @@ public class LocationActivity extends Activity {
         super.onCreate(state);
         LinearLayout col = new LinearLayout(this);
         col.setOrientation(LinearLayout.VERTICAL);
-        col.setPadding(40, 160, 40, 40);
+        col.setPadding(40, 400, 40, 40);
         LinearLayout.LayoutParams row = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 170);
         Button fg = new Button(this);
         fg.setText("Use my location");
