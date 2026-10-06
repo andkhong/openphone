@@ -1398,7 +1398,7 @@ SCREENS.update({
 })
 
 
-# --- review of the tight loop: lasting grants of dangerous kinds, and Play Store installs ------------------------------
+# --- review of the tight loop: lasting grants of dangerous kinds; Play Store installs (free: no ask) ------------------------------
 LABELS["com.android.vending"] = "Google Play Store"
 SCREENS.update({
     "contacts_kalshi_allow_only": location_dialog(message="Allow Kalshi to access your contacts?",
@@ -1408,6 +1408,9 @@ SCREENS.update({
         buttons=("allow", "deny"), cards=False),
     "camera_kalshi_allow_only": location_dialog(message="Allow Kalshi to take pictures and record video?",
                                                 buttons=("allow", "deny"), cards=False),
+    "play_store_paid": screen(app("com.android.vending", [
+        node(text="Chess Pro", bounds=(40, 300, 1040, 400)),
+        button("$4.99", "com.android.vending:id/buy_button", (40, 800, 1040, 920))]), labels=LABELS),
     "play_store_chess": screen(app("com.android.vending", [
         node(text="Chess - Play and Learn", bounds=(40, 300, 1040, 400)),
         button("Install", "com.android.vending:id/install_button", (40, 800, 1040, 920))]), labels=LABELS),
@@ -1423,12 +1426,9 @@ SCENARIOS += [
         step("tap", "notifications_kalshi", allow(), x=540, y=1505),
         perm_default("persistent_grants", "allow"),
         step("tap", "contacts_kalshi_allow_only", allow(), x=540, y=1505)], tags=["permissions"]),
-    sc("a Play Store Install tap asks; a request to install covers it once", [
-        step("tap", "play_store_chess", ask("install", level="tap", rule="risk:install:play_store"), x=540, y=860),
-        step("tap", "play_store_chess", allow(), x=540, y=350),
-        {"instruction": "install chess and play 5 moves against a bot"},
-        step("tap", "play_store_chess", allow(rule="requested"), x=540, y=860),
-        step("tap", "play_store_chess", ask("install"), x=540, y=860)], tags=["friction"]),
+    sc("a free Play Store install doesn't ask; a priced one is money", [
+        step("tap", "play_store_chess", allow(), x=540, y=860),
+        step("tap", "play_store_paid", ask("pay"), x=540, y=860)], tags=["friction", "money"]),
 ]
 
 

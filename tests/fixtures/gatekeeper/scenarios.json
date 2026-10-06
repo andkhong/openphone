@@ -8505,9 +8505,10 @@
   ]
  },
  {
-  "name": "a Play Store Install tap asks; a request to install covers it once",
+  "name": "a free Play Store install doesn't ask; a priced one is money",
   "tags": [
-   "friction"
+   "friction",
+   "money"
   ],
   "steps": [
    {
@@ -8520,33 +8521,10 @@
     },
     "screen": "play_store_chess",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "install",
-     "level": "tap",
-     "rule": "risk:install:play_store"
-    }
-   },
-   {
-    "cancel": "last"
-   },
-   {
-    "call": {
-     "method": "tap",
-     "params": {
-      "x": 540,
-      "y": 350
-     }
-    },
-    "screen": "play_store_chess",
-    "expect": {
      "decision": "allow"
     }
    },
    {
-    "instruction": "install chess and play 5 moves against a bot"
-   },
-   {
     "call": {
      "method": "tap",
      "params": {
@@ -8554,25 +8532,11 @@
       "y": 860
      }
     },
-    "screen": "play_store_chess",
-    "expect": {
-     "decision": "allow",
-     "rule": "requested"
-    }
-   },
-   {
-    "call": {
-     "method": "tap",
-     "params": {
-      "x": 540,
-      "y": 860
-     }
-    },
-    "screen": "play_store_chess",
+    "screen": "play_store_paid",
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "install"
+     "kind": "pay"
     }
    }
   ]

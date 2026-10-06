@@ -320,7 +320,7 @@ class Gatekeeper(
         val toks = GateText.tokens(text)
         val now = now()
         ownRequests.add(GateText.sha256(text.split(WS).filter { it.isNotEmpty() }.joinToString(" ")) to now + lim("own_request_ms"))
-        for (kind in listOf("send", "post", "delete", "install")) {
+        for (kind in listOf("send", "post", "delete")) {
             if (GateText.anyPhrase(toks, rules.w.getValue(kind)) != null) credits.add(Credit(kind, now + lim("requested_ms")))
         }
     }
@@ -421,7 +421,7 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "install")) return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind != "permission" && risk.kind != "uninstall") return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
         // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -519,8 +519,7 @@ class Gatekeeper(
         val kinds = mutableSetOf("other", "fill")
         for ((kind, extra) in listOf("send" to listOf("share", "message", "text", "reply", "forward", "email", "tell"),
                                      "share" to listOf("share", "send", "forward"), "post" to listOf("share"),
-                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty", "uninstall"),
-                                     "install" to emptyList())) {
+                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty", "uninstall"))) {
             if (GateText.anyPhrase(toks, (rules.w[kind] ?: emptyList()) + extra) != null) kinds.add(kind)
         }
         return kinds
@@ -538,8 +537,7 @@ class Gatekeeper(
         var app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
         if (risk.reason.startsWith("uninstall:")) app = risk.grant.orEmpty() // an uninstall counts as the app it removes
         val label = GateText.tokens(screen.labels[app].orEmpty())
-        // An install the request asks for happens in the Play Store, whatever app the task is about.
-        if (risk.kind != "install" && app != g.first && !(label.isNotEmpty() && GateText.hasPhrase(g.words, label.joinToString(" ")))) return false
+        if (app != g.first && !(label.isNotEmpty() && GateText.hasPhrase(g.words, label.joinToString(" ")))) return false
         g.used++
         if (pkg.isNotEmpty()) g.apps.add(pkg) // the apps the task actually used
         return true
@@ -596,7 +594,7 @@ class Gatekeeper(
             followup = null
             return "permit:purchase_flow"
         }
-        if (risk.kind in setOf("send", "post", "delete", "install") && risk.money == null) {
+        if (risk.kind in setOf("send", "post", "delete") && risk.money == null) {
             credits.firstOrNull { it.kind == risk.kind }?.let { credits.remove(it); return "requested" }
         }
         val g = risk.grant
@@ -1213,13 +1211,6 @@ class Gatekeeper(
                 is Triple<*, *, *> -> j.refuse = Triple(res.first as String, res.second as String, res.third as String)
                 else -> j.risk = res as Risk?
             }
-            return j
-        }
-        // A Play Store Install tap installs an app: a tap-level step (covered when the request asks to install).
-        val store = rules.d["play_store"].obj()
-        if (w.pkg == store.str("package") && label.isNotEmpty() &&
-            store["install_buttons"].strings().any { label == GateText.tokens(it) }) {
-            j.risk = Risk("install", "install:play_store", wording = "Allow installing an app from the Play Store?")
             return j
         }
         var tier = "none" to ""

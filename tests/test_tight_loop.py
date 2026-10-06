@@ -382,10 +382,12 @@ def test_the_agents_wait_until_uses_the_still_exit(tmp_path):
 STORE_PAGE = [el(0, "Chess - Play and Learn", cls="TextView"), el(1, "Install")]
 
 
-def test_an_unrequested_install_asks_and_a_requested_one_does_not(tmp_path):
-    for task, answers, asked in (("look at the chess app's reviews", ["no"], True),
-                                 ("install chess and play 5 moves against a bot", [], False)):
-        phone = FlowPhone({"store": ("com.android.vending", STORE_PAGE)}, "store", {})
+def test_free_installs_never_ask_and_a_priced_one_does(tmp_path):
+    # Owner decision: a free Play Store install runs without asking, requested or not. A price button is money.
+    for task, page, answers, asked in (("look at the chess app's reviews", STORE_PAGE, [], False),
+                                       ("install chess and play 5 moves against a bot", STORE_PAGE, [], False),
+                                       ("get chess pro", [STORE_PAGE[0], el(1, "Buy")], ["no"], True)):
+        phone = FlowPhone({"store": ("com.android.vending", page)}, "store", {})
         agent, client, io_ = make(phone, [
             [tool_use("tap_element", "a", index=1, target="Install")],
             [tool_use("done", "b", summary="ok", success=True)],
