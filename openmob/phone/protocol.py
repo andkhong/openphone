@@ -19,6 +19,18 @@ Server -> phone
     {"type": "event", "kind": "<kind>", "message": "<text>"}   agent activity to show or speak;
         kind is one of: heard, status, thought, action, jev, question, result, error
 
+Gatekeeper phones (hello device.capabilities has "gatekeeper"; docs/phone-protocol.md, "Gatekeeper"):
+    the phone checks every call first and may refuse it:
+    {"type": "result", "id", "ok": false, "code": "<GATE_CODES>", "error": "<why>",
+     "gate": {"rule", "package", "ms"}}            report it; never retry the same call
+    {"type": "result", "id", "ok": false, "code": "gate_needs_approval", "approval_id", "gate": {"question", "kind"}}
+        the phone asked its owner itself; on gate_event approved, re-send the identical call once
+    Phone -> server: {"type": "gate_event", "approval_id", "state": "pending|approved|denied|expired"}
+                     {"type": "device_lock", "locked": bool, "secure": bool}   a secure lock mid-task / unlocked
+    Server -> phone, act calls only: params "mode" (the task's mode: the phone takes the tighter of it and its
+    owner's signed ceiling), "task" (the task id), "hint" (the server's own caution: can only add a prompt).
+    Gatekeeper phones ignore approval_request for actions (they word their own prompts).
+
 Close codes: 4401 bad or missing token (don't retry), 4400 malformed hello or wrong protocol.
 Coordinates are device pixels in the current orientation (origin top-left).
 See docs/phone-protocol.md for the full spec, and METHODS below for every call.
@@ -33,6 +45,13 @@ import struct
 from .adb import Screenshot, UIElement
 
 PROTOCOL_VERSION = 1
+
+# Stable refusal codes from a gatekeeper phone (docs/phone-protocol.md, "Gatekeeper").
+GATE_CODES = (
+    "gate_no_session", "gate_blocked_app", "gate_denied_page", "gate_rate_limited", "gate_needs_approval",
+    "gate_denied", "gate_screen_changed", "gate_screen_unstable", "gate_prompt_open", "gate_password_field",
+    "gate_unknown_method", "gate_policy_invalid", "phone_locked",
+)
 
 # method -> (parameters, result, timeout in seconds)
 METHODS: dict[str, tuple[dict[str, str], str, float]] = {

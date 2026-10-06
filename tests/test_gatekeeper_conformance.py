@@ -40,6 +40,18 @@ def test_fixtures_match_build_py(tmp_path):
         "run tests/fixtures/gatekeeper/build.py and commit the JSON"
 
 
+def test_every_refusal_code_is_documented_in_the_protocol():
+    import re
+
+    from openmob.phone.protocol import GATE_CODES
+
+    kotlin = (FIXTURES.parents[2] / "android/app/src/main/java/dev/openmob/companion/gate/Gatekeeper.kt").read_text()
+    used = set(re.findall(r'"((?:gate_[a-z_]+)|phone_locked)"', kotlin)) - {"gate_event"}
+    assert used <= set(GATE_CODES), used - set(GATE_CODES)
+    docs = (FIXTURES.parents[2] / "docs/phone-protocol.md").read_text()
+    assert all(code in docs for code in GATE_CODES)
+
+
 def test_the_scenarios_cover_every_area():
     tags = {t for s in SCENARIOS for t in s["tags"]}
     assert {"friction", "permits", "grants", "clock", "modes", "hard_deny", "settings", "risk", "limits",

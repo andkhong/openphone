@@ -1114,6 +1114,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 elif kind == "approval":  # the owner approved or denied a risky action, with screen lock
                     await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
                                             message.get("approved") is True, message)
+                elif kind == "gate_event":  # the phone's own approval prompt: pending, approved, denied, expired
+                    await run_in_threadpool(manager.gate_event, session, message)
+                elif kind == "device_lock":  # a secure lock came up mid-task, or the owner unlocked
+                    await run_in_threadpool(manager.device_lock, session, message)
                 elif kind == "permissions_off":  # "Turn off" in the never banner: an unsigned tightening
                     await run_in_threadpool(manager.phone_turned_off_never, session)
                 elif kind == "command" and str(message.get("text", "")).strip():

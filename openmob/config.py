@@ -165,6 +165,9 @@ class Config:
     api_max_running_orchestrations_per_account: int = 10
     # A task whose question nobody answers ends (failed, question_timeout) after this long. 0: never.
     question_timeout_seconds: int = 300
+    # A secure lock screen mid-task pauses the task ("Unlock your phone to continue") for up to this long,
+    # then it fails with reason phone_locked. 0: fail at once.
+    locked_wait_seconds: float = 300.0
     api_max_steps: int = 40  # the most steps a developer may ask for
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
     # Retention: task text (chats, orchestration plans and results, webhook bodies) older than this

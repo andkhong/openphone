@@ -80,6 +80,11 @@ class DeviceManager:
         self.phone_stop_listeners: list = []
         # open approval id → {session (the acting phone), task_id, question, who, sent (phones asked)}
         self.approvals: dict[str, dict] = {}
+        # Gatekeeper phones own approval (docs/design/phone-gatekeeper.md, 2.8): (session id, approval id) -> the
+        # phone's last gate_event state, and the ids already acted on (a yes re-sends the call at most once).
+        self.gate_states: dict[tuple[str, str], str] = {}
+        self.gate_answered: set[tuple[str, str]] = set()
+        self.gate_timeout = 130.0  # seconds: the phone expires a prompt after 2 min
         # Every open socket per phone (session id → links). Exactly one is live (session.link); any
         # other is closed as soon as a newer one attaches, and unpair / re-pair close them all.
         self.links: dict[str, set[PhoneLink]] = {}
@@ -295,6 +300,10 @@ class DeviceManager:
         if who and started and session.coordinator.current_task == task_id:
             session.controller = (task_id, who["name"])  # the API task just started
             self._post(session, {"type": "event", "kind": "controller", "message": who["name"]})
+        approval = data.get("approval") if isinstance(data.get("approval"), dict) else {}
+        if entry["kind"] == "question" and data.get("confirm") and approval.get("approver") == "phone":
+            self._gate_question(session, task_id, approval)  # the phone asks its owner itself: no approval_request
+            return
         if entry["kind"] == "question" and data.get("confirm") and (who is None or who["human"]):
             self._ask_owner(session, task_id, entry["message"], who, data.get("approval"))
 
@@ -313,6 +322,8 @@ class DeviceManager:
             return False  # fail closed
 
     def _approval_targets(self, acting: Session) -> list[Session]:
+        if getattr(acting.driver, "gatekeeper", False):
+            return [acting] if acting.link else []  # D10: only the acting phone, until cross-device trust ships
         return [s for s in list(self.sessions.values())
                 if s.link and s.account_id == acting.account_id and self._may_answer(s, acting)]
 
@@ -466,6 +477,73 @@ class DeviceManager:
         if info and info["status"] == "needs_confirmation":
             acting.coordinator.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
             acting.coordinator.answer(task_id, "no")
+
+    # --- gatekeeper phones: the phone asks its owner itself -------------------------------
+
+    def _gate_question(self, session: Session, task_id: str, approval: dict) -> None:
+        """The agent waits on the phone's own prompt (gate_needs_approval). Nothing is sent to the phone: it is
+        already asking. The owner's other phones get a notice without an Approve button (D10)."""
+        approval_id = str(approval.get("approval_id") or "")
+        key = (session.info.id, approval_id)
+        for other in list(self.sessions.values()):
+            if other is not session and other.link and other.account_id == session.account_id:
+                self._post(other, {"type": "event", "kind": "status",
+                                   "message": f"{session.info.model} needs your approval on that phone."})
+        state = self.gate_states.get(key)
+        if state is not None:  # the phone answered before the question went up
+            self._answer_gate(session, task_id, approval_id, state)
+            return
+
+        def expire() -> None:
+            self._answer_gate(session, task_id, approval_id, "expired")
+        timer = threading.Timer(self.gate_timeout, expire)
+        timer.daemon = True
+        timer.start()
+
+    def gate_event(self, session: Session, message: dict) -> None:
+        """The phone's prompt changed state (pending | approved | denied | expired). Only the acting phone's own
+        events count, and each approval id is acted on once (a replayed event does nothing)."""
+        approval_id = str(message.get("approval_id") or "")
+        state = str(message.get("state") or "")
+        if not approval_id or state not in ("pending", "approved", "denied", "expired"):
+            return
+        key = (session.info.id, approval_id)
+        if state == "pending":
+            return
+        self.gate_states[key] = state
+        while len(self.gate_states) > 500:
+            self.gate_states.pop(next(iter(self.gate_states)))
+        c = session.coordinator
+        details = c.question_details or {}
+        if details.get("approver") == "phone" and details.get("approval_id") == approval_id and c.current_task:
+            self._answer_gate(session, c.current_task, approval_id, state)
+
+    def _answer_gate(self, session: Session, task_id: str, approval_id: str, state: str) -> None:
+        key = (session.info.id, approval_id)
+        c = session.coordinator
+        details = c.question_details or {}
+        if key in self.gate_answered or details.get("approval_id") != approval_id:
+            return
+        self.gate_answered.add(key)
+        if len(self.gate_answered) > 1000:
+            self.gate_answered.clear()
+        if state == "approved":
+            c.answer(task_id, "yes")
+        else:
+            if state == "expired":
+                c.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
+            c.answer(task_id, "no")
+            if state == "denied":
+                self.phone_stopped(session, [task_id], "denied")
+
+    def device_lock(self, session: Session, message: dict) -> None:
+        """The phone locked mid-task (a secure lock: only the owner can open it), or the owner unlocked it."""
+        driver = session.driver
+        if hasattr(driver, "on_device_lock"):
+            driver.on_device_lock(message)
+        if session.coordinator.current_task:
+            session.coordinator.event("status", "Unlock your phone to continue." if message.get("locked")
+                                      else "The phone is unlocked. Carrying on.")
 
     # --- the owner stopping work from the phone ----------------------------------------
 

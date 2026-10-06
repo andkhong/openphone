@@ -97,7 +97,7 @@ def api(tmp_path):
             "name": "test", "scopes": ["devices:read", "tasks:run", "tasks:read", "screen:read", "history:read"],
         }).json()
         users[name] = SimpleNamespace(
-            console=client, phone=phone, driver=driver, device=f"app-{name}-phone", key_id=key["id"],
+            console=client, phone=phone, driver=driver, device=f"app-{name}-phone", key_id=key["id"], device_key=device_key,
             v1=httpx.Client(base_url=base, headers={"Authorization": f"Bearer {key['key']}"}, timeout=10),
         )
     yield SimpleNamespace(base=base, store=store, ledger=ledger, manager=manager, cfg=cfg, tmp=tmp_path, **users)

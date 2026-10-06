@@ -17,7 +17,7 @@ from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
-from ..phone.base import DeviceError
+from ..phone.base import DeviceError, GateRefused, PhoneLocked
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
@@ -41,6 +41,7 @@ RECHECK_QUIET_MS = 200  # a tap target that moved (a list settling): wait this q
 RECHECK_MAX_MS = 800
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
+LOCKED_MESSAGE = "The phone stayed locked, so I stopped. Unlock it and ask again."
 REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
 # Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
 CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key"}
@@ -77,6 +78,7 @@ class AgentResult:
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
     prompts: int = 0  # approval prompts the owner saw (permission telemetry)
     mode: str | None = None  # the permission mode the task ran in
+    reason: str | None = None  # why it failed, when it's not the model's call (phone_locked)
 
 
 class Observation:
@@ -161,6 +163,7 @@ class _TaskState:
     money_followup: dict | None = None  # {package, at}: one follow-up commit tap after an approved payment
     plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
     step_approved: bool = False  # ask mode: the owner approved the action now running
+    locked_out: bool = False  # the phone stayed locked past locked_wait_seconds
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
     prompts: int = 0
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
@@ -249,7 +252,13 @@ class Agent:
                            memory=memory if self.memory is not None else "off", perms=perms)
         state.fast = self._fast_enabled()
         self._task_variant = self._variant(state.fast)
-        result = self._run(state, go_home, isolated)
+        self._gate_setup(state)
+        try:
+            result = self._run(state, go_home, isolated)
+        finally:
+            self._gate_setup(None)
+        if state.locked_out and not result.success:
+            result.reason = "phone_locked"
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
@@ -284,6 +293,11 @@ class Agent:
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
+            if getattr(self.driver, "locked", False) and not state.locked_out:
+                if self._lock_wait(state):  # a secure lock came up between steps: pause, then look again
+                    obs = self._observe_settled(state)
+            if state.locked_out:
+                return AgentResult(False, LOCKED_MESSAGE, step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
 
@@ -734,6 +748,14 @@ class Agent:
         try:
             with self.timer.phase("action"):
                 outcome = self._dispatch(name, args, obs, state)
+        except PhoneLocked:
+            state.locked_out = True  # stayed locked past locked_wait_seconds (the wait already happened)
+            outcome = Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
+        except GateRefused as exc:
+            # The phone refused it: report with its stable code, and don't retry the same call.
+            self.io.event("status", f"Refused on the phone ({exc.code}): {exc}")
+            outcome = Outcome(f"Refused on the phone ({exc.code}): {exc} Don't retry this; pick another approach "
+                              "or call done.", is_error=True, settle=0)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         if outcome.done:
@@ -807,6 +829,9 @@ class Agent:
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         state.step_approved = False
+        if name in ("tap", "tap_element", "long_press", "swipe", "scroll") and (
+                locked := self._keyguard_check(state, obs)):
+            return locked  # never a gesture at the lock screen
         # Refused in every mode, before anything asks: links outside the scheme allowlist, typing into
         # a password field, and dangerous URLs typed into an address bar.
         if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
@@ -1369,9 +1394,83 @@ class Agent:
             offer["target"] = " ".join(target.split()).lower()[:80]
         return offer
 
+    # --- gatekeeper phones (docs/design/phone-gatekeeper.md) and the lock screen ---------------------
+
+    @property
+    def _gatekeeper(self) -> bool:
+        return bool(getattr(self.driver, "gatekeeper", False))
+
+    def _gate_setup(self, state: _TaskState | None) -> None:
+        """Wire the driver to this task: its mode goes with each act call (the phone takes the tighter of it and
+        its owner's ceiling), the phone's own prompts wait here, and a secure lock pauses the task."""
+        self._gate_state = state
+        if not hasattr(self.driver, "gate_approver"):
+            return
+        self.driver.gate_mode = state.perms.mode() if state else None
+        self.driver.gate_task = str(getattr(self.io, "current_task", "") or "") if state else ""
+        self.driver.gate_approver = self._gate_approval if state else None
+        self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
+
+    def _gate_approval(self, refusal) -> bool:
+        """The phone asked its owner (gate_needs_approval): the task waits for that answer, worded by the phone.
+        The API and dashboard can decline it, never approve it (approval_on_phone)."""
+        state = self._gate_state
+        if state is None:
+            return False
+        question = refusal.question or "Approve this action on your phone?"
+        answer = self._ask_owner(state, f"Waiting for your approval on the phone: {question}",
+                                 {"kind": "gate", "approver": "phone", "approval_id": refusal.approval_id,
+                                  "package": refusal.package, "action_kind": refusal.kind})
+        return is_yes(answer)
+
+    def _lock_wait(self, state: _TaskState | None) -> bool:
+        """A secure lock screen came up mid-task: pause with "Unlock your phone to continue" until the owner
+        unlocks it (True), or locked_wait_seconds pass (False: the task ends with reason phone_locked). The agent
+        never taps or swipes at the lock screen itself."""
+        wait = float(getattr(self.config, "locked_wait_seconds", 0) or 0)
+        waiter = getattr(self.driver, "wait_unlocked", None)
+        self.io.event("status", "Unlock your phone to continue.")
+        unlocked = False
+        if waiter is not None and wait > 0:
+            deadline = time.monotonic() + wait
+            while not unlocked and time.monotonic() < deadline and not (state and state.cancel.is_set()):
+                unlocked = self.timer.timed("wait", waiter, min(5.0, deadline - time.monotonic()))
+        if unlocked:
+            self.io.event("status", "The phone is unlocked. Carrying on.")
+            return True
+        if state is not None:
+            state.locked_out = True
+        return False
+
+    def _keyguard_check(self, state: _TaskState, obs: Observation) -> Outcome | None:
+        """Before a tap or swipe: never at the lock screen. A swipe-only lock is woken and dismissed by the phone
+        (wake_unlock); a secure one pauses the task as phone_locked."""
+        if not (getattr(self.driver, "locked", False) or obs.package == "com.android.systemui"):
+            return None
+        try:
+            lock = self.driver.device_state() if hasattr(self.driver, "device_state") else None
+        except DeviceError:
+            lock = None
+        if not lock or not lock.get("locked"):
+            return None
+        if not lock.get("secure"):
+            self.driver.wake_unlock()
+            return Outcome("The lock screen was up; the phone dismissed it. Look at the screen again.", is_error=True)
+        if self._lock_wait(state):
+            return Outcome("The phone was locked; it's unlocked now. Look at the screen again before acting.",
+                           is_error=True)
+        return Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
+
     def _ask_owner(self, state: _TaskState, question: str, details: dict) -> str:
         """One approval prompt (the owner's screen lock, on an app phone). Counts it, and records its
-        decision and how long the owner took, for the prompt budget (`openmob prompts`)."""
+        decision and how long the owner took, for the prompt budget (`openmob prompts`).
+
+        On a gatekeeper phone the phone owns approval (D9): the server's checks only add caution. Instead of an
+        approval_request, the next act call carries a hint; the phone asks once, covering both detectors."""
+        if self._gatekeeper and details.get("kind") in ("action", "step", "plan"):
+            if details.get("kind") == "action":
+                self.driver.gate_hint(question)
+            return "yes"  # not a yes from anyone: the phone decides, and asks its owner if it must
         confirm = getattr(self.io, "confirm", None)
         started = time.monotonic()
         if confirm is None:

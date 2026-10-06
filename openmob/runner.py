@@ -81,6 +81,7 @@ class Coordinator:
         self.current: str | None = None
         self.question: str | None = None
         self.question_kind: str | None = None  # "question" (ask_user), "confirm" (risky action) or "plan"
+        self.question_details: dict | None = None  # what a confirm is about ({"approver": "phone"} on gatekeeper phones)
         # (mode or None) -> TaskPermissions for a task on this phone (set by the DeviceManager);
         # None: the agent's default (config's mode, ceiling auto).
         self.permissions_for = None
@@ -274,6 +275,7 @@ class Coordinator:
         with self._lock:
             self.question = question
             self.question_kind = kind
+            self.question_details = details
             self._approval_digest = None
         data = None
         if kind in ("confirm", "plan"):  # both wait for the owner's approval prompt
@@ -295,6 +297,7 @@ class Coordinator:
             with self._lock:
                 self.question = None
                 self.question_kind = None
+                self.question_details = None
             self._set_status(self.current_task, "running")
 
     def confirm(self, question: str, details: dict | None = None) -> str:
@@ -415,6 +418,8 @@ class Coordinator:
                 if getattr(result, "done_via", None):
                     data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
                 summary = result.summary
+                if getattr(result, "reason", None) and not result.success:
+                    data["reason"] = result.reason  # e.g. phone_locked: the phone stayed locked past the wait
                 if self._unanswered == task_id and not result.success:
                     data["reason"] = "question_timeout"
                     minutes = self.question_timeout / 60
