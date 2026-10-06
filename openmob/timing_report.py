@@ -108,6 +108,8 @@ def summarize(rows: list[dict]) -> list[dict]:
                               "vision": {"steps": len(vision), "phases": _phases(vision, SPLIT_ROWS)}}
         if costed := [r for r in members if r.get("input_tokens") is not None]:
             group["tokens"] = token_stats(costed)
+        if waits := wait_stats(members):
+            group["waits"] = waits
         out.append(group)
     return out
 
@@ -123,6 +125,19 @@ def token_stats(rows: list[dict]) -> dict:
     sides = [float(r["vision_image_side"]) for r in rows if r.get("vision_image_side")]
     return {"steps": len(rows), **means, "cache_share": means["cache_read_tokens"] / prompt if prompt else None,
             "image_side": percentile(sides, 0.5)}
+
+
+def wait_stats(rows: list[dict]) -> dict:
+    """Waits by kind: blind sleeps (the `wait` tool), wait_until (the model's), and the loop's own
+    ("auto:…"): how many, how many ended on their condition, and the time waited."""
+    kinds: dict[str, list[dict]] = defaultdict(list)
+    for r in rows:
+        cond = r.get("wait_cond")
+        if cond:
+            kinds["sleep" if cond == "sleep" else "auto" if cond.startswith("auto:") else "wait_until"].append(r)
+    return {kind: {"n": len(rs), "met": sum(1 for r in rs if r.get("wait_met")),
+                   "waited": stats([float(r["waited_ms"]) for r in rs if r.get("waited_ms") is not None])}
+            for kind, rs in kinds.items()}
 
 
 def _ms(value: float | None) -> str:
@@ -160,6 +175,10 @@ def format_report(groups: list[dict]) -> str:
             lines.append(f"  tokens per model step ({t['steps']}): input {t['input_tokens']:,.0f} · cache read "
                          f"{t['cache_read_tokens']:,.0f}{cached} · cache write {t['cache_write_tokens']:,.0f} · "
                          f"output {t['output_tokens']:,.0f}{side}")
+        for kind, w in (g.get("waits") or {}).items():
+            met = "" if kind == "sleep" else f", {w['met']} met their condition"
+            lines.append(f"  waits · {kind}: {w['n']}{met} · waited median {_ms(w['waited']['median'])} ms, "
+                         f"mean {_ms(w['waited']['mean'])} ms")
         if done := g.get("done_via"):
             lines.append(f"  finished by: {done['classifier']} jev (no vision confirmation), {done['vision']} vision")
         lines.append("")

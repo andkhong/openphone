@@ -44,7 +44,7 @@ Every safety control runs on the server today, and the phone obeys any `call` on
 | Class | Methods | Gate |
 |---|---|---|
 | meta | `device_state`, `wait_idle` | Always allowed: no screen data, on the fast path |
-| read | `screenshot`, `ui_elements`, `stream_*`, `current_app`, `launchable_packages`, `app_labels` | Session (Phase 2). A black frame or `[]` whenever a blocked app is visible in *any* window (split screen, PiP, bubble) |
+| read | `screenshot`, `ui_elements`, `wait_for`, `stream_*`, `current_app`, `launchable_packages`, `app_labels` | Session (Phase 2). A black frame or `[]` whenever a blocked app is visible in *any* window (split screen, PiP, bubble); `wait_for` then answers `{met: false, redacted: true}`, also when one appears mid-wait |
 | act | `tap`, `long_press`, `swipe`, `type_text`, `key`, `launch_app`, `open_url`, `wake_unlock` | Full order (§2.3) |
 
 ### 2.2 Inputs the phone uses

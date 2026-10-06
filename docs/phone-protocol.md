@@ -115,7 +115,7 @@ Errors: `400` for a wrong, used, expired or voided code (with `detail`), `429` a
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
-| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. `"gatekeeper"`: the app enforces policy itself (§9); `"device_lock"`: it pushes `device_lock` messages. |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url", "wait_for"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. `"gatekeeper"`: the app enforces policy itself (§9); `"device_lock"`: it pushes `device_lock` messages. |
 | `device.policy_hash` | string, optional | Gatekeeper apps: a short hash of the built-in rules and the owner's signed policy this phone enforces. |
 
 **`result`**: exactly one per `call`, with the same `id`.
@@ -259,6 +259,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `wake_unlock` | none | `null` | 10 s |
 | `device_state` | none | `{"interactive": bool, "locked": bool, "secure": bool}` | 5 s |
 | `wait_idle` (optional) | `quiet_ms, max_ms: int` | `{"waited_ms": int, "idle": bool}` | 10 s |
+| `wait_for` (optional) | `condition: object, timeout_ms: int` | `{"met": bool, "waited_ms": int, "seen": string, "package": string\|null}` | 15 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -393,6 +394,26 @@ Params: `{"quiet_ms": 300, "max_ms": 800}`. Block until the screen has stopped c
 "Changing" means accessibility events: `TYPE_WINDOW_STATE_CHANGED`, `TYPE_WINDOWS_CHANGED`, `TYPE_WINDOW_CONTENT_CHANGED` and `TYPE_VIEW_SCROLLED` (add the last two to `accessibilityEventTypes`, §5.2). Ignore your own app's events, and content changes from `com.android.systemui` (the status bar's clock and network meters tick on their own). Record only a timestamp per event, then poll it every ~20 ms. Count the quiet time from the later of the last event and the start of the call, so the reply comes at least `quiet_ms` after the call: the events of the action just performed have time to start (a separate minimum isn't needed). Clamp `quiet_ms` to 50–8000 and `max_ms` to 0–8000.
 
 It's optional: list `"wait_idle"` in the hello's `device.capabilities` only if you implement it. The server then uses it; otherwise (and for adb and iOS phones) it sleeps the fixed time. If a call fails with an error anyway, the server stops calling it on that connection.
+
+### 4.16 `wait_for` (optional)
+Params: `{"condition": {"until": "element_enabled", "pattern": "Open|Play"}, "timeout_ms": 10000}`. Block until the condition holds on **your own element list** (exactly what `ui_elements` would answer), then reply `{"met": true, "waited_ms": 840, "seen": "'Open' is enabled", "package": "com.android.vending"}`; at `timeout_ms`, reply with `"met": false`. It backs the agent's `wait_until` tool and its own waits after a launch or a Play Store install, so the server doesn't have to poll `ui_elements`.
+
+| `until` | Holds when |
+|---|---|
+| `screen_changes` | The element list differs from the one read when the call began: the set of (text, desc, resource id, class, checked), digits blanked so a clock or a percentage isn't a change, positions and `OCRText` ignored, plus the foreground package. |
+| `text_appears` | An element's `text` or `desc` matches `pattern`. |
+| `text_disappears` | The list has labeled elements and none matches `pattern` (an empty list can't tell). |
+| `element_enabled` | An element whose whole `text` or `desc` matches `pattern` is enabled and not `covered`. |
+| `app_in_front` | `current_app` is `condition.package`. |
+| `loading_done` | The list has labeled elements, none looks like loading (class or resource id containing progress, spinner, loading or shimmer; text such as "Loading…", "Please wait", "45%"), and no window or content change for `condition.quiet_ms` (default 500). |
+
+`pattern` is a case-insensitive regex (if it doesn't compile, match it literally). It matches a label when it is the whole label, or (except for `element_enabled`) when it occurs as whole words: `(?<!\w)(?:pattern)(?!\w)`, so `Open` matches "Open" and "Open app" but not "Opening". The server's `openmob/agent/waiting.py` is the reference; the Android app's `WaitCondition.kt` matches it.
+
+Re-read the list on each accessibility event (§4.15's events; at most every ~150 ms) and at least once a second; in between, checking costs only a timestamp. Clamp `timeout_ms` to 0–10000: the server calls again for a longer wait and checks for a stop in between. **A wait never acts**: it only reads, so it isn't an action for approvals or the gatekeeper (a gatekeeper build classifies `wait_for` as a read and evaluates it on the same filtered element list as `ui_elements`: while a protected app is visible it replies `{"met": false, "redacted": true}` without looking).
+
+It's optional: list `"wait_for"` in the hello's `device.capabilities` only if you implement it. Without it (older apps, adb, iOS) the server polls `ui_elements` itself, paced by `wait_idle` where there is one, and compares tiny screenshots on screens without elements. If a call fails with an error, the server stops calling it on that connection and polls.
+
+Elements may also carry `"enabled": false` (only when greyed out): `element_enabled` needs it, and the model sees "(disabled)" next to the element.
 
 ---
 
@@ -628,9 +649,10 @@ all its own checks as defense in depth. Apps without the capability keep today's
 ### 9.1 Every call goes through the gate first
 
 Methods fall into three classes (the built-in rule file `gatekeeper/rules.json` in the APK): **meta**
-(`device_state`, `wait_idle`, always allowed), **read** (`screenshot`, `ui_elements`, `current_app`,
-`launchable_packages`, `app_labels`, `resolve_url`, `stream_*`: allowed, but `screenshot` is a black frame and
-`ui_elements` is `[]` while a blocked app is visible in any window) and **act** (`tap`, `long_press`, `swipe`,
+(`device_state`, `wait_idle`, always allowed), **read** (`screenshot`, `ui_elements`, `wait_for`, `current_app`,
+`launchable_packages`, `app_labels`, `resolve_url`, `stream_*`: allowed, but `screenshot` is a black frame,
+`ui_elements` is `[]` and `wait_for` answers `{"met": false, "redacted": true}` while a blocked app is visible in any
+window; `wait_for` checks again on every read during the wait, so it never evaluates a protected app's text) and **act** (`tap`, `long_press`, `swipe`,
 `type_text`, `key`, `launch_app`, `open_url`, `wake_unlock`). Anything else is refused with `gate_unknown_method`.
 Act calls are re-checked right before the side effect (the target under the point must still be the same).
 

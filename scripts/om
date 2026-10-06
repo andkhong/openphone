@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# om: run and switch between the two OpenMob test environments.
+#
+#   standard    ~/Desktop/openmob            branch main           data ~/.config/openmob
+#   gatekeeper  ~/Desktop/openmob-gatekeeper branch gatekeeper-p1  data ~/.config/openmob-gatekeeper
+#
+# Setup once: git worktree add --detach ~/Desktop/openmob-gatekeeper origin/gatekeeper-p1, give it its own
+# .venv (python3 -m venv .venv && .venv/bin/pip install -e .), copy config.yaml, and copy the data dir.
+# See docs/dev-environments.md. Paths can be changed with OPENMOB_{STANDARD,GATEKEEPER}_{DIR,DATA}.
+#
+# Usage:
+#   om run <env> [port]        start that environment's server (default port 8765; one at a time)
+#   om phone <env> [serial]    install that environment's app on the phone (or emulator serial)
+#   om build <env>             build that environment's app from its code
+#   om update <env>            pull the latest code for that environment and refresh its Python packages
+#   om status                  what's checked out, what's running, which app the phone has
+set -euo pipefail
+
+ENVS="${OPENMOB_ENVS_HOME:-$HOME/.config/openmob-envs}"   # built apps and the phone-app record (not in git)
+APKS="$ENVS/apk"
+STATE="$ENVS/phone-app"
+mkdir -p "$APKS"
+export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
+export ANDROID_HOME="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}"
+
+env_dir()    { case "$1" in standard) echo "${OPENMOB_STANDARD_DIR:-$HOME/Desktop/openmob}";; gatekeeper) echo "${OPENMOB_GATEKEEPER_DIR:-$HOME/Desktop/openmob-gatekeeper}";; *) die "unknown environment '$1' (standard or gatekeeper)";; esac; }
+env_data()   { case "$1" in standard) echo "${OPENMOB_STANDARD_DATA:-$HOME/.config/openmob}";; gatekeeper) echo "${OPENMOB_GATEKEEPER_DATA:-$HOME/.config/openmob-gatekeeper}";; esac; }
+env_branch() { case "$1" in standard) echo "main";; gatekeeper) echo "gatekeeper-p1";; esac; }
+die() { echo "om: $*" >&2; exit 1; }
+
+cmd_run() {
+  local env="${1:-}" port="${2:-8765}"; [ -n "$env" ] || die "usage: om run <standard|gatekeeper> [port]"
+  local dir data; dir="$(env_dir "$env")"; data="$(env_data "$env")"
+  if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
+    die "port $port is already in use (another OpenMob server?). Stop it (Control + C in its terminal) or pick another port: om run $env 8766"
+  fi
+  [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "om: warning: ANTHROPIC_API_KEY isn't set in this terminal; the agent won't be able to think." >&2
+  echo "▶ OpenMob $env  ·  $(git -C "$dir" log --oneline -1)  ·  data $data  ·  port $port"
+  cd "$dir"
+  OPENMOB_DATA_DIR="$data" OPENMOB_PORT="$port" exec .venv/bin/python -c "
+import sys, os
+from openmob.config import load_config
+import openmob.main as m
+cfg_load = m.load_config
+def load(path=None):
+    cfg = cfg_load(path)
+    cfg.server_port = int(os.environ['OPENMOB_PORT'])
+    return cfg
+m.load_config = load
+sys.argv = ['openmob', 'run', '--no-adb', '--quiet', '--accounts']
+m.main()
+"
+}
+
+cmd_build() {
+  local env="${1:-}"; [ -n "$env" ] || die "usage: om build <standard|gatekeeper>"
+  local dir; dir="$(env_dir "$env")"
+  [ -f "$dir/android/local.properties" ] || cp "$(env_dir standard)/android/local.properties" "$dir/android/" 2>/dev/null || true
+  echo "▶ building the $env app ($(git -C "$dir" log --oneline -1))…"
+  (cd "$dir/android" && ./gradlew -q assembleDebug)
+  mkdir -p "$APKS" && cp "$dir/android/app/build/outputs/apk/debug/app-debug.apk" "$APKS/$env.apk"
+  git -C "$dir" rev-parse --short HEAD > "$APKS/$env.commit"
+  echo "✓ $APKS/$env.apk ($(du -h "$APKS/$env.apk" | cut -f1))"
+}
+
+cmd_phone() {
+  local env="${1:-}" serial="${2:-${ANDROID_SERIAL:-}}"; [ -n "$env" ] || die "usage: om phone <standard|gatekeeper> [serial]"
+  [ -f "$APKS/$env.apk" ] || cmd_build "$env"
+  local adb=(adb); [ -n "$serial" ] && adb=(adb -s "$serial")
+  "${adb[@]}" get-state >/dev/null 2>&1 || die "no phone reachable over adb. Unlock it, allow USB debugging, and check Samsung Auto Blocker is off."
+  echo "▶ installing the $env app ($(cat "$APKS/$env.commit" 2>/dev/null || echo '?')) on $("${adb[@]}" shell getprop ro.product.model | tr -d '\r')…"
+  "${adb[@]}" install -r "$APKS/$env.apk" | tail -1
+  echo "$env $(cat "$APKS/$env.commit" 2>/dev/null) $(date '+%F %T')" > "$STATE"
+  echo "✓ now open OpenMob on the phone and tap Connect (start the matching server: om run $env)"
+}
+
+cmd_update() {
+  local env="${1:-}"; [ -n "$env" ] || die "usage: om update <standard|gatekeeper>"
+  local dir branch; dir="$(env_dir "$env")"; branch="$(env_branch "$env")"
+  git -C "$dir" fetch -q origin
+  if [ "$env" = standard ]; then git -C "$dir" checkout -q main && git -C "$dir" merge -q --ff-only origin/main
+  else git -C "$dir" checkout -q --detach "origin/$branch"; fi
+  (cd "$dir" && .venv/bin/pip install -q -e . 2>&1 | grep -v notice || true)
+  echo "✓ $env is at $(git -C "$dir" log --oneline -1). Rebuild its app with: om build $env"
+}
+
+cmd_status() {
+  for env in standard gatekeeper; do
+    local dir; dir="$(env_dir "$env")"
+    printf '%-11s code %-48s app %s\n' "$env" "$(git -C "$dir" log --oneline -1 | cut -c1-48)" "$( [ -f "$APKS/$env.apk" ] && echo "built ($(cat "$APKS/$env.commit" 2>/dev/null))" || echo 'not built')"
+  done
+  echo "servers:"
+  lsof -nP -a -iTCP -sTCP:LISTEN -c Python 2>/dev/null | awk 'NR>1 && /:87[0-9][0-9]/ {print $2, $9}' | sort -u | while read -r pid addr; do
+    cwd=$(lsof -a -p "$pid" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p')
+    case "$cwd" in *openmob-gatekeeper) which=gatekeeper;; */Desktop/openmob) which=standard;; *) which="other ($cwd)";; esac
+    echo "  $which server, pid $pid, on $addr"
+  done
+  echo "phone app: $(cat "$STATE" 2>/dev/null || echo 'unknown (installed outside om)')"
+}
+
+case "${1:-}" in
+  run) shift; cmd_run "$@";; phone) shift; cmd_phone "$@";; build) shift; cmd_build "$@";;
+  update) shift; cmd_update "$@";; status) cmd_status;;
+  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//';;
+esac

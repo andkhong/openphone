@@ -797,7 +797,7 @@ class Gatekeeper:
             return self.request_task(params)
         if method in self.r.read or method.startswith("stream_"):
             hidden = self._hidden(screen)
-            if method in ("screenshot", "ui_elements") and hidden:
+            if method in ("screenshot", "ui_elements", "wait_for") and hidden:  # wait_for reads the element list
                 return Admission("redact", rule=hidden, method=method, params=params)
             if method == "stream_start" and hidden:
                 return self._refuse("gate_blocked_app", hidden, "A protected app is on screen, so the live view "

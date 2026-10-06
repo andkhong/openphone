@@ -11,7 +11,8 @@ approval wait during a tap) counts there and not in the enclosing one.
 - wait:    human or loading time: loading-screen waits, risky-tap approvals, ask_user answers
 - model:   the main model call(s), including a nudge call that produced no tool call
 - action:  the phone action and the tool's own work (app resolution included)
-- settle:  the post-action settle sleep before the next observation, and the `wait` tool's sleep.
+- settle:  the post-action settle before the next observation (and the loop's own waits after a launch or a
+           Play Store install), the `wait` tool's sleep, and `wait_until` (agent/waiting.py).
            It is counted on the step it delayed: the step after the action that caused it.
 - total:   wall time of the step. total minus the phases is untracked overhead (bookkeeping).
 
