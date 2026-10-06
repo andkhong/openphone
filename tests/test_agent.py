@@ -98,7 +98,7 @@ def test_text_only_reply_is_nudged_then_ends(tmp_path):
     agent, client, _ = make_agent([[text_block("Hmm.")], [text_block("I can't.")]], tmp_path=tmp_path)
     result = agent.run("do something")
     assert not result.success and result.summary == "I can't."
-    assert "calling a tool" in client.requests[1]["messages"][-1]["content"]
+    assert "calling a tool" in client.requests[1]["messages"][-1]["content"][0]["text"]
 
 
 def test_cancel_stops_before_next_model_call(tmp_path):

@@ -10,3 +10,6 @@ deploy/OpenMob.apk
 
 # Claude Code agents work in private checkouts here
 .claude/worktrees/
+
+# openmob bench-api results
+bench-results/

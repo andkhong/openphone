@@ -94,6 +94,25 @@ class Config:
     openai_compatible_base_url: str | None = None
     max_steps: int = 40
     keep_screenshots: int = 2
+    # Vision-step speedups (docs/benchmarks.md, "Vision steps"). Each can be switched off to compare.
+    # History trimming: "batch" lets screenshots pile up to history_max_screenshots, then drops the
+    # oldest down to keep_screenshots at once, so earlier messages stay byte-identical between steps
+    # and the provider's prompt cache covers them. "rolling" (before): keep_screenshots every step.
+    history_trim: str = "batch"  # batch | rolling
+    history_max_screenshots: int = 4
+    # Anthropic: mark the end of the conversation for prompt caching (other providers cache on their own).
+    history_cache: bool = True
+    # A smaller screenshot for vision steps on screens with a rich labeled element list (not OCR, not a
+    # game): its long side in px (0: always the full screenshot_max_side).
+    vision_max_side_labeled: int = 768
+    vision_labeled_min_elements: int = 8  # labeled accessibility elements that make a screen "rich"
+    # Ask for the tool call with at most one short sentence of thought.
+    vision_brief: bool = True
+    # max_tokens for vision steps (0: the model's own); a reply cut off by it is asked again in full.
+    vision_max_tokens: int = 512
+    # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
+    # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
+    vision_stream: bool = False
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -256,6 +275,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.fast_path = "on" if cfg.fast_path else "off"
     if cfg.fast_path not in FAST_PATH_MODES:
         raise ValueError(f"fast_path must be one of: {', '.join(FAST_PATH_MODES)}")
+    if cfg.history_trim not in {"batch", "rolling"}:
+        raise ValueError("history_trim must be one of: batch, rolling")
     if cfg.ui_tree not in {"auto", "always", "never"}:
         raise ValueError("ui_tree must be one of: auto, always, never")
     return cfg

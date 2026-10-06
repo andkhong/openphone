@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import re
 import threading
@@ -14,13 +15,13 @@ from typing import Callable, Protocol
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
-from ..phone.adb import Screenshot, UIElement, format_elements
+from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
 from . import fast
-from .models import ModelError, ModelRequest, ModelUnavailable, router_for
+from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import TOOL_SPECS, system_prompt
 
@@ -35,6 +36,12 @@ FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
+# vision_brief: replies are mostly the tool call, so the step ends sooner (the thought still reaches
+# the dashboard as a "thought" event).
+BRIEF_REPLIES = ("\nReply briefly: at most one short sentence about what you see or why, then the tool call. "
+                 "No lists, no restating the request.\n")
+# Per-step model cost, recorded with each step (the steps table, `openmob timings`).
+STEP_TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "vision_image_side")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 
 
@@ -101,6 +108,7 @@ class Outcome:
     launched: str | None = None  # the package launch_app started (adb's launch settle waits for it)
     quiet_ms: int | None = None  # adaptive settle: a longer quiet time (e.g. search suggestions)
     done_via: str | None = None  # for done: "vision" | "classifier"
+    tokens: dict | None = None  # the model calls since the last step (set by _execute; see _note_tokens)
 
 
 @dataclass
@@ -161,6 +169,10 @@ class Agent:
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         self.timer = StepTimer()  # where each step's time goes (measurement only)
         self._frame: Screenshot | None = None  # the last screenshot the agent took (for sizes)
+        self._step_tokens: dict | None = None  # model tokens since the last recorded step (measurement only)
+        self._shown_side: int | None = None  # long side of the newest screenshot in the conversation
+        self._last_record: dict | None = None  # the newest step record (vision_stream amends its tokens)
+        self._acted_early = False  # a streamed reply's tool call already ran
         self._task_variant = self._variant()  # the latency features of the task in progress (steps record it)
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
@@ -193,6 +205,7 @@ class Agent:
         API key) that must neither see nor add to the chat's recent requests."""
         self.usage = Usage()
         self.timer.reset()
+        self._step_tokens = self._shown_side = None
         self.task_model = model or self.model
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
@@ -225,7 +238,7 @@ class Agent:
         self._show_later(state, messages, obs)
         nudged = False
 
-        system = system_prompt(self.platform) + self._user_notes(state)
+        system = system_prompt(self.platform) + (BRIEF_REPLIES if self.config.vision_brief else "") + self._user_notes(state)
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
@@ -245,19 +258,17 @@ class Agent:
             state.escalated = True
             self._show(state, messages)
             self._trim_history(messages)
-            with self.timer.phase("model"):
-                response = route.adapter.complete(ModelRequest(
-                    model=self.task_model,
-                    system=system,
-                    tools=TOOL_SPECS,
-                    messages=messages,
-                    max_tokens=route.spec.max_tokens,
-                ))
-            # Count under the model the API says served this call, which verifies the model choice.
-            self.usage.add_model(response.usage, response.model or self.task_model)
+            early: dict[str, Outcome] = {}  # tool calls already run while the reply streamed (vision_stream)
+
+            def act_early(call) -> None:
+                if any(o.done for o in early.values()) or state.cancel.is_set():
+                    return  # the loop below marks it skipped
+                early[call.id] = self._act(call, obs, state)
+
+            response, streamed = self._vision_call(route, system, messages, act_early)
             messages.append({"role": "assistant", "content": response.content})
 
-            for text in response.text:
+            for text in [] if streamed else response.text:  # streamed thoughts went out as they came
                 if text.strip():
                     self.io.event("thought", text.strip())
 
@@ -279,12 +290,13 @@ class Agent:
             launched: str | None = None
             quiet_ms: int | None = None
             for tool_use in tool_uses:
-                if finished or state.cancel.is_set():
+                if tool_use.id in early and not finished:
+                    outcome = early[tool_use.id]
+                elif finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
-                    outcome = self._execute(tool_use.name, tool_use.input, obs, state)
-                    self._event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}",
-                                {"timings": outcome.timings, "jev": self.judge is not None})
+                    outcome = self._act(tool_use, obs, state)
+                if outcome.timings is not None:  # it ran
                     if outcome.settle is not None:
                         settle = outcome.settle
                     launched = outcome.launched or launched
@@ -311,6 +323,88 @@ class Agent:
             self._show_later(state, messages, obs)
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
+
+    # --- the vision step's model call ---------------------------------------------
+
+    def _vision_request(self, route, system: str, messages: list[dict], max_tokens: int) -> ModelRequest:
+        return ModelRequest(model=self.task_model, system=system, tools=TOOL_SPECS, messages=messages,
+                            max_tokens=max_tokens, cache_history=self.config.history_cache)
+
+    def _act(self, call, obs: Observation, state: _TaskState) -> Outcome:
+        """Run one of the main model's tool calls and report it."""
+        outcome = self._execute(call.name, call.input, obs, state)
+        self._event("error" if outcome.is_error else "action", f"{call.name}: {outcome.text}",
+                    {"timings": outcome.timings, "jev": self.judge is not None})
+        return outcome
+
+    def _vision_call(self, route, system: str, messages: list[dict], act=None):
+        """The main model decides this step: (response, streamed). With vision_max_tokens, a reply that
+        hit that cap before finishing its tool call is asked again with the model's full max_tokens.
+        With vision_stream (and a provider that streams), `act` runs each tool call as soon as its
+        block is complete, before the reply ends."""
+        full = route.spec.max_tokens
+        cap = self.config.vision_max_tokens
+        limit = min(cap, full) if cap > 0 else full
+        response = None
+        if act is not None and self.config.vision_stream and hasattr(route.adapter, "stream"):
+            response = self._vision_stream(route, system, messages, limit, act)
+            if response is not None and (response.stop_reason != "max_tokens" or limit >= full
+                                         or self._acted_early):
+                return response, True
+        if response is None:
+            with self.timer.phase("model"):
+                response = route.adapter.complete(self._vision_request(route, system, messages, limit))
+            self._count_vision(response)
+        if response.stop_reason == "max_tokens" and limit < full:
+            with self.timer.phase("model"):
+                response = route.adapter.complete(self._vision_request(route, system, messages, full))
+            self._count_vision(response)
+        return response, False
+
+    def _vision_stream(self, route, system: str, messages: list[dict], limit: int, act) -> ModelResponse | None:
+        """Stream the reply; thoughts go out and tool calls run as their blocks complete. The model's
+        time is the time spent waiting on the stream (an action in between is action time). Returns
+        None when the stream failed before anything ran (the caller asks again without streaming)."""
+        self._acted_early = False
+        seen: list[dict] = []
+        record = None
+        events = route.adapter.stream(self._vision_request(route, system, messages, limit))
+        while True:
+            try:
+                with self.timer.phase("model"):
+                    kind, value = next(events)
+            except StopIteration:
+                return None if not self._acted_early else ModelResponse(seen, "tool_use", None, None)
+            except ModelError as exc:
+                if not self._acted_early:
+                    return None
+                self.io.event("error", f"The rest of the reply was lost: {exc}")
+                return ModelResponse(seen, "tool_use", None, None)
+            if kind == "text":
+                seen.append({"type": "text", "text": value})
+                if value.strip():
+                    self.io.event("thought", value.strip())
+            elif kind == "tool_call":
+                seen.append({"type": "tool_call", "id": value.id, "name": value.name, "input": value.input})
+                self._last_record = None
+                act(value)
+                if not self._acted_early:
+                    self._acted_early = True
+                    record = self._last_record  # the step that gets this reply's tokens
+            elif kind == "response":
+                self._count_vision(value)
+                if record is not None and self._step_tokens:
+                    # The step already ran and was recorded: add the reply's tokens to its record.
+                    record.update(self._step_tokens)
+                    self._step_tokens = None
+                    with contextlib.suppress(Exception):
+                        self.io.record_step(record)
+                return value
+
+    def _count_vision(self, response) -> None:
+        # Count under the model the API says served this call, which verifies the model choice.
+        self.usage.add_model(response.usage, response.model or self.task_model)
+        self._note_tokens(response.usage, self._shown_side)
 
     @staticmethod
     def _is_blocked(state: _TaskState, package: str | None) -> bool:
@@ -485,7 +579,29 @@ class Agent:
         self._event("memory", f"Remember this{where}? {note['text']}", {"note_id": note["id"], "status": "proposed"})
         return Outcome(f"Suggested for memory{where}; the user will confirm it: {note['text']}", settle=0)
 
+    def _rich_labels(self, obs: Observation) -> bool:
+        """A screen the element list describes well: enough labeled accessibility elements, and no
+        OCR words (a game or an app drawing its own UI is read from the picture)."""
+        if any(el.cls == fast.OCR_CLASS for el in obs.elements):
+            return False
+        return sum(fast.labeled(el) for el in obs.elements) >= self.config.vision_labeled_min_elements
+
+    def _right_size(self, obs: Observation) -> None:
+        """vision_max_side_labeled: on a richly labeled screen the model mostly taps by element index, so
+        a smaller screenshot does (fewer image tokens, a faster step). The observation's screenshot is
+        replaced by the smaller one, so every coordinate the model gives maps back through it."""
+        side = self.config.vision_max_side_labeled
+        if side <= 0 or not self._rich_labels(obs):
+            return
+        try:
+            shot = obs.shot  # a lazy screenshot is taken here (timed as observe on its own)
+            with self.timer.phase("observe"):
+                obs._shot = downscale(shot, side)
+        except (OSError, ValueError) as exc:  # an undecodable frame: keep the full one
+            self.io.event("error", f"Screenshot not resized: {exc}")
+
     def _obs_blocks(self, obs: Observation, notes: str = "") -> list[dict]:
+        self._right_size(obs)
         header = (
             f"{OBS_PREFIX} foreground app {obs.package or 'unknown'}; "
             f"screenshot is {obs.shot.width}x{obs.shot.height} px."
@@ -496,6 +612,7 @@ class Agent:
             body = "No UI element list or readable text for this screen. Work from the screenshot."
         if obs.assessment:
             body += "\n" + obs.assessment.summary()
+        self._shown_side = max(obs.shot.width, obs.shot.height)
         return [
             {"type": "text", "text": f"{header}\n{body}"},
             {"type": "image", "media_type": "image/jpeg", "data": base64.b64encode(obs.shot.jpeg).decode()},
@@ -539,7 +656,12 @@ class Agent:
             state.task = f"{state.task}\n{line}"
 
     def _trim_history(self, messages: list[dict]) -> None:
-        """Keep only the most recent screenshots (and element lists) in the history."""
+        """Keep only the most recent screenshots (and element lists) in the history.
+
+        rolling: the newest keep_screenshots every step, which rewrites an earlier message each step.
+        batch: nothing changes until there are more than history_max_screenshots, then the oldest go
+        down to keep_screenshots at once. Earlier messages stay byte-identical between trims, so the
+        provider's prompt cache keeps covering the conversation."""
         slots: list[tuple[list, int]] = []
         for message in messages:
             if message["role"] != "user" or not isinstance(message["content"], list):
@@ -555,6 +677,10 @@ class Agent:
                     ):
                         slots.append((container, i))
         keep = 2 * self.config.keep_screenshots
+        if self.config.history_trim == "batch" and keep:
+            ceiling = 2 * max(self.config.history_max_screenshots, self.config.keep_screenshots)
+            if len(slots) <= ceiling:
+                return
         for container, i in slots[:-keep] if keep else slots:
             container[i] = {"type": "text", "text": OMITTED}
 
@@ -571,10 +697,25 @@ class Agent:
         if outcome.done:
             outcome.done_via = done_via
         outcome.timings = self.timer.take()
+        outcome.tokens, self._step_tokens = self._step_tokens, None
         state.step_index += 1
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
         self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step)
         return outcome
+
+    def _note_tokens(self, tokens, image_side: int | None = None) -> None:
+        """Count a main-model call's tokens toward the next recorded step (when a response holds several
+        tool calls, they go on the first, like its timings)."""
+        if tokens is None and image_side is None:
+            return
+        step = self._step_tokens or dict.fromkeys(STEP_TOKEN_FIELDS)
+        if tokens is not None:
+            for key, value in (("input_tokens", tokens.input), ("output_tokens", tokens.output),
+                               ("cache_read_tokens", tokens.cache_read), ("cache_write_tokens", tokens.cache_write)):
+                step[key] = (step[key] or 0) + value
+        if image_side is not None:
+            step["vision_image_side"] = image_side
+        self._step_tokens = step
 
     def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float,
                      fast_step: bool = False) -> None:
@@ -606,7 +747,7 @@ class Agent:
             # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
             norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4)
                     for i, v in enumerate(points)] if shot else []
-            record({
+            self._last_record = row = {
                 "idx": state.step_index, "t": time.time(), "tool": name, "args": safe,
                 "norm_xy": norm or None, "package": obs.package,
                 "screen_w": shot.device_width if shot else None, "screen_h": shot.device_height if shot else None,
@@ -614,8 +755,9 @@ class Agent:
                 "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
-                "done_via": outcome.done_via,
-            })
+                "done_via": outcome.done_via, **(outcome.tokens or {}),
+            }
+            record(row)
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
 
@@ -968,6 +1110,7 @@ class Agent:
             self.io.event("error", f"Fast step skipped: {exc}")
             return None
         self.usage.add_model(response.usage, response.model or model)
+        self._note_tokens(response.usage)
         return fast.parse_value("".join(response.text), key)
 
     def _after_fast_step(self, state: _TaskState, obs: Observation, taken: list[tuple[str, dict, Outcome]],
