@@ -14,7 +14,7 @@ from typing import Callable, Protocol
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
-from ..phone.adb import Screenshot, UIElement, format_elements
+from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError
 from ..phone.apps import AppResolver
 from ..usage import Usage
@@ -512,7 +512,29 @@ class Agent:
         self._event("memory", f"Remember this{where}? {note['text']}", {"note_id": note["id"], "status": "proposed"})
         return Outcome(f"Suggested for memory{where}; the user will confirm it: {note['text']}", settle=0)
 
+    def _rich_labels(self, obs: Observation) -> bool:
+        """A screen the element list describes well: enough labeled accessibility elements, and no
+        OCR words (a game or an app drawing its own UI is read from the picture)."""
+        if any(el.cls == fast.OCR_CLASS for el in obs.elements):
+            return False
+        return sum(fast.labeled(el) for el in obs.elements) >= self.config.vision_labeled_min_elements
+
+    def _right_size(self, obs: Observation) -> None:
+        """vision_max_side_labeled: on a richly labeled screen the model mostly taps by element index, so
+        a smaller screenshot does (fewer image tokens, a faster step). The observation's screenshot is
+        replaced by the smaller one, so every coordinate the model gives maps back through it."""
+        side = self.config.vision_max_side_labeled
+        if side <= 0 or not self._rich_labels(obs):
+            return
+        try:
+            shot = obs.shot  # a lazy screenshot is taken here (timed as observe on its own)
+            with self.timer.phase("observe"):
+                obs._shot = downscale(shot, side)
+        except (OSError, ValueError) as exc:  # an undecodable frame: keep the full one
+            self.io.event("error", f"Screenshot not resized: {exc}")
+
     def _obs_blocks(self, obs: Observation, notes: str = "") -> list[dict]:
+        self._right_size(obs)
         header = (
             f"{OBS_PREFIX} foreground app {obs.package or 'unknown'}; "
             f"screenshot is {obs.shot.width}x{obs.shot.height} px."

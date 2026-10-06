@@ -178,6 +178,62 @@ def test_breakpoints_stay_within_anthropics_limit_and_off_the_agents_history():
     assert json.dumps(plain["messages"]).count("cache_control") == 0
 
 
+# --- 2. right-sized screenshots --------------------------------------------------------
+
+
+def sent_image(request) -> Image.Image:
+    import base64
+
+    blocks = [b for m in request["messages"] if isinstance(m["content"], list) for b in m["content"]]
+    return Image.open(io.BytesIO(base64.b64decode([b for b in blocks if b["type"] == "image"][-1]["source"]["data"])))
+
+
+def test_downscale_keeps_the_device_mapping():
+    from openmob.phone.adb import downscale
+
+    buf = io.BytesIO()
+    Image.new("RGB", (576, 1280), "white").save(buf, "JPEG")
+    full = Screenshot(buf.getvalue(), 576, 1280, 1080, 2400)
+    small = downscale(full, 768)
+    assert (small.width, small.height) == (346, 768) and Image.open(io.BytesIO(small.jpeg)).size == (346, 768)
+    assert (small.device_width, small.device_height) == (1080, 2400)
+    assert small.to_device(173, 384) == (540, 1200) and small.to_device(345, 767) == (1077, 2397)
+    assert small.to_image(540, 1200) == (173, 384)
+    assert downscale(full, 2000) is full and downscale(full, 0) is full
+
+
+def test_labeled_screens_get_a_smaller_screenshot_and_taps_map_back(tmp_path):
+    driver = FakeDriver(elements=labeled_elements(10), image=(576, 1280))
+    client = CachingClient([[tool_use("tap", "t", x=173, y=384, target="middle")],
+                            [tool_use("done", "d", summary="Done.", success=True)]])
+    agent = make_agent(client, tmp_path, driver=driver)
+    agent.run("tap the middle")
+    assert sent_image(client.requests[0]).size == (346, 768)
+    screen = next(b["text"] for b in client.requests[0]["messages"][0]["content"]
+                  if b["type"] == "text" and b["text"].startswith("SCREEN:"))
+    # Element centers are given in the small image: [1] at device (540, 145) -> (173, 46).
+    assert "screenshot is 346x768 px" in screen and "[1] TextView 'Item 1' @ (173,46)" in screen
+    assert ("tap", 540, 1200) in driver.actions
+
+
+def test_games_ocr_and_sparse_screens_keep_the_full_screenshot(tmp_path):
+    for elements in ([], labeled_elements(5),
+                     labeled_elements(10) + [UIElement(10, "Score", "", "", "OCRText", True, None, (0, 0, 50, 50))]):
+        driver = FakeDriver(elements=elements, image=(576, 1280))
+        client = CachingClient([[tool_use("tap", "t", x=288, y=640, target="middle")],
+                                [tool_use("done", "d", summary="Done.", success=True)]])
+        make_agent(client, tmp_path, driver=driver).run("tap the middle")
+        assert sent_image(client.requests[0]).size == (576, 1280)
+        assert ("tap", 540, 1200) in driver.actions
+
+
+def test_right_sizing_can_be_switched_off(tmp_path):
+    driver = FakeDriver(elements=labeled_elements(10), image=(576, 1280))
+    client = CachingClient([[tool_use("done", "d", summary="Done.", success=True)]])
+    make_agent(client, tmp_path, driver=driver, vision_max_side_labeled=0).run("look")
+    assert sent_image(client.requests[0]).size == (576, 1280)
+
+
 # --- 3. short replies ----------------------------------------------------------------
 
 
