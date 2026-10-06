@@ -1,0 +1,3661 @@
+{
+ "launcher": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.nexuslauncher",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Amazon",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        1800,
+        270,
+        2000
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  },
+  "resolve": {
+   "https://www.chase.com/": {
+    "package": "com.chase.sig.android",
+    "candidates": [
+     "com.chase.sig.android",
+     "com.android.chrome"
+    ]
+   },
+   "https://example.com/": {
+    "package": "com.android.chrome"
+   },
+   "https://www.amazon.com/dp/B0": {
+    "package": "com.amazon.mShop.android.shopping"
+   },
+   "tel:5551234": {
+    "package": "com.google.android.dialer"
+   },
+   "tel:*21*5551234%23": {
+    "package": "com.evil.tel"
+   },
+   "upi://pay?pa=x@y": {
+    "package": "com.google.android.apps.nbu.paisa.user"
+   },
+   "intent://scan/#Intent;scheme=zxing;end": {
+    "package": ""
+   },
+   "market://details?id=com.chess": {
+    "package": "com.android.vending"
+   }
+  }
+ },
+ "amazon_product": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.amazon.mShop.android.shopping",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "nav-search-keywords",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        120,
+        1040,
+        220
+       ],
+       "children": [],
+       "hint": "Search Amazon",
+       "editable": true,
+       "clickable": true
+      },
+      {
+       "text": "USB-C cable, 2 pack, braided",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        400,
+        1040,
+        480
+       ],
+       "children": []
+      },
+      {
+       "text": "$12.99",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        500,
+        400,
+        560
+       ],
+       "children": []
+      },
+      {
+       "text": "In stock. Free delivery tomorrow",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        580,
+        1040,
+        640
+       ],
+       "children": []
+      },
+      {
+       "text": "Add to cart",
+       "desc": "",
+       "id": "add-to-cart-button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        1040,
+        1620
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Buy now",
+       "desc": "",
+       "id": "buy-now-button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1660,
+        1040,
+        1780
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "androidx.recyclerview.widget.RecyclerView",
+       "bounds": [
+        0,
+        1900,
+        1080,
+        2300
+       ],
+       "children": [
+        {
+         "text": "Customers also bought",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          1920,
+          1040,
+          1980
+         ],
+         "children": []
+        }
+       ]
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        940,
+        2300,
+        1060,
+        2390
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "amazon_checkout": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.amazon.mShop.android.shopping",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Review your order",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Order total: $12.99",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        680
+       ],
+       "children": []
+      },
+      {
+       "text": "Deliver to Ann, 1 Main St",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        700,
+        1040,
+        760
+       ],
+       "children": []
+      },
+      {
+       "text": "Place your order",
+       "desc": "",
+       "id": "placeYourOrder",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.ImageView",
+       "bounds": [
+        40,
+        1800,
+        300,
+        1900
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "amazon_checkout_card": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.amazon.mShop.android.shopping",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Add a card",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "cc-number",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "hint": "Card number",
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "Total $12.99",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        680
+       ],
+       "children": []
+      },
+      {
+       "text": "Pay now",
+       "desc": "",
+       "id": "pay-button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "amazon_autofill": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.amazon.mShop.android.shopping",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "cc-number",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "hint": "Card number",
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "Total $12.99",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        680
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "system",
+    "layer": 5,
+    "package": "com.google.android.gms",
+    "title": "Autofill",
+    "bounds": [
+     0,
+     1700,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1700,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Visa •••• 4242",
+       "desc": "",
+       "id": "autofill_dataset",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1720,
+        1040,
+        1820
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "autofill_service": "com.google.android.gms",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "slide_to_pay": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Total $49.00",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        680
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "Slide to pay",
+       "id": "slide_pay",
+       "cls": "android.widget.SeekBar",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "chase": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.chase.sig.android",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Transfer",
+       "desc": "",
+       "id": "transfer",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "login_form": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "username",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "editable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "password",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        520,
+        1040,
+        620
+       ],
+       "children": [],
+       "editable": true,
+       "password": true,
+       "focused": true
+      },
+      {
+       "text": "Sign in",
+       "desc": "",
+       "id": "login",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        700,
+        1040,
+        800
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "otp_form": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "otp_code",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "hint": "Enter the 6-digit code",
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "chrome_url_js": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "javascript:alert(document.cookie)",
+       "desc": "",
+       "id": "com.android.chrome:id/url_bar",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        100,
+        100,
+        1000,
+        200
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "chrome_url_bank": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "https://www.chase.com/",
+       "desc": "",
+       "id": "com.android.chrome:id/url_bar",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        100,
+        100,
+        1000,
+        200
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  },
+  "resolve": {
+   "https://www.chase.com/": {
+    "package": "com.chase.sig.android"
+   }
+  }
+ },
+ "chrome_search": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "usb c cable",
+       "desc": "",
+       "id": "com.android.chrome:id/search_box_text",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        100,
+        100,
+        1000,
+        200
+       ],
+       "children": [],
+       "hint": "Search or type web address",
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "web_checkout_enter": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "Checkout",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          220,
+          1040,
+          300
+         ],
+         "children": []
+        },
+        {
+         "text": "Total $89.00",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          320,
+          1040,
+          380
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "email",
+         "cls": "android.widget.EditText",
+         "bounds": [
+          40,
+          400,
+          1040,
+          500
+         ],
+         "children": [],
+         "hint": "Email",
+         "editable": true,
+         "focused": true
+        },
+        {
+         "text": "Pay $89.00",
+         "desc": "",
+         "id": "submit",
+         "cls": "android.widget.Button",
+         "bounds": [
+          40,
+          1600,
+          1040,
+          1720
+         ],
+         "children": [],
+         "clickable": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "whatsapp_chat": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.whatsapp",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Mom",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        600,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "hi",
+       "desc": "",
+       "id": "com.whatsapp:id/entry",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "hint": "Message",
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.whatsapp:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "gmail_list": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.gm",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Inbox",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        120,
+        600,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "Delete",
+       "id": "com.google.android.gm:id/delete",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        900,
+        120,
+        1040,
+        220
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        300,
+        1080,
+        500
+       ],
+       "children": [
+        {
+         "text": "Weekly newsletter",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          320,
+          1040,
+          380
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_main": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Settings",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Settings",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Network & internet",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Connected devices",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Apps",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        840,
+        1080,
+        960
+       ],
+       "children": [
+        {
+         "text": "Notifications",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          860,
+          800,
+          920
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        980,
+        1080,
+        1100
+       ],
+       "children": [
+        {
+         "text": "Battery",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          1000,
+          800,
+          1060
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        1120,
+        1080,
+        1240
+       ],
+       "children": [
+        {
+         "text": "System",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          1140,
+          800,
+          1200
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        1260,
+        1080,
+        1380
+       ],
+       "children": [
+        {
+         "text": "Security & privacy",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          1280,
+          800,
+          1340
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.Settings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_internet": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Internet",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Internet",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Wi-Fi",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Airplane mode",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Hotspot & tethering",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_security": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Security & privacy",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Security & privacy",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Device unlock",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "App security",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Wireless debugging",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.Settings$SecurityDashboardActivity",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_dev": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Developer options",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Developer options",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Wireless debugging",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": false,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": false
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.Settings$DevelopmentSettingsDashboardActivity",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_keyboards": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Manage on-screen keyboards",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Manage on-screen keyboards",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Evil Keyboard",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": false,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": false
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_datetime": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Date & time",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Date & time",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Set time automatically",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Set date",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Set time",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_bluetooth": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "Connected devices",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Connected devices",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Pair new device",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Pixel Buds",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Connection preferences",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_system": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "System",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "System",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Some OEM switch",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": false,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": false
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Gestures",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_app_info_amazon": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "App info",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "App info",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Amazon",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Force stop",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Clear storage",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        840,
+        1080,
+        960
+       ],
+       "children": [
+        {
+         "text": "Uninstall",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          860,
+          800,
+          920
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        980,
+        1080,
+        1100
+       ],
+       "children": [
+        {
+         "text": "Notifications",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          1000,
+          800,
+          1060
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "settings_app_info_chase": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "App info",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "App info",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Chase",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Force stop",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Uninstall",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "samsung_accessibility": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.samsung.accessibility",
+    "title": "Accessibility",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Installed apps",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Evil service",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": false,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": false
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "openmob_app": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "dev.openmob.companion",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Approve",
+       "desc": "",
+       "id": "approve",
+       "cls": "android.widget.Button",
+       "bounds": [
+        540,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "keyguard_secure": {
+  "windows": [
+   {
+    "id": 9,
+    "type": "system",
+    "layer": 9,
+    "package": "com.android.systemui",
+    "title": "Keyguard",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "1",
+       "desc": "",
+       "id": "com.android.systemui:id/key1",
+       "cls": "android.widget.Button",
+       "bounds": [
+        100,
+        1500,
+        300,
+        1650
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "keyguard": {
+   "locked": true,
+   "secure": true
+  }
+ },
+ "keyguard_swipe": {
+  "windows": [
+   {
+    "id": 9,
+    "type": "system",
+    "layer": 9,
+    "package": "com.android.systemui",
+    "title": "Keyguard",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Swipe up to unlock",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        2000,
+        1080,
+        2100
+       ],
+       "children": []
+      }
+     ]
+    }
+   }
+  ],
+  "keyguard": {
+   "locked": true,
+   "secure": false
+  }
+ },
+ "biometric_prompt": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.amazon.mShop.android.shopping",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Buy now",
+       "desc": "",
+       "id": "buy-now-button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1660,
+        1040,
+        1780
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   },
+   {
+    "id": 8,
+    "type": "system",
+    "layer": 8,
+    "package": "com.android.systemui",
+    "title": "",
+    "bounds": [
+     0,
+     1200,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1200,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Use PIN",
+       "desc": "",
+       "id": "com.android.systemui:id/biometric_use_credential",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        2100,
+        500,
+        2200
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "share_sheet": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.apps.photos",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "IMG_0042",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        1200
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 4,
+    "type": "application",
+    "layer": 4,
+    "package": "com.android.intentresolver",
+    "title": "Share",
+    "bounds": [
+     0,
+     1400,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1400,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Ann (WhatsApp)",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        300,
+        1700
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "german_shop": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Warenkorb überprüfen und Bestellung abschicken",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        150,
+        1040,
+        230
+       ],
+       "children": []
+      },
+      {
+       "text": "Gesamtsumme einschließlich Mehrwertsteuer",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        600,
+        1040,
+        680
+       ],
+       "children": []
+      },
+      {
+       "text": "Lieferung morgen kostenlos zugestellt",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        700,
+        1040,
+        760
+       ],
+       "children": []
+      },
+      {
+       "text": "Jetzt kaufen",
+       "desc": "",
+       "id": "kaufen",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1600,
+        1040,
+        1720
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Weiter einkaufen",
+       "desc": "",
+       "id": "weiter",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1800,
+        1040,
+        1920
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "permission_dialog_session": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.chess",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Play chess",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1200,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1200,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Chess.com to take pictures and record video?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1250,
+        1040,
+        1400
+       ],
+       "children": []
+      },
+      {
+       "text": "While using the app",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_foreground_only_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        1040,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Don't allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_deny_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1700,
+        1040,
+        1800
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "permission_dialog_other": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.chess",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Play chess",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 5,
+    "type": "application",
+    "layer": 5,
+    "package": "com.google.android.permissioncontroller",
+    "title": "",
+    "bounds": [
+     0,
+     1200,
+     1080,
+     2000
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      1200,
+      1080,
+      2000
+     ],
+     "children": [
+      {
+       "text": "Allow Spyware to access your contacts?",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_message",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        1250,
+        1040,
+        1400
+       ],
+       "children": []
+      },
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "com.android.permissioncontroller:id/permission_allow_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1500,
+        1040,
+        1600
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  }
+ },
+ "whatsapp_chat_busy": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.whatsapp",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Mom",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        140,
+        120,
+        600,
+        200
+       ],
+       "children": []
+      },
+      {
+       "text": "hi",
+       "desc": "",
+       "id": "com.whatsapp:id/entry",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        2200,
+        900,
+        2300
+       ],
+       "children": [],
+       "hint": "Message",
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "Send",
+       "id": "com.whatsapp:id/send",
+       "cls": "android.widget.ImageButton",
+       "bounds": [
+        920,
+        2200,
+        1060,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail"
+  },
+  "quiet_ms": 40
+ }
+}

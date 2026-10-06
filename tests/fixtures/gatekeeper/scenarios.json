@@ -1,0 +1,2856 @@
+[
+ {
+  "name": "meta calls always pass",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "device_state",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "wait_idle",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "unknown methods are refused",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "run_shell",
+     "params": {}
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unknown_method"
+    }
+   }
+  ]
+ },
+ {
+  "name": "reads of a blocked app are blacked out",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "add to cart, search and scrolling don't ask",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 500,
+      "y": 170
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 2200,
+      "x2": 540,
+      "y2": 700,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_search",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.amazon.mShop.android.shopping"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://example.com/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "everyday settings don't ask",
+  "tags": [
+   "friction",
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_main",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_internet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_internet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_bluetooth",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a purchase is one prompt: Buy now asks, Place your order is covered",
+  "tags": [
+   "friction",
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "allow",
+     "rule": "permit:purchase_flow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "terminal"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase follow-up ends after 3 minutes",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 181000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase follow-up ends at an app switch",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 300,
+      "y": 160
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a new flow-starting word always asks again",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit is one-shot",
+  "tags": [
+   "permits",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit expires after 60 s on the monotonic clock",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "advance_ms": 61000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a badly signed approval mints nothing",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_prompt_open"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unanswered prompt expires after 2 minutes",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "advance_ms": 121000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit dies if the target changed before the gesture",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed"
+    },
+    "reverify_screen": "amazon_checkout"
+   }
+  ]
+ },
+ {
+  "name": "a non-risky tap whose target became risky is stopped",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1610
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed"
+    },
+    "reverify_screen": "amazon_checkout"
+   }
+  ]
+ },
+ {
+  "name": "a risky action needs a quiet screen",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    },
+    "reverify_screen": "whatsapp_chat_busy"
+   }
+  ]
+ },
+ {
+  "name": "an instruction typed on the phone exempts one send",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "instruction": "Send hi to Mom on WhatsApp"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "requested"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a requested purchase still asks",
+  "tags": [],
+  "steps": [
+   {
+    "instruction": "buy the usb c cable"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "always allow sends in WhatsApp",
+  "tags": [
+   "grants"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "grant"
+    }
+   },
+   {
+    "advance_ms": 604801000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a grant survives a reboot with its remaining time",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 86400000
+   },
+   {
+    "reboot": {
+     "saved": true,
+     "elapsed_after": 5000
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "grant"
+    }
+   },
+   {
+    "advance_ms": 518400000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a grant without saved remaining time expires at reboot",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "reboot": {
+     "saved": false,
+     "elapsed_after": 5000
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "setting the wall clock back extends nothing",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 604801000
+   },
+   {
+    "set_wall_ms": 1000000000000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "ask mode asks for every changing act, not scrolls or BACK",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "ask",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "ask",
+      "x1": 540,
+      "y1": 2200,
+      "x2": 540,
+      "y2": 700,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "never without a signature is auto",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "allow_money": true,
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "signed never runs risky actions but refuses money",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:money"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "amazon_autofill",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:autofill"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:settings_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "signed never with allow purchases runs purchases",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000,
+     "allow_money": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_security",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "never ends on the monotonic clock and is capped at 24 h",
+  "tags": [
+   "modes",
+   "clock"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 2592000000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "advance_ms": 86401000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a requested mode can only tighten the ceiling",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "ceiling",
+     "mode": "ask"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "trusted",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step"
+    }
+   }
+  ]
+ },
+ {
+  "name": "stop drops never at once",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "stop": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "blocked apps: launching, tapping and links",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.chase.sig.android"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://www.chase.com/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "dev.openmob.companion"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.google.android.packageinstaller"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "URL schemes and resolved targets",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "intent://scan/#Intent;scheme=zxing;end"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:url_scheme"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "upi://pay?pa=x@y"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "javascript:alert(1)"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:5551234"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:*21*5551234%23"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:tel_handler"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "market://details?id=com.chess"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://www.amazon.com/dp/B0"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "typing: passwords, OTPs, schemes",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hunter2"
+     }
+    },
+    "screen": "login_form",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_password_field"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "javascript:x"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:typed_scheme"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "usb c cable"
+     }
+    },
+    "screen": "chrome_search",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "ENTER rules",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_url_js",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_url_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "web_checkout_enter",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Settings tiers",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1320
+     }
+    },
+    "screen": "settings_main",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_security",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_dev",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_keyboards",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "samsung_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_datetime",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_bluetooth",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   }
+  ]
+ },
+ {
+  "name": "app info: force stop yes, clear storage asks, a blocked app's info refused",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_app_info_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "permission dialogs: the task's app passes, another app asks",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 100,
+      "y": 1900
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "permission_dialog_session",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1550
+     }
+    },
+    "screen": "permission_dialog_session",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1550
+     }
+    },
+    "screen": "permission_dialog_other",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   }
+  ]
+ },
+ {
+  "name": "surfaces: OpenMob, keyguard, biometric prompt",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 700,
+      "y": 1650
+     }
+    },
+    "screen": "openmob_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_window"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 200,
+      "y": 1570
+     }
+    },
+    "screen": "keyguard_secure",
+    "expect": {
+     "decision": "refuse",
+     "code": "phone_locked"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 2000,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 250
+     }
+    },
+    "screen": "keyguard_swipe",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "wake_unlock",
+     "params": {}
+    },
+    "screen": "keyguard_secure",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 200,
+      "y": 2150
+     }
+    },
+    "screen": "biometric_prompt",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:prompt_surface"
+    }
+   }
+  ]
+ },
+ {
+  "name": "swipes and long presses are judged as taps",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1720,
+      "x2": 560,
+      "y2": 1725,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1720,
+      "x2": 540,
+      "y2": 900,
+      "duration_ms": 60
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a long press on Buy now asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "duration_ms": 50,
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "slide to pay asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 60,
+      "y1": 1660,
+      "x2": 1000,
+      "y2": 1660,
+      "duration_ms": 400
+     }
+    },
+    "screen": "slide_to_pay",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "unlabeled taps in shopping apps ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 1000,
+      "y": 2340
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "rule": "risk:unlabeled"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1850
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "autofill and share sheets ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "amazon_autofill",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share"
+    }
+   }
+  ]
+ },
+ {
+  "name": "non-English shopping screens ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1860
+     }
+    },
+    "screen": "german_shop",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:language"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a server hint only adds caution",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "hint": "the agent thinks this pays",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:server_hint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "deleting in Gmail asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 170
+     }
+    },
+    "screen": "gmail_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   }
+  ]
+ },
+ {
+  "name": "prompt rate limit: 6 asks per 10 minutes",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:prompt_rate"
+    }
+   },
+   {
+    "advance_ms": 600000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "three denials suspend until the owner resumes",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:suspended"
+    }
+   },
+   {
+    "resume": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "act rate limit: burst 15",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:act_rate"
+    }
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ],
+  "call_ms": 0
+ }
+]
