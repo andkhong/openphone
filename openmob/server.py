@@ -731,22 +731,31 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
                 print(f"🔐 Approval key registered for {device.get('model') or raw_id}.", flush=True)
 
     def verify_phone_approval(session, approval_id: str, record: dict, message: dict) -> bool:
-        """A yes counts only if the answering phone signed it with its screen-lock key. Phones whose
-        app predates approval keys (none registered) are trusted as before, until they update, except
-        for anything that loosens permissions (a mode change, "Always allow"): that needs the key."""
+        """A yes counts only if the answering phone signed it with its screen-lock key, over the
+        digest of this very action (phone/approval_keys.py). An app phone without a registered key
+        can't approve at all: it registers one on its next connect, and until then can only decline.
+        (Token/dev mode has no keys, so it trusts the phone as before.)"""
         if store is None:
             return True
         from .phone.approval_keys import verify_approval
 
         auth = store.device_auth(session.info.id.removeprefix("app-"))
-        if not auth or auth["revoked"] or auth["account_id"] != session.account_id:
+        if not auth or auth["revoked"] or auth["account_id"] != session.account_id or not auth["approval_key"]:
             return False
-        loosening = record.get("kind") == "mode_change" or message.get("always") is True
-        if not auth["approval_key"]:
-            return not loosening
         return verify_approval(auth["approval_key"], str(approval_id), record["task_id"], True,
                                message.get("timestamp"), message.get("signature"),
-                               extra="always" if message.get("always") is True else None)
+                               extra="always" if message.get("always") is True else None,
+                               digest=record.get("digest"))
+
+    def approval_blocker(session) -> str | None:
+        """Why this phone can't approve yet: hosted app phones need a registered approval key."""
+        if not session.info.id.startswith("app-"):
+            return None
+        auth = store.device_auth(session.info.id.removeprefix("app-"))
+        if auth and not auth["revoked"] and auth["approval_key"]:
+            return None
+        return ("This phone can't approve yet: its OpenMob app hasn't registered a screen-lock key. Update the "
+                "app and reconnect (it registers on connect). Until then it can only decline.")
 
     def phone_can_loosen(session) -> bool:
         if not session.info.id.startswith("app-"):
@@ -759,6 +768,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         if store is not None:  # hosted: settings live on each phone's pairing; loosening needs its key
             manager.permissions = perm.AccountPermissions(store)
             manager.can_loosen = phone_can_loosen
+            manager.approval_blocker = approval_blocker  # approving at all needs the key
+            manager.requires_signature = lambda session: session.info.id.startswith("app-")
 
     def phone_reconnected_elsewhere(session, old, new) -> None:
         service = getattr(app.state, "v1_service", None)

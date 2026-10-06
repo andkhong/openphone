@@ -20,7 +20,8 @@ def signed(signer, request, extra=None, approved=True):
     from cryptography.hazmat.primitives.asymmetric import ec
 
     now = int(time.time())
-    sig = signer.sign(approval_message(request["id"], request["task_id"], True, now, extra), ec.ECDSA(hashes.SHA256()))
+    sig = signer.sign(approval_message(request["id"], request["task_id"], True, now, extra, request.get("digest")),
+                      ec.ECDSA(hashes.SHA256()))
     message = {"type": "approval", "id": request["id"], "approved": approved, "timestamp": now,
                "signature": base64.b64encode(sig).decode()}
     if extra == "always":

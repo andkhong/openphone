@@ -18,7 +18,7 @@ import httpx
 import pytest
 from conftest import FakeDriver, text_block, tool_use
 from test_hosted import _up, pair, signup
-from test_remote import FakePhone, free_port, wait_for
+from test_remote import FakePhone, free_port, new_signer, wait_for
 
 from openmob.accounts import AccountStore
 from openmob.agent.loop import Agent
@@ -90,7 +90,8 @@ def api(tmp_path):
         client, session = signup(base, f"{name}@example.com")
         device_key = pair(base, client, session, device_id=f"{name}-phone")
         driver = FakeDriver(packages=["com.android.settings", "com.google.android.youtube", BANK])
-        phone = FakePhone(ws, driver, device_id=f"{name}-phone", key=device_key)
+        # Its app registers a screen-lock approval key on connect, and signs its approvals with it.
+        phone = FakePhone(ws, driver, device_id=f"{name}-phone", key=device_key, signer=new_signer())
         assert phone.welcome.wait(5)
         key = client.post("/api/developer/keys", json={
             "name": "test", "scopes": ["devices:read", "tasks:run", "tasks:read", "screen:read", "history:read"],
@@ -269,7 +270,10 @@ def test_risky_tap_becomes_needs_confirmation(api):
     assert not any(a[0] == "tap" for a in api.alice.driver.actions)
     status = api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()
     assert status["confirm_on_phone"] is True  # the dashboard hides its own Approve button
-    api.alice.phone.send({"type": "approval", "id": request["id"], "approved": True})
+    api.alice.phone.send({"type": "approval", "id": request["id"], "approved": True})  # unsigned: ignored
+    assert wait_for(lambda: any("screen lock" in m for k, m in api.alice.phone.events if k == "status"))
+    assert not any(a[0] == "tap" for a in api.alice.driver.actions)
+    api.alice.phone.send(api.alice.phone.approval(request["id"], request["task_id"], True))  # screen lock
     wait_status(api.alice, task["id"], "succeeded")
     assert any(a[0] == "tap" for a in api.alice.driver.actions)
 

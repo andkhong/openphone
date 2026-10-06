@@ -37,7 +37,9 @@ def public_key_b64(private_key) -> str:
         serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)).decode()
 
 
-def sign_approval(private_key, approval_id, task_id, approved, timestamp) -> str:
+def sign_approval(private_key, approval_id, task_id, approved, timestamp, digest=None, extra=None) -> str:
+    """Like the app: over `id|task|digest|true|ts` (the current format), or the older `id|task|true|ts`
+    when no digest is given (an old app)."""
     import base64
 
     from cryptography.hazmat.primitives import hashes
@@ -45,7 +47,8 @@ def sign_approval(private_key, approval_id, task_id, approved, timestamp) -> str
 
     from openmob.phone.approval_keys import approval_message
 
-    return base64.b64encode(private_key.sign(approval_message(approval_id, task_id, approved, timestamp),
+    return base64.b64encode(private_key.sign(approval_message(approval_id, task_id, approved, timestamp, extra,
+                                                              digest),
                                              ec.ECDSA(hashes.SHA256()))).decode()
 
 
@@ -59,12 +62,13 @@ class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
     def __init__(self, url, driver, device_id="xyz", token=TOKEN, key=None, platform=None, binary=False,
-                 video=False, approve=None, signer=None, approval_key=None, capabilities=None):
+                 video=False, approve=None, signer=None, approval_key=None, capabilities=None, legacy_signing=False):
         self.url = f"{url}/phone/ws?t={token}"
         self.approve = approve  # True/False: answer approval requests like the owner would; None: leave them
         # signer: an EC private key standing in for the phone's screen-lock-bound Keystore key; its
         # public half goes in the hello (approval_key) and approvals are signed with it.
         self.signer = signer
+        self.legacy_signing = legacy_signing  # sign like an app from before action digests
         self.approval_key = approval_key or (public_key_b64(signer) if signer else None)
         self.approval_requests = []  # every approval_request received
         self.approval_cancels = []  # ids of approval requests the server withdrew
@@ -174,12 +178,17 @@ class FakePhone:
             self.streaming = None
         return None
 
-    def approval(self, approval_id, task_id, approved, timestamp=None):
-        """An approval message, signed when this phone has a signer and says yes."""
+    def approval(self, approval_id, task_id, approved, timestamp=None, digest=None):
+        """An approval message, signed when this phone has a signer and says yes: over the digest of the
+        action the request showed (like the app), unless this phone signs like an old app."""
         message = {"type": "approval", "id": approval_id, "approved": approved}
         if self.signer is not None and approved:
             timestamp = int(time.time()) if timestamp is None else timestamp
-            message.update(timestamp=timestamp, signature=sign_approval(self.signer, approval_id, task_id, True, timestamp))
+            if digest is None and not self.legacy_signing:
+                request = next((r for r in self.approval_requests if r["id"] == approval_id), {})
+                digest = request.get("digest")
+            message.update(timestamp=timestamp,
+                           signature=sign_approval(self.signer, approval_id, task_id, True, timestamp, digest))
         return message
 
     def send(self, message):
