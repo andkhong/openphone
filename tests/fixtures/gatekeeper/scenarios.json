@@ -7860,6 +7860,85 @@
   ]
  },
  {
+  "name": "OCR: the real Samsung notification dialog (Android 15, no window package, no event): shown, Allow tapped",
+  "tags": [
+   "permissions",
+   "ocr",
+   "real_device"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 600
+     }
+    },
+    "screen": "chess_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 538,
+      "y": 1895
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 541,
+      "y": 2045
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
   "name": "OCR: a refused Approximate tap isn't recorded: Only this time is still refused (B1)",
   "tags": [
    "permissions",

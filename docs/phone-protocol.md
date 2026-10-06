@@ -729,9 +729,12 @@ screens) from accessibility services: the phone sees the window, but not what's 
 event's package and text). Gestures still reach it and screenshots capture it.
 
 **Permission dialogs are read with on-device OCR** (ML Kit text recognition, the bundled Latin model: offline,
-no network). When the phone identifies the permission-controller window (its package, or the last window-state
-event from `com.android.permissioncontroller`, `com.google.android.permissioncontroller` or
-`com.samsung.android.permissioncontroller`) with no readable tree, it takes its own screenshot and reads it:
+no network). When the top application window has no readable tree (Android 15 on Samsung lists it with no package
+and sends no event for it), the phone takes its own screenshot and reads it. It counts as a permission dialog when
+the window names the permission controller, or when the OCR shows an "Allow X to …" title together with either a
+fresh window-state event from `com.android.permissioncontroller`, `com.google.android.permissioncontroller` or
+`com.samsung.android.permissioncontroller`, or a "Don't allow" button. Otherwise it stays an unknown window (black,
+acts refused). Of the reading:
 the title ("Allow Kalshi to access this device's location?", English, Spanish and German wording) gives the
 requesting app and the permission; lines that read exactly as a button ("While using the app", "Only this
 time", "Allow", "Don't allow", "Allow all the time", "Precise", "Approximate") become buttons. `ui_elements`

@@ -136,11 +136,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             // The system allows one capture per ~333 ms. Wait out exactly the rest of that window
             // instead of getting refused and sleeping a fixed retry delay: back-to-back live-view
             // frames then arrive every ~1/3 s rather than every ~1/2 s.
-            val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+            val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
             if (wait > 0) SystemClock.sleep(wait)
             val requested = SystemClock.uptimeMillis()
             val outcome = captureOnce()
-            if (outcome.result != null) lastCaptureAt = requested
+            if (outcome.result != null) CaptureClock.at = requested
             outcome.result?.let { result ->
                 return result.hardwareBuffer.use { buffer ->
                     // A hardware bitmap lives in GPU memory and can't be scaled/compressed directly;
@@ -169,7 +169,6 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         throw IllegalStateException("Screenshot failed: the system rate-limited capture, try again")
     }
 
-    @Volatile private var lastCaptureAt = 0L // uptime of the last successful capture request
 
     private class Capture(val result: AccessibilityService.ScreenshotResult?, val error: Int)
 
@@ -194,10 +193,17 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** The whole screen as a software bitmap (the caller recycles it), for on-device OCR; null if it can't be
      *  captured. */
     fun screenBitmap(): Bitmap? {
-        val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
-        if (wait > 0) SystemClock.sleep(wait)
-        val result = captureOnce().result ?: return null
-        lastCaptureAt = SystemClock.uptimeMillis()
+        var result: AccessibilityService.ScreenshotResult? = null
+        for (attempt in 0 until SCREENSHOT_ATTEMPTS) { // another capture (a screenshot call) may have just run
+            val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+            if (wait > 0) SystemClock.sleep(wait)
+            val outcome = captureOnce()
+            result = outcome.result
+            if (result != null || outcome.error != AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) break
+            SystemClock.sleep(RATE_LIMIT_RETRY_MS * 4)
+        }
+        if (result == null) return null
+        CaptureClock.at = SystemClock.uptimeMillis()
         return result.hardwareBuffer.use { buffer ->
             val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
             try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() }
@@ -205,10 +211,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     }
 
     fun crop(x: Int, y: Int): ByteArray? {
-        val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+        val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
         if (wait > 0) SystemClock.sleep(wait)
         val result = captureOnce().result ?: return null
-        lastCaptureAt = SystemClock.uptimeMillis()
+        CaptureClock.at = SystemClock.uptimeMillis()
         return result.hardwareBuffer.use { buffer ->
             val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
             val full = try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() } ?: return null
@@ -701,3 +707,6 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         val UNSUPPORTED_KEYS = setOf("TAB", "MENU", "SEARCH", "ESCAPE")
     }
 }
+
+/** Uptime of the last successful capture request, shared by every PhoneActions (the system limits the service). */
+internal object CaptureClock { @Volatile var at = 0L }

@@ -1231,7 +1231,9 @@ SCREENS.update({
     "ocr_unknown_no_pkg": ocr_dialog(["Kalshi wil toegang tot de locatie", "van dit apparaat?"],
                                      ["Tijdens gebruik van de app", "Alleen deze keer", "Niet toestaan"], cards=False),
     # A permission-controller event from before this window appeared (an app still loading): not a dialog.
-    "ocr_stale_event": {**ocr_dialog(LOC_TITLE, LOC_BUTTONS),
+    # A stale permission-controller event over an app still loading whose own text happens to ask "Allow Kalshi to
+    # ..." (an onboarding page, no "Don't allow"): not a dialog.
+    "ocr_stale_event": {**ocr_dialog(LOC_TITLE, ["Continue"], cards=False),
                         "event": {"package": "com.google.android.permissioncontroller",
                                   "text": "Allow Kalshi to access this device's location?", "at": 1000}},
     # The dialog names its package, but the phone couldn't run OCR: pause for the owner, as before.
@@ -1290,6 +1292,14 @@ SCENARIOS += [
         step("tap", "ocr_stale_event", refuse("gate_screen_unstable", rule="builtin:unknown_window"), **ONCE),
         step("screenshot", "ocr_stale_event", {"decision": "redact"}),
         step("screenshot", "ocr_location", allow())], tags=["permissions", "ocr"]),
+    sc("OCR: the real Samsung notification dialog (Android 15, no window package, no event): shown, Allow tapped", [
+        step("tap", "chess_app", allow(), x=540, y=600),
+        step("screenshot", "samsung_notifications_real", allow()),
+        step("ui_elements", "samsung_notifications_real", allow()),
+        step("stream_start", "samsung_notifications_real", allow()),
+        step("tap", "samsung_notifications_real", allow(), x=538, y=1895),   # Allow: notifications allowed by default
+        step("tap", "samsung_notifications_real", allow(), x=541, y=2045)],  # Don't allow
+       tags=["permissions", "ocr", "real_device"]),
     sc("OCR: a refused Approximate tap isn't recorded: Only this time is still refused (B1)", [
         KALSHI,
         step("tap", "ocr_location", ask("permission", rule="risk:permission:location_accuracy"), **PRECISE),
@@ -1369,6 +1379,23 @@ SCENARIOS += [
         step("tap", "install_apk", refuse("gate_denied_page", rule="builtin:installer"), **UNINSTALL_CANCEL)],
        tags=["uninstall", "hard_deny"]),
 ]
+
+
+# --- the real Samsung SM-S948U1 notification dialog (Android 15/16): its OCR text and boxes from the real screenshot
+# (scratchpad diag/samsung-notification-dialog.png, 1080x2340). Android lists the dialog's window with no root and no
+# package, and sends no permission-controller event (the last one is Chess.com's).
+SAMSUNG_REAL_OCR = [{"text": "11:30 T", "bounds": [33, 39, 200, 86], "conf": 1}, {"text": ". •", "bounds": [264, 50, 343, 81], "conf": 0.5}, {"text": "CheSS.com", "bounds": [397, 159, 686, 221], "conf": 1}, {"text": "# 100", "bounds": [957, 50, 1035, 75], "conf": 1}, {"text": "Log In", "bounds": [913, 169, 1049, 221], "conf": 1}, {"text": "Play. Learn.", "bounds": [250, 1102, 850, 1216], "conf": 1}, {"text": "Have Fun!", "bounds": [261, 1216, 808, 1310], "conf": 1}, {"text": "+1", "bounds": [156, 1421, 217, 1459], "conf": 1}, {"text": "Phone Number", "bounds": [383, 1414, 726, 1462], "conf": 1}, {"text": "Allow Chess to send you notifications?", "bounds": [139, 1723, 944, 1775], "conf": 1}, {"text": "Allow", "bounds": [465, 1870, 611, 1921], "conf": 1}, {"text": "Don't allow", "bounds": [397, 2019, 686, 2072], "conf": 1}, {"text": "<", "bounds": [213, 2237, 268, 2312], "conf": 1}, {"text": "O", "bounds": [516, 2244, 570, 2302], "conf": 1}]
+LABELS["com.chess"] = "Chess.com"
+SCREENS.update({
+    "chess_app": screen(app("com.chess", [button("Log In", "login", (900, 150, 1060, 240)),
+                                          node(text="Play. Learn. Have Fun!", bounds=(200, 1100, 880, 1320))]),
+                        labels=LABELS),
+    "samsung_notifications_real": screen(
+        app("com.chess", [button("Log In", "login", (900, 150, 1060, 240))]),
+        {"id": 12, "type": "application", "layer": 5, "package": "", "title": "", "bounds": [0, 0, W, 2340],
+         "since": 9000},
+        event={"package": "com.chess", "text": "Chess.com", "at": 3000}, labels=LABELS, ocr=SAMSUNG_REAL_OCR),
+})
 
 
 def main():

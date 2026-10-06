@@ -785,23 +785,41 @@ class Gatekeeper(
 
     /** The permission-controller window with no readable tree (identified by its package, or by the last
      *  window-state event when Android hides even that). */
+    /** The permission-controller window with no readable tree: identified by its own package, or (when Android hides
+     *  even that and sends no event either: Samsung, Android 15) by the phone's OCR of its own screenshot: an "Allow X
+     *  to ..." title AND either a fresh permission-controller event or a "Don't allow" button (the dialog's shape).
+     *  [needTitle] false: should the phone OCR to find out (the top window with no package and no readable tree). */
     fun ocrWindow(screen: GScreen, needTitle: Boolean = true): GWindow? {
         val perm = rules.rx(rules.sStr("permission_packages"))
-        return screen.ordered.firstOrNull { w ->
-            w.type == "application" && (w.root == null || walk(w.root).none { it.text.isNotEmpty() || it.desc.isNotEmpty() }) &&
-                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage) &&
-                    screen.eventAt >= w.since - (permRules["ocr"].obj()["event_slack_ms"] as Number).toLong() &&
-                    (!needTitle || ocrTitle(screen))))
+        for (w in screen.ordered) {
+            if (w.type != "application") continue
+            if (w.root != null && walk(w.root).any { it.text.isNotEmpty() || it.desc.isNotEmpty() }) continue
+            if (perm.containsMatchIn(w.pkg)) return w
+            if (w.pkg.isNotEmpty()) continue
+            if (!needTitle) return w
+            val slack = (permRules["ocr"].obj()["event_slack_ms"] as Number).toLong()
+            val fresh = perm.containsMatchIn(screen.eventPackage) && screen.eventAt >= w.since - slack
+            return if (ocrTitle(screen) && (fresh || ocrDeny(screen))) w else null // only the top unreadable window
         }
+        return null
     }
+
+    private fun ocrLines(screen: GScreen): List<String> {
+        val minConf = (permRules["ocr"].obj()["min_conf"] as Number).toDouble()
+        return screen.ocr.orEmpty().filter { it.conf >= minConf }.map { it.text.split(WS).filter { t -> t.isNotEmpty() }.joinToString(" ") }
+    }
+
+    /** The OCR shows a permission dialog's "Don't allow" (or its translation). */
+    private fun ocrDeny(screen: GScreen) = ocrLines(screen).any { textRole(it) == "deny" || textRole(it) == "deny_forever" }
 
     /** Should the phone OCR the screen to find out whether a hidden permission dialog is up? */
     fun ocrCandidate(screen: GScreen): GWindow? = ocrWindow(screen, needTitle = false)
 
     /** The phone's OCR shows a permission dialog's title ("Allow Kalshi to ...") with confidence. */
-    private fun ocrTitle(screen: GScreen): Boolean {
-        val minConf = (permRules["ocr"].obj()["min_conf"] as Number).toDouble()
-        return screen.ocr.orEmpty().any { it.conf >= minConf && permApp(it.text.split(WS).filter { t -> t.isNotEmpty() }.joinToString(" ")) != null }
+    fun ocrTitle(screen: GScreen): Boolean {
+        // One line, or two in a row (a title wrapped or split where the app name is bold).
+        val lines = ocrLines(screen)
+        return (lines + lines.zipWithNext { a, b -> "$a $b" }).any { permApp(it) != null }
     }
 
     fun textRole(text: String): String? {
@@ -864,7 +882,11 @@ class Gatekeeper(
         val message = title.joinToString(" ").ifEmpty { nodes.filter { !it.clickable }.joinToString(" ") { it.text } }.ifEmpty { "?" }
         nodes.add(0, GNode(text = message, id = "permission_message", cls = "OCRText"))
         val root = GNode(cls = "OCRDialog", bounds = w.bounds, clickable = true, children = nodes)
-        val rebuilt = GWindow(w.id, w.type, w.layer, w.pkg.ifEmpty { screen.eventPackage }, w.title, w.bounds, root, w.since)
+        val pkg = w.pkg.ifEmpty {
+            if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(screen.eventPackage)) screen.eventPackage
+            else permRules["ocr"].obj().str("package")
+        }
+        val rebuilt = GWindow(w.id, w.type, w.layer, pkg, w.title, w.bounds, root, w.since)
         return screen.withWindows(screen.windows.map { if (it === w) rebuilt else it })
     }
 
@@ -1015,8 +1037,13 @@ class Gatekeeper(
         if (session.isEmpty()) return false
         val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
         if (message.isNotEmpty()) {
-            val app = permApp(message) ?: return false
-            return GateText.tokens(app) == session
+            val app = GateText.tokens(permApp(message) ?: return false)
+            if (app.isEmpty()) return false
+            if (app == session) return true
+            // The dialog may name the app shorter or longer than its label ("Chess" for "Chess.com"): then the
+            // requesting app's window must also be right underneath.
+            val below = screen.ordered.filter { it.layer < w.layer && it.type == "application" }
+            return (app == session.take(app.size) || session == app.take(session.size)) && below.isNotEmpty() && below[0].pkg == lastApp
         }
         if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)) {
             val below = screen.ordered.filter { it.layer < w.layer && it.type == "application" }

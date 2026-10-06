@@ -71,6 +71,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        PermissionOcr.warmUp() // permission dialogs Android 14+ hides are read with OCR: have the model ready
         AppState.notifyListeners()
         if (AppState.returnAfterAccessibility) {
             // The owner just turned us on from the app's setup screen: take them back to it.

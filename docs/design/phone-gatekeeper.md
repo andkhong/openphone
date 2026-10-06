@@ -668,6 +668,18 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   cached background OCR, black until it's read). B2 (owner decision, accepted residual): camera and microphone
   stay silent under "Only this time" for the task's app; a compromised server could get one-time foreground mic
   or camera access in the app the task operates, and the only signal is Android's privacy indicator.
+- **Real-device fix (Samsung SM-S948U1, Android 15/16; reproduced on an API 35 emulator):** the hidden
+  permission dialog's window has no root and no package, and Android sends no permission-controller event to a
+  non-tool accessibility service (the last event is the requesting app's). The phone only OCR'd a package-less
+  window when such an event had arrived, so it never read the dialog and reads stayed black. Now any top
+  application window with no package and no readable tree is OCR'd, and it counts as a permission dialog when the
+  OCR shows an "Allow X to …" title (one line or two in a row) and either a fresh permission-controller event or a
+  "Don't allow" button. Readings are tied to the window id; the model is warmed up when the service starts (cold:
+  3.5 s); captures share one rate-limit clock and retry. A dialog naming the app shorter than its label ("Chess" for
+  "Chess.com") counts as the task's app only if that app's window is right underneath. Logcat tag `OpenMobGate`
+  records identification, OCR timing and the shown/black decision (only the dialog's title as screen text).
+  Emulator end to end: screenshots and the live-view gate show the dialog about 0.5 s after it appears; the
+  agent's tap on "Allow" goes through with no prompt and grants the permission.
 - **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
   for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
   for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window

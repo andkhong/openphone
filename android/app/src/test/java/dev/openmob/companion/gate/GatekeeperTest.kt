@@ -7,6 +7,7 @@ import dev.openmob.companion.gate.GateScenarioTest.Companion.sign
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -181,6 +182,25 @@ class GatekeeperTest {
         // Low-confidence lines are dropped: the button isn't there, the tap lands on the dialog (asks).
         val blurry = gk.ocrPreview(SCREENS.getValue("ocr_location_blurry"))
         assertEquals("OCRDialog", GateScreen.hitTest(RULES, blurry, 540.0, 1635.0)!!.pressed!!.cls)
+    }
+
+    @Test fun theRealSamsungNotificationDialogIsRecognizedFromItsOcr() {
+        // The real SM-S948U1 screenshot's OCR: no window package, no permission-controller event (it was Chess.com's).
+        val raw = SCREENS.getValue("samsung_notifications_real")
+        assertNotNull(gk.ocrCandidate(raw))
+        assertTrue(gk.ocrTitle(raw))
+        assertEquals("", gk.hidden(gk.ocrPreview(raw))) // shown, not black
+        val read = gk.ocrPreview(raw)
+        val w = read.windows.single { it.root?.cls == "OCRDialog" }
+        assertEquals("com.android.permissioncontroller", w.pkg)
+        val message = w.root!!.children.first { it.id == "permission_message" }.text
+        assertEquals("Allow Chess to send you notifications?", message)
+        assertEquals("Chess", gk.permApp(message))
+        fun at(x: Double, y: Double) = GateScreen.hitTest(RULES, read, x, y)!!.pressed!!.text
+        assertEquals("Allow", at(538.0, 1895.0))
+        assertEquals("Don't allow", at(541.0, 2045.0))
+        // Without its OCR the same window stays unknown (black).
+        assertEquals("builtin:unknown_window", gk.hidden(raw.withOcr(null)))
     }
 
     @Test fun permissionDefaultsTightenFreelyButLoosenOnlySigned() {

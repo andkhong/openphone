@@ -81,12 +81,12 @@ object GateHost {
         // No accessibility service: the phone can't see what's on screen, so it fails closed.
         if (service == null) { protectedVisible = true; return true }
         var screen = GateScreens.windowPackages(service)
-        // A hidden window a permission-controller event may explain: shown once the phone's OCR finds its title
-        // (black until then; the read runs in the background).
-        if (g.ocrCandidate(screen)?.pkg?.isEmpty() == true) {
-            screen = screen.withOcr(PermissionOcr.cached() ?: null.also { PermissionOcr.refreshAsync(service) })
-        }
-        protectedVisible = g.hidden(screen).isNotEmpty()
+        // A window with no package and no readable tree may be a permission dialog Android hides: shown once the
+        // phone's OCR finds its title (black until the first background read, a fraction of a second).
+        g.ocrCandidate(screen)?.takeIf { it.pkg.isEmpty() }?.let { screen = screen.withOcr(PermissionOcr.cached(service, it.id)) }
+        val why = g.hidden(screen)
+        protectedVisible = why.isNotEmpty()
+        logRead("live", g, screen, why)
         return protectedVisible
     }
 
@@ -104,8 +104,24 @@ object GateHost {
         val g = gk()
         val base = GateScreens.dialogScreen(service)
         if (g.ocrCandidate(base) == null) return null
-        val read = g.ocrPreview(base.withOcr(PermissionOcr.read(service) ?: return null))
+        val cand = g.ocrCandidate(base) ?: return null
+        val read = g.ocrPreview(base.withOcr(PermissionOcr.read(service, cand.id) ?: return null))
         return read.windows.firstOrNull { it.root?.cls == "OCRDialog" }?.root?.children
+    }
+
+    @Volatile private var lastReadLog = ""
+
+    /** Diagnostics (logcat OpenMobGate): how a read was gated around a window the phone can't read. Only the dialog's
+     *  title, never other screen text; logged when the decision changes. */
+    private fun logRead(what: String, g: Gatekeeper, screen: GScreen, why: String) {
+        val cand = g.ocrCandidate(screen) ?: if (why.isEmpty()) return else null
+        val dialog = g.ocrWindow(screen)
+        val title = dialog?.root?.children?.firstOrNull { it.id == "permission_message" }?.text.orEmpty().take(120)
+        val line = "read $what: candidate=${cand?.id}/${cand?.pkg?.ifEmpty { "-" }} since=${cand?.since} " +
+            "event=${screen.eventPackage.ifEmpty { "-" }}@${screen.eventAt} ocr=${screen.ocr?.size ?: "none"} " +
+            "titleSeen=${g.ocrTitle(screen)} dialog=${dialog?.id}/${dialog?.pkg} title=\"$title\" " +
+            (if (why.isEmpty()) "shown" else "black($why)")
+        if (line != lastReadLog) { lastReadLog = line; android.util.Log.i(PermissionOcr.TAG, line) }
     }
 
     /** The admitted action's gesture completed (PhoneActions): the gate may record what it changed. */
@@ -147,11 +163,11 @@ object GateHost {
         if (method in g.rules.read || method.startsWith("stream_")) {
             var screen = if (method == "screenshot" || method == "ui_elements" || method == "stream_start")
                 GateScreens.windowPackages(service) else GScreen(emptyList())
-            // A hidden window a permission-controller event may explain: shown only if OCR finds its title.
-            if (screen.windows.isNotEmpty() && g.ocrCandidate(screen)?.pkg?.isEmpty() == true) {
-                screen = screen.withOcr(runCatching { PermissionOcr.read(service) }.getOrNull())
+            // A window with no package and no readable tree may be a permission dialog Android hides: OCR it.
+            g.ocrCandidate(screen)?.takeIf { it.pkg.isEmpty() }?.let { w ->
+                screen = screen.withOcr(runCatching { PermissionOcr.read(service, w.id) }.getOrNull())
             }
-            return g.admit(method, params, screen)
+            return g.admit(method, params, screen).also { logRead(method, g, screen, if (it.decision == "redact") it.rule else "") }
         }
         var adm = g.admit(method, params, screen(service, method, params))
         // A window that is briefly unreadable or missing from the list (a live screen redrawing): look again for a
@@ -215,7 +231,7 @@ object GateHost {
         }
         var screen = GateScreens.capture(service, urls, launch, points)
         // A permission dialog Android hides from accessibility: read it with the phone's own OCR (the gate judges it).
-        if (gk().ocrCandidate(screen) != null) screen = screen.withOcr(PermissionOcr.read(service))
+        gk().ocrCandidate(screen)?.let { screen = screen.withOcr(PermissionOcr.read(service, it.id)) }
         if (method == "key" && params["name"]?.toString()?.uppercase() == "ENTER") {
             // ENTER in a browser's URL bar opens what's typed there: resolve it like open_url.
             GateScreen.focusedField(screen)?.node?.text?.trim()?.takeIf { GateText.looksLikeUrl(it) }?.let { text ->

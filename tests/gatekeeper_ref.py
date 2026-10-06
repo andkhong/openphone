@@ -1245,9 +1245,10 @@ class Gatekeeper:
 
     def _ocr_window(self, screen: Screen, need_title: bool = True) -> Window | None:
         """The permission-controller window with no readable tree: identified by its own package, or (when Android
-        hides even that) by a window-state event from the permission controller that arrived after the window
-        appeared AND an OCR'd "Allow X to ..." title. A stale event over an app still loading is not a dialog.
-        `need_title=False`: whether the phone should OCR the screen to find out."""
+        hides even that, and sends no event either: Samsung, Android 15) by the phone's OCR of its own screenshot:
+        an "Allow X to ..." title AND either a fresh permission-controller event or a "Don't allow" button (the
+        dialog's shape). A stale event over an app still loading is not a dialog. `need_title=False`: whether the
+        phone should OCR the screen to find out (any window with no package and no readable tree)."""
         perm = re.compile(self.r.s["permission_packages"])
         event_pkg = str(screen.event.get("package") or "")
         event_at = int(screen.event.get("at", 0) or 0)
@@ -1259,22 +1260,34 @@ class Gatekeeper:
                 continue
             if perm.search(w.package or ""):
                 return w
-            slack = self.r.d["permission_dialog"]["ocr"]["event_slack_ms"]  # the event may land just before the window
-            if not w.package and perm.search(event_pkg) and event_at >= w.since - slack and (
-                    not need_title or self._ocr_title(screen)):
+            if w.package:
+                continue
+            if not need_title:
                 return w
+            slack = self.r.d["permission_dialog"]["ocr"]["event_slack_ms"]  # the event may land just before the window
+            fresh = bool(perm.search(event_pkg)) and event_at >= w.since - slack
+            if self._ocr_title(screen) and (fresh or self._ocr_deny(screen)):
+                return w
+            return None  # only the top unreadable window can be the dialog
         return None
+
+    def _ocr_lines(self, screen: Screen) -> list:
+        o = self.r.d["permission_dialog"]["ocr"]
+        return [" ".join(str(b.get("text", "")).split()) for b in (screen.ocr or [])
+                if float(b.get("conf", 1.0)) >= o["min_conf"]]
+
+    def _ocr_deny(self, screen: Screen) -> bool:
+        """The OCR shows a permission dialog's "Don't allow" (or its translation)."""
+        return any(self.text_role(t) in ("deny", "deny_forever") for t in self._ocr_lines(screen))
 
     def ocr_candidate(self, screen: Screen) -> Window | None:
         return self._ocr_window(screen, need_title=False)
 
     def _ocr_title(self, screen: Screen) -> bool:
         """The phone's OCR shows a permission dialog's title ("Allow Kalshi to ...") with confidence."""
-        if not screen.ocr:
-            return False
-        o = self.r.d["permission_dialog"]["ocr"]
-        return any(float(b.get("conf", 1.0)) >= o["min_conf"] and self.perm_app(" ".join(str(b.get("text", "")).split()))
-                   for b in screen.ocr)
+        lines = self._ocr_lines(screen)
+        # One line, or two in a row (a title wrapped or split where the app name is bold).
+        return any(self.perm_app(t) for t in lines + [a + " " + b for a, b in zip(lines, lines[1:])])
 
     def text_role(self, text: str) -> str | None:
         toks = tokens(text)
@@ -1333,7 +1346,9 @@ class Gatekeeper:
         message = " ".join(title) or " ".join(n.text for n in nodes if not n.clickable) or "?"
         nodes.insert(0, Node(text=message, id="permission_message", cls="OCRText"))
         root = Node(cls="OCRDialog", bounds=w.bounds, clickable=True, children=nodes)
-        pkg = w.package or str(screen.event.get("package") or "")
+        event_pkg = str(screen.event.get("package") or "")
+        pkg = w.package or (event_pkg if re.search(self.r.s["permission_packages"], event_pkg)
+                            else self.r.d["permission_dialog"]["ocr"]["package"])
         rebuilt = Window(w.id, w.type, w.layer, pkg, w.title, w.bounds, root)
         return dc_replace(screen, windows=[rebuilt if x is w else x for x in screen.windows])
 
@@ -1480,8 +1495,16 @@ class Gatekeeper:
             return False
         message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
         if message:
-            app = self.perm_app(message)
-            return app is not None and tokens(app) == session
+            app = tokens(self.perm_app(message) or "")
+            if not app:
+                return False
+            if app == session:
+                return True
+            # The dialog may name the app shorter or longer than its label ("Chess" for "Chess.com"): then the
+            # requesting app's window must also be right underneath.
+            below = [x for x in screen.ordered() if x.layer < w.layer and x.type == "application"]
+            return (app == session[:len(app)] or session == app[:len(session)]) and bool(below) \
+                and below[0].package == self.last_app
         if re.compile(self.r.s["permission_packages"]).search(w.package or ""):
             below = [x for x in screen.ordered() if x.layer < w.layer and x.type == "application"]
             return bool(below) and below[0].package == self.last_app
