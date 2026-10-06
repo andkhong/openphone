@@ -19,7 +19,7 @@ from .protocol import METHODS, decode_element, decode_screenshot
 
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
 # phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
-REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock"}
+REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle"}
 
 
 class PhoneLink:
@@ -126,6 +126,7 @@ class RemoteDriver(CachedScreenshots):
         self.link = link
         self.video_available = False  # the owner allowed screen streaming (hello "video", video_state)
         self._state_unsupported = False  # an older app without device_state
+        self.capabilities: set[str] = set()  # optional methods its hello offered (device.capabilities)
         self._init_screenshot_cache()
         self._reconnect = threading.Condition()
         self._wait_until: float | None = None  # monotonic deadline while the phone may come back
@@ -138,6 +139,7 @@ class RemoteDriver(CachedScreenshots):
             self._last_shot = None
             self._last_preview = None
             self._state_unsupported = False  # the app may have been updated
+            self.capabilities = set()  # the new hello says again (DeviceManager.attach_remote)
             self._reconnect.notify_all()
 
     def hold(self, seconds: float | None) -> None:
@@ -225,6 +227,26 @@ class RemoteDriver(CachedScreenshots):
 
     def wake_unlock(self) -> None:
         self._call("wake_unlock")
+
+    # Asking the phone for its accessibility tree is quick (no uiautomator dump), so the agent can
+    # re-check a tap target just before tapping it.
+    fast_ui_tree = True
+
+    def wait_idle(self, quiet_ms: int, max_ms: int) -> dict | None:
+        """Wait until the screen stops changing: {"waited_ms", "idle"}, or None when this phone's app
+        can't (an older app), so the caller sleeps a fixed time instead."""
+        if "wait_idle" not in self.capabilities:
+            return None
+        try:
+            result = self._call("wait_idle", quiet_ms=int(quiet_ms), max_ms=int(max_ms)) or {}
+        except PhoneTimeout:
+            raise
+        except DeviceError:
+            if self.link.closed:
+                raise
+            self.capabilities.discard("wait_idle")  # it said so, but can't after all: stop asking
+            return None
+        return {"waited_ms": int(result.get("waited_ms", 0)), "idle": bool(result.get("idle"))}
 
     def device_state(self) -> dict | None:
         """{"interactive", "locked"} right now, or None if this app version can't say. Never waits

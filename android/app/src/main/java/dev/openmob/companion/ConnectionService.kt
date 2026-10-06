@@ -24,6 +24,7 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import okio.ByteString.Companion.toByteString
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.nio.ByteBuffer
@@ -250,6 +251,8 @@ class ConnectionService : Service() {
                 .put("android", Build.VERSION.RELEASE)
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
+                // Optional methods this app answers (older apps send none; the server falls back).
+                .put("capabilities", JSONArray().put("wait_idle"))
         )
 
     private fun handleCall(message: JSONObject) {

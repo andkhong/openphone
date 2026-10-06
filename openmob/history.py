@@ -94,6 +94,9 @@ CREATE TABLE IF NOT EXISTS steps (
     total_ms INTEGER,
     jev INTEGER,                      -- 1 / 0: whether the classifier was on for this step
     model TEXT,                       -- the model that decided this step
+    settle_idle INTEGER,              -- 1 / 0: the adaptive settle before it saw the screen go quiet / hit its cap (NULL: fixed sleep)
+    fast INTEGER,                     -- 1: decided by the fast path (classifier + small text model), 0: by the main model
+    variant TEXT,                     -- the latency features the agent ran with: fixed | adaptive | adaptive+fast …
     PRIMARY KEY (turn_id, idx)
 );
 CREATE INDEX IF NOT EXISTS steps_by_chat ON steps (chat_id);
@@ -115,7 +118,8 @@ CREATE INDEX IF NOT EXISTS model_runs_by_model ON model_runs (model, account_id)
 TIMING_COLUMNS = ("observe_ms", "jev_ms", "wait_ms", "model_ms", "action_ms", "settle_ms", "total_ms")
 MIGRATIONS = [("turns", "package", "TEXT")] + [
     ("steps", column, "INTEGER") for column in TIMING_COLUMNS + ("jev",)
-] + [("steps", "model", "TEXT")]
+] + [("steps", "model", "TEXT"), ("steps", "settle_idle", "INTEGER"), ("steps", "fast", "INTEGER"),
+      ("steps", "variant", "TEXT")]
 
 
 class History:
@@ -223,15 +227,18 @@ class History:
             self._db.execute(
                 """INSERT OR REPLACE INTO steps (turn_id, idx, chat_id, account_id, device_id, t, tool, args, norm_xy,
                    package, screen_w, screen_h, anchor, outcome, is_error, latency_ms, source,
-                   observe_ms, jev_ms, wait_ms, model_ms, action_ms, settle_ms, total_ms, jev, model)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   observe_ms, jev_ms, wait_ms, model_ms, action_ms, settle_ms, total_ms, jev, model,
+                   settle_idle, fast, variant)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (turn_id, step["idx"], chat_id, account_id or LOCAL_ACCOUNT, device_id, step.get("t", time.time()),
                  step["tool"], json.dumps(step.get("args") or {}, default=str), js(step.get("norm_xy")),
                  step.get("package"), step.get("screen_w"), step.get("screen_h"), js(step.get("anchor")),
                  step.get("outcome"), 1 if step.get("is_error") else 0, step.get("latency_ms"),
                  step.get("source", "agent"),
                  *(step.get(c) for c in TIMING_COLUMNS),
-                 None if step.get("jev") is None else int(bool(step["jev"])), step.get("model")),
+                 None if step.get("jev") is None else int(bool(step["jev"])), step.get("model"),
+                 None if step.get("settle_idle") is None else int(bool(step["settle_idle"])),
+                 None if step.get("fast") is None else int(bool(step["fast"])), step.get("variant")),
             )
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
@@ -281,7 +288,8 @@ class History:
             for key in ("args", "norm_xy", "anchor"):
                 step[key] = json.loads(step[key]) if step[key] else None
             step["is_error"] = bool(step["is_error"])
-            step["jev"] = None if step["jev"] is None else bool(step["jev"])
+            for key in ("jev", "settle_idle", "fast"):
+                step[key] = None if step[key] is None else bool(step[key])
             out.append(step)
         return out
 
@@ -296,7 +304,8 @@ class History:
             where.append("COALESCE(s.model, t.model) = ?")
             args.append(model)
         rows = self._q(
-            f"""SELECT s.turn_id, s.idx, s.jev, COALESCE(s.model, t.model) AS model, {", ".join("s." + c for c in TIMING_COLUMNS)}
+            f"""SELECT s.turn_id, s.idx, s.jev, s.fast, s.variant, s.settle_idle, COALESCE(s.model, t.model) AS model,
+                       {", ".join("s." + c for c in TIMING_COLUMNS)}
                 FROM steps s LEFT JOIN turns t ON t.id = s.turn_id WHERE {" AND ".join(where)} ORDER BY s.t""",
             tuple(args),
         )

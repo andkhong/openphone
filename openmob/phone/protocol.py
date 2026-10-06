@@ -5,7 +5,8 @@ The phone (OpenMob Android app, or `openmob bridge`) connects OUT to the server 
 so it works from any network. The server then sends commands; the phone answers.
 
 Phone -> server
-    {"type": "hello", "protocol": 1, "device": {"id", "model", "manufacturer", "android"}}   first message
+    {"type": "hello", "protocol": 1, "device": {"id", "model", "manufacturer", "android",
+                                                "capabilities"?: ["wait_idle"]}}   first message
     {"type": "result", "id": "<call id>", "ok": true, "result": <value>}
     {"type": "result", "id": "<call id>", "ok": false, "error": "<message>"}
     binary frame: a screenshot result asked for with "binary": true (see encode_binary_result)
@@ -56,6 +57,9 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     "wake_unlock": ({}, "null (wake the screen; dismiss a non-secure keyguard)", 10),
     # Newer apps: is the phone usable right now? Older apps answer "Unknown method" (the check is skipped).
     "device_state": ({}, "{interactive, locked, secure: bool}: screen on, keyguard showing, PIN-type lock", 5),
+    # Newer apps (hello device.capabilities has "wait_idle"): return once no window or content change
+    # has arrived for quiet_ms, or at max_ms. The agent's adaptive settle; others get a fixed sleep.
+    "wait_idle": ({"quiet_ms": "int", "max_ms": "int"}, "{waited_ms: int, idle: bool}", 10),
     # Live-view video, only for phones whose hello says "video": true (the owner allowed screen
     # streaming). The agent never uses these; it keeps taking screenshots.
     "stream_start": (
@@ -134,6 +138,8 @@ def encode_element(el: UIElement) -> dict:
         "clickable": el.clickable,
         "checked": el.checked,
         "bounds": list(el.bounds),
+        # Optional flags, only when true (older servers ignore them).
+        **{flag: True for flag in ("editable", "password", "covered") if getattr(el, flag)},
     }
 
 
@@ -148,4 +154,7 @@ def decode_element(index: int, data: dict) -> UIElement:
         clickable=bool(data.get("clickable")),
         checked=data.get("checked"),
         bounds=(x1, y1, x2, y2),
+        editable=bool(data.get("editable")),
+        password=bool(data.get("password")),
+        covered=bool(data.get("covered")),
     )

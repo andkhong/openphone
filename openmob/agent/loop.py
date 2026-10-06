@@ -61,8 +61,10 @@ class Outcome:
     is_error: bool = False
     done: bool = False
     success: bool = False
-    settle: float | None = None  # None means the default settle delay
+    settle: float | None = None  # None means the default settle delay (the cap, with adaptive settle)
     timings: dict | None = None  # this step's time per phase in ms (set by _execute)
+    launched: str | None = None  # the package launch_app started (adb's launch settle waits for it)
+    quiet_ms: int | None = None  # adaptive settle: a longer quiet time (e.g. search suggestions)
 
 
 @dataclass
@@ -78,6 +80,7 @@ class _TaskState:
     notes_package: str | None = None  # the app whose notes were last shown
     used_notes: list[str] = field(default_factory=list)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
+    settle_idle: bool | None = None  # the last adaptive settle: the screen went quiet (False: hit the cap)
 
 
 def is_yes(answer: str) -> bool:
@@ -160,7 +163,7 @@ class Agent:
         self.driver.wake_unlock()
         if go_home:
             self.driver.key("HOME")
-            self.timer.timed("settle", time.sleep, self.config.settle_delay)
+            self._settle(self.config.settle_delay, state)
 
         try:
             route = router_for(self.client, self.config).route(self.task_model)
@@ -213,6 +216,8 @@ class Agent:
             results: list[dict] = []
             finished: Outcome | None = None
             settle = self.config.settle_delay
+            launched: str | None = None
+            quiet_ms: int | None = None
             for tool_use in tool_uses:
                 if finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
@@ -222,6 +227,8 @@ class Agent:
                                 {"timings": outcome.timings, "jev": self.judge is not None})
                     if outcome.settle is not None:
                         settle = outcome.settle
+                    launched = outcome.launched or launched
+                    quiet_ms = outcome.quiet_ms or quiet_ms
                     if outcome.done:
                         finished = outcome
                 results.append({
@@ -236,7 +243,7 @@ class Agent:
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step)
 
-            self.timer.timed("settle", self._sleep, settle, state.cancel)
+            self._settle(settle, state, launched, quiet_ms)
             obs = self._observe_settled(state)
             # The new screen goes after the tool results, not inside them: Anthropic rejects images
             # inside a tool_result marked is_error, and OpenAI tool messages hold text only.
@@ -428,10 +435,10 @@ class Agent:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         outcome.timings = self.timer.take()
         state.step_index += 1
-        self._record_step(state.step_index, name, args, obs, outcome, time.monotonic() - started)
+        self._record_step(state, name, args, obs, outcome, time.monotonic() - started)
         return outcome
 
-    def _record_step(self, index: int, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float) -> None:
+    def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float) -> None:
         """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
         Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
         record = getattr(self.io, "record_step", None)
@@ -460,11 +467,12 @@ class Agent:
             # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
             norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4) for i, v in enumerate(points)]
             record({
-                "idx": index, "t": time.time(), "tool": name, "args": safe,
+                "idx": state.step_index, "t": time.time(), "tool": name, "args": safe,
                 "norm_xy": norm or None, "package": obs.package,
                 "screen_w": shot.device_width, "screen_h": shot.device_height, "anchor": anchor,
                 "outcome": text, "is_error": outcome.is_error, "latency_ms": int(seconds * 1000),
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
+                "settle_idle": state.settle_idle, "variant": self._variant(),
             })
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
@@ -488,6 +496,7 @@ class Agent:
             return Outcome(
                 f"Launched {resolution.package} (matched by {resolution.method}).",
                 settle=self.config.launch_settle_delay,
+                launched=resolution.package,
             )
 
         if name == "list_apps":
@@ -614,3 +623,40 @@ class Agent:
     @staticmethod
     def _sleep(seconds: float, cancel: threading.Event) -> None:
         cancel.wait(seconds)
+
+    # --- settling after an action -------------------------------------------------
+
+    def _variant(self) -> str:
+        """Which latency features this agent runs with, for comparing them in `openmob timings`."""
+        return "adaptive" if self.config.adaptive_settle else "fixed"
+
+    def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None) -> None:
+        """Let the screen catch up after an action. `seconds` is the most to wait (the fixed delay).
+
+        Adaptive (config.adaptive_settle): a phone whose app offers wait_idle returns as soon as no
+        window or content change has arrived for settle_quiet_ms. An adb phone ends a launch once the
+        app is in front plus the short settle. Anything else (older apps, iOS): the fixed sleep.
+        Recorded as settle time: the real time waited."""
+        state.settle_idle = None
+        if seconds <= 0:
+            return
+        with self.timer.phase("settle"):
+            if self.config.adaptive_settle and not state.cancel.is_set():
+                started = time.monotonic()
+                wait_idle = getattr(self.driver, "wait_idle", None)
+                if wait_idle is not None:
+                    try:
+                        result = wait_idle(int(quiet_ms or self.config.settle_quiet_ms), int(seconds * 1000))
+                    except DeviceError:
+                        result = None  # sleep out the rest; the next observation reports a lost phone
+                    if result is not None:
+                        state.settle_idle = bool(result.get("idle"))
+                        return
+                    seconds -= time.monotonic() - started
+                wait_foreground = getattr(self.driver, "wait_foreground", None)
+                if launched and wait_foreground is not None and seconds > 0:
+                    if wait_foreground(launched, seconds, state.cancel):
+                        left = seconds - (time.monotonic() - started)
+                        self._sleep(max(min(self.config.settle_delay, left), 0), state.cancel)
+                    return
+            self._sleep(max(seconds, 0), state.cancel)
