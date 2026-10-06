@@ -223,6 +223,7 @@
     <string name="lock_resumed_event">Unlocked: the agent carries on.</string>
     <string name="gate_resume">Resume</string>
     <string name="owner_dialog_title">Your answer is needed on the phone</string>
+    <string name="gate_prompt_interrupted">Interrupted. The screen lock prompt comes back in a moment; or tap Approve or Deny.</string>
     <string name="gate_always_for">Always allow for %1$s</string>
     <string name="gate_mode_change_limited">A permission change request was ignored: at most 2 an hour can be asked on this phone.</string>
 </resources>

@@ -1486,7 +1486,7 @@ class Agent:
         if hasattr(self.driver, "dialog_waiter"):
             self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
 
-    def _gate_approval(self, refusal) -> bool:
+    def _gate_approval(self, refusal) -> str:
         """The phone asked its owner (gate_needs_approval): the task waits for that answer, worded by the phone.
         The API and dashboard can decline it, never approve it (approval_on_phone)."""
         state = self._gate_state
@@ -1496,7 +1496,10 @@ class Agent:
         answer = self._ask_owner(state, f"Waiting for your approval on the phone: {question}",
                                  {"kind": "gate", "approver": "phone", "approval_id": refusal.approval_id,
                                   "package": refusal.package, "action_kind": refusal.kind})
-        return is_yes(answer)
+        if is_yes(answer):
+            return "yes"
+        # "no answer": the prompt ended without a decision (timed out, or interrupted and never answered).
+        return "no_answer" if answer.strip().lower() == "no answer" else "no"
 
     def _dialog_wait(self, state: _TaskState | None) -> bool:
         """A system dialog the phone can't read is up (Android 14+ permission dialogs): the task pauses with the
@@ -1580,6 +1583,7 @@ class Agent:
         state.prompts += 1
         low = answer.strip().lower()
         decision = ("always" if is_yes(answer) and "always" in low else "approved" if is_yes(answer)
+                    else "no_answer" if low == "no answer"
                     else "denied" if not low or low.split()[0] in DECLINE_WORDS else "changes")
         record = getattr(self.io, "record_prompt", None)
         if record is not None:

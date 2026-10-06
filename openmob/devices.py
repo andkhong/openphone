@@ -13,6 +13,8 @@ from . import permissions as perm
 from .config import Config
 from .phone.adb import AdbError, PhoneDriver
 from .phone.approval_keys import action_digest
+
+NO_ANSWER = "no answer"  # a phone prompt that ended without the owner deciding (not a denial)
 from .phone.apps import DEFAULT_LABEL_CACHE
 from .phone.base import Device, DeviceError
 from .phone.remote import PhoneLink, RemoteDriver
@@ -529,9 +531,11 @@ class DeviceManager:
             self.gate_answered.clear()
         if state == "approved":
             c.answer(task_id, "yes")
+        elif state == "expired":
+            # Nobody decided (the prompt timed out, or the system interrupted it and it was never answered): not a no.
+            c.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
+            c.answer(task_id, NO_ANSWER)
         else:
-            if state == "expired":
-                c.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
             c.answer(task_id, "no")
             if state == "denied":
                 self.phone_stopped(session, [task_id], "denied")

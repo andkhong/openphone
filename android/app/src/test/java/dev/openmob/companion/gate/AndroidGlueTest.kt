@@ -103,6 +103,26 @@ class AndroidGlueTest {
         assertFalse(p.hold(650_002))
     }
 
+    @Test fun onlyTheOwnersOwnCancelIsADenial() {
+        val p = dev.openmob.companion.PromptOutcome
+        assertEquals(dev.openmob.companion.PromptOutcome.Kind.DECLINED, p.classify(p.ERROR_USER_CANCELED))
+        assertEquals(dev.openmob.companion.PromptOutcome.Kind.DECLINED, p.classify(p.ERROR_NEGATIVE_BUTTON))
+        for (code in listOf(p.ERROR_CANCELED, p.ERROR_TIMEOUT, p.ERROR_LOCKOUT, p.ERROR_LOCKOUT_PERMANENT, 1, 2, 11, 12)) {
+            assertEquals("code $code", dev.openmob.companion.PromptOutcome.Kind.INTERRUPTED, p.classify(code))
+        }
+        // An interrupted prompt that times out is "expired" (no answer), and doesn't count toward the suspension.
+        val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
+        val events = mutableListOf<String>()
+        gk.onEvent = { _, state -> events.add(state) }
+        repeat(3) {
+            val ask = gk.admit("tap", mapOf("x" to 990L, "y" to 2250L), GateScenarioTest.SCREENS.getValue("whatsapp_chat"))
+            gk.markShown(ask.approvalId)
+            gk.cancel(ask.approvalId)
+        }
+        assertFalse(gk.suspended)
+        assertEquals(listOf("pending", "expired", "pending", "expired", "pending", "expired"), events)
+    }
+
     @Test fun permitsAreVoidedByAnyOtherAction() {
         val gk = Gatekeeper(RULES, GateScenarioTest.FakeClock(), VERIFIER, "dev")
         val chat = GateScenarioTest.SCREENS.getValue("whatsapp_chat")

@@ -53,7 +53,7 @@ class GatekeeperPhone(FakePhone):
                 approval_id = uuid.uuid4().hex
                 self.prompts.append(approval_id)
                 if self.owner:
-                    state = "approved" if self.owner == "approve" else "denied"
+                    state = {"approve": "approved", "deny": "denied", "expire": "expired"}[self.owner]
                     if state == "approved":
                         self.permits.add(key)
                     threading.Timer(0.3, self.send, ({"type": "gate_event", "approval_id": approval_id,
@@ -112,6 +112,41 @@ def test_a_denial_on_the_phone_means_no_tap(api):
     assert done["status"] in ("succeeded", "failed", "cancelled")
     assert not any(a[0] == "tap" for a in driver.actions)
     assert len(taps(phone)) == 1  # never re-sent
+
+
+def _log(api):
+    return [e["message"] for e in api.manager.get(api.alice.device).coordinator.log]
+
+
+def test_a_decline_and_no_answer_are_told_apart(api):
+    """Only the owner's explicit no is "declined"; a prompt that ended without a decision (timed out, or the
+    system interrupted it and nobody came back) is "no answer", and the agent isn't told the owner said no."""
+    phone, driver = gatekeeper(api, owner="deny")
+    task = run_task(api.alice, "check the cart")
+    wait_status(api.alice, task["id"], "succeeded", "failed", "cancelled")
+    assert any("gate_denied" in m and "declined" in m for m in _log(api))
+    before = len(_log(api))
+    phone, driver = gatekeeper(api, owner="expire")
+    task = run_task(api.alice, "check the cart")
+    wait_status(api.alice, task["id"], "succeeded", "failed", "cancelled")
+    log = _log(api)[before:]
+    assert any("gate_no_answer" in m and "no decision" in m for m in log)
+    assert not any("gate_denied" in m or "declined" in m for m in log)
+    assert not any(a[0] == "tap" for a in driver.actions) and len(taps(phone)) == 1  # never re-sent
+
+
+def test_no_answer_from_the_driver_is_its_own_code():
+    import pytest
+
+    from openmob.phone.base import GateRefused
+    from openmob.phone.remote import RemoteDriver
+
+    driver = RemoteDriver(_Link([GateRefused("gate_needs_approval", "waiting", approval_id="a1")]))
+    driver.capabilities = {"gatekeeper"}
+    driver.gate_approver = lambda refusal: "no_answer"
+    with pytest.raises(GateRefused) as info:
+        driver.tap(1, 2)
+    assert info.value.code == "gate_no_answer" and len(driver.link.calls) == 1
 
 
 def test_the_api_can_decline_and_nothing_is_sent(api):

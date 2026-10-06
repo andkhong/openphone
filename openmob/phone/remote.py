@@ -274,10 +274,15 @@ class RemoteDriver(CachedScreenshots):
         except GateRefused as exc:
             if exc.code != "gate_needs_approval" or self.gate_approver is None:
                 raise
-            if not self.gate_approver(exc):
-                raise GateRefused("gate_denied", "The owner didn't approve this on the phone. Don't do it; pick "
-                                  "another approach or call done.", exc.rule, exc.package, exc.approval_id) from None
-            return self._call_once(method, _wait, **params)  # at most once per approval
+            verdict = self.gate_approver(exc)
+            if verdict is True or verdict == "yes":
+                return self._call_once(method, _wait, **params)  # at most once per approval
+            if verdict == "no_answer":
+                raise GateRefused("gate_no_answer", "The owner didn't answer the phone's prompt in time, so this "
+                                  "didn't happen (they made no decision). Don't retry it now; call done or ask them.",
+                                  exc.rule, exc.package, exc.approval_id) from None
+            raise GateRefused("gate_denied", "The owner declined this on the phone. Don't do it; pick another "
+                              "approach or call done.", exc.rule, exc.package, exc.approval_id) from None
 
     def _call_once(self, method: str, _wait: bool = True, **params):
         """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""

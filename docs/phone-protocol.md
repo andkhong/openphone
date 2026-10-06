@@ -690,7 +690,11 @@ its monotonic clock. Then it tells the server:
 {"type": "gate_event", "approval_id": "3f…", "state": "approved"}
 ```
 
-`state` is `pending`, `approved`, `denied` or `expired` (2 minutes, or Stop). The server re-sends the identical
+`state` is `pending`, `approved`, `denied` or `expired` (2 minutes, or Stop). Only the owner's explicit no
+(Deny, or cancelling the screen lock themselves) is `denied`; a prompt the system interrupted (a notification or
+call taking focus, the screen turning off, the sensor timing out) stays pending and comes back, and one that
+ends without a decision is `expired`. The server reports `expired` to the agent as `gate_no_answer` ("the owner
+made no decision"), never as a decline, and only denials count toward the 3-denials pause. The server re-sends the identical
 call **once per approval id**; a replayed `gate_event` does nothing. On `denied` or `expired` it tells the agent
 "not approved" and sends nothing. An approved "Buy now" (a flow-starting money word) also covers one terminal
 commit ("Place your order") in the same app and task within 3 minutes, so a purchase is one prompt.

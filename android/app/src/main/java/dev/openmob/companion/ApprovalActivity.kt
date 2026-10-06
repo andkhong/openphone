@@ -86,6 +86,17 @@ class ApprovalActivity : Activity() {
         super.onPause()
     }
 
+    /** A gate prompt the system interrupted (request id, "always" ticked): shown again when the screen is back. */
+    private var resumeAuth: Pair<String, Boolean>? = null
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        val (id, always) = resumeAuth ?: return
+        if (!hasFocus || prompt != null) return
+        resumeAuth = null
+        Approvals.get(id)?.takeIf { it.gate && id == requestId }?.let { authenticate(it, always) }
+    }
+
     override fun onDestroy() {
         prompt?.cancel()
         prompt = null
@@ -258,7 +269,21 @@ class ApprovalActivity : Activity() {
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     if (prompt === cancel) prompt = null
-                    if (!isDestroyed) showStatus(getString(R.string.approval_not_confirmed))
+                    if (isDestroyed) return
+                    if (request.gate) {
+                        when (PromptOutcome.classify(errorCode)) {
+                            // The owner cancelled the screen lock themselves: that's their no.
+                            PromptOutcome.Kind.DECLINED -> return send(approved = false)
+                            // The system interrupted it (a notification, a call, the screen going off): keep the
+                            // request and bring the prompt back once this screen has focus again.
+                            PromptOutcome.Kind.INTERRUPTED -> {
+                                resumeAuth = request.id to grantAlways
+                                showStatus(getString(R.string.gate_prompt_interrupted))
+                                return
+                            }
+                        }
+                    }
+                    showStatus(getString(R.string.approval_not_confirmed))
                 }
                 // onAuthenticationFailed (one wrong finger) needs nothing: the prompt stays up.
             }
