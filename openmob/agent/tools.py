@@ -262,7 +262,7 @@ MODE_NOTES = {
             "asks. If the owner asks for changes, propose a revised plan.\n",
     "auto": "",  # today's behavior: the base prompt's safety rules
     "trusted": "",
-    "never": "\nPermission mode: Never ask. The owner chose not to be asked: don't call ask_user to confirm. "
+    "never": "\nPermission mode: Don't ask. The owner chose not to be asked: don't call ask_user to confirm. "
              "Payments, autofill and blocked apps are refused; if one is needed, call done and say so.\n",
 }
 

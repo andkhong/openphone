@@ -249,7 +249,7 @@ Returns a JPEG image block, plus the image's size as structured content. With `m
 
 ### get_permissions / change_permissions
 
-`get_permissions(device_id?)`: the phone's default mode, ceiling, trusted apps, Never ask expiry and
+`get_permissions(device_id?)`: the phone's default mode, ceiling, trusted apps, Don't ask expiry and
 your key's `max_mode`. `change_permissions(device_id?, default_mode?, ceiling?, never?)`: returns
 `{"status": "applied", "settings": …}` for a tightening, `{"status": "needs_phone_approval",
 "approval_id": …}` for a loosening. See [Permission modes and approvals for
@@ -326,8 +326,8 @@ for; payments always ask), `ask`, `plan`, `trusted` or `never`. See
 
 **Headless automation.** For unattended runs, the owner grants it once, on the phone: either
 trusted apps (tap **Always allow this** on a prompt, e.g. "send in Slack for 30 days") or a
-dedicated test phone in **Never ask** for up to 7 days (with a key whose `max_mode` is `never`).
-Purchases stay refused under Never ask unless the owner also allows them (`allow_money: true` on
+dedicated test phone in **Don't ask** for up to 7 days (with a key whose `max_mode` is `never`).
+Purchases stay refused under Don't ask unless the owner also allows them (`allow_money: true` on
 `change_permissions`, approved on the phone with explicit wording, for that window only); only ask
 for that when the user explicitly wants purchases.
 Your agent can ask for these with `change_permissions`, but only the owner's screen lock grants

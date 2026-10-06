@@ -33,7 +33,7 @@ from typing import Callable
 MODES = ("ask", "plan", "auto", "trusted", "never")  # tightest first
 RANK = {m: i for i, m in enumerate(MODES)}
 CEILINGS = MODES[:-1]  # `never` is never a standing ceiling: it's switched on for a while
-LABELS = {"ask": "Ask every step", "plan": "Plan first", "auto": "Auto", "trusted": "Trusted apps", "never": "Never ask"}
+LABELS = {"ask": "Ask every step", "plan": "Plan first", "auto": "Ask for risky", "trusted": "Trusted apps", "never": "Don't ask"}
 DESCRIPTIONS = {
     "ask": "Approve every tap, typed text and app launch on your phone.",
     "plan": "Approve a short plan once; asks again only off-plan or to pay.",

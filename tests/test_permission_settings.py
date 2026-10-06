@@ -119,7 +119,7 @@ def test_purchases_under_never_only_with_the_signed_allow_money_flag(hosted):
                         in ("succeeded", "failed"))
         return any(a[0] == "tap" for a in h.pa1.driver.actions[before:])
 
-    # Never ask without the flag: the purchase is refused (no prompt either).
+    # Don't ask without the flag: the purchase is refused (no prompt either).
     request = enable({"never": "1h"})
     assert "purchases" not in request["question"] and not settings_of(h, dev)["never_money"]
     asked = len(h.pa1.approval_requests)

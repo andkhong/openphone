@@ -409,7 +409,7 @@
             <div class="row"><input class="input" type="text" id="keyName" placeholder="e.g. claude-code-laptop" maxlength="60"></div></div>
           <div class="field"><span class="label">Scopes</span><div class="scopes" id="scopes" role="group" aria-label="Scopes for the new key"></div></div>
           <div class="approve-opt" id="approveOpt">
-            <label class="check"><input type="checkbox" id="keyConfirmApprove"> <span><b style="color:var(--fg)">Approve risky actions</b>: this key may say yes when a task asks before buying, sending or deleting.</span></label>
+            <label class="check"><input type="checkbox" id="keyConfirmApprove"> <span><b style="color:var(--fg)">This key may approve risky actions</b>: it may say yes when a task asks before buying, sending or deleting.</span></label>
             <span class="warn-text">Off by default, and only you can approve those steps, on your phone with its screen lock. An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.</span>
           </div>
           <div class="field"><label for="keyMaxMode">Loosest permission mode</label>
@@ -950,8 +950,8 @@ function approveToggle(k) {
 }
 
 // The loosest permission mode a key's tasks may ask for (docs/safety.md#permission-modes).
-const MODE_OPTIONS = [["ask", "Ask every step"], ["plan", "Plan first"], ["auto", "Auto (default)"],
-                      ["trusted", "Trusted apps"], ["never", "Never ask"]];
+const MODE_OPTIONS = [["ask", "Ask every step"], ["plan", "Plan first"], ["auto", "Ask for risky (default)"],
+                      ["trusted", "Trusted apps"], ["never", "Don't ask"]];
 const modeOptions = (selected) => MODE_OPTIONS.map(([v, t]) => el("option", { value: v, textContent: t, selected: v === selected }));
 function maxModeSelect(k) {
   const sel = el("select", { className: "select", style: "min-height:30px;padding:2px 8px;font-size:13px;width:auto" }, ...modeOptions(k.max_mode || "auto"));
