@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import contextlib
 import json
 import re
 import threading
@@ -20,7 +21,7 @@ from ..phone.apps import AppResolver
 from ..usage import Usage
 from ..vision import ocr
 from . import fast
-from .models import ModelError, ModelRequest, ModelUnavailable, router_for
+from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import TOOL_SPECS, system_prompt
 
@@ -170,6 +171,8 @@ class Agent:
         self._frame: Screenshot | None = None  # the last screenshot the agent took (for sizes)
         self._step_tokens: dict | None = None  # model tokens since the last recorded step (measurement only)
         self._shown_side: int | None = None  # long side of the newest screenshot in the conversation
+        self._last_record: dict | None = None  # the newest step record (vision_stream amends its tokens)
+        self._acted_early = False  # a streamed reply's tool call already ran
         self._task_variant = self._variant()  # the latency features of the task in progress (steps record it)
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
@@ -255,10 +258,17 @@ class Agent:
             state.escalated = True
             self._show(state, messages)
             self._trim_history(messages)
-            response = self._vision_call(route, system, messages)
+            early: dict[str, Outcome] = {}  # tool calls already run while the reply streamed (vision_stream)
+
+            def act_early(call) -> None:
+                if any(o.done for o in early.values()) or state.cancel.is_set():
+                    return  # the loop below marks it skipped
+                early[call.id] = self._act(call, obs, state)
+
+            response, streamed = self._vision_call(route, system, messages, act_early)
             messages.append({"role": "assistant", "content": response.content})
 
-            for text in response.text:
+            for text in [] if streamed else response.text:  # streamed thoughts went out as they came
                 if text.strip():
                     self.io.event("thought", text.strip())
 
@@ -280,12 +290,13 @@ class Agent:
             launched: str | None = None
             quiet_ms: int | None = None
             for tool_use in tool_uses:
-                if finished or state.cancel.is_set():
+                if tool_use.id in early and not finished:
+                    outcome = early[tool_use.id]
+                elif finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
-                    outcome = self._execute(tool_use.name, tool_use.input, obs, state)
-                    self._event("error" if outcome.is_error else "action", f"{tool_use.name}: {outcome.text}",
-                                {"timings": outcome.timings, "jev": self.judge is not None})
+                    outcome = self._act(tool_use, obs, state)
+                if outcome.timings is not None:  # it ran
                     if outcome.settle is not None:
                         settle = outcome.settle
                     launched = outcome.launched or launched
@@ -319,20 +330,76 @@ class Agent:
         return ModelRequest(model=self.task_model, system=system, tools=TOOL_SPECS, messages=messages,
                             max_tokens=max_tokens, cache_history=self.config.history_cache)
 
-    def _vision_call(self, route, system: str, messages: list[dict]):
-        """The main model decides this step. With vision_max_tokens, a reply that hit that cap before
-        finishing its tool call is asked again with the model's full max_tokens."""
+    def _act(self, call, obs: Observation, state: _TaskState) -> Outcome:
+        """Run one of the main model's tool calls and report it."""
+        outcome = self._execute(call.name, call.input, obs, state)
+        self._event("error" if outcome.is_error else "action", f"{call.name}: {outcome.text}",
+                    {"timings": outcome.timings, "jev": self.judge is not None})
+        return outcome
+
+    def _vision_call(self, route, system: str, messages: list[dict], act=None):
+        """The main model decides this step: (response, streamed). With vision_max_tokens, a reply that
+        hit that cap before finishing its tool call is asked again with the model's full max_tokens.
+        With vision_stream (and a provider that streams), `act` runs each tool call as soon as its
+        block is complete, before the reply ends."""
         full = route.spec.max_tokens
         cap = self.config.vision_max_tokens
         limit = min(cap, full) if cap > 0 else full
-        with self.timer.phase("model"):
-            response = route.adapter.complete(self._vision_request(route, system, messages, limit))
-        self._count_vision(response)
+        response = None
+        if act is not None and self.config.vision_stream and hasattr(route.adapter, "stream"):
+            response = self._vision_stream(route, system, messages, limit, act)
+            if response is not None and (response.stop_reason != "max_tokens" or limit >= full
+                                         or self._acted_early):
+                return response, True
+        if response is None:
+            with self.timer.phase("model"):
+                response = route.adapter.complete(self._vision_request(route, system, messages, limit))
+            self._count_vision(response)
         if response.stop_reason == "max_tokens" and limit < full:
             with self.timer.phase("model"):
                 response = route.adapter.complete(self._vision_request(route, system, messages, full))
             self._count_vision(response)
-        return response
+        return response, False
+
+    def _vision_stream(self, route, system: str, messages: list[dict], limit: int, act) -> ModelResponse | None:
+        """Stream the reply; thoughts go out and tool calls run as their blocks complete. The model's
+        time is the time spent waiting on the stream (an action in between is action time). Returns
+        None when the stream failed before anything ran (the caller asks again without streaming)."""
+        self._acted_early = False
+        seen: list[dict] = []
+        record = None
+        events = route.adapter.stream(self._vision_request(route, system, messages, limit))
+        while True:
+            try:
+                with self.timer.phase("model"):
+                    kind, value = next(events)
+            except StopIteration:
+                return None if not self._acted_early else ModelResponse(seen, "tool_use", None, None)
+            except ModelError as exc:
+                if not self._acted_early:
+                    return None
+                self.io.event("error", f"The rest of the reply was lost: {exc}")
+                return ModelResponse(seen, "tool_use", None, None)
+            if kind == "text":
+                seen.append({"type": "text", "text": value})
+                if value.strip():
+                    self.io.event("thought", value.strip())
+            elif kind == "tool_call":
+                seen.append({"type": "tool_call", "id": value.id, "name": value.name, "input": value.input})
+                self._last_record = None
+                act(value)
+                if not self._acted_early:
+                    self._acted_early = True
+                    record = self._last_record  # the step that gets this reply's tokens
+            elif kind == "response":
+                self._count_vision(value)
+                if record is not None and self._step_tokens:
+                    # The step already ran and was recorded: add the reply's tokens to its record.
+                    record.update(self._step_tokens)
+                    self._step_tokens = None
+                    with contextlib.suppress(Exception):
+                        self.io.record_step(record)
+                return value
 
     def _count_vision(self, response) -> None:
         # Count under the model the API says served this call, which verifies the model choice.
@@ -680,7 +747,7 @@ class Agent:
             # Device coordinates as 0-1 fractions: [x, y] per point (a swipe has two points).
             norm = [round(v / (shot.device_width if i % 2 == 0 else shot.device_height), 4)
                     for i, v in enumerate(points)] if shot else []
-            record({
+            self._last_record = row = {
                 "idx": state.step_index, "t": time.time(), "tool": name, "args": safe,
                 "norm_xy": norm or None, "package": obs.package,
                 "screen_w": shot.device_width if shot else None, "screen_h": shot.device_height if shot else None,
@@ -689,7 +756,8 @@ class Agent:
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
                 "done_via": outcome.done_via, **(outcome.tokens or {}),
-            })
+            }
+            record(row)
         except Exception as exc:  # the trajectory record must never break a task
             self.io.event("error", f"Step not recorded: {exc}")
 

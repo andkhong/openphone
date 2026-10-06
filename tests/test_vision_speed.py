@@ -269,6 +269,118 @@ def test_a_reply_cut_off_by_the_cap_is_asked_again_in_full(tmp_path):
     assert agent.usage.model_calls == 2  # both calls are counted
 
 
+# --- 4. act while streaming -------------------------------------------------------------
+
+
+def ns(**kw):
+    return SimpleNamespace(**kw)
+
+
+def stream_events(blocks, driver, seen, stop="tool_use"):
+    """Raw Messages stream events for `blocks` ((text) or (tool name, id, input)); records in `seen`
+    whether the phone had acted by the time the reply's end arrived."""
+    yield ns(type="message_start", message=ns(model="claude-sonnet-5-5", usage=ns(
+        input_tokens=900, output_tokens=1, cache_read_input_tokens=3000, cache_creation_input_tokens=200)))
+    for i, block in enumerate(blocks):
+        if isinstance(block, str):
+            yield ns(type="content_block_start", index=i, content_block={"type": "text", "text": ""})
+            for part in (block[:4], block[4:]):
+                yield ns(type="content_block_delta", index=i, delta=ns(type="text_delta", text=part))
+        else:
+            name, call_id, args = block
+            yield ns(type="content_block_start", index=i,
+                     content_block={"type": "tool_use", "id": call_id, "name": name, "input": {}})
+            text = json.dumps(args)
+            for part in (text[:5], text[5:]):
+                yield ns(type="content_block_delta", index=i, delta=ns(type="input_json_delta", partial_json=part))
+        yield ns(type="content_block_stop", index=i)
+    seen.append(list(driver.actions))
+    yield ns(type="message_delta", delta=ns(stop_reason=stop), usage=ns(output_tokens=42))
+    yield ns(type="message_stop")
+
+
+class StreamingClient:
+    def __init__(self, script, driver, fail_stream=False):
+        self.script = list(script)
+        self.driver = driver
+        self.fail_stream = fail_stream
+        self.requests = []
+        self.seen = []
+        self.messages = self
+
+    def create(self, stream=False, **kwargs):
+        self.requests.append({"stream": stream, **kwargs})
+        if stream and self.fail_stream:
+            raise ConnectionError("stream refused")
+        blocks = self.script.pop(0)
+        if stream:
+            return stream_events(blocks, self.driver, self.seen)
+        content = [SimpleNamespace(type="text", text=b) if isinstance(b, str) else tool_use(b[0], b[1], **b[2])
+                   for b in blocks]
+        return ns(content=content, stop_reason="tool_use", model="claude-sonnet-5-5",
+                  usage=ns(input_tokens=10, output_tokens=5, cache_read_input_tokens=0, cache_creation_input_tokens=0))
+
+
+class RecordingStepsIO(RecordingIO):
+    def __init__(self):
+        super().__init__()
+        self.records = {}
+
+    def record_step(self, step):
+        self.records[step["idx"]] = dict(step)
+
+
+def test_streamed_tool_calls_run_before_the_reply_ends(tmp_path):
+    driver = FakeDriver()
+    client = StreamingClient([["Going home.", ("press_key", "k", {"key": "HOME"})],
+                              [("done", "d", {"summary": "Done.", "success": True})]], driver)
+    io = RecordingStepsIO()
+    agent = make_agent(client, tmp_path, driver=driver, io=io, vision_stream=True)
+    result = agent.run("go home")
+    assert result.success and all(r["stream"] for r in client.requests)
+    assert ("key", "HOME") in client.seen[0]  # pressed before message_delta / message_stop arrived
+    assert [m for k, m in io.events if k == "thought"] == ["Going home."]  # once, not again at the end
+    assert agent.usage.model_input == 1800 and agent.usage.model_output == 84 and agent.usage.model_cache_read == 6000
+    first = io.records[1]  # recorded when it ran, then amended with the reply's tokens
+    assert (first["input_tokens"], first["output_tokens"], first["cache_read_tokens"], first["cache_write_tokens"]) \
+        == (900, 42, 3000, 200)
+    assert first["model_ms"] is not None
+    history = client.requests[1]["messages"]
+    assert history[1]["content"][0] == {"type": "text", "text": "Going home."}
+    assert history[1]["content"][1]["input"] == {"key": "HOME"}
+
+
+def test_a_failed_stream_falls_back_to_a_plain_call(tmp_path):
+    driver = FakeDriver()
+    client = StreamingClient([[("done", "d", {"summary": "Done.", "success": True})]], driver, fail_stream=True)
+    result = make_agent(client, tmp_path, driver=driver, vision_stream=True).run("finish")
+    assert result.success and [r["stream"] for r in client.requests] == [True, False]
+
+
+def test_streaming_is_off_by_default(tmp_path):
+    driver = FakeDriver()
+    client = StreamingClient([[("done", "d", {"summary": "Done.", "success": True})]], driver)
+    assert make_agent(client, tmp_path, driver=driver).run("finish").success
+    assert [r["stream"] for r in client.requests] == [False]
+
+
+def test_a_streamed_tool_call_cut_off_mid_input_never_runs():
+    from openmob.agent.models import AnthropicAdapter
+
+    def events():
+        yield ns(type="message_start", message=ns(model="m", usage=ns(input_tokens=5, output_tokens=0)))
+        yield ns(type="content_block_start", index=0, content_block={"type": "tool_use", "id": "x", "name": "type_text", "input": {}})
+        yield ns(type="content_block_delta", index=0, delta=ns(type="input_json_delta", partial_json='{"text": "half'))
+        yield ns(type="content_block_stop", index=0)
+        yield ns(type="message_delta", delta=ns(stop_reason="max_tokens"), usage=ns(output_tokens=512))
+
+    client = ns(messages=ns(create=lambda **kw: events()))
+    out = list(AnthropicAdapter(client).stream(ModelRequest("m", "", [], [{"role": "user", "content": "hi"}])))
+    assert [k for k, _ in out] == ["response"]
+    response = out[0][1]
+    assert response.stop_reason == "max_tokens" and response.usage.output == 512
+
+
 # --- 5. per-step tokens --------------------------------------------------------------
 
 
