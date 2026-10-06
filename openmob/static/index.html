@@ -1907,6 +1907,12 @@ let screenSocketAfter = 0;  // after a failed socket, poll until this time, then
 
 // What the panel says around the picture: a full cover before the first frame, a banner over a
 // stale frame when the phone reports a problem, and a badge for the stream's kind.
+// "Kalshi is asking for location: choose on your phone, then the task continues." -> the live view's card text.
+function ownerDialogText(message) {
+  const m = /^(.+?) is asking for (.+?):/.exec(message || "");
+  return m ? `${m[1]} is asking for ${m[2]}: answer on your phone.` : "A system dialog needs your answer: answer on your phone.";
+}
+
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
   const reconnecting = !!(last && last.device && last.device.reconnecting);
@@ -1915,12 +1921,14 @@ function renderScreenState() {
   // The phone's approval screen keeps itself out of screenshots and video on purpose (so neither the
   // agent nor a server can see or work it), which shows here as a black picture: say what's going on.
   const approving = !!deviceId && confirming && !offline && !reconnecting;
+  // A system dialog (a permission request) waits for the owner's answer on the phone: say so over the picture.
+  const dialogText = last && last.owner_dialog ? ownerDialogText(last.owner_dialog) : "";
   const cover = !deviceId || !hasFrame || approving;
   const message = !deviceId ? "No phone connected yet." : reconnecting ? "Reconnecting to your phone…" : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
     : approving ? "Waiting for your approval on the phone. The approval screen is hidden from the live view for your security."
-    : screenError ? screenError : "Connecting to the screen…";
+    : dialogText ? dialogText : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
-  $("screenOverlay").hidden = !cover && !screenError && !reconnecting;
+  $("screenOverlay").hidden = !cover && !screenError && !reconnecting && !dialogText;
   $("screenOverlay").classList.toggle("banner", !cover);
   $("screenMsg").textContent = message;
   const badge = $("liveBadge");

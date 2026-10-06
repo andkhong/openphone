@@ -142,7 +142,9 @@ class RemoteDriver(CachedScreenshots):
         self._wait_until: float | None = None  # monotonic deadline while the phone may come back
         # Gatekeeper phones (hello capability "gatekeeper", docs/phone-protocol.md): the phone owns approval.
         self.gate_mode: str | None = None  # the task's permission mode, sent with each act call (it can only tighten)
-        self.gate_task: str = ""  # the task id, sent with act calls (a purchase flow's permit is per task)
+        self.gate_task: str = ""
+        self.gate_task_text: str = ""  # the task's request, for the phone's just-in-time task prompt
+        self.gate_task_source: str = ""  # who asked (shown as "Server says")  # the task id, sent with act calls (a purchase flow's permit is per task)
         self._gate_hint: str = ""  # the server's own caution for the next act call (Agent._guard)
         # (GateRefused) -> bool: wait for the owner's answer on the phone (the agent sets it). True: re-send once.
         self.gate_approver = None
@@ -259,6 +261,8 @@ class RemoteDriver(CachedScreenshots):
                 params["mode"] = self.gate_mode
             if self.gate_task:
                 params["task"] = self.gate_task
+            if self.gate_task_text and "task_grant" in self.capabilities:
+                params["task_text"], params["task_source"] = self.gate_task_text[:300], self.gate_task_source[:60]
             if self._gate_hint:
                 params["hint"], self._gate_hint = self._gate_hint, ""
         try:
@@ -289,9 +293,9 @@ class RemoteDriver(CachedScreenshots):
             if verdict == "no_answer":
                 raise GateRefused("gate_no_answer", "The owner didn't answer the phone's prompt in time, so this "
                                   "didn't happen (they made no decision). Don't retry it now; call done or ask them.",
-                                  exc.rule, exc.package, exc.approval_id) from None
+                                  exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
             raise GateRefused("gate_denied", "The owner declined this on the phone. Don't do it; pick another "
-                              "approach or call done.", exc.rule, exc.package, exc.approval_id) from None
+                              "approach or call done.", exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
 
     def _call_once(self, method: str, _wait: bool = True, **params):
         """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""

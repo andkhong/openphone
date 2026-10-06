@@ -639,6 +639,34 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   your own name while a link is shown), never to chat titles or typed messages, and the "ends with you" rule is
   gone; Subscribe/Join are money in payment context and money-category apps too; a task grant covers only the
   kinds of risky step its request names and the task's first app plus apps the request names.
+- **D23 revised (just-in-time task approval, owner feedback, 2026-10-06):** no prompt at task start. Act calls
+  carry `task_text`/`task_source`; the first tap-level step whose kind the request names gets the task prompt
+  (worded from the request, "Next: <step>") instead of a per-step prompt, and approving it mints the same scoped
+  grant plus a permit for that step. Tasks with no tap-level step: 0 prompts; fingerprint steps keep their own
+  prompt. A `task_text` that doesn't match the grant's digest isn't covered. The phone trusts `task_text` only
+  as the wording the owner approves (it can't verify the server's request); the grant's scope comes from it.
+- **Decision D26 (permission dialogs on Android 14+, owner direction, 2026-10-06):** pausing for the owner went
+  against the MVP. The phone reads the hidden permission-controller window with on-device OCR (ML Kit text
+  recognition v2, bundled Latin model, arm64 only: the APK grows from about 4.4 MB to 24 MB) and rebuilds it as
+  a tree both engines judge the same way (`withOcr`/`with_ocr`): title → message, exact button texts → padded
+  clickable nodes, the dialog root clickable so any other tap asks; lines below confidence 0.5 are dropped.
+  Policy (both readable and OCR'd dialogs): the task's app may take what the owner's settings allow with no
+  prompt (default, owner decision: "Only this time" or the narrowest grant offered, notifications Allow,
+  Approximate); "Allow all the time" is refused (`gate_permission_choice`); `deny` refuses any grant; a grant while
+  Precise is selected (OCR: assumed until an Approximate tap goes through) is refused unless the owner allows
+  precise; another app's request, unknown buttons and unknown wording ask at tap level (refused under Don't
+  ask). Permission asks moved from fingerprint to tap level (D25 amended) and are never covered by a task grant
+  or "everyday". `needs_owner_dialog` remains for Safety Center, default-app pickers and OCR failure. Reads of an
+  identified system dialog are no longer blacked out; a window with no package from any source still is.
+  Trade-off: OCR misreads fail toward asking, but a dialog drawn by a malicious app to look like the permission
+  controller is out of scope (the window's package or event must be the permission controller).
+- **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
+  for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
+  for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window
+  is up); OpenMob or a blocked app is refused (`builtin:uninstall_protected`); an app it can't name asks (kind
+  `uninstall`, never covered by a task grant or "everyday"). App info: Uninstall itself is free (the confirmation
+  asks), Disable and Clear storage are delete-kind tap level (no longer fingerprint). A task grant covers an
+  uninstall when its request names uninstall/remove/delete and the app.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

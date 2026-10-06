@@ -67,8 +67,9 @@ Unknown methods are refused.
 - **Password fields** (never typed into), and `javascript:`, `intent:`, `file:`, `content:`, `data:` text.
 - **Links** other than `https`/`http` (checked against the app Android would open them in), `tel` (the dialer
   only), `geo`, `mailto`, `sms` and `market`.
-- **Taps into OpenMob's own screens, the system's biometric prompt and the lock screen**, and the package
-  installer.
+- **Taps into OpenMob's own screens, the system's biometric prompt and the lock screen**, and **installing
+  apps** through the package installer (APK installs, Install/Update in the installer). Uninstalling OpenMob or
+  a blocked-category app is refused too.
 
 **Asked on the phone, with its own words and screen lock:** money commits ("Buy now", "Place your order",
 "Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
@@ -91,8 +92,10 @@ or Do Not Disturb) never ask.
 - **"Always allow this"** (off by default) also grants that kind for 7 days (purchases: 24 hours, after a
   second confirmation), per app (a share: per target; a Settings page: that page; never for autofill in
   browsers). Grants are signed with the screen lock and listed on the phone.
-- **Task approval** (on by default, owner-switchable with `task_approval`): at the start of a task the phone asks
-  once, worded from the request itself ("Agent wants to: … Allow the steps this needs?"). Approved, the task's
+- **Task approval** (on by default, owner-switchable with `task_approval`), just in time: nothing is asked at
+  task start. The first step that would need a tap (sending, sharing to someone else, deleting) asks for the
+  whole task instead, worded from the request itself with that step as the detail ("Agent wants to: … Allow the
+  steps this needs? Next: tap Send in Messenger"). A task with no such step sees no prompt. Approved, the task's
   non-money risky steps run without more prompts for up to 30 minutes or 25 steps; purchases, browser autofill
   and permission dialogs still ask, and hard denies still refuse. Declining stops the task. A request you typed
   or said on the phone itself needs no task prompt. "Subscribe" or "Join" count as money only with a price on
@@ -143,14 +146,16 @@ Owner principle: a fingerprint is for money and dangerous requests, never for ba
    can't approve anything that needs a fingerprint. While a prompt is up, and for a second after it closes, the
    phone performs no agent gesture, and Allow ignores taps for half a second after the prompt appears.
 3. **Your fingerprint or PIN:** purchases (a price, a billing sheet) and dangerous steps: saved cards or
-   passwords on a web page, OTP and card fields, app permission grants, and any change on a Settings page the
-   phone doesn't recognize (never covered by a task approval or "Don't confirm everyday actions").
+   passwords on a web page, OTP and card fields, and any change on a Settings page the phone doesn't recognize
+   (never covered by a task approval or "Don't confirm everyday actions"). A permission dialog that asks (another
+   app's request, a grant wider than your setting) is a tap, never covered by a task approval or "everyday".
 
 Hard denies are unchanged. **"Don't confirm everyday actions"** (off by default; turning it on is approved on
 the phone with your fingerprint, turning it off is immediate) makes level 2 run without a tap; money still asks
 unless "Also allow purchases". A task request that says "…don't ask me" has an effect only through this setting:
 the phone can't tell such a request from a forged one, so the words alone change nothing. With the setting on,
-tasks don't need a task approval either; otherwise the task approval is a tap-level prompt.
+tasks don't need a task approval either; otherwise the task approval is a tap-level prompt, shown at the first
+step that needs one.
 
 ## Phones and their connections
 
@@ -294,8 +299,11 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   keyboards, date and time, unknown sources…) are **refused in every mode**, including the way into
   them. Everyday pages (Wi-Fi, Bluetooth, display and dark mode, sound, battery, location, per-app
   notifications) never ask. Pairing a new Bluetooth device and changes on pages OpenMob doesn't
-  recognise ask. On an app's info page, Force stop and Clear cache run; Uninstall, Disable and Clear
-  storage ask; anything on a blocked app's info page is refused.
+  recognise ask. On an app's info page, Force stop and Clear cache run; Disable and Clear storage are a
+  delete (a tap); Uninstall opens the system's confirmation, and its OK is a delete (a tap) for the app it names
+  (an app the phone can't name asks and isn't covered by a task approval or "everyday"). A task approval whose
+  request says uninstall/remove/delete covers it, as does "Don't confirm everyday actions". Anything on a
+  blocked app's or OpenMob's info page is refused.
 - **Autofill and saved credentials** ("Use saved password", passkeys, saved cards) ask, and are
   refused under Don't ask.
 - The screen classifier can still only add caution: it can make a tap risky, never make it requested.
@@ -409,19 +417,23 @@ These are server-side checks. On phones with the gatekeeper the phone runs the s
 **Android permission dialogs** ("Allow Kalshi to access this device's location?") are answered by rule at
 observation time, before any model sees the screen, and recorded as a fast step (`handled_by:
 "permission_rule"`), by the owner's `permission_prompts` settings: location, camera, microphone, contacts,
-photos and media, phone, SMS, calendar and nearby devices each `ask` (default: the owner is asked on the phone),
-`once`, `while_using` or `deny`; location accuracy `approximate` (default: the Approximate card is chosen before
-granting) or `precise`; notifications `deny` (default) or `allow`. "Allow all the time" is never chosen by
-rule: if it's the only grant offered, the owner is asked. A request from an app other than the task's always
-asks; under Don't ask anything that would ask is denied. Allowing more is a loosening: it needs the phone's
-screen-lock approval, and on gatekeeper phones the phone keeps these settings as signed policy and enforces
-them itself (a per-app "Always allow for <app>" on its prompt is a signed grant); asking more is free.
-**On Android 14 and later these defaults can't be applied automatically:** the system hides permission
-dialogs (and Safety Center and default-apps screens) from accessibility services, so the phone can't read or
-safely tap them. The task pauses with "Kalshi is asking for location: choose on your phone, then the task
-continues" (on the phone and in the task's events), the owner answers the dialog, and the task carries on; if
-nobody answers within `owner_dialog_wait_seconds` (5 minutes), it ends with reason `needs_owner_dialog`. The
-defaults apply on Android 11–13.
+photos and media, phone, SMS, calendar, nearby devices, physical activity and body sensors each `once`
+(default, owner decision: "Only this time", or the narrowest grant the dialog offers, with no prompt), `ask`
+(the owner is asked on the phone), `while_using` or `deny` (only "Don't allow" goes through); location accuracy
+`approximate` (default: the Approximate card is chosen before granting) or `precise`; notifications `allow`
+(default) or `deny`. These apply to the app the task is using. **"Allow all the time" is never chosen** (the
+phone refuses it with `gate_permission_choice`; if it's the only grant offered, the request is denied). A
+request from an app other than the task's asks (a tap); under Don't ask anything that would ask is denied.
+Allowing more is a loosening: it needs the phone's screen-lock approval, and on gatekeeper phones the phone
+keeps these settings as signed policy and enforces them itself (a per-app "Always allow for <app>" on its
+prompt is a signed grant); asking more is free. **On Android 14 and later** the system hides permission
+dialogs from accessibility services; the phone reads them from its own screenshot with on-device OCR (offline)
+and applies the same rules, so a compromised server can't grant a permission to another app without the
+owner, can never grant background location, and can't get past a `deny` setting. A low-confidence or
+unfamiliar dialog asks. Safety Center and default-app screens (and a permission dialog when OCR is
+unavailable) still pause the task until the owner answers them on the phone ("Kalshi is asking for location:
+answer on your phone", also on the dashboard's live view); if nobody answers within
+`owner_dialog_wait_seconds` (5 minutes), the task ends with reason `needs_owner_dialog`.
 
 ## Sensitive apps are off-limits by default
 

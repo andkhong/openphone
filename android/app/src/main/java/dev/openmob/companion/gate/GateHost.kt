@@ -10,6 +10,7 @@ import dev.openmob.companion.AppState
 import dev.openmob.companion.ApprovalKeys
 import dev.openmob.companion.Approvals
 import dev.openmob.companion.OpenMobAccessibilityService
+import dev.openmob.companion.PermissionOcr
 import dev.openmob.companion.PhoneActions
 import dev.openmob.companion.Settings
 import org.json.JSONArray
@@ -90,6 +91,15 @@ object GateHost {
         private set
     /** Told when that dialog closes (ConnectionService: owner_dialog closed, drop the notification). */
     @Volatile var onOwnerDialogClosed: (() -> Unit)? = null
+
+    /** The hidden permission dialog as the gate reads it from OCR (its text lines and buttons), or null. */
+    fun ocrNodes(service: OpenMobAccessibilityService): List<GNode>? {
+        val g = gk()
+        val base = GateScreens.dialogScreen(service)
+        if (g.ocrWindow(base) == null) return null
+        val read = g.ocrPreview(base.withOcr(PermissionOcr.read(service) ?: return null))
+        return read.windows.firstOrNull { it.root?.cls == "OCRDialog" }?.root?.children
+    }
 
     /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
     fun ownerDialogOpened(message: String) { ownerDialog = message }
@@ -190,13 +200,16 @@ object GateHost {
             if (x != null && y != null) x to y else null
         }
         var screen = GateScreens.capture(service, urls, launch, points)
+        // A permission dialog Android hides from accessibility: read it with the phone's own OCR (the gate judges it).
+        if (gk().ocrWindow(screen) != null) screen = screen.withOcr(PermissionOcr.read(service))
         if (method == "key" && params["name"]?.toString()?.uppercase() == "ENTER") {
             // ENTER in a browser's URL bar opens what's typed there: resolve it like open_url.
             GateScreen.focusedField(screen)?.node?.text?.trim()?.takeIf { GateText.looksLikeUrl(it) }?.let { text ->
                 val url = if (GateText.urlScheme(text) == null) "https://$text" else text
                 screen = GScreen(screen.windows, screen.keyguardLocked, screen.keyguardSecure, screen.quietMs,
                     screen.activity, screen.autofillService, mapOf(url to GateScreens.resolve(service.packageManager, url)),
-                    screen.labels, screen.focusExpected, screen.focusWindow, screen.focusNode, screen.focusAncestors, eventPackage = screen.eventPackage, eventText = screen.eventText)
+                    screen.labels, screen.focusExpected, screen.focusWindow, screen.focusNode, screen.focusAncestors, eventPackage = screen.eventPackage, eventText = screen.eventText,
+                    owner = screen.owner, ocr = screen.ocr)
             }
         }
         return screen
@@ -214,7 +227,7 @@ object GateHost {
         val crop = point?.let { (x, y) -> runCatching { PhoneActions(service).crop(x, y) }.getOrNull() }
         crop?.let { gk().setCrop(adm.approvalId, GateText.sha256(it)) }
         // A task prompt names who asked (as the server says: it's shown on the labeled "Server says" line).
-        val hint = if (adm.kind == "task") "Requested by ${adm.params["source"]?.toString()?.take(60).orEmpty().ifEmpty { "an agent" }}"
+        val hint = if (adm.kind == "task") "Requested by ${(adm.params["source"] ?: adm.params["task_source"])?.toString()?.take(60).orEmpty().ifEmpty { "an agent" }}"
             else adm.params["hint"]?.toString()?.trim().orEmpty()
         val offer = adm.grantOffer
         main.post {

@@ -186,12 +186,21 @@ class GScreen(
     val eventPackage: String = "", val eventText: String = "",
     /** The owner's own names (paired account, profile): "self" recipients. */
     val owner: List<String> = emptyList(),
+    /** The phone's own OCR of a system dialog Android hides from accessibility (a permission dialog), as text lines.
+     *  Null: not read (no such dialog, or OCR unavailable). */
+    val ocr: List<GOcrLine>? = null,
 ) {
     val ordered: List<GWindow> get() = windows.sortedByDescending { it.layer }
 
     /** The same screen with [ms] of quiet: how long the target itself has been still (GateHost.reverify). */
     fun withQuiet(ms: Long) = GScreen(windows, keyguardLocked, keyguardSecure, ms, activity, autofillService, resolve, labels,
-        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner)
+        focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr)
+
+    fun withWindows(ws: List<GWindow>) = GScreen(ws, keyguardLocked, keyguardSecure, quietMs, activity, autofillService, resolve,
+        labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, ocr)
+
+    fun withOcr(lines: List<GOcrLine>?) = GScreen(windows, keyguardLocked, keyguardSecure, quietMs, activity, autofillService,
+        resolve, labels, focusExpected, focusWindow, focusNode, focusAncestors, available, eventPackage, eventText, owner, lines)
 
     companion object {
         fun of(d: Map<String, Any?>): GScreen {
@@ -213,6 +222,7 @@ class GScreen(
                 available = d["accessibility"] != false,
                 eventPackage = d["event"].obj().str("package"), eventText = d["event"].obj().str("text"),
                 owner = d["owner"].strings(),
+                ocr = (d["ocr"] as? List<*>)?.map { GOcrLine.of(it.obj()) },
             )
         }
     }
@@ -223,6 +233,15 @@ fun walk(node: GNode?, out: MutableList<GNode> = mutableListOf(), limit: Int = 2
     out.add(node)
     for (c in node.children) walk(c, out, limit)
     return out
+}
+
+/** One line of text the phone's OCR read, with its box (screen pixels) and confidence (0..1). */
+class GOcrLine(val text: String, val bounds: IntArray, val conf: Double = 1.0) {
+    companion object {
+        fun of(d: Map<String, Any?>) = GOcrLine(d.str("text"),
+            d["bounds"].list().map { (it as Number).toInt() }.toIntArray().let { if (it.size == 4) it else IntArray(4) },
+            (d["conf"] as? Number)?.toDouble() ?: 1.0)
+    }
 }
 
 class GTarget(val window: GWindow, val path: List<GNode>) {

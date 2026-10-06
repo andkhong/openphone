@@ -191,6 +191,19 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     /** The gatekeeper's prompt picture: the screen around device point (x, y) with a crosshair on it, as JPEG.
      *  Null when the screen can't be captured (the prompt then shows only its words). */
+    /** The whole screen as a software bitmap (the caller recycles it), for on-device OCR; null if it can't be
+     *  captured. */
+    fun screenBitmap(): Bitmap? {
+        val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+        if (wait > 0) SystemClock.sleep(wait)
+        val result = captureOnce().result ?: return null
+        lastCaptureAt = SystemClock.uptimeMillis()
+        return result.hardwareBuffer.use { buffer ->
+            val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+            try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() }
+        }
+    }
+
     fun crop(x: Int, y: Int): ByteArray? {
         val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
         if (wait > 0) SystemClock.sleep(wait)
@@ -277,6 +290,15 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** Never errors: any failure yields []. */
     private fun uiElements(): JSONArray {
         val out = JSONArray()
+        // A permission dialog Android hides from accessibility: its text as the phone's OCR reads it (class OCRText),
+        // first, so the agent can target "Only this time" (the gatekeeper judges taps on the same reading).
+        runCatching { GateHost.ocrNodes(service) }.getOrNull()?.forEach { n ->
+            out.put(JSONObject().put("text", n.text).put("desc", "")
+                .put("resource_id", if (n.id == "permission_message") "ocr_permission_message" else "")
+                .put("cls", "OCRText").put("clickable", n.clickable)
+                .put("checked", n.checked ?: JSONObject.NULL)
+                .put("bounds", JSONArray().put(n.bounds[0]).put(n.bounds[1]).put(n.bounds[2]).put(n.bounds[3])))
+        }
         try {
             val deadline = SystemClock.uptimeMillis() + UI_DEADLINE_MS
             val windows = service.windows

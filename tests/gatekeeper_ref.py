@@ -17,7 +17,7 @@ import json
 import re
 import unicodedata
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace as dc_replace
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -201,6 +201,9 @@ class Screen:
     event: dict = field(default_factory=dict)  # the last window-state event: {package, text}
     owner: list = field(default_factory=list)  # the owner's own names (profile, paired account): "self" recipients
     labels: dict = field(default_factory=dict)
+    # The phone's own OCR of a system dialog Android hides from accessibility (a permission dialog): text lines
+    # [{text, bounds, conf}]. None: not read (no such dialog, or OCR unavailable).
+    ocr: list | None = None
 
     @classmethod
     def of(cls, d: dict) -> "Screen":
@@ -212,7 +215,7 @@ class Screen:
                    focus_expected=bool((d.get("focus") or {}).get("expected")),
                    focus=d.get("focus") or {},
                    available=d.get("accessibility", True) is not False, event=d.get("event") or {},
-                   owner=list(d.get("owner") or []))
+                   owner=list(d.get("owner") or []), ocr=d.get("ocr"))
 
     def ordered(self) -> list[Window]:
         return sorted(self.windows, key=lambda w: -w.layer)
@@ -549,6 +552,7 @@ class Pending:
     counted: bool = False
     digest: str = ""  # a task prompt: the request text's digest
     text: str = ""  # a task prompt: the request text (the grant's scope comes from it)
+    step: bool = False  # a just-in-time task prompt: approving it also permits the step that raised it
     level: str = "fingerprint"  # tap: an on-phone Allow/Deny signed with the tap key; fingerprint: the screen lock  # shown to the owner (only shown prompts count toward the prompt limit)
 
 
@@ -607,6 +611,7 @@ class Gatekeeper:
         self.grants: list[Grant] = []
         self.ceiling = "auto"
         self.perm_defaults: dict[str, str] = {}  # the owner's signed (or tightened) permission-dialog defaults
+        self.accuracy_choice: tuple | None = None  # (window id, precise|approximate): the OCR'd dialog's card tapped
         self.never: dict | None = None  # {issued, duration_ms, allow_money}
         self.tokens = float(self.r.limits["act_burst"])
         self.last_refill = self.clock.elapsed
@@ -783,6 +788,7 @@ class Gatekeeper:
         now = self.now()
         self._expire(now)
         params = params or {}
+        screen = self.with_ocr(screen)
         if method in self.r.meta:
             return Admission("allow", method=method, params=params)
         if method in self.r.d["methods"]["task"]:
@@ -862,8 +868,21 @@ class Gatekeeper:
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule=why, money=risk.money, **base)
         if mode != "ask" and self._task_covers(risk, params, j.package, screen):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
-        if mode != "ask" and self.everyday and self.level(risk) == "tap":
+        if mode != "ask" and self.everyday and self.level(risk) == "tap" and risk.kind not in ("permission",
+                                                                                             "uninstall"):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
+        # Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
+        # (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
+        task = str(params.get("task") or "")
+        text = " ".join(str(params.get("task_text") or "").split())[:300]
+        lazy = (mode != "ask" and task and text and self.level(risk) == "tap" and risk.kind not in ("task", "step")
+                and risk.kind in self._task_kinds(text))
+        if lazy and any(o["digest"] == sha256(text) and o["expires"] > now for o in self.own_requests):
+            self._mint_task(task, sha256(text), text)
+            self.note_task_app(params, j.package if j.app else self.last_app, True)
+            if self._task_covers(risk, params, j.package, screen):
+                return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant:own_request",
+                                 **base)
         window = self.r.limits["ask_window_ms"]
         self.asks = [t for t in self.asks if now - t < window]
         if len(self.asks) >= self.r.limits["asks_per_window"]:
@@ -872,6 +891,17 @@ class Gatekeeper:
                                 f"Too many approval prompts on the phone: try again in {wait} min.",
                                 method, params, j.package)
         aid = "gk" + uuid.uuid4().hex  # gate prompts are "gk…"; the legacy approval path refuses such ids
+        if lazy and (task not in self.task_grants or self.task_grants[task]["digest"] != sha256(text)
+                     or now >= self.task_grants[task]["expires"]):
+            wording = f"Agent wants to: {text}. Allow the steps this needs? Next: {risk.wording}"
+            p = Pending(aid, bind, now, Risk("task", "task", wording=wording), j.package if j.app else self.last_app,
+                        task, None, level="tap")
+            p.digest, p.text, p.step = sha256(text), text, True
+            self.pending[aid] = p
+            self.events.append({"state": "pending", "approval_id": aid})
+            return Admission("ask", code="gate_needs_approval", rule=f"risk:task:{risk.reason}", kind="task",
+                             approval_id=aid, wording=wording, binding=bind, level="tap",
+                             message="Waiting for the owner's approval of this task on the phone.", **base)
         offer = self._offer(risk, mode)
         self.pending[aid] = Pending(aid, bind, now, risk, j.package, str(params.get("task") or ""), offer,
                                     level=self.level(risk))
@@ -932,15 +962,20 @@ class Gatekeeper:
     def _mint_task(self, task: str, digest: str, text: str = "") -> None:
         """The grant covers what the request names: the first app the task works in plus apps the request names,
         and only the kinds of risky step its words ask for (a "share" request doesn't cover deleting or posting)."""
+        self.task_grants[task] = {"digest": digest, "expires": self.now() + self.r.limits["task_grant_ms"],
+                                  "used": 0, "apps": set(), "first": "", "words": tokens(text),
+                                  "kinds": self._task_kinds(text)}
+
+    def _task_kinds(self, text: str) -> set:
+        """The kinds of risky step a request's words ask for."""
         toks = tokens(text)
         kinds = {"other", "fill"}
         for kind, extra in (("send", ["share", "message", "text", "reply", "forward", "email", "tell"]),
                             ("share", ["share", "send", "forward"]), ("post", ["share"]),
-                            ("delete", ["unsubscribe", "clear", "remove", "empty"])):
+                            ("delete", ["unsubscribe", "clear", "remove", "empty", "uninstall"])):
             if any_phrase(toks, self.r.w.get(kind, []) + extra):
                 kinds.add(kind)
-        self.task_grants[task] = {"digest": digest, "expires": self.now() + self.r.limits["task_grant_ms"],
-                                  "used": 0, "apps": set(), "first": "", "words": toks, "kinds": kinds}
+        return kinds
 
     @staticmethod
     def level(risk: Risk) -> str:
@@ -948,8 +983,7 @@ class Gatekeeper:
         cards and passwords in a browser or web page, OTP or card fields, permission grants); a simple on-phone
         Allow/Deny for everyday-but-consequential ones (messages and shares to others, posts, deletes, native
         autofill, unrecognized Settings changes, menus the server worries about). Low-risk actions never get here."""
-        if risk.money or risk.reason.startswith("permission:") or (risk.kind == "fill" and risk.grant is None) \
-                or risk.kind == "settings":
+        if risk.money or (risk.kind == "fill" and risk.grant is None) or risk.kind == "settings":
             return "fingerprint"  # a Settings change the phone didn't recognize fails closed (D2): never a tap
         return "tap"
 
@@ -966,10 +1000,15 @@ class Gatekeeper:
         g = self.task_grants.get(str(params.get("task") or ""))
         if g is None or self.now() >= g["expires"] or g["used"] >= self.r.limits["task_grant_steps"]:
             return False
+        text = " ".join(str(params.get("task_text") or "").split())[:300]
+        if text and sha256(text) != g["digest"]:
+            return False  # the grant was for another request
         if risk.kind in ("task", "step") or self.level(risk) != "tap" or risk.kind not in g["kinds"]:
             return False
         app = package if package and (screen is None or any(
             w.package == package and self._app_window(w) for w in screen.windows)) else self.last_app
+        if risk.reason.startswith("uninstall:"):
+            app = risk.grant or ""  # an uninstall counts as the app it removes
         label = tokens((screen.labels.get(app) if screen else "") or "")
         if app != g["first"] and not (label and has_phrase(g["words"], " ".join(label))):
             return False
@@ -983,7 +1022,9 @@ class Gatekeeper:
         phone can't identify yet (it may be a blocked app still loading)."""
         if any(self.r.blocked(w.package) for w in screen.windows):
             return "builtin:sensitive_apps"
-        if any(not w.package and w.type == "application" for w in screen.windows):
+        # A system dialog Android hides from accessibility (a permission dialog: its window has no readable root) is
+        # identified from its window-state event: not sensitive, so reads show it; acts on it stay refused.
+        if any(not w.package and w.type == "application" for w in screen.windows) and not self.owner_dialog(screen):
             return "builtin:unknown_window"
         return ""
 
@@ -1096,8 +1137,12 @@ class Gatekeeper:
             return False
         del self.pending[approval_id]
         self.prompt_closed = now
-        if p.risk.kind == "task":  # the owner approved the task: a grant, not a one-shot permit
+        if p.risk.kind == "task":  # the owner approved the task: a grant (and the step that asked)
             self._mint_task(p.task, p.digest, p.text)
+            if p.step:
+                self.permits[p.binding] = now + self.r.limits["permit_ms"]
+                if p.package:
+                    self.task_grants[p.task]["first"] = self.task_grants[p.task]["first"] or p.package
             self.events.append({"state": "approved", "approval_id": approval_id})
             return True
         self.permits[p.binding] = now + self.r.limits["permit_ms"]
@@ -1141,6 +1186,7 @@ class Gatekeeper:
     def reverify(self, adm: Admission, screen: Screen) -> Admission:
         if adm.decision != "allow" or adm.method not in self.r.act:
             return adm
+        screen = self.with_ocr(screen)
         # No gesture while a prompt is up, or just after one closed: an action admitted a moment before could land on
         # its Allow (B1). The approved action itself (its permit) goes ahead.
         if adm.method != "wake_unlock" and not adm.permit and (
@@ -1178,7 +1224,94 @@ class Gatekeeper:
             if start is not None:
                 self.followup = {**start, "acts": 0,
                                  "expires": self.now() + self.r.limits["purchase_followup_ms"]}
+        self._note_accuracy(adm, screen)
         return adm
+
+    # --- permission dialogs Android hides from accessibility (Android 14+): the phone's own OCR -------------
+
+    def _ocr_window(self, screen: Screen) -> Window | None:
+        """The permission-controller window with no readable tree (identified by its package, or by the last
+        window-state event when Android hides even that)."""
+        perm = re.compile(self.r.s["permission_packages"])
+        event_pkg = str(screen.event.get("package") or "")
+        for w in screen.ordered():
+            if w.type != "application":
+                continue
+            unread = w.root is None or not any(n.text or n.desc for n in walk(w.root, []))
+            if unread and (perm.search(w.package or "") or (not w.package and perm.search(event_pkg))):
+                return w
+        return None
+
+    def text_role(self, text: str) -> str | None:
+        toks = tokens(text)
+        for role, label in self.r.d["permission_dialog"]["button_texts"]:
+            if toks and toks == tokens(label):
+                return role
+        return None
+
+    def perm_app(self, message: str) -> str | None:
+        """The requesting app's name, from the dialog's title ("Allow Kalshi to ...")."""
+        for rx in self.r.d["permission_dialog"]["titles"]:
+            m = re.search(rx, message)
+            if m:
+                return m.group(1).strip()
+        return None
+
+    def with_ocr(self, screen: Screen) -> Screen:
+        """The screen with the hidden permission dialog rebuilt from the phone's OCR: the title as its message, each
+        line that reads exactly as a button as a clickable node (its box padded), the rest as text. The dialog's
+        root is clickable, so a tap anywhere else in it (a button OCR missed, a low-confidence line) asks."""
+        w = self._ocr_window(screen)
+        if w is None:
+            self.accuracy_choice = None  # the dialog is gone: its card choice with it
+            return screen
+        if screen.ocr is None:
+            return screen
+        o = self.r.d["permission_dialog"]["ocr"]
+        lines = sorted((b for b in screen.ocr if str(b.get("text", "")).strip()
+                        and float(b.get("conf", 1.0)) >= o["min_conf"]),
+                       key=lambda b: (b["bounds"][1], b["bounds"][0]))
+        pad = o["pad"]
+        start = re.compile(o["title_start"])
+        title, taking = [], False
+        nodes = []
+        choice = self.accuracy_choice if self.accuracy_choice and self.accuracy_choice[0] == w.id else None
+        for b in lines:
+            text = " ".join(str(b["text"]).split())
+            role = self.text_role(text)
+            l, t, r, bt = (int(v) for v in b["bounds"])
+            if role is not None:
+                taking = False
+                checked = None
+                if role in ("precise", "approximate"):  # OCR can't see the radio: Android pre-selects Precise
+                    checked = role == (choice[1] if choice else "precise")
+                nodes.append(Node(text=text, id="ocr", cls="OCRText", bounds=(l - pad, t - pad, r + pad, bt + pad),
+                                  clickable=True, checked=checked))
+                continue
+            if not title and start.search(text):
+                taking = True
+            if taking and len(title) < o["title_lines"]:
+                title.append(text)
+                taking = not text.endswith("?")
+            nodes.append(Node(text=text, cls="OCRText", bounds=(l, t, r, bt)))
+        message = " ".join(title) or " ".join(n.text for n in nodes if not n.clickable) or "?"
+        nodes.insert(0, Node(text=message, id="permission_message", cls="OCRText"))
+        root = Node(cls="OCRDialog", bounds=w.bounds, clickable=True, children=nodes)
+        pkg = w.package or str(screen.event.get("package") or "")
+        rebuilt = Window(w.id, w.type, w.layer, pkg, w.title, w.bounds, root)
+        return dc_replace(screen, windows=[rebuilt if x is w else x for x in screen.windows])
+
+    def _note_accuracy(self, adm: Admission, screen: Screen) -> None:
+        """A tap on the OCR'd dialog's Precise or Approximate card that goes ahead: OCR can't see which is chosen,
+        so the phone remembers it (until another dialog)."""
+        if adm.method != "tap":
+            return
+        t = hit_test(self.r, screen, float(adm.params.get("x", -1)), float(adm.params.get("y", -1)))
+        if t is None or t.window.root is None or t.window.root.cls != "OCRDialog":
+            return
+        role = self._perm_role(t)
+        if role in ("precise", "approximate"):
+            self.accuracy_choice = (t.window.id, role)
 
     # --- the judge: what the action touches and how risky it is ---------------------------
 
@@ -1213,6 +1346,28 @@ class Gatekeeper:
             return self._judge_url(str(params.get("url", "")), screen, method)
         return Judgement()  # wake_unlock: wakes the screen, never touches a secure lock
 
+    def _uninstall_dialog(self, w: Window) -> bool:
+        rx = re.compile(self.r.d["uninstall"]["message"])
+        return any(rx.search(n.text or "") for n in walk(w.root, []))
+
+    def _uninstall_target(self, w: Window, screen: Screen) -> str:
+        """The app an uninstall dialog or app-info page is about: the installed app whose label it shows (the
+        longest match), "protected" for OpenMob or a blocked app, "" if the phone can't tell."""
+        texts = [tokens(n.text) for n in walk(w.root, []) if n.text]
+        if any(has_phrase(tx, own) for tx in texts for own in self.r.d["uninstall"]["own_labels"]):
+            return "protected"
+        best, size = "", 0
+        for pkg, lbl in screen.labels.items():
+            lt = tokens(lbl)
+            if pkg in self.r.installers or pkg == w.package or not lt:
+                continue
+            if any(has_phrase(tx, " ".join(lt)) for tx in texts):
+                if self.r.blocked(pkg) or pkg in self.r.own:
+                    return "protected"
+                if len(lt) > size:
+                    best, size = pkg, len(lt)
+        return best
+
     def _surface_refusal(self, w: Window, t: Target | None) -> tuple | None:
         r = self.r
         if not w.package:
@@ -1226,7 +1381,7 @@ class Gatekeeper:
             if title.search(w.title or "") or any(ids.search(n.id or "") for n in walk(w.root, [])):
                 return ("gate_denied_page", "builtin:prompt_surface",
                         "That's the lock screen or a system approval prompt; agents can't touch it.")
-        if w.package in r.installers:
+        if w.package in r.installers and not self._uninstall_dialog(w):
             return ("gate_denied_page", "builtin:installer", "Installing apps is off-limits to agents.")
         if r.blocked(w.package):
             return ("gate_blocked_app", "builtin:sensitive_apps",
@@ -1238,7 +1393,7 @@ class Gatekeeper:
         r = self.r
         return (w.type == "application" and w.package != r.surf["systemui"] and not self._is_settings(w)
                 and w.package not in r.surf["share_packages"] and w.package not in r.surf["credential_packages"]
-                and not re.search(r.s["permission_packages"], w.package or ""))
+                and not re.search(r.s["permission_packages"], w.package or "") and w.package not in r.installers)
 
     def _is_settings(self, w: Window) -> bool:
         if self.r.settings_pkg.search(w.package or ""):
@@ -1266,6 +1421,8 @@ class Gatekeeper:
                 return ("blocked", "builtin:app_info_blocked")
             if any_phrase(label, s["app_info_ask"]):
                 return ("ask", page)
+            if any_phrase(label, s["app_info_delete"]):
+                return ("delete", page)
             if any_phrase(label, s["app_info_allowed"]):
                 return ("allow", "")
             return ("none", "")
@@ -1291,8 +1448,8 @@ class Gatekeeper:
             return False
         message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
         if message:
-            m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", message)
-            return bool(m) and tokens(m.group(1)) == session
+            app = self.perm_app(message)
+            return app is not None and tokens(app) == session
         if re.compile(self.r.s["permission_packages"]).search(w.package or ""):
             below = [x for x in screen.ordered() if x.layer < w.layer and x.type == "application"]
             return bool(below) and below[0].package == self.last_app
@@ -1311,49 +1468,70 @@ class Gatekeeper:
                 return role
         return None
 
-    def _permission_dialog(self, w: Window, t: Target, screen: Screen) -> Risk | None:
-        """A tap in a runtime permission dialog. Denying (and "Approximate") is always fine; "Allow all the time"
-        always asks; another app's request asks; the task's own app follows the owner's settings (signed per-app
-        "Always allow" grants, then the signed defaults, then the built-in ones: notifications deny, the rest ask,
-        location approximate)."""
+    def _permission_dialog(self, w: Window, t: Target, screen: Screen):
+        """A tap in a runtime permission dialog: a Risk, None, or a refusal (code, rule, message). Denying (and
+        "Approximate") is always fine. "Allow all the time" never. The owner's settings: `deny` lets only "Don't
+        allow" through; the task's own app may then grant what they allow without a prompt (signed per-app grants
+        first; built in: while using the app, notifications allowed, location approximate); another app's request
+        and a button the phone doesn't recognize ask (a tap-level prompt)."""
         pd = self.r.d["permission_dialog"]
         message = next((n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text), "")
         kind = next((k for k, rx in pd["kinds"] if re.search(rx, message)), "other")
         role = self._perm_role(t)
-        m = re.match(r"(?i)^allow\s+(.+?)\s+to\s", message)
-        name = m.group(1) if m else "this app"
+        name = self.perm_app(message) or "this app"
         if role is None:
-            # A button the phone doesn't recognize (other ids, another language) may grant: ask.
+            # A button the phone doesn't recognize (other ids, another language, OCR it couldn't read) may grant: ask.
             changing = t.pressed is not None and (t.pressed.clickable or t.pressed.long_clickable
                                                   or t.pressed.checked is not None)
             return Risk("permission", "permission:unknown", always=True,
                         wording=f"Allow {name}'s permission request?") if changing else None
         if role in ("deny", "deny_forever", "approximate"):
             return None
-        what = "precise location" if role == "precise" else kind.replace("_", " ")
-        wording = f"Allow {name} to use your {what}{' all the time' if role == 'always' else ''}?"
         if role == "always":
-            return Risk("permission", "permission:always", always=True, wording=wording)
-        if not self._session_app_asks(w, screen, page_title(w)):
-            return Risk("settings", "permission:other_app", always=True, wording=wording)
-        app = self.last_app
+            return ("gate_permission_choice", "permission:always",
+                    "Never \"Allow all the time\": tap \"While using the app\" (or \"Only this time\") instead.")
+        what = "precise location" if role == "precise" else kind.replace("_", " ")
+        wording = f"Allow {name} to use your {what}?"
         if role == "precise":
-            value, ok = "precise", self.perm_setting("location_accuracy") == "precise"
-            kind = "location_accuracy"
+            value, setting_kind = "precise", "location_accuracy"
         elif kind == "notifications":
-            value, ok = "allow", self.perm_setting("notifications") == "allow"
+            value, setting_kind = "allow", "notifications"
         else:
-            value = "once" if role == "one_time" else "while_using"
-            setting = self.perm_setting(kind)
-            ok = setting == "while_using" or (setting == "once" and role == "one_time")
+            value, setting_kind = ("once" if role == "one_time" else "while_using"), kind
+        setting = self.perm_setting(setting_kind)
+        own = self._session_app_asks(w, screen, page_title(w))
+        grant = f"{self.last_app}|{setting_kind}|{value}"
+        if setting == "deny" and not (own and self._perm_granted(grant)):
+            return ("gate_permission_choice", f"permission:{setting_kind}:deny",
+                    f"The owner's setting for {setting_kind.replace('_', ' ')} is Don't allow: tap \"Don't allow\".")
+        if not own:
+            return Risk("permission", "permission:other_app", always=True, wording=wording)
+        if role == "precise":
+            ok = setting == "precise"
+        elif kind == "notifications":
+            ok = setting == "allow"
+        else:
+            # "Only this time" by default; where the dialog doesn't offer it, the next narrowest grant.
+            only_once = any(self._perm_role(Target(w, [n])) == "one_time" for n in walk(w.root, []) if n.clickable)
+            ok = setting == "while_using" or (setting == "once" and (role == "one_time" or not only_once))
+        ok = ok or self._perm_granted(grant)
         if ok and kind == "location" and self.perm_setting("location_accuracy") != "precise" and \
-                self._precise_selected(w):
+                self._precise_selected(w) and not self._perm_granted(f"{self.last_app}|location_accuracy|precise"):
             # Android pre-selects Precise: granting now would give precise location against the owner's setting.
-            return Risk("permission", "permission:location_accuracy", always=True,
-                        wording=f"Allow {name} to use your precise location?")
+            return ("gate_permission_choice", "permission:location_accuracy",
+                    "The owner allows approximate location only: tap \"Approximate\" first, then grant.")
         if ok:
             return None
-        return Risk("permission", f"permission:{kind}", always=True, grant=f"{app}|{kind}|{value}", wording=wording)
+        return Risk("permission", f"permission:{setting_kind}", always=True, grant=grant, wording=wording)
+
+    def _perm_granted(self, grant: str) -> bool:
+        """A signed per-app permission grant ("Always allow" on an earlier prompt)."""
+        wanted = {grant}
+        if grant.endswith("|once"):
+            wanted.add(grant[:-len("once")] + "while_using")
+        now = self.now()
+        return any(g.kind == "permission" and g.binding in wanted and g.issued + g.duration_ms > now
+                   for g in self.grants)
 
     def _precise_selected(self, w: Window) -> bool:
         for n in walk(w.root, []):
@@ -1434,7 +1612,11 @@ class Gatekeeper:
 
         if re.compile(r.s["permission_packages"]).search(w.package or "") and any(
                 n.id.endswith("permission_message") and n.text for n in walk(w.root, [])):
-            j.risk = self._permission_dialog(w, t, screen)
+            res = self._permission_dialog(w, t, screen)
+            if isinstance(res, tuple):
+                j.refuse = res
+            else:
+                j.risk = res
             return j
         # Settings
         tier = ("none", "")
@@ -1447,6 +1629,29 @@ class Gatekeeper:
             if tier[0] == "blocked":
                 j.refuse = ("gate_blocked_app", tier[1], "That's a blocked app's settings; agents can't touch it.")
                 return j
+            if tier[0] == "delete" or (tier[0] == "allow" and any_phrase(label, ["uninstall"])):
+                target = self._uninstall_target(w, screen)
+                if target == "protected":
+                    j.refuse = ("gate_denied_page", "builtin:uninstall_protected",
+                                "OpenMob and blocked apps can't be uninstalled or changed by agents.")
+                    return j
+                if tier[0] == "delete":  # Disable, Clear storage: a delete-kind step on that app (tap level)
+                    j.risk = Risk("delete", "uninstall:app_info", grant=target or None, wording=wording()) \
+                        if target else Risk("uninstall", "uninstall:unknown", wording=wording())
+                    return j
+                return j  # Uninstall: opens the installer's confirmation, which asks
+        # The package installer's uninstall confirmation (installing is refused above): a delete-kind step.
+        if w.package in r.installers:
+            target = self._uninstall_target(w, screen)
+            if target == "protected":
+                j.refuse = ("gate_denied_page", "builtin:uninstall_protected",
+                            "OpenMob and blocked apps can't be uninstalled by agents.")
+                return j
+            if label and any(" ".join(label) == " ".join(tokens(c)) for c in r.d["uninstall"]["confirm"]):
+                name = self.label(screen, target) if target else "an app"
+                j.risk = Risk("delete", "uninstall:installer", grant=target, wording=f"Allow uninstalling {name}?") \
+                    if target else Risk("uninstall", "uninstall:unknown", wording="Allow uninstalling an app?")
+            return j
         # Autofill and credential surfaces: always ask.
         cred_title = re.compile(r.surf["credential_titles"])
         surface = (w.type == "input_method" or w.package in r.surf["credential_packages"]

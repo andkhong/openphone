@@ -145,6 +145,8 @@ def gen_call(rng, screen):
         params["mode"] = rng.choice(["ask", "auto", "trusted", "never", "plan"])
     if rng.random() < 0.1:
         params["hint"] = "risky"
+    if rng.random() < 0.3:  # a task with its request text: the just-in-time task prompt
+        params["task"], params["task_text"] = "f1", rng.choice(["send the link to Bob", "delete old photos", "open maps"])
     return {"method": kind, "params": params}
 
 

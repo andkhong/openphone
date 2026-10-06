@@ -38,6 +38,8 @@ object GateScreens {
             @Suppress("DEPRECATION") root?.recycle()
             GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(), IntArray(4), null)
         },
+        // A permission dialog Android hides is identified by its window-state event (reads may show it).
+        eventPackage = service.lastEventPackage, eventText = service.lastEventText,
     )
 
     /** What the owner-dialog check needs, cheaply: every window with a shallow read of its tree, and the last
@@ -86,7 +88,11 @@ object GateScreens {
         }
         val keyguard = service.getSystemService(android.app.KeyguardManager::class.java)
         val pm = service.packageManager
-        val pkgs = (windows.map { it.pkg } + labelsFor + GateHost.lastAppOrEmpty()).filter { it.isNotEmpty() }.toSet()
+        // An uninstall dialog or an app-info page names an app by its label: the launchable apps' labels let the gate
+        // tell which (and refuse OpenMob or a blocked app).
+        val naming = windows.any { "packageinstaller" in it.pkg || it.pkg == "com.android.settings" }
+        val pkgs = (windows.map { it.pkg } + labelsFor + GateHost.lastAppOrEmpty() + (if (naming) launchable(pm) else emptyList()))
+            .filter { it.isNotEmpty() }.toSet()
         return GScreen(
             windows = windows,
             keyguardLocked = keyguard.isKeyguardLocked, keyguardSecure = keyguard.isKeyguardSecure,
@@ -135,6 +141,11 @@ object GateScreens {
     }.getOrDefault("" to emptyList())
 
     @Suppress("DEPRECATION")
+    private fun launchable(pm: PackageManager): List<String> = runCatching {
+        pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
+            .map { it.activityInfo.packageName }.distinct()
+    }.getOrDefault(emptyList())
+
     fun labels(pm: PackageManager, pkgs: Collection<String>): Map<String, String> = pkgs.associateWith { p ->
         runCatching { pm.getApplicationLabel(pm.getApplicationInfo(p, 0)).toString() }.getOrDefault("")
     }.filterValues { it.isNotEmpty() }

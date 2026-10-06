@@ -47,7 +47,7 @@
     <p class="note">Each pairing and removal is recorded in your account's log (Developer › Logs).</p>
     <section class="prompts" aria-labelledby="promptsTitle">
       <h2 id="promptsTitle">Permission prompts</h2>
-      <p class="note">When an app asks for a permission during a task ("Allow Kalshi to use your location?"), OpenMob answers by these settings, never with "Allow all the time". Allowing more (Only this time, While using the app, Precise) needs your approval on that phone, with its screen lock; asking more is immediate.</p>
+      <p class="note">When the app a task is using asks for a permission ("Allow Kalshi to use your location?"), the agent answers by these settings with no prompt: by default "Only this time" (or the narrowest grant the dialog offers), notifications allowed, location approximate. Never "Allow all the time". Another app's request asks you on the phone. Allowing more (While using the app, Precise) needs your approval on that phone, with its screen lock; tightening is immediate.</p>
       <label class="note" for="promptPhone">Phone</label>
       <select id="promptPhone"><option value="">Choose an online phone…</option></select>
       <div class="grid" id="promptRows"></div>
@@ -122,6 +122,7 @@ const PROMPT_TYPES = [
   ["camera", "Camera", null], ["microphone", "Microphone", null], ["contacts", "Contacts", null],
   ["photos", "Photos and media", null], ["phone", "Phone calls", null], ["sms", "Text messages", null],
   ["calendar", "Calendar", null], ["nearby_devices", "Nearby devices", null],
+  ["physical_activity", "Physical activity", null], ["body_sensors", "Body sensors", null],
 ];
 const GRANTS = [["ask", "Ask me"], ["once", "Only this time"], ["while_using", "While using the app"], ["deny", "Don't allow"]];
 let promptSettings = null;
@@ -139,7 +140,7 @@ async function loadPrompts() {
       const sel = el("select");
       sel.id = `prompt-${key}`;
       for (const [value, text] of options || GRANTS) sel.append(Object.assign(el("option", "", text), { value }));
-      sel.value = promptSettings[key] || (options ? options[0][0] : "ask");
+      sel.value = promptSettings[key] || (options ? options[0][0] : "once");
       const lab = el("label", "", label);
       lab.htmlFor = sel.id;
       $("promptRows").append(lab, sel);

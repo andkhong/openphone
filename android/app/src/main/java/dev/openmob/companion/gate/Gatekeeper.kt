@@ -81,6 +81,8 @@ class Gatekeeper(
         var digest = ""
         /** A task prompt: the request text (the grant's scope comes from it). */
         var text = ""
+        /** A just-in-time task prompt: approving it also permits the step that raised it. */
+        var step = false
     }
     private class Never(var issued: Long, val durationMs: Long, val allowMoney: Boolean)
     private class Followup(val pkg: String, val task: String, val expires: Long, var acts: Int = 0)
@@ -278,8 +280,7 @@ class Gatekeeper(
      *  unrecognized Settings changes). Low-risk actions never get here. */
     fun level(risk: Risk): String =
         // A Settings change the phone didn't recognize fails closed (D2): never a tap.
-        if (risk.money != null || risk.reason.startsWith("permission:") || (risk.kind == "fill" && risk.grant == null) ||
-            risk.kind == "settings") "fingerprint"
+        if (risk.money != null || (risk.kind == "fill" && risk.grant == null) || risk.kind == "settings") "fingerprint"
         else "tap"
 
     fun tightenPermission(perm: String, value: String): Boolean = synchronized(lock) {
@@ -347,9 +348,10 @@ class Gatekeeper(
 
     // --- admit ------------------------------------------------------------------------------------
 
-    fun admit(method: String, params: Map<String, Any?>, screen: GScreen): Admission = synchronized(lock) {
+    fun admit(method: String, params: Map<String, Any?>, rawScreen: GScreen): Admission = synchronized(lock) {
         val now = now()
         expire(now)
+        val screen = withOcr(rawScreen)
         if (method in rules.meta) return Admission("allow", method = method, params = params)
         if (method in rules.task) return requestTask(params)
         if (method in rules.read || method.startsWith("stream_")) {
@@ -418,8 +420,20 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap") return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind != "permission" && risk.kind != "uninstall") return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
+        // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
+        // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
+        val task = params["task"]?.toString().orEmpty()
+        val text = params["task_text"]?.toString().orEmpty().split(WS).filter { it.isNotEmpty() }.joinToString(" ").take(300)
+        val lazy = mode != "ask" && task.isNotEmpty() && text.isNotEmpty() && level(risk) == "tap" &&
+            risk.kind != "task" && risk.kind != "step" && risk.kind in taskKinds(text)
+        if (lazy && ownRequests.any { it.first == GateText.sha256(text) && it.second > now }) {
+            mintTask(task, GateText.sha256(text), text)
+            taskGrants[task]?.let { g -> if (g.first.isEmpty()) g.first = if (j.app) j.pkg else lastApp }
+            if (taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
+                kind = risk.kind, rule = "task_grant:own_request", method = method, params = params, pkg = j.pkg, plain = plain)
+        }
         val window = lim("ask_window_ms")
         asks.removeAll { now - it >= window }
         if (asks.size >= lim("asks_per_window")) {
@@ -428,6 +442,16 @@ class Gatekeeper(
                 "Too many approval prompts on the phone: try again in $wait min.", method, params, j.pkg)
         }
         val id = "gk" + UUID.randomUUID().toString().replace("-", "") // the legacy approval path refuses gk ids
+        val current = taskGrants[task]
+        if (lazy && (current == null || current.digest != GateText.sha256(text) || now >= current.expires)) {
+            val wording = "Agent wants to: $text. Allow the steps this needs? Next: ${risk.wording}"
+            pending[id] = Pending(id, bind, now, Risk("task", "task", wording = wording), if (j.app) j.pkg else lastApp,
+                task, null, method, params).also { it.digest = GateText.sha256(text); it.text = text; it.step = true; it.level = "tap" }
+            onEvent?.invoke(id, "pending")
+            return Admission("ask", code = "gate_needs_approval", rule = "risk:task:${risk.reason}", kind = "task",
+                approvalId = id, wording = wording, binding = bind, level = "tap", plain = plain,
+                message = "Waiting for the owner's approval of this task on the phone.", method = method, params = params, pkg = j.pkg)
+        }
         val offer = offer(risk, mode)
         pending[id] = Pending(id, bind, now, risk, j.pkg, params["task"]?.toString().orEmpty(), offer, method, params)
             .also { it.level = level(risk) }
@@ -485,14 +509,19 @@ class Gatekeeper(
     /** The grant covers what the request names: the first app the task works in plus apps the request names, and only
      *  the kinds of risky step its words ask for (a "share" request doesn't cover deleting or posting). */
     private fun mintTask(task: String, digest: String, text: String) {
+        taskGrants[task] = TaskGrant(digest, now() + lim("task_grant_ms"), GateText.tokens(text), taskKinds(text))
+    }
+
+    /** The kinds of risky step a request's words ask for. */
+    private fun taskKinds(text: String): Set<String> {
         val toks = GateText.tokens(text)
         val kinds = mutableSetOf("other", "fill")
         for ((kind, extra) in listOf("send" to listOf("share", "message", "text", "reply", "forward", "email", "tell"),
                                      "share" to listOf("share", "send", "forward"), "post" to listOf("share"),
-                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty"))) {
+                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty", "uninstall"))) {
             if (GateText.anyPhrase(toks, (rules.w[kind] ?: emptyList()) + extra) != null) kinds.add(kind)
         }
-        taskGrants[task] = TaskGrant(digest, now() + lim("task_grant_ms"), toks, kinds)
+        return kinds
     }
 
     /** Under the task's grant: the tap-level risky steps of the kinds its request asks for, in its first app or an app
@@ -501,8 +530,11 @@ class Gatekeeper(
     private fun taskCovers(risk: Risk, params: Map<String, Any?>, pkg: String, screen: GScreen): Boolean {
         val g = taskGrants[params["task"]?.toString().orEmpty()] ?: return false
         if (now() >= g.expires || g.used >= lim("task_grant_steps")) return false
+        val text = params["task_text"]?.toString().orEmpty().split(WS).filter { it.isNotEmpty() }.joinToString(" ").take(300)
+        if (text.isNotEmpty() && GateText.sha256(text) != g.digest) return false // the grant was for another request
         if (risk.kind == "task" || risk.kind == "step" || level(risk) != "tap" || risk.kind !in g.kinds) return false
-        val app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
+        var app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
+        if (risk.reason.startsWith("uninstall:")) app = risk.grant.orEmpty() // an uninstall counts as the app it removes
         val label = GateText.tokens(screen.labels[app].orEmpty())
         if (app != g.first && !(label.isNotEmpty() && GateText.hasPhrase(g.words, label.joinToString(" ")))) return false
         g.used++
@@ -512,7 +544,9 @@ class Gatekeeper(
 
     fun hidden(screen: GScreen): String = when {
         screen.windows.any { rules.blocked(it.pkg) } -> "builtin:sensitive_apps"
-        screen.windows.any { it.pkg.isEmpty() && it.type == "application" } -> "builtin:unknown_window"
+        // A system dialog Android hides from accessibility (a permission dialog: no readable root) is identified from
+        // its window-state event: not sensitive, so reads show it; acts on it stay refused (needs_owner_dialog).
+        screen.windows.any { it.pkg.isEmpty() && it.type == "application" } && ownerDialog(screen) == null -> "builtin:unknown_window"
         else -> ""
     }
 
@@ -617,6 +651,10 @@ class Gatekeeper(
         promptClosed = now
         if (p.risk.kind == "task") { // the owner approved the task: a grant, not a one-shot permit
             mintTask(p.task, p.digest, p.text)
+            if (p.step) {
+                permits[p.binding] = now + lim("permit_ms")
+                taskGrants[p.task]?.let { g -> if (g.first.isEmpty()) g.first = p.pkg }
+            }
             onEvent?.invoke(id, "approved")
             return true
         }
@@ -684,8 +722,9 @@ class Gatekeeper(
     fun unsettled(adm: Admission): Admission = refuse("gate_screen_unstable", "builtin:no_focus",
         "The screen is changing (an app is opening). Look again.", adm.method, adm.params)
 
-    fun reverify(adm: Admission, screen: GScreen): Admission = synchronized(lock) {
+    fun reverify(adm: Admission, rawScreen: GScreen): Admission = synchronized(lock) {
         if (!adm.allowed || adm.method !in rules.act) return adm
+        val screen = withOcr(rawScreen)
         // No gesture while a prompt is up, or just after one closed: an action admitted a moment before could land on
         // its Allow (B1). The approved action itself (its permit) goes ahead.
         if (adm.method != "wake_unlock" && adm.permit == null &&
@@ -720,7 +759,100 @@ class Gatekeeper(
             }
             startPermits.remove(adm.permit)?.let { (pkg, task) -> followup = Followup(pkg, task, now() + lim("purchase_followup_ms")) }
         }
+        noteAccuracy(adm, screen)
         adm
+    }
+
+    // --- permission dialogs Android hides from accessibility (Android 14+): the phone's own OCR ---------------
+
+    /** OCR can't see which location card is chosen: the card the phone let through last, in this dialog. */
+    private var accuracyChoice: Pair<Int, String>? = null
+
+    /** The permission-controller window with no readable tree (identified by its package, or by the last
+     *  window-state event when Android hides even that). */
+    fun ocrWindow(screen: GScreen): GWindow? {
+        val perm = rules.rx(rules.sStr("permission_packages"))
+        return screen.ordered.firstOrNull { w ->
+            w.type == "application" && (w.root == null || walk(w.root).none { it.text.isNotEmpty() || it.desc.isNotEmpty() }) &&
+                (perm.containsMatchIn(w.pkg) || (w.pkg.isEmpty() && perm.containsMatchIn(screen.eventPackage)))
+        }
+    }
+
+    fun textRole(text: String): String? {
+        val toks = GateText.tokens(text)
+        if (toks.isEmpty()) return null
+        for (pair in permRules["button_texts"].list()) {
+            val (role, label) = pair.strings()
+            if (toks == GateText.tokens(label)) return role
+        }
+        return null
+    }
+
+    /** The requesting app's name, from the dialog's title ("Allow Kalshi to ..."). */
+    fun permApp(message: String): String? {
+        for (rx in permRules["titles"].strings()) rules.rx(rx).find(message)?.let { return it.groupValues[1].trim() }
+        return null
+    }
+
+    /** The screen with the hidden permission dialog rebuilt from the phone's OCR: the title as its message, each line
+     *  that reads exactly as a button as a clickable node (its box padded), the rest as text. The dialog's root is
+     *  clickable, so a tap anywhere else in it (a button OCR missed, a low-confidence line) asks. */
+    fun withOcr(screen: GScreen): GScreen {
+        val w = ocrWindow(screen)
+        if (w == null) {
+            accuracyChoice = null // the dialog is gone: its card choice with it
+            return screen
+        }
+        val ocr = screen.ocr ?: return screen
+        val o = permRules["ocr"].obj()
+        val minConf = (o["min_conf"] as Number).toDouble()
+        val pad = (o["pad"] as Number).toInt()
+        val maxTitle = (o["title_lines"] as Number).toInt()
+        val start = rules.rx(o.str("title_start"))
+        val lines = ocr.filter { it.text.isNotBlank() && it.conf >= minConf }
+            .sortedWith(compareBy({ it.bounds[1] }, { it.bounds[0] }))
+        val choice = accuracyChoice?.takeIf { it.first == w.id }
+        val title = mutableListOf<String>()
+        var taking = false
+        val nodes = mutableListOf<GNode>()
+        for (b in lines) {
+            val text = b.text.split(WS).filter { it.isNotEmpty() }.joinToString(" ")
+            val role = textRole(text)
+            val (l, t, r, bt) = b.bounds.toList()
+            if (role != null) {
+                taking = false
+                // OCR can't see the radio: Android pre-selects Precise.
+                val checked = if (role == "precise" || role == "approximate") role == (choice?.second ?: "precise") else null
+                nodes.add(GNode(text = text, id = "ocr", cls = "OCRText", bounds = intArrayOf(l - pad, t - pad, r + pad, bt + pad),
+                    clickable = true, checked = checked))
+                continue
+            }
+            if (title.isEmpty() && start.containsMatchIn(text)) taking = true
+            if (taking && title.size < maxTitle) {
+                title.add(text)
+                taking = !text.endsWith("?")
+            }
+            nodes.add(GNode(text = text, cls = "OCRText", bounds = intArrayOf(l, t, r, bt)))
+        }
+        val message = title.joinToString(" ").ifEmpty { nodes.filter { !it.clickable }.joinToString(" ") { it.text } }.ifEmpty { "?" }
+        nodes.add(0, GNode(text = message, id = "permission_message", cls = "OCRText"))
+        val root = GNode(cls = "OCRDialog", bounds = w.bounds, clickable = true, children = nodes)
+        val rebuilt = GWindow(w.id, w.type, w.layer, w.pkg.ifEmpty { screen.eventPackage }, w.title, w.bounds, root)
+        return screen.withWindows(screen.windows.map { if (it === w) rebuilt else it })
+    }
+
+    /** [withOcr] for reads (ui_elements). */
+    fun ocrPreview(screen: GScreen): GScreen = synchronized(lock) { withOcr(screen) }
+
+    /** A tap on the OCR'd dialog's Precise or Approximate card that goes ahead: remembered (OCR can't see it). */
+    private fun noteAccuracy(adm: Admission, screen: GScreen) {
+        if (adm.method != "tap") return
+        val x = (adm.params["x"] as? Number)?.toDouble() ?: return
+        val y = (adm.params["y"] as? Number)?.toDouble() ?: return
+        val t = GateScreen.hitTest(rules, screen, x, y) ?: return
+        if (t.window.root?.cls != "OCRDialog") return
+        val role = permRole(t)
+        if (role == "precise" || role == "approximate") accuracyChoice = t.window.id to role
     }
 
     // --- the judge -------------------------------------------------------------------------------------
@@ -773,7 +905,7 @@ class Gatekeeper(
                     "That's the lock screen or a system approval prompt; agents can't touch it.")
             }
         }
-        if (w.pkg in rules.installers) return Triple("gate_denied_page", "builtin:installer", "Installing apps is off-limits to agents.")
+        if (w.pkg in rules.installers && !uninstallDialog(w)) return Triple("gate_denied_page", "builtin:installer", "Installing apps is off-limits to agents.")
         if (rules.blocked(w.pkg)) return Triple("gate_blocked_app", "builtin:sensitive_apps",
             "Blocked on the phone: ${w.pkg} is a sensitive app. Don't open it another way; call done.")
         return null
@@ -781,7 +913,32 @@ class Gatekeeper(
 
     private fun appWindow(w: GWindow): Boolean = w.type == "application" && w.pkg != rules.surfStr("systemui") &&
         !isSettings(w) && w.pkg !in rules.surfList("share_packages") && w.pkg !in rules.surfList("credential_packages") &&
-        !rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)
+        !rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg) && w.pkg !in rules.installers
+
+    private val uninstallRules = rules.d["uninstall"].obj()
+
+    private fun uninstallDialog(w: GWindow): Boolean {
+        val rx = rules.rx(uninstallRules.str("message"))
+        return walk(w.root).any { rx.containsMatchIn(it.text) }
+    }
+
+    /** The app an uninstall dialog or app-info page is about: the installed app whose label it shows (the longest
+     *  match), "protected" for OpenMob or a blocked app, "" if the phone can't tell. */
+    private fun uninstallTarget(w: GWindow, screen: GScreen): String {
+        val texts = walk(w.root).filter { it.text.isNotEmpty() }.map { GateText.tokens(it.text) }
+        if (texts.any { tx -> uninstallRules["own_labels"].strings().any { GateText.hasPhrase(tx, it) } }) return "protected"
+        var best = ""
+        var size = 0
+        for ((pkg, lbl) in screen.labels) {
+            val lt = GateText.tokens(lbl)
+            if (pkg in rules.installers || pkg == w.pkg || lt.isEmpty()) continue
+            if (texts.any { GateText.hasPhrase(it, lt.joinToString(" ")) }) {
+                if (rules.blocked(pkg) || pkg in rules.own) return "protected"
+                if (lt.size > size) { best = pkg; size = lt.size }
+            }
+        }
+        return best
+    }
 
     private fun isSettings(w: GWindow): Boolean {
         if (rules.settingsPkg.containsMatchIn(w.pkg)) return true
@@ -807,6 +964,7 @@ class Gatekeeper(
             val texts = walk(w.root).filter { it.text.isNotEmpty() }.map { GateText.tokens(it.text) }
             if (blockedLabels.any { it.isNotEmpty() && it in texts }) return "blocked" to "builtin:app_info_blocked"
             if (has(label, rules.sList("app_info_ask"))) return "ask" to page
+            if (has(label, rules.sList("app_info_delete"))) return "delete" to page
             if (has(label, rules.sList("app_info_allowed"))) return "allow" to ""
             return "none" to ""
         }
@@ -831,8 +989,8 @@ class Gatekeeper(
         if (session.isEmpty()) return false
         val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
         if (message.isNotEmpty()) {
-            val m = PERMISSION_APP.find(message) ?: return false
-            return GateText.tokens(m.groupValues[1]) == session
+            val app = permApp(message) ?: return false
+            return GateText.tokens(app) == session
         }
         if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg)) {
             val below = screen.ordered.filter { it.layer < w.layer && it.type == "application" }
@@ -856,45 +1014,65 @@ class Gatekeeper(
         return null
     }
 
-    /** A tap in a runtime permission dialog. Denying (and "Approximate") is always fine; "Allow all the time" always
-     *  asks; another app's request asks; the task's own app follows the owner's settings (signed per-app "Always
-     *  allow" grants, then the signed defaults, then the built-in ones: notifications deny, the rest ask, location
-     *  approximate). */
-    private fun permissionDialog(w: GWindow, t: GTarget, screen: GScreen): Risk? {
+    /** A tap in a runtime permission dialog: a Risk, null, or a refusal Triple(code, rule, message). Denying (and
+     *  "Approximate") is always fine. "Allow all the time" never. The owner's settings: `deny` lets only "Don't allow"
+     *  through; the task's own app may then grant what they allow without a prompt (signed per-app grants first;
+     *  built in: only this time, notifications allowed, location approximate); another app's request and a button the
+     *  phone doesn't recognize ask (a tap-level prompt). */
+    private fun permissionDialog(w: GWindow, t: GTarget, screen: GScreen): Any? {
         val message = walk(w.root).firstOrNull { it.id.endsWith("permission_message") && it.text.isNotEmpty() }?.text.orEmpty()
-        var kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(message) }?.get(0) ?: "other"
+        val kind = permRules["kinds"].list().map { it.strings() }.firstOrNull { rules.rx(it[1]).containsMatchIn(message) }?.get(0) ?: "other"
         val role = permRole(t)
-        val name = PERMISSION_APP.find(message)?.groupValues?.get(1) ?: "this app"
+        val name = permApp(message) ?: "this app"
         if (role == null) {
-            // A button the phone doesn't recognize (other ids, another language) may grant: ask.
+            // A button the phone doesn't recognize (other ids, another language, OCR it couldn't read) may grant: ask.
             val p = t.pressed
             val changing = p != null && (p.clickable || p.longClickable || p.checked != null)
             return if (changing) Risk("permission", "permission:unknown", always = true,
                 wording = "Allow $name's permission request?") else null
         }
         if (role in setOf("deny", "deny_forever", "approximate")) return null
+        if (role == "always") return Triple("gate_permission_choice", "permission:always",
+            "Never \"Allow all the time\": tap \"While using the app\" (or \"Only this time\") instead.")
         val what = if (role == "precise") "precise location" else kind.replace('_', ' ')
-        val wording = "Allow $name to use your $what${if (role == "always") " all the time" else ""}?"
-        if (role == "always") return Risk("permission", "permission:always", always = true, wording = wording)
-        if (!sessionAppAsks(w, screen, GateScreen.pageTitle(w))) return Risk("settings", "permission:other_app", always = true, wording = wording)
-        val value: String
-        val ok: Boolean
-        if (role == "precise") {
-            value = "precise"; ok = permSetting("location_accuracy") == "precise"; kind = "location_accuracy"
-        } else if (kind == "notifications") {
-            value = "allow"; ok = permSetting("notifications") == "allow"
-        } else {
-            value = if (role == "one_time") "once" else "while_using"
-            val setting = permSetting(kind)
-            ok = setting == "while_using" || (setting == "once" && role == "one_time")
+        val wording = "Allow $name to use your $what?"
+        val (value, settingKind) = when {
+            role == "precise" -> "precise" to "location_accuracy"
+            kind == "notifications" -> "allow" to "notifications"
+            else -> (if (role == "one_time") "once" else "while_using") to kind
         }
-        if (ok && kind == "location" && permSetting("location_accuracy") != "precise" && preciseSelected(w)) {
+        val setting = permSetting(settingKind)
+        val own = sessionAppAsks(w, screen, GateScreen.pageTitle(w))
+        val grant = "$lastApp|$settingKind|$value"
+        if (setting == "deny" && !(own && permGranted(grant))) return Triple("gate_permission_choice",
+            "permission:$settingKind:deny", "The owner's setting for ${settingKind.replace('_', ' ')} is Don't allow: tap \"Don't allow\".")
+        if (!own) return Risk("permission", "permission:other_app", always = true, wording = wording)
+        var ok = when {
+            role == "precise" -> setting == "precise"
+            kind == "notifications" -> setting == "allow"
+            else -> {
+                // "Only this time" by default; where the dialog doesn't offer it, the next narrowest grant.
+                val onlyOnce = walk(w.root).any { it.clickable && permRole(GTarget(w, listOf(it))) == "one_time" }
+                setting == "while_using" || (setting == "once" && (role == "one_time" || !onlyOnce))
+            }
+        }
+        ok = ok || permGranted(grant)
+        if (ok && kind == "location" && permSetting("location_accuracy") != "precise" && preciseSelected(w) &&
+            !permGranted("$lastApp|location_accuracy|precise")) {
             // Android pre-selects Precise: granting now would give precise location against the owner's setting.
-            return Risk("permission", "permission:location_accuracy", always = true,
-                wording = "Allow $name to use your precise location?")
+            return Triple("gate_permission_choice", "permission:location_accuracy",
+                "The owner allows approximate location only: tap \"Approximate\" first, then grant.")
         }
         if (ok) return null
-        return Risk("permission", "permission:$kind", always = true, grant = "$lastApp|$kind|$value", wording = wording)
+        return Risk("permission", "permission:$settingKind", always = true, grant = grant, wording = wording)
+    }
+
+    /** A signed per-app permission grant ("Always allow" on an earlier prompt). */
+    private fun permGranted(grant: String): Boolean {
+        val wanted = mutableSetOf(grant)
+        if (grant.endsWith("|once")) wanted.add(grant.removeSuffix("once") + "while_using")
+        val now = now()
+        return grants.any { it.kind == "permission" && it.binding in wanted && it.issued + it.durationMs > now }
     }
 
     private fun preciseSelected(w: GWindow): Boolean =
@@ -972,7 +1150,10 @@ class Gatekeeper(
 
         if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg) &&
             walk(w.root).any { it.id.endsWith("permission_message") && it.text.isNotEmpty() }) {
-            j.risk = permissionDialog(w, t, screen)
+            when (val res = permissionDialog(w, t, screen)) {
+                is Triple<*, *, *> -> j.refuse = Triple(res.first as String, res.second as String, res.third as String)
+                else -> j.risk = res as Risk?
+            }
             return j
         }
         var tier = "none" to ""
@@ -980,6 +1161,34 @@ class Gatekeeper(
             tier = settingsTier(w, t, screen, label)
             if (tier.first == "refuse") { j.refuse = Triple("gate_denied_page", tier.second, "This Settings page is security-critical; agents can't change it."); return j }
             if (tier.first == "blocked") { j.refuse = Triple("gate_blocked_app", tier.second, "That's a blocked app's settings; agents can't touch it."); return j }
+            if (tier.first == "delete" || (tier.first == "allow" && has(label, listOf("uninstall")))) {
+                val target = uninstallTarget(w, screen)
+                if (target == "protected") {
+                    j.refuse = Triple("gate_denied_page", "builtin:uninstall_protected",
+                        "OpenMob and blocked apps can't be uninstalled or changed by agents.")
+                    return j
+                }
+                if (tier.first == "delete") { // Disable, Clear storage: a delete-kind step on that app (tap level)
+                    j.risk = if (target.isNotEmpty()) Risk("delete", "uninstall:app_info", grant = target, wording = wording())
+                        else Risk("uninstall", "uninstall:unknown", wording = wording())
+                    return j
+                }
+                return j // Uninstall: opens the installer's confirmation, which asks
+            }
+        }
+        // The package installer's uninstall confirmation (installing is refused above): a delete-kind step.
+        if (w.pkg in rules.installers) {
+            val target = uninstallTarget(w, screen)
+            if (target == "protected") {
+                j.refuse = Triple("gate_denied_page", "builtin:uninstall_protected", "OpenMob and blocked apps can't be uninstalled by agents.")
+                return j
+            }
+            if (label.isNotEmpty() && uninstallRules["confirm"].strings().any { label.joinToString(" ") == GateText.tokens(it).joinToString(" ") }) {
+                val name = if (target.isNotEmpty()) label(screen, target) else "an app"
+                j.risk = if (target.isNotEmpty()) Risk("delete", "uninstall:installer", grant = target, wording = "Allow uninstalling $name?")
+                    else Risk("uninstall", "uninstall:unknown", wording = "Allow uninstalling an app?")
+            }
+            return j
         }
         val surface = w.type == "input_method" || w.pkg in rules.surfList("credential_packages") ||
             (screen.autofillService.isNotEmpty() && w.pkg == screen.autofillService) ||

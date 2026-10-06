@@ -5,11 +5,12 @@ the model flip-flopped between Allow and Don't allow. The agent loop now answers
 (Agent._permission_dialog), before the model sees the screen, by the owner's settings (`permission_prompts` in
 the phone's permission settings, openmob/permissions.py):
 
-- notifications: `deny` (default) | `allow`;
-- location, camera, microphone, contacts, photos and media, phone, SMS, calendar, nearby devices: `ask` (default:
-  the owner is asked on the phone, "Allow Kalshi to use your location?") | `once` | `while_using` | `deny`;
+- notifications: `allow` (default) | `deny`;
+- location, camera, microphone, contacts, photos and media, phone, SMS, calendar, nearby devices, physical
+  activity, body sensors: `once` (default: "Only this time", or the narrowest grant the dialog offers) | `ask` (the
+  owner is asked on the phone, "Allow Kalshi to use your location?") | `while_using` | `deny`;
 - location accuracy: `approximate` (default: the Approximate card is chosen before granting) | `precise`;
-- **never "Allow all the time"**: if that's the only way to grant, the owner is asked;
+- **never "Allow all the time"**: if that's the only way to grant, the request is denied (the phone refuses it too);
 - a request from an app other than the task's own: ask (S2 of docs/design/phone-gatekeeper.md);
 - under Don't ask (`never`): nobody can be asked, so anything that would ask is denied; `once` and `while_using`
   still grant.
@@ -38,7 +39,18 @@ BUTTONS = {
     "precise": re.compile(r"location_accuracy_radio_fine$|accuracy_fine|precise_location", re.I),
     "approximate": re.compile(r"location_accuracy_radio_coarse$|accuracy_coarse|approximate_location", re.I),
 }
-TEXTS = {"precise": re.compile(r"^precise$", re.I), "approximate": re.compile(r"^approximate$", re.I)}
+# By text: the Precise/Approximate cards, and every button of a dialog the phone read with OCR (Android 14+ hides
+# it from accessibility; class OCRText, no resource ids). English, Spanish, German.
+TEXTS = {
+    "precise": re.compile(r"^(precise|precisa|genau)$", re.I),
+    "approximate": re.compile(r"^(approximate|aproximada|ungefähr)$", re.I),
+    "one_time": re.compile(r"^(only this time|solo esta vez|nur dieses mal)$", re.I),
+    "foreground": re.compile(r"^(while using the app|mientras la app está en uso|mientras se usa la app"
+                             r"|bei nutzung der app|während der app-nutzung)$", re.I),
+    "always": re.compile(r"^(allow all the time|permitir todo el tiempo|permitir siempre|immer zulassen)$", re.I),
+    "deny": re.compile(r"^(don['’]t allow|deny|no permitir|nicht zulassen)$", re.I),
+    "allow": re.compile(r"^(allow|permitir|zulassen)$", re.I),
+}
 MESSAGE = re.compile(r"permission_message$")
 # The dialog's wording -> the permission it asks for (AOSP and One UI phrasing, English).
 KINDS = [
@@ -52,10 +64,13 @@ KINDS = [
     ("phone", re.compile(r"phone calls|call logs", re.I)),
     ("sms", re.compile(r"\bSMS\b|text messages", re.I)),
     ("calendar", re.compile(r"calendar", re.I)),
+    ("physical_activity", re.compile(r"physical activity", re.I)),
+    ("body_sensors", re.compile(r"body sensors", re.I)),
 ]
 WORDS = {"notifications": "notifications", "camera": "camera", "microphone": "microphone", "location": "location",
          "contacts": "contacts", "nearby_devices": "nearby devices", "photos": "photos and media",
-         "phone": "phone calls", "sms": "text messages", "calendar": "calendar", "other": "data"}
+         "phone": "phone calls", "sms": "text messages", "calendar": "calendar",
+         "physical_activity": "physical activity", "body_sensors": "body sensors", "other": "data"}
 APP = re.compile(r"^Allow\s+(?P<app>.+?)\s+to\s", re.I | re.S)
 
 
@@ -108,12 +123,14 @@ def decide(dialog: Dialog, *, mode: str, prompts: dict, task_app_label: str | No
     own = not task_app_label or same_app(dialog.app, task_app_label)
     accuracy = (prompts.get("location_accuracy") or "approximate") if dialog.kind == "location" else None
     if dialog.kind == "notifications":
-        if prompts.get("notifications", "deny") != "allow":
+        if prompts.get("notifications", "allow") != "allow":
             return Plan("deny")
         if own:
             return Plan("allow")
         return Plan("deny" if never else "ask")
-    setting = prompts.get(dialog.kind, "ask") if own else "ask"  # another app's request (S2) always asks
+    if not any(r in dialog.buttons for r in ("one_time", "foreground", "allow")):
+        return Plan("deny")  # the only grant offered is "Allow all the time": never
+    setting = prompts.get(dialog.kind, "once") if own else "ask"  # another app's request (S2) always asks
     if setting == "deny":
         return Plan("deny")
     if setting in ("once", "while_using"):
@@ -136,11 +153,11 @@ def button(dialog: Dialog, answer: str, grant: str | None = None, asked: bool = 
     elif dialog.kind == "notifications":
         order = ("allow",)
     elif grant == "once" and not asked:
-        order = ("one_time",)
+        order = ("one_time", "foreground", "allow")  # Only this time, else the narrowest grant offered
     elif grant == "while_using" and not asked:
         order = ("foreground", "allow", "one_time")
     else:
-        order = ("one_time", "foreground", "allow") + (("always",) if asked else ())
+        order = ("one_time", "foreground", "allow")  # never "Allow all the time"
     return next((dialog.buttons[r] for r in order if r in dialog.buttons), None)
 
 

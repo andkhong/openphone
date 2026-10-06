@@ -149,8 +149,9 @@ class GatekeeperTest {
         val screen = SCREENS.getValue("permission_dialog_session")
         gk.admit("tap", mapOf("x" to 540L, "y" to 300L), screen) // the task's app (Chess.com) in front
         clock.elapsed += 500
+        assertTrue(gk.tightenPermission("camera", "ask")) // the owner wants to be asked about the camera
         assertEquals("ask", gk.admit("tap", mapOf("x" to 540L, "y" to 1550L), screen).decision.also {
-            gk.revokeAll() // (drop that prompt) camera asks by default
+            gk.revokeAll() // (drop that prompt)
         })
         assertTrue(policy(mapOf("type" to "permission_default", "perm" to "camera", "value" to "while_using")))
         clock.elapsed += 500
@@ -163,9 +164,28 @@ class GatekeeperTest {
         assertEquals("Allow Chess.com to take pictures and record video?", asked.wording)
     }
 
+    @Test fun theOcrDialogHitTestFindsTheButtonUnderTheTap() {
+        val read = gk.ocrPreview(SCREENS.getValue("ocr_location"))
+        val w = read.windows.single { it.root?.cls == "OCRDialog" }
+        assertEquals("com.google.android.permissioncontroller", w.pkg) // from the window-state event
+        fun at(x: Double, y: Double) = GateScreen.hitTest(RULES, read, x, y)!!.pressed!!
+        assertEquals("Only this time", at(540.0, 1635.0).text)
+        assertEquals("Only this time", at(300.0 - 10, 1635.0 - 35).text) // inside the padding
+        assertEquals("OCRDialog", at(540.0, 1100.0).cls) // off every button: the dialog itself (asks)
+        assertEquals(true, at(280.0, 1285.0).checked) // Precise: pre-selected as far as OCR can tell
+        assertEquals("Allow Kalshi to access this device's location?",
+            w.root!!.children.first { it.id == "permission_message" }.text)
+        assertEquals("Kalshi", gk.permApp("¿Permitir que Kalshi acceda a la ubicación de este dispositivo?"))
+        assertEquals("one_time", gk.textRole("Solo esta vez"))
+        assertNull(gk.textRole("Alleen deze keer"))
+        // Low-confidence lines are dropped: the button isn't there, the tap lands on the dialog (asks).
+        val blurry = gk.ocrPreview(SCREENS.getValue("ocr_location_blurry"))
+        assertEquals("OCRDialog", GateScreen.hitTest(RULES, blurry, 540.0, 1635.0)!!.pressed!!.cls)
+    }
+
     @Test fun permissionDefaultsTightenFreelyButLoosenOnlySigned() {
-        assertEquals("ask", gk.permSetting("camera"))
-        assertEquals("deny", gk.permSetting("notifications"))
+        assertEquals("once", gk.permSetting("camera")) // "Only this time" by default (owner decision)
+        assertEquals("allow", gk.permSetting("notifications"))
         assertEquals("approximate", gk.permSetting("location_accuracy"))
         assertFalse(gk.tightenPermission("camera", "while_using")) // a loosening needs a signature
         assertTrue(gk.tightenPermission("camera", "deny"))

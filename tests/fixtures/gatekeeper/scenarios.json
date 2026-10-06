@@ -1926,7 +1926,8 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "settings"
+     "kind": "delete",
+     "level": "tap"
     }
    },
    {
@@ -1942,12 +1943,8 @@
     },
     "screen": "settings_app_info_amazon",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval"
+     "decision": "allow"
     }
-   },
-   {
-    "cancel": "last"
    },
    {
     "call": {
@@ -2007,13 +2004,8 @@
     },
     "screen": "permission_dialog_session",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission"
+     "decision": "allow"
     }
-   },
-   {
-    "cancel": "last"
    },
    {
     "call": {
@@ -2027,7 +2019,8 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "settings"
+     "kind": "permission",
+     "level": "tap"
     }
    }
   ]
@@ -2860,7 +2853,7 @@
   "call_ms": 0
  },
  {
-  "name": "location by default: approximate and deny pass, anything that grants asks",
+  "name": "location by default: Approximate, then Only this time, no prompt",
   "tags": [
    "permissions"
   ],
@@ -2882,6 +2875,21 @@
     "call": {
      "method": "tap",
      "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
       "x": 800,
       "y": 1285
      }
@@ -2890,6 +2898,39 @@
     "expect": {
      "decision": "allow"
     }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location"
+    }
+   },
+   {
+    "cancel": "last"
    },
    {
     "call": {
@@ -2905,43 +2946,6 @@
      "code": "gate_needs_approval",
      "kind": "permission",
      "rule": "risk:permission:location_accuracy"
-    }
-   },
-   {
-    "cancel": "last"
-   },
-   {
-    "call": {
-     "method": "tap",
-     "params": {
-      "x": 540,
-      "y": 1505
-     }
-    },
-    "screen": "location_google",
-    "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission",
-     "rule": "risk:permission:location"
-    }
-   },
-   {
-    "cancel": "last"
-   },
-   {
-    "call": {
-     "method": "tap",
-     "params": {
-      "x": 540,
-      "y": 1635
-     }
-    },
-    "screen": "location_google",
-    "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission"
     }
    },
    {
@@ -3108,7 +3112,7 @@
   ]
  },
  {
-  "name": "signed default once: only this time passes, while using asks",
+  "name": "default once: only this time passes, while using asks",
   "tags": [
    "permissions"
   ],
@@ -3125,15 +3129,6 @@
     "expect": {
      "decision": "allow"
     }
-   },
-   {
-    "policy": {
-     "type": "permission_default",
-     "perm": "location",
-     "value": "once"
-    },
-    "sig": "valid",
-    "expect_accepted": true
    },
    {
     "call": {
@@ -3203,14 +3198,10 @@
     },
     "screen": "location_google",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission",
-     "rule": "risk:permission:location_accuracy"
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
     }
-   },
-   {
-    "cancel": "last"
    },
    {
     "call": {
@@ -3281,6 +3272,7 @@
      "decision": "ask",
      "code": "gate_needs_approval",
      "kind": "permission",
+     "level": "tap",
      "rule": "risk:permission:unknown"
     }
    },
@@ -3385,14 +3377,10 @@
     },
     "screen": "location_always_only",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission",
-     "rule": "risk:permission:always"
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:always"
     }
-   },
-   {
-    "cancel": "last"
    },
    {
     "policy": {
@@ -3414,14 +3402,13 @@
     "screen": "location_always_only",
     "expect": {
      "decision": "refuse",
-     "code": "gate_denied",
-     "rule": "never:permission:always"
+     "code": "gate_permission_choice"
     }
    }
   ]
  },
  {
-  "name": "Don't ask denies unless the setting is once or while using",
+  "name": "Don't ask: only this time still passes, a wider grant is refused, deny wins",
   "tags": [
    "permissions"
   ],
@@ -3454,6 +3441,20 @@
       "mode": "never",
       "x": 540,
       "y": 1635
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1505
      }
     },
     "screen": "camera_kalshi",
@@ -3481,7 +3482,7 @@
     "policy": {
      "type": "permission_default",
      "perm": "camera",
-     "value": "once"
+     "value": "deny"
     },
     "sig": "valid",
     "expect_accepted": true
@@ -3490,35 +3491,34 @@
     "call": {
      "method": "tap",
      "params": {
-      "mode": "never",
       "x": 540,
       "y": 1635
      }
     },
     "screen": "camera_kalshi",
     "expect": {
-     "decision": "allow"
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:camera:deny"
     }
    },
    {
     "call": {
      "method": "tap",
      "params": {
-      "mode": "never",
       "x": 540,
-      "y": 1505
+      "y": 1765
      }
     },
     "screen": "camera_kalshi",
     "expect": {
-     "decision": "refuse",
-     "code": "gate_denied"
+     "decision": "allow"
     }
    }
   ]
  },
  {
-  "name": "notifications: deny by default, allow when the owner says",
+  "name": "notifications: allowed by default, the owner's deny wins",
   "tags": [
    "permissions"
   ],
@@ -3546,14 +3546,8 @@
     },
     "screen": "notifications_kalshi",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "permission",
-     "rule": "risk:permission:notifications"
+     "decision": "allow"
     }
-   },
-   {
-    "cancel": "last"
    },
    {
     "call": {
@@ -3572,7 +3566,7 @@
     "policy": {
      "type": "permission_default",
      "perm": "notifications",
-     "value": "allow"
+     "value": "deny"
     },
     "sig": "valid",
     "expect_accepted": true
@@ -3587,7 +3581,8 @@
     },
     "screen": "notifications_kalshi",
     "expect": {
-     "decision": "allow"
+     "decision": "refuse",
+     "code": "gate_permission_choice"
     }
    }
   ]
@@ -3632,7 +3627,8 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "settings",
+     "kind": "permission",
+     "level": "tap",
      "rule": "risk:permission:other_app"
     }
    }
@@ -3701,8 +3697,7 @@
     },
     "screen": "location_approx",
     "expect": {
-     "decision": "allow",
-     "rule": "grant"
+     "decision": "allow"
     }
    },
    {
@@ -3715,8 +3710,7 @@
     },
     "screen": "location_approx",
     "expect": {
-     "decision": "allow",
-     "rule": "grant"
+     "decision": "allow"
     }
    },
    {
@@ -3861,6 +3855,36 @@
      "params": {}
     },
     "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "loading_unknown",
     "expect": {
      "decision": "redact"
     }
@@ -6366,6 +6390,294 @@
   ]
  },
  {
+  "name": "just in time: a share to yourself and subscribing need no prompt at all",
+  "tags": [
+   "task_grant",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 650,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: the first Send asks for the task once; the second message is covered",
+  "tags": [
+   "task_grant",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap",
+     "rule": "risk:task:words:send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "delete everything"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: money keeps its own fingerprint prompt at the commit",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1260,
+      "task": "t7",
+      "task_text": "place a $5 bet on Dun"
+     }
+    },
+    "screen": "kalshi_market",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660,
+      "task": "t7",
+      "task_text": "place a $5 bet on Dun"
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: a forged task approval is ignored; out-of-scope steps ask on their own",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "approve": "last",
+    "sig": "other_key",
+    "expect_accepted": false
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: a request typed on the phone needs no prompt",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "instruction": "send Bob the channel link on Messenger"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant:own_request"
+    }
+   }
+  ]
+ },
+ {
   "name": "an unreadable app window: taps refused, reads blacked out, no live view",
   "tags": [
    "hard_deny"
@@ -6997,7 +7309,810 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "settings"
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: the Kalshi location dialog: Approximate, then Only this time, no prompt",
+  "tags": [
+   "permissions",
+   "ocr",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: wider grants and Precise ask; Don't allow passes; a tap off the buttons asks",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1100
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: notifications allowed for the task's app",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_notifications",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: Samsung's and the Spanish dialog read the same way",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location_es",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_es",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: another app's request asks (a tap), and is refused under Don't ask",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:other_app"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: never Allow all the time",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_location_always",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:always"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: low confidence or an unknown wording asks",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_blurry",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: without OCR the dialog still pauses for the owner; reads show it",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_unavailable",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_unavailable",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling an app: one tap-level prompt at the confirmation; Cancel is free",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap",
+     "rule": "risk:uninstall:installer"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 620,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling under a request that names it: the one prompt is the task prompt",
+  "tags": [
+   "uninstall",
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400,
+      "task": "u1",
+      "task_text": "uninstall chess.com"
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap",
+     "rule": "risk:task:uninstall:installer"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400,
+      "task": "u1",
+      "task_text": "uninstall chess.com"
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling with Don't confirm everyday actions: no prompt",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "uninstall",
+     "level": "tap",
+     "rule": "risk:uninstall:unknown"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling via app info: Uninstall opens the confirmation, which asks; Clear storage asks",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "settings_app_info_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap",
+     "rule": "risk:uninstall:app_info"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling a bank app or OpenMob is refused",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_openmob",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_openmob",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "installing an APK is still refused",
+  "tags": [
+   "uninstall",
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "install_apk",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:installer"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 620,
+      "y": 1400
+     }
+    },
+    "screen": "install_apk",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:installer"
     }
    }
   ]

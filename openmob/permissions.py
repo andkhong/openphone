@@ -125,9 +125,11 @@ FOLLOWUP_SECONDS = 180
 # Android runtime permission dialogs (agent/permission_dialogs.py; the phone's gatekeeper enforces the same,
 # rules.json "permission_dialog"). Values tightest first. Never "Allow all the time", whatever the setting.
 PERMISSION_TYPES = ("location", "camera", "microphone", "contacts", "photos", "phone", "sms", "calendar",
-                    "nearby_devices")
-PERMISSION_DEFAULTS = {"notifications": "deny", "location_accuracy": "approximate",
-                       **{k: "ask" for k in PERMISSION_TYPES}}
+                    "nearby_devices", "physical_activity", "body_sensors")
+# Owner decision: the task's own app gets "Only this time" with no prompt (the narrowest grant that lets the task
+# go on), notifications allowed, location approximate.
+PERMISSION_DEFAULTS = {"notifications": "allow", "location_accuracy": "approximate",
+                       **{k: "once" for k in PERMISSION_TYPES}}
 PERMISSION_QUESTIONS = {
     "once": "Let agents allow {what} \"only this time\" in permission dialogs without asking?",
     "while_using": "Let agents allow {what} \"while using the app\" in permission dialogs without asking?",

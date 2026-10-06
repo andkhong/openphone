@@ -345,7 +345,7 @@ def test_permission_prompt_defaults_from_the_dashboard(hosted):
     the phone's screen lock."""
     h = hosted
     dev = h.ids.a1
-    assert settings_of(h, dev)["permission_prompts"]["location"] == "ask"
+    assert settings_of(h, dev)["permission_prompts"]["location"] == "once"
     r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json={"permission_prompts": {"camera": "deny"}})
     assert r.status_code == 200 and r.json()["settings"]["permission_prompts"]["camera"] == "deny"
     assert wait_for(lambda: any((m.get("permission_prompts") or {}).get("camera") == "deny"
@@ -356,7 +356,7 @@ def test_permission_prompt_defaults_from_the_dashboard(hosted):
     assert wait_for(lambda: any(q.get("kind") == "mode_change" for q in h.pa1.approval_requests))
     request = next(q for q in h.pa1.approval_requests if q["kind"] == "mode_change")
     assert "precise location" in request["question"]
-    assert settings_of(h, dev)["permission_prompts"]["location"] == "ask"
+    assert settings_of(h, dev)["permission_prompts"]["location"] == "once"
     h.pa1.send(signed(h.signers.a1, request))
     assert wait_for(lambda: settings_of(h, dev)["permission_prompts"]["location"] == "while_using")
     r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json={"permission_prompts": {"location": "always"}})

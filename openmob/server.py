@@ -861,7 +861,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         # confirm_on_phone: only the phone may approve the pending risky action (the dashboard hides its buttons)
         on_phone = getattr(manager, "confirm_on_phone", None)
         settings = manager.permission_settings(s.info.id) if hasattr(manager, "permission_settings") else None
+        # A system dialog the phone can't read is waiting for the owner (owner_dialog): the live view says so.
+        owner_dialog = getattr(s.driver, "owner_dialog", None)
         return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s)),
+                "owner_dialog": owner_dialog if isinstance(owner_dialog, str) else None,
                 "permissions": perm.public(settings) if settings else None}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---

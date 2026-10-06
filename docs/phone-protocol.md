@@ -655,7 +655,7 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | Code | Meaning | Server |
 |---|---|---|
 | `gate_blocked_app` | A blocked app (banking, payments, wallets, password managers, authenticators, OpenMob itself): launching it, a link into it, acting in it, or its app-info page | Report to the agent; don't retry |
-| `gate_denied_page` | A security-critical Settings page, the keyguard or a system approval prompt, OpenMob's own windows, the package installer | Report; don't retry |
+| `gate_denied_page` | A security-critical Settings page, the keyguard or a system approval prompt, OpenMob's own windows, installing an app (`builtin:installer`), uninstalling OpenMob or a blocked app (`builtin:uninstall_protected`) | Report; don't retry |
 | `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
 | `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
 | `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
@@ -664,7 +664,8 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt) | Report to the agent; never retried automatically |
 | `gate_screen_unstable` | The screen didn't settle within a second for a risky action | Report; look again |
 | `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
-| `needs_owner_dialog` | A system dialog the phone can't read is up (Android 14+ hides permission dialogs, Safety Center and default-apps screens from accessibility); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
+| `needs_owner_dialog` | A system dialog the phone can't read or OCR-classify is up (Safety Center, default-app pickers; a permission dialog only when on-device OCR is unavailable); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
+| `gate_permission_choice` | A permission-dialog choice the owner's settings never allow: "Allow all the time"; a grant the owner set to Don't allow; a grant while Precise is selected and the owner allows approximate only. `error` says what to tap instead | Tap what `error` says ("Only this time", "Don't allow", "Approximate" first) |
 | `gate_unavailable` | OpenMob's accessibility service is off, so the phone can't see the screen: every act is refused | Report; the owner turns it on |
 | `gate_no_session`, `gate_policy_invalid` | Reserved (Phase 2) | Report |
 
@@ -725,7 +726,25 @@ sends `{"type": "device_lock", "locked": false}`. The server pauses the task for
 
 On Android 14 and later the system hides runtime permission dialogs (and Safety Center and default-apps
 screens) from accessibility services: the phone sees the window, but not what's in it (or only the window-state
-event's package and text). It never taps such a dialog blindly. Act calls get `needs_owner_dialog`, the phone
+event's package and text). Gestures still reach it and screenshots capture it.
+
+**Permission dialogs are read with on-device OCR** (ML Kit text recognition, the bundled Latin model: offline,
+no network). When the phone identifies the permission-controller window (its package, or the last window-state
+event from `com.android.permissioncontroller`, `com.google.android.permissioncontroller` or
+`com.samsung.android.permissioncontroller`) with no readable tree, it takes its own screenshot and reads it:
+the title ("Allow Kalshi to access this device's location?", English, Spanish and German wording) gives the
+requesting app and the permission; lines that read exactly as a button ("While using the app", "Only this
+time", "Allow", "Don't allow", "Allow all the time", "Precise", "Approximate") become buttons. `ui_elements`
+lists them first, class `OCRText` with bounds (the title with `resource_id: "ocr_permission_message"`), and the
+live view shows the dialog normally. A tap on it is judged on that reading like a readable dialog (docs/safety.md):
+the task's app gets "Only this time" (or the narrowest grant offered), notifications and "Approximate" with no
+prompt; "Allow all the time" never (`gate_permission_choice`); another app's request, a tap off every recognized
+button, low-confidence text (below 0.5) or an unknown wording asks (a tap-level prompt; refused under Don't
+ask). OCR can't see which location card is selected: the phone assumes Precise (Android's pre-selection) until
+a tap on Approximate in that dialog goes through.
+
+**Other hidden system surfaces** (Safety Center, default-app pickers), and a permission dialog when OCR isn't
+available, are never tapped blindly. Act calls get `needs_owner_dialog`, the phone
 shows "Kalshi is asking for location: choose on your phone, then the task continues" (or "A system dialog needs
 your answer") in a notification, and tells the server:
 
@@ -735,9 +754,9 @@ your answer") in a notification, and tells the server:
 
 and `{"type": "owner_dialog", "open": false}` once the dialog is gone. The server pauses the task (its events
 show the same message) for up to `owner_dialog_wait_seconds` (default 300), then lets the agent look again; if
-it's never answered, the task fails with reason `needs_owner_dialog`. So on Android 14+ the owner's
-per-permission defaults can't be applied automatically: the owner answers the dialog. On Android 11–13 they
-apply as described in docs/safety.md.
+it's never answered, the task fails with reason `needs_owner_dialog`. While it's open the dashboard's live view
+says "<App> is asking for <permission>: answer on your phone" (`owner_dialog` in the device status). Reads are
+not blacked out for an identified system dialog; a window with no package from any source still is.
 
 A tap where the phone sees no window under the point is refused as `gate_screen_unstable` (`builtin:no_window`).
 
@@ -753,23 +772,29 @@ the button and on the window's total, cost, price, amount and payout lines, and 
 ("YES 63¢", "AAPL +1.2%") never count as an unrecognized language: that rule looks at the script and at
 ordinary lower-case words only.
 
-### 9.7 Task approval
+### 9.7 Task approval (just in time)
 
-By owner request, a task can be approved once instead of step by step. Phones whose hello lists `"task_grant"`
-answer the call `task_grant {task, text, source}`: the phone shows one prompt worded from the request itself
-("Agent wants to: share PewDiePie's channel with yourself on Messenger. Allow the steps this needs?"), with the
-source on the labeled "Server says" line. It replies `gate_needs_approval` like any gate prompt; after
-`gate_event approved` the server re-sends `task_grant` once and gets `{"granted": true}`. A request typed or
-spoken on the phone itself is granted without a prompt (`rule: task_grant:own_request`).
+By owner request, a task can be approved once instead of step by step, and only when it needs it. Nothing is
+asked at task start. To phones whose hello lists `"task_grant"`, the server adds the task's request to every act
+call: `task` (id), `task_text` (the request, up to 300 characters) and `task_source` (who asked). The first step
+that would need a tap-level confirmation and whose kind the request names (a send for "send Bob the link", a
+delete for "delete old photos") gets the task prompt instead of a per-step one, worded from the request with
+that step as the detail ("Agent wants to: send Bob the channel link on Messenger. Allow the steps this needs?
+Next: Allow tapping “Send” in Messenger?"); it replies `gate_needs_approval` with `kind: "task"`. Approving it
+grants the task and permits that step (the server re-sends it). A task with no such step sees no prompt at all;
+a fingerprint-level step keeps its own fingerprint prompt (never covered by the grant). A request typed or
+spoken on the phone itself is granted without a prompt (`rule: task_grant:own_request`). The `task_grant`
+method still exists (it asks up front) but the server no longer calls it.
 
 The grant is bound to the task id and the request text's digest (another text for the same id asks again), and
 lasts until the task ends, 30 minutes on the monotonic clock, or 25 risky steps, whichever comes first. Under it,
 an act call carrying that `task` runs its non-money risky steps without more prompts (send, post, share, delete,
 menus, unlabeled taps, ENTER, unrecognized non-security Settings pages, native-app autofill). Still asked: money
 commits (unless "Also allow purchases"), browser or WebView autofill and runtime permission dialogs. Still
-refused: every hard deny. Declining stops the task (`task_declined`); an unanswered task prompt ends it with
-`task_no_answer`. The server asks in Ask for risky, Trusted apps and Plan first, not in Ask every step or Don't
-ask, and not when the owner turned `task_approval` off; turning it back on is a loosening approved on the phone.
+refused: every hard deny. Declining the task prompt stops the task (`task_declined`); an unanswered one is
+not a denial and ends it with `task_no_answer`. The server sends `task_text` in Ask for risky, Trusted apps and
+Plan first, not in Ask every step or Don't ask, and not when the owner turned `task_approval` off (then each
+risky step asks on its own); turning it back on is a loosening approved on the phone.
 
 ### 9.8 Consequence-based risk and confirmation levels
 

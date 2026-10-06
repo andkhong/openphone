@@ -841,7 +841,7 @@
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
-     "kind": "settings"
+     "kind": "permission"
     }
    }
   ]

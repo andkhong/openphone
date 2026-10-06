@@ -23,7 +23,7 @@ class GatekeeperPhone(FakePhone):
         self.owner = owner  # "approve" | "deny" | None (never answers)
         self.refuse = refuse  # a refusal code every tap gets
         self.task_owner = task_owner  # "approve" | "deny" | None: the answer to the task prompt
-        self.task_requests, self.tasks_granted = [], set()
+        self.task_requests, self.tasks_granted, self.act_params = [], set(), []
         self.dialog = dialog  # seconds an unreadable system dialog stays up (None: none; -1: forever)
         self.locked = locked  # seconds the phone stays locked (None: never locked; -1: forever)
         self.prompts = []  # approval ids the phone asked its owner about
@@ -69,18 +69,26 @@ class GatekeeperPhone(FakePhone):
             if key not in self.permits:
                 approval_id = uuid.uuid4().hex
                 self.prompts.append(approval_id)
-                if self.owner:
-                    state = {"approve": "approved", "deny": "denied", "expire": "expired"}[self.owner]
+                # A phone with the task prompt (just in time): this tap-level step asks for the whole task.
+                task_prompt = bool(self.task_owner and params.get("task_text") and not self.tasks_granted)
+                answer = self.task_owner if task_prompt else self.owner
+                if answer:
+                    state = {"approve": "approved", "deny": "denied", "expire": "expired"}[answer]
                     if state == "approved":
                         self.permits.add(key)
+                        if task_prompt:
+                            self.tasks_granted.add(params["task"])
                     threading.Timer(0.3, self.send, ({"type": "gate_event", "approval_id": approval_id,
                                                       "state": state},)).start()
+                question = (f"Agent wants to: {params.get('task_text')}. Allow the steps this needs? Next: tap Send"
+                            if task_prompt else "Allow tapping “Buy now” in Amazon?")
                 raise PhoneReply({"ok": False, "code": "gate_needs_approval", "approval_id": approval_id,
                                   "error": "Waiting for the owner's approval on the phone.",
-                                  "gate": {"rule": "risk:words:buy", "kind": "pay",
-                                           "question": "Allow tapping “Buy now” in Amazon?"}})
+                                  "gate": {"rule": "risk:words:buy", "kind": "task" if task_prompt else "pay",
+                                           "question": question}})
             self.permits.discard(key)  # one-shot
-        params = {k: v for k, v in params.items() if k not in ("mode", "task", "hint")}  # the gate's, not the gesture's
+        self.act_params.append(dict(params))
+        params = {k: v for k, v in params.items() if k not in ("mode", "task", "hint", "task_text", "task_source")}  # the gate's, not the gesture's
         return super().handle(method, params)
 
 
@@ -169,24 +177,26 @@ def test_no_answer_from_the_driver_is_its_own_code():
 TASK_CAPS = ["wait_idle", "resolve_url", "gatekeeper", "device_lock", "task_grant"]
 
 
-def test_task_approval_is_one_prompt_at_the_start(api):
-    phone, driver = gatekeeper(api, owner="approve", task_owner="approve", capabilities=TASK_CAPS)
+def test_task_approval_is_just_in_time(api):
+    """No request at task start: the phone asks for the task at the first step that needs a tap, worded from the
+    request; the act calls carry it."""
+    phone, driver = gatekeeper(api, task_owner="approve", capabilities=TASK_CAPS)
     task = run_task(api.alice, "check the cart")
     done = wait_status(api.alice, task["id"], "succeeded", timeout=12)
-    first, again = phone.task_requests  # asked, approved on the phone, re-sent once
-    assert first["task"] == task["id"] and first["text"] == "check the cart" and first["source"] == "test"
-    assert again == first
+    assert phone.task_requests == []  # nothing asked up front
+    first = next(p for p in phone.act_params if "x" in p)  # the tap
+    assert first["task_text"] == "check the cart" and first["task_source"] == "test" and first["task"] == task["id"]
     log = _log(api)
     assert any("Waiting for your approval of this task on the phone: Agent wants to: check the cart" in m for m in log)
-    assert done["prompts_count"] == 2  # the task prompt, and Buy now (money still asks)
+    assert done["prompts_count"] == 1
 
 
-def test_a_declined_task_stops_before_any_step(api):
+def test_a_declined_task_prompt_stops_the_task(api):
     phone, driver = gatekeeper(api, task_owner="deny", capabilities=TASK_CAPS)
     task = run_task(api.alice, "check the cart")
     done = wait_status(api.alice, task["id"], "failed", "cancelled", timeout=10)
     assert done["outcome"]["reason"] == "task_declined"
-    assert taps(phone) == [] and not any(a[0] == "tap" for a in driver.actions)
+    assert not any(a[0] == "tap" for a in driver.actions)
 
 
 def test_the_api_can_decline_and_nothing_is_sent(api):
@@ -289,6 +299,16 @@ def test_an_unreadable_system_dialog_pauses_then_resumes(api):
     messages = [e["message"] for e in api.manager.get(api.alice.device).coordinator.log]
     assert any("Kalshi is asking for location: choose on your phone" in m for m in messages)
     assert any("answered on the phone" in m for m in messages)
+
+
+def test_the_dashboard_shows_the_open_system_dialog(api):
+    api.cfg.owner_dialog_wait_seconds = 3
+    phone, driver = gatekeeper(api, owner="approve", dialog=-1)
+    run_task(api.alice, "check the cart")
+    status = lambda: api.alice.console.get(f"/api/devices/{api.alice.device}/status").json()  # noqa: E731
+    assert wait_for(lambda: (status().get("owner_dialog") or "").startswith("Kalshi is asking for location"))
+    page = api.alice.console.get("/").text
+    assert "function ownerDialogText" in page and "answer on your phone" in page
 
 
 def test_an_unanswered_system_dialog_ends_the_task_as_needs_owner_dialog(api):

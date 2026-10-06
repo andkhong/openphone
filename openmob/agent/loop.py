@@ -289,8 +289,6 @@ class Agent:
             route = router_for(self.client, self.config).route(self.task_model)
         except ModelUnavailable as exc:
             return AgentResult(False, str(exc), 0)
-        if (declined := self._task_approval(state)) is not None:
-            return declined
         obs = self._observe_settled(state)
         messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
         self._show_later(state, messages, obs)
@@ -313,6 +311,9 @@ class Agent:
                     obs = self._observe_settled(state)
             if state.dialog_out:
                 return AgentResult(False, DIALOG_MESSAGE, step - 1)
+            if state.task_outcome:
+                return AgentResult(False, "The owner declined this task on the phone." if state.task_outcome ==
+                                   "task_declined" else "Nobody approved this task on the phone in time.", step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
             if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
@@ -779,6 +780,8 @@ class Agent:
             outcome = Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
         except GateRefused as exc:
             # The phone refused it: report with its stable code, and don't retry the same call.
+            if exc.kind == "task" and exc.code in ("gate_denied", "gate_no_answer"):
+                state.task_outcome = "task_declined" if exc.code == "gate_denied" else "task_no_answer"
             self.io.event("status", f"Refused on the phone ({exc.code}): {exc}")
             outcome = Outcome(f"Refused on the phone ({exc.code}): {exc} Don't retry this; pick another approach "
                               "or call done.", is_error=True, settle=0)
@@ -1501,6 +1504,17 @@ class Agent:
             return
         self.driver.gate_mode = state.perms.mode() if state else None
         self.driver.gate_task = str(getattr(self.io, "current_task", "") or "") if state else ""
+        # Task approval, just in time: the phone asks for the whole task at the first step that needs a tap, worded
+        # from this request (and not at all when no step does). Not in Ask every step.
+        task_ok = state is not None and state.perms.mode() in ("auto", "trusted", "plan")
+        try:
+            if task_ok and (state.perms.current_settings() or {}).get("task_approval") is False:
+                task_ok = False
+        except Exception:
+            pass
+        source = getattr(self.io, "task_source", None)
+        self.driver.gate_task_text = state.task if task_ok else ""
+        self.driver.gate_task_source = (source() if callable(source) else "An agent") if task_ok else ""
         self.driver.gate_approver = self._gate_approval if state else None
         self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
         if hasattr(self.driver, "dialog_waiter"):

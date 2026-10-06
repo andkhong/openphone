@@ -63,11 +63,12 @@ def decide(d, mode="auto", app="Chess.com", **prompts):
 @pytest.mark.parametrize("kind", list(MESSAGES))
 def test_the_default_per_type(kind):
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES[kind]))
-    expected = "deny" if kind == "notifications" else "ask"
-    assert decide(d).answer == expected
+    plan = decide(d)  # owner decision: the task's own app gets "Only this time" (notifications: Allow), no prompt
+    assert plan.answer == "allow"
     if kind == "notifications":
-        assert decide(d, notifications="allow").answer == "allow"
+        assert decide(d, notifications="deny").answer == "deny"
     else:
+        assert pd.button(d, plan.answer, plan.grant).text == "Only this time"
         assert pd.question(d).startswith("Allow Chess.com to use your ")
 
 
@@ -86,8 +87,9 @@ def test_each_setting(kind, setting, answer, tapped):
 @pytest.mark.parametrize("kind", list(MESSAGES))
 def test_dont_ask_mode_denies_unless_once_or_while_using(kind):
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES[kind]))
-    assert decide(d, mode="never", notifications="allow").answer == ("allow" if kind == "notifications" else "deny")
+    assert decide(d, mode="never").answer == "allow"  # the defaults grant without asking
     if kind != "notifications":
+        assert decide(d, mode="never", **{kind: "ask"}).answer == "deny"
         assert decide(d, mode="never", **{kind: "once"}).answer == "allow"
         assert decide(d, mode="never", **{kind: "while_using"}).answer == "allow"
 
@@ -95,7 +97,7 @@ def test_dont_ask_mode_denies_unless_once_or_while_using(kind):
 def test_another_apps_request_asks():
     d = pd.detect(GOOGLE, dialog_elements("Allow Spyware to send you notifications?"))
     assert decide(d, notifications="allow").answer == "ask"
-    assert decide(d).answer == "deny"  # deny never asks
+    assert decide(d, notifications="deny").answer == "deny"  # deny never asks
     d = pd.detect(GOOGLE, dialog_elements("Allow Spyware to access your contacts?"))
     assert decide(d, contacts="while_using").answer == "ask"  # the owner's default is for the task's own app
 
@@ -110,11 +112,11 @@ def test_a_yes_taps_the_narrowest_grant():
 
 def test_never_allow_all_the_time_unless_the_owner_says_so():
     d = pd.detect(GOOGLE, dialog_elements(MESSAGES["location"], roles=("always", "deny")))
-    for setting in ("once", "while_using"):
-        assert decide(d, location=setting).answer == "ask"  # the only grant is background location: ask
+    for setting in ("once", "while_using", "ask"):
+        assert decide(d, location=setting).answer == "deny"  # the only grant is background location: never
         assert decide(d, mode="never", location=setting).answer == "deny"
     assert pd.button(d, "allow", "while_using") is None
-    assert pd.button(d, "allow", "once", asked=True).text == "Allow all the time"  # only after the owner's yes
+    assert pd.button(d, "allow", "once", asked=True) is None  # not even after a yes
 
 
 def location_elements(prefix="com.android.permissioncontroller:id/", precise_checked=True, ids=True):
@@ -181,7 +183,7 @@ def run(tmp_path, message, answers=None, mode="auto", phone=None, **prompts):
 
 
 def test_notifications_are_denied_without_a_model_call(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["notifications"])
+    driver, client, io = run(tmp_path, MESSAGES["notifications"], notifications="deny")
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and taps[0][2] > 1850  # "Don't allow"
     assert len(client.requests) == 1  # only the step after the dialog (the model's "done")
@@ -192,14 +194,14 @@ def test_notifications_are_denied_without_a_model_call(tmp_path):
 
 
 def test_camera_asks_the_owner_and_prefers_one_time(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["yes"])
+    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["yes"], camera="ask")
     assert io.questions and "Chess.com" in io.questions[0] and "camera" in io.questions[0]
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time" (second button)
 
 
 def test_camera_denied_by_the_owner(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["no"])
+    driver, client, io = run(tmp_path, MESSAGES["camera"], answers=["no"], camera="ask")
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and taps[0][2] > 1850  # "Don't allow"
 
@@ -217,7 +219,7 @@ class GatekeeperDialogPhone(DialogPhone):
 
 
 def test_on_a_gatekeeper_phone_the_phone_asks(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], phone=GatekeeperDialogPhone)
+    driver, client, io = run(tmp_path, MESSAGES["camera"], phone=GatekeeperDialogPhone, camera="ask")
     assert io.questions == []  # no server-side prompt: one prompt, on the phone
     assert driver.hints and "camera" in driver.hints[0]
     taps = [a for a in driver.actions if a[0] == "tap"]
@@ -225,7 +227,7 @@ def test_on_a_gatekeeper_phone_the_phone_asks(tmp_path):
 
 
 def test_dont_ask_mode_denies_the_camera_without_asking(tmp_path):
-    driver, client, io = run(tmp_path, MESSAGES["camera"], mode="never")
+    driver, client, io = run(tmp_path, MESSAGES["camera"], mode="never", camera="ask")
     assert io.questions == []
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and taps[0][2] > 1850
@@ -270,3 +272,26 @@ def test_location_precise_when_the_owner_says_so(tmp_path):
                              location_accuracy="precise")
     taps = [a for a in driver.actions if a[0] == "tap"]
     assert len(taps) == 1 and driver.answered == "Only this time"  # Precise was already selected
+
+
+def test_by_default_the_tasks_app_gets_only_this_time_without_asking(tmp_path):
+    driver, client, io = run(tmp_path, MESSAGES["camera"])
+    assert io.questions == []
+    taps = [a for a in driver.actions if a[0] == "tap"]
+    assert len(taps) == 1 and 1700 < taps[0][2] < 1820  # "Only this time"
+
+
+def test_an_ocr_read_dialog_is_recognized_by_its_text():
+    """Android 14+: the phone reads the dialog with OCR (class OCRText, no resource ids)."""
+    els = [UIElement(0, "Allow Kalshi to access this device's location?", "", "ocr_permission_message", "OCRText",
+                     False, None, (0, 0, 1, 1)),
+           UIElement(1, "Precise", "", "", "OCRText", True, True, (184, 1244, 376, 1326)),
+           UIElement(2, "Approximate", "", "", "OCRText", True, False, (674, 1244, 926, 1326)),
+           UIElement(3, "While using the app", "", "", "OCRText", True, None, (284, 1464, 796, 1546)),
+           UIElement(4, "Only this time", "", "", "OCRText", True, None, (284, 1594, 796, 1676)),
+           UIElement(5, "Don't allow", "", "", "OCRText", True, None, (284, 1724, 796, 1806))]
+    d = pd.detect(GOOGLE, els)
+    assert d is not None and d.kind == "location" and d.app == "Kalshi"
+    plan = decide(d, app="Kalshi")
+    assert plan.answer == "allow" and pd.accuracy_card(d, plan.accuracy).text == "Approximate"
+    assert pd.button(d, plan.answer, plan.grant).text == "Only this time"

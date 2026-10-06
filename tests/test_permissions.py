@@ -454,8 +454,8 @@ def test_permission_prompt_defaults_loosen_only_with_the_phone():
     from openmob import permissions as perm
 
     cur = perm.default_settings()
-    assert perm.normalize(cur)["permission_prompts"]["location"] == "ask"
-    assert perm.normalize(cur)["permission_prompts"]["notifications"] == "deny"
+    assert perm.normalize(cur)["permission_prompts"]["location"] == "once"
+    assert perm.normalize(cur)["permission_prompts"]["notifications"] == "allow"
     assert perm.normalize(cur)["permission_prompts"]["location_accuracy"] == "approximate"
     new, loosens = perm.apply_patch(cur, {"permission_prompts": {"location": "while_using",
                                                                  "location_accuracy": "precise"}}, {})
@@ -466,4 +466,4 @@ def test_permission_prompt_defaults_loosen_only_with_the_phone():
     for bad in ({"location": "always"}, {"teleport": "ask"}, ["location"]):
         with pytest.raises(perm.PermissionsInvalid):
             perm.apply_patch(cur, {"permission_prompts": bad}, {})
-    assert perm.normalize({"permission_prompts": {"camera": "always"}})["permission_prompts"]["camera"] == "ask"
+    assert perm.normalize({"permission_prompts": {"camera": "always"}})["permission_prompts"]["camera"] == "once"

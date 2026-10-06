@@ -430,14 +430,15 @@ SCENARIOS = [
         step("tap", "settings_system", ask("settings"), x=540, y=480)], tags=["settings"]),
     sc("app info: force stop yes, clear storage asks, a blocked app's info refused", [
         step("tap", "settings_app_info_amazon", allow(), x=540, y=620),
-        step("tap", "settings_app_info_amazon", ask("settings"), x=540, y=760),
-        step("tap", "settings_app_info_amazon", ask(), x=540, y=900),
+        step("tap", "settings_app_info_amazon", ask("delete", level="tap"), x=540, y=760),  # Clear storage
+        {"cancel": "last"},
+        step("tap", "settings_app_info_amazon", allow(), x=540, y=900),  # Uninstall: the installer confirms
         step("tap", "settings_app_info_chase", refuse("gate_blocked_app"), x=540, y=620)], tags=["settings"]),
     sc("permission dialogs: the task's app follows the settings, another app asks", [
         step("tap", "launcher", allow(), x=100, y=1900),
         step("tap", "permission_dialog_session", allow(), x=540, y=300),
-        step("tap", "permission_dialog_session", ask("permission"), x=540, y=1550),  # camera: asks by default
-        step("tap", "permission_dialog_other", ask("settings"), x=540, y=1550)], tags=["settings"]),
+        step("tap", "permission_dialog_session", allow(), x=540, y=1550),  # camera: the narrowest grant it offers
+        step("tap", "permission_dialog_other", ask("permission", level="tap"), x=540, y=1550)], tags=["settings"]),
     sc("surfaces: OpenMob, keyguard, biometric prompt", [
         step("tap", "openmob_app", refuse("gate_denied_page", rule="builtin:own_window"), x=700, y=1650),
         step("tap", "keyguard_secure", refuse("phone_locked"), x=200, y=1570),
@@ -583,12 +584,13 @@ def perm_default(perm, value, sig="valid"):
 
 KALSHI = step("tap", "kalshi_app", allow(), x=540, y=300)
 SCENARIOS += [
-    sc("location by default: approximate and deny pass, anything that grants asks", [
+    sc("location by default: Approximate, then Only this time, no prompt", [
         KALSHI,
+        step("tap", "location_google", refuse("gate_permission_choice", rule="permission:location_accuracy"), **ONCE),
         step("tap", "location_google", allow(), **APPROX),
+        step("tap", "location_approx", allow(), **ONCE),
+        step("tap", "location_approx", ask("permission", level="tap", rule="risk:permission:location"), **WHILE_USING),
         step("tap", "location_google", ask("permission", rule="risk:permission:location_accuracy"), **PRECISE),
-        step("tap", "location_google", ask("permission", rule="risk:permission:location"), **WHILE_USING),
-        step("tap", "location_google", ask("permission"), **ONCE),
         step("tap", "location_google", allow(), **DENY_BTN)], tags=["permissions"]),
     sc("Samsung's permission controller is read the same way", [
         KALSHI, step("tap", "location_samsung", allow(), **APPROX),
@@ -599,51 +601,54 @@ SCENARIOS += [
         step("tap", "location_google", allow(), **PRECISE),
         step("tap", "location_google", allow(), **WHILE_USING),
         step("tap", "location_google", allow(), **ONCE)], tags=["permissions"]),
-    sc("signed default once: only this time passes, while using asks", [
-        KALSHI, perm_default("location", "once"),
+    sc("default once: only this time passes, while using asks", [
+        KALSHI,
         step("tap", "location_approx", allow(), **ONCE),
         step("tap", "location_approx", ask("permission"), **WHILE_USING)], tags=["permissions"]),
     sc("a pre-selected Precise is not granted against an approximate setting", [
         KALSHI, perm_default("location", "while_using"),
-        step("tap", "location_google", ask("permission", rule="risk:permission:location_accuracy"), **WHILE_USING),
+        step("tap", "location_google", refuse("gate_permission_choice", rule="permission:location_accuracy"),
+             **WHILE_USING),
         step("tap", "location_google", allow(), **APPROX),
         step("tap", "location_approx", allow(), **WHILE_USING)], tags=["permissions"]),
     sc("a permission button the phone doesn't recognize asks", [
         KALSHI, perm_default("location", "while_using"),
-        step("tap", "location_oem_unknown", ask("permission", rule="risk:permission:unknown"), x=540, y=1505),
+        step("tap", "location_oem_unknown", ask("permission", level="tap", rule="risk:permission:unknown"),
+             x=540, y=1505),
         step("tap", "location_oem_unknown", allow(), x=540, y=1100)], tags=["permissions"]),
     sc("an unsigned default changes nothing", [
         KALSHI, perm_default("location", "while_using", sig="bad"),
         step("tap", "location_google", ask("permission"), **WHILE_USING)], tags=["permissions"]),
     sc("never Allow all the time, whatever the setting", [
         KALSHI, perm_default("location", "while_using"),
-        step("tap", "location_always_only", ask("permission", rule="risk:permission:always"), x=540, y=1505),
+        step("tap", "location_always_only", refuse("gate_permission_choice", rule="permission:always"), x=540, y=1505),
         {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
-        step("tap", "location_always_only", refuse("gate_denied", rule="never:permission:always"), mode="never",
-             x=540, y=1505)], tags=["permissions"]),
-    sc("Don't ask denies unless the setting is once or while using", [
+        step("tap", "location_always_only", refuse("gate_permission_choice"), mode="never", x=540, y=1505)],
+       tags=["permissions"]),
+    sc("Don't ask: only this time still passes, a wider grant is refused, deny wins", [
         KALSHI, {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
-        step("tap", "camera_kalshi", refuse("gate_denied", rule="never:permission:camera"), mode="never", **ONCE),
-        step("tap", "camera_kalshi", allow(), mode="never", **DENY_BTN),
-        perm_default("camera", "once"),
         step("tap", "camera_kalshi", allow(), mode="never", **ONCE),
-        step("tap", "camera_kalshi", refuse("gate_denied"), mode="never", **WHILE_USING)], tags=["permissions"]),
-    sc("notifications: deny by default, allow when the owner says", [
-        KALSHI, step("tap", "notifications_kalshi", ask("permission", rule="risk:permission:notifications"),
-                     x=540, y=1505),
+        step("tap", "camera_kalshi", refuse("gate_denied", rule="never:permission:camera"), mode="never",
+             **WHILE_USING),
+        step("tap", "camera_kalshi", allow(), mode="never", **DENY_BTN),
+        perm_default("camera", "deny"),
+        step("tap", "camera_kalshi", refuse("gate_permission_choice", rule="permission:camera:deny"), **ONCE),
+        step("tap", "camera_kalshi", allow(), **DENY_BTN)], tags=["permissions"]),
+    sc("notifications: allowed by default, the owner's deny wins", [
+        KALSHI, step("tap", "notifications_kalshi", allow(), x=540, y=1505),
         step("tap", "notifications_kalshi", allow(), x=540, y=1635),
-        perm_default("notifications", "allow"),
-        step("tap", "notifications_kalshi", allow(), x=540, y=1505)], tags=["permissions"]),
+        perm_default("notifications", "deny"),
+        step("tap", "notifications_kalshi", refuse("gate_permission_choice"), x=540, y=1505)], tags=["permissions"]),
     sc("another app's location request asks even with a loose default", [
         KALSHI, perm_default("location", "while_using"),
-        step("tap", "location_other_app", ask("settings", rule="risk:permission:other_app"), **WHILE_USING)],
-       tags=["permissions"]),
+        step("tap", "location_other_app", ask("permission", level="tap", rule="risk:permission:other_app"),
+             **WHILE_USING)], tags=["permissions"]),
     sc("Always allow for Kalshi: a per-app override", [
         KALSHI, step("tap", "location_approx", ask("permission"), **WHILE_USING),
         {"approve": "last", "sig": "valid", "grant": True},
         step("tap", "location_approx", allow(), **WHILE_USING),
-        step("tap", "location_approx", allow(rule="grant"), **ONCE),
-        step("tap", "location_approx", allow(rule="grant"), **WHILE_USING),
+        step("tap", "location_approx", allow(), **ONCE),
+        step("tap", "location_approx", allow(), **WHILE_USING),
         step("tap", "location_google", ask("permission"), **PRECISE)], tags=["permissions", "grants"]),
 ]
 
@@ -654,7 +659,7 @@ SCREENS.update({
          "title": "", "bounds": [0, 1000, W, 2000], "root": node(cls="android.widget.FrameLayout", bounds=(0, 1000, W, 2000),
          children=[node(text="Allow Kalshi to access this device's location?",
                         id="com.android.permissioncontroller:id/permission_message", bounds=(40, 1050, 1040, 1150)),
-                   button("Zulassen", "com.oem.perm:id/btn_positive", (40, 1450, 1040, 1560))])}, labels=LABELS),
+                   button("Erlauben", "com.oem.perm:id/btn_positive", (40, 1450, 1040, 1560))])}, labels=LABELS),
     # The phone has an input focus it couldn't read (deep in a WebView, past the walk's limits).
     "otp_focus_unread": screen(app("com.example.shop", [node(cls="android.webkit.WebView", bounds=(0, 200, W, H))]),
                                focus={"expected": True}, labels=LABELS),
@@ -703,7 +708,10 @@ SCENARIOS += [
              refuse("needs_owner_dialog", rule="builtin:owner_dialog"), x=540, y=1500),
         step("key", "hidden_permission_dialog", refuse("needs_owner_dialog"), name="BACK"),
         step("wake_unlock", "hidden_permission_dialog", allow()),
-        step("screenshot", "hidden_permission_dialog", {"decision": "redact"}),
+        step("screenshot", "hidden_permission_dialog", allow()),  # identified: the live view shows it
+        step("ui_elements", "hidden_permission_dialog", allow()),
+        step("stream_start", "hidden_permission_dialog", allow()),
+        step("screenshot", "loading_unknown", {"decision": "redact"}),  # unidentified: still black
         step("tap", "hidden_permission_samsung", refuse("needs_owner_dialog"), x=540, y=300),
         step("tap", "kalshi_app", allow(), x=540, y=300)], tags=["hard_deny"]),
     sc("a touch where the phone sees no window is refused", [
@@ -1034,6 +1042,39 @@ SCENARIOS += [
         step("tap", "whatsapp_chat", ask("send"), **SEND, **TASK)], tags=["task_grant"], keep_open=True),
 ]
 
+# --- task approval, just in time (owner feedback): no prompt at task start ------------------------------------
+MSG_TEXT = "send Bob the channel link on Messenger"
+JIT = dict(task="t9", task_text=MSG_TEXT)
+SHARE_JIT = dict(task="t8", task_text="share PewDiePie's channel with myself on Messenger")
+SCENARIOS += [
+    sc("just in time: a share to yourself and subscribing need no prompt at all", [
+        step("tap", "youtube_channel", allow(), x=270, y=510, **SHARE_JIT),
+        step("tap", "youtube_video", allow(), x=570, y=1550, **SHARE_JIT),
+        step("tap", "share_link_sheet", allow(), x=170, y=1600, **SHARE_JIT),
+        step("tap", "messenger_share_list", allow(), x=930, y=650, **SHARE_JIT)], tags=["task_grant", "friction"]),
+    sc("just in time: the first Send asks for the task once; the second message is covered", [
+        step("tap", "messenger_friend", ask("task", level="tap", rule="risk:task:words:send"), **SEND, **JIT),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "messenger_friend", allow(), **SEND, **JIT),                     # the step that asked
+        step("tap", "messenger_friend", allow(rule="task_grant"), **SEND, **JIT),    # a second message
+        step("tap", "messenger_friend", ask("send"), **SEND, task="t9", task_text="delete everything")],
+       tags=["task_grant", "friction"], keep_open=True),
+    sc("just in time: money keeps its own fingerprint prompt at the commit", [
+        step("tap", "kalshi_market", allow(), **DUN, task="t7", task_text="place a $5 bet on Dun"),
+        step("tap", "kalshi_ticket", ask("pay", level="fingerprint"), **SUBMIT, task="t7",
+             task_text="place a $5 bet on Dun")], tags=["task_grant"], keep_open=True),
+    sc("just in time: a forged task approval is ignored; out-of-scope steps ask on their own", [
+        step("tap", "messenger_friend", ask("task"), **SEND, **JIT),
+        {"approve": "last", "sig": "bad", "expect_accepted": False},
+        {"approve": "last", "sig": "other_key", "expect_accepted": False}, {"cancel": "last"},
+        step("tap", "photo_viewer", ask("delete", level="tap"), x=970, y=2250, **JIT)], tags=["task_grant"],
+       keep_open=True),
+    sc("just in time: a request typed on the phone needs no prompt", [
+        {"instruction": MSG_TEXT},
+        step("tap", "messenger_friend", allow(), **SEND, **JIT),  # the typed request's one send (D6)
+        step("tap", "messenger_friend", allow(rule="task_grant:own_request"), **SEND, **JIT)], tags=["task_grant"]),
+]
+
 FILL_GRANT = {"policy": {"type": "grant", "kind": "fill", "binding": "com.example.app", "duration_ms": 86400000},
               "sig": "valid", "expect_accepted": True}
 TITLE = dict(x=540, y=440)  # the product title: a non-risky tap
@@ -1082,7 +1123,7 @@ SCENARIOS += [
         step("tap", "vpn_consent", ask("settings"), x=790, y=1650)], tags=["settings"]),
     sc("another app's permission dialog asks even when it shares a word with the task's app", [
         step("tap", "contacts_app", allow(), x=540, y=560),
-        step("tap", "permission_dialog_contacts_word", ask("settings"), x=540, y=1550)], tags=["settings"]),
+        step("tap", "permission_dialog_contacts_word", ask("permission"), x=540, y=1550)], tags=["settings"]),
 ]
 
 # The adversarial suite: a compromised server's raw calls. Every one must be refused or approval-gated.
@@ -1136,7 +1177,166 @@ ADVERSARIAL = [
     sc("unknown method", [step("exec", "launcher", refuse("gate_unknown_method"), cmd="rm -rf /")]),
     sc("a dangerous link scheme", [step("open_url", "launcher", refuse("gate_denied"), url="intent://scan/#Intent;scheme=zxing;end")]),
     sc("share to a contact", [step("tap", "share_sheet", ask("share"), x=170, y=1600)]),
-    sc("grant another app a permission", [step("tap", "permission_dialog_other", ask("settings"), x=540, y=1550)]),
+    sc("grant another app a permission", [step("tap", "permission_dialog_other", ask("permission"), x=540, y=1550)]),
+]
+
+
+# --- Android 14+ permission dialogs read with the phone's own OCR (owner: the agent taps them; no pause) --------
+def ocr_line(text, box, conf=0.95):
+    return {"text": text, "bounds": list(box), "conf": conf}
+
+
+def ocr_dialog(title_lines, buttons, cards=True, vendor="com.google.android.permissioncontroller", window_pkg="",
+               conf=0.95, extra=()):
+    """A permission dialog Android hides from accessibility (no root), as the phone's OCR reads its screenshot:
+    the dimmed app behind, the title, the Precise/Approximate cards, the buttons (centred on the usual points)."""
+    lines = [ocr_line("Markets", (60, 250, 300, 320), 0.9)]  # the Kalshi screen behind the dim
+    lines += [ocr_line(t, (120, 880 + 60 * i, 960, 930 + 60 * i)) for i, t in enumerate(title_lines)]
+    if cards:
+        lines += [ocr_line("Precise", (200, 1260, 360, 1310), conf), ocr_line("Approximate", (690, 1260, 910, 1310), conf)]
+    ys = {0: 1505, 1: 1635, 2: 1765}
+    lines += [ocr_line(b, (300, ys[i] - 25, 780, ys[i] + 25), conf) for i, b in enumerate(buttons)]
+    lines += list(extra)
+    return screen(app("com.kalshi", [node(text="Markets", bounds=(0, 200, W, 400))]),
+                  {"id": 7, "type": "application", "layer": 5, "package": window_pkg, "title": "", "bounds": FULL},
+                  event={"package": vendor, "text": " ".join(title_lines)}, labels=LABELS, ocr=lines)
+
+
+LOC_TITLE = ["Allow Kalshi to access this", "device's location?"]
+LOC_BUTTONS = ["While using the app", "Only this time", "Don't allow"]
+SCREENS.update({
+    # The user's Kalshi location dialog (Google, Android 14+): Precise and Approximate cards, three buttons.
+    "ocr_location": ocr_dialog(LOC_TITLE, LOC_BUTTONS),
+    "ocr_notifications": ocr_dialog(["Allow Kalshi to send you", "notifications?"], ["Allow", "Don't allow"],
+                                    cards=False),
+    # Samsung: the window names its package; one title line.
+    "ocr_location_samsung": ocr_dialog(["Allow Kalshi to access this device's location?"], LOC_BUTTONS,
+                                       vendor="com.samsung.android.permissioncontroller",
+                                       window_pkg="com.samsung.android.permissioncontroller"),
+    "ocr_location_es": ocr_dialog(["¿Permitir que Kalshi acceda a la", "ubicación de este dispositivo?"],
+                                  ["Mientras la app está en uso", "Solo esta vez", "No permitir"]),
+    "ocr_location_other": ocr_dialog(["Allow Tracker to access this", "device's location?"], LOC_BUTTONS),
+    "ocr_location_always": ocr_dialog(LOC_TITLE, ["Allow all the time", "Don't allow"], cards=False),
+    # The OCR couldn't read the buttons with confidence.
+    "ocr_location_blurry": ocr_dialog(LOC_TITLE, LOC_BUTTONS, conf=0.3),
+    # A wording the phone doesn't know (another language).
+    "ocr_location_unknown": ocr_dialog(["Kalshi wil toegang tot de locatie", "van dit apparaat?"],
+                                       ["Tijdens gebruik van de app", "Alleen deze keer", "Niet toestaan"], cards=False),
+    # The dialog is up but the phone couldn't run OCR: pause for the owner, as before.
+    "ocr_unavailable": {**ocr_dialog(LOC_TITLE, LOC_BUTTONS), "ocr": None},
+})
+SCENARIOS += [
+    sc("OCR: the Kalshi location dialog: Approximate, then Only this time, no prompt", [
+        KALSHI,
+        step("screenshot", "ocr_location", allow()),
+        step("ui_elements", "ocr_location", allow()),
+        step("tap", "ocr_location", refuse("gate_permission_choice", rule="permission:location_accuracy"), **ONCE),
+        step("tap", "ocr_location", allow(), **APPROX),
+        step("tap", "ocr_location", allow(), **ONCE)], tags=["permissions", "ocr", "friction"]),
+    sc("OCR: wider grants and Precise ask; Don't allow passes; a tap off the buttons asks", [
+        KALSHI,
+        step("tap", "ocr_location", ask("permission", level="tap", rule="risk:permission:location"), **WHILE_USING),
+        {"cancel": "last"},
+        step("tap", "ocr_location", ask("permission", level="tap", rule="risk:permission:location_accuracy"),
+             **PRECISE),
+        {"cancel": "last"},
+        step("tap", "ocr_location", ask("permission", rule="risk:permission:unknown"), x=540, y=1100),
+        {"cancel": "last"},
+        step("tap", "ocr_location", allow(), **DENY_BTN)], tags=["permissions", "ocr"]),
+    sc("OCR: notifications allowed for the task's app", [
+        KALSHI, step("tap", "ocr_notifications", allow(), x=540, y=1505)], tags=["permissions", "ocr"]),
+    sc("OCR: Samsung's and the Spanish dialog read the same way", [
+        KALSHI,
+        step("tap", "ocr_location_samsung", allow(), **APPROX),
+        step("tap", "ocr_location_samsung", allow(), **ONCE),
+        step("tap", "ocr_location_es", allow(), **APPROX),
+        step("tap", "ocr_location_es", allow(), **ONCE)], tags=["permissions", "ocr"]),
+    sc("OCR: another app's request asks (a tap), and is refused under Don't ask", [
+        KALSHI,
+        step("tap", "ocr_location_other", ask("permission", level="tap", rule="risk:permission:other_app"), **ONCE),
+        {"cancel": "last"},
+        step("tap", "ocr_location_other", allow(), **DENY_BTN),
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("tap", "ocr_location_other", refuse("gate_denied"), mode="never", **ONCE)],
+       tags=["permissions", "ocr"]),
+    sc("OCR: never Allow all the time", [
+        KALSHI, step("tap", "ocr_location_always", refuse("gate_permission_choice", rule="permission:always"),
+                     x=540, y=1505)], tags=["permissions", "ocr"]),
+    sc("OCR: low confidence or an unknown wording asks", [
+        KALSHI,
+        step("tap", "ocr_location_blurry", ask("permission", rule="risk:permission:unknown"), **ONCE),
+        {"cancel": "last"},
+        step("tap", "ocr_location_unknown", ask("permission", level="tap"), x=540, y=1635)],
+       tags=["permissions", "ocr"]),
+    sc("OCR: without OCR the dialog still pauses for the owner; reads show it", [
+        KALSHI,
+        step("tap", "ocr_unavailable", refuse("needs_owner_dialog"), **ONCE),
+        step("screenshot", "ocr_unavailable", allow())], tags=["permissions", "ocr"]),
+]
+
+
+
+# --- uninstalling is a delete-kind step; installing stays refused (real-device report, "uninstall chess.com") ---
+INSTALLER = "com.google.android.packageinstaller"
+LABELS.update({"com.chess": "Chess.com", "com.chase.sig.android": "Chase", "dev.openmob.companion": "OpenMob",
+               "com.google.android.apps.nexuslauncher": "Pixel Launcher"})
+
+
+def installer_dialog(title, message, confirm="OK", labels=None):
+    return screen(app("com.google.android.apps.nexuslauncher", [node(text="Chess.com", bounds=(100, 400, 300, 500))]),
+                  {"id": 9, "type": "application", "layer": 5, "package": INSTALLER, "title": "",
+                   "bounds": [0, 900, W, 1500],
+                   "root": node(cls="android.widget.FrameLayout", bounds=(0, 900, W, 1500), children=[
+                       node(text=title, id="android:id/alertTitle", bounds=(60, 950, 1020, 1020)),
+                       node(text=message, id="android:id/message", bounds=(60, 1050, 1020, 1150)),
+                       button("Cancel", "android:id/button2", (500, 1350, 740, 1450)),
+                       button(confirm, "android:id/button1", (780, 1350, 1020, 1450))])},
+                  labels=labels or LABELS)
+
+
+SCREENS.update({
+    "uninstall_chess": installer_dialog("Chess.com", "Do you want to uninstall this app?"),
+    "uninstall_chase": installer_dialog("Chase", "Do you want to uninstall this app?"),
+    "uninstall_openmob": installer_dialog("OpenMob", "Do you want to uninstall this app?"),
+    "uninstall_unknown": installer_dialog("Mystery Game", "Do you want to uninstall this app?"),
+    "install_apk": installer_dialog("Free Coins", "Do you want to install this app?", confirm="Install"),
+    "settings_app_info_chess": settings("App info", ["Chess.com", "Force stop", "Clear storage", "Uninstall"]),
+    "settings_app_info_openmob": settings("App info", ["OpenMob", "Force stop", "Uninstall"]),
+})
+UNINSTALL_OK, UNINSTALL_CANCEL = dict(x=900, y=1400), dict(x=620, y=1400)
+UNINSTALL = dict(task="u1", task_text="uninstall chess.com")
+SCENARIOS += [
+    sc("uninstalling an app: one tap-level prompt at the confirmation; Cancel is free", [
+        step("tap", "uninstall_chess", ask("delete", level="tap", rule="risk:uninstall:installer"), **UNINSTALL_OK),
+        {"cancel": "last"},
+        step("tap", "uninstall_chess", allow(), **UNINSTALL_CANCEL)], tags=["uninstall"]),
+    sc("uninstalling under a request that names it: the one prompt is the task prompt", [
+        step("tap", "uninstall_chess", ask("task", level="tap", rule="risk:task:uninstall:installer"),
+             **UNINSTALL_OK, **UNINSTALL),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "uninstall_chess", allow(), **UNINSTALL_OK, **UNINSTALL)], tags=["uninstall", "task_grant"]),
+    sc("uninstalling with Don't confirm everyday actions: no prompt", [
+        EVERYDAY,
+        step("tap", "uninstall_chess", allow(rule="everyday"), **UNINSTALL_OK),
+        step("tap", "uninstall_unknown", ask("uninstall", level="tap", rule="risk:uninstall:unknown"),
+             **UNINSTALL_OK)], tags=["uninstall"]),
+    sc("uninstalling via app info: Uninstall opens the confirmation, which asks; Clear storage asks", [
+        step("tap", "settings_app_info_chess", allow(), x=540, y=900),
+        step("tap", "uninstall_chess", ask("delete", level="tap"), **UNINSTALL_OK),
+        {"cancel": "last"},
+        step("tap", "settings_app_info_chess", ask("delete", level="tap", rule="risk:uninstall:app_info"),
+             x=540, y=760)], tags=["uninstall"]),
+    sc("uninstalling a bank app or OpenMob is refused", [
+        step("tap", "uninstall_chase", refuse("gate_denied_page", rule="builtin:uninstall_protected"), **UNINSTALL_OK),
+        step("tap", "uninstall_openmob", refuse("gate_denied_page", rule="builtin:uninstall_protected"),
+             **UNINSTALL_OK),
+        step("tap", "settings_app_info_openmob", refuse("gate_denied_page", rule="builtin:uninstall_protected"),
+             x=540, y=760),
+        step("tap", "settings_app_info_chase", refuse("gate_blocked_app"), x=540, y=760)], tags=["uninstall"]),
+    sc("installing an APK is still refused", [
+        step("tap", "install_apk", refuse("gate_denied_page", rule="builtin:installer"), **UNINSTALL_OK),
+        step("tap", "install_apk", refuse("gate_denied_page", rule="builtin:installer"), **UNINSTALL_CANCEL)],
+       tags=["uninstall", "hard_deny"]),
 ]
 
 
