@@ -446,13 +446,13 @@ Scope `devices:read`.
 
 ```json
 {"device_id": "app-3f2a9c", "default_mode": "auto", "ceiling": "auto", "standing_ceiling": "auto",
- "never_until": null, "modes": ["ask", "plan", "auto", "trusted", "never"],
+ "never_until": null, "never_money": false, "modes": ["ask", "plan", "auto", "trusted", "never"],
  "trusted": [{"app": "com.whatsapp", "kinds": ["send"], "expires_at": 1793811561.0, "source": "prompt"}],
  "key_max_mode": "auto"}
 ```
 
 `ceiling` is `never` while Never ask is on (until `never_until`); `standing_ceiling` is what it
-returns to.
+returns to. `never_money` is `true` while Never ask also allows purchases (it ends with the window).
 
 ### PATCH /v1/devices/{device_id}/permissions
 
@@ -464,9 +464,10 @@ Scope `tasks:run`. Any of:
 | `ceiling` | The loosest mode allowed: `ask`, `plan`, `auto` or `trusted` |
 | `trusted` | The whole new list of entries `{app` or `category, kinds, expires_at?}`. Kinds: `send`, `delete`, `post`, `pay`, `fill`. `pay` and `fill` only for one named `app`, never a category; `pay` lasts 7 days at most |
 | `never` | `1h`, `24h` or `7d` to turn on Never ask, `off` to turn it off |
+| `allow_money` | With a `never` duration: `true` also lets purchases run without asking ("Also allow purchases"), off by default. Always a loosening (`202`), asked on the phone as "…including purchases for 1 hour?". `false` turns it off (a tightening); sending `never` without it turns it off too. `400 invalid_permissions` without `never` |
 
 A pure tightening returns `200 {"status": "applied", "settings": {…}}`. Anything that loosens
-(a mode past the ceiling, a new or wider trusted entry, turning Never ask on) returns `202`:
+(a mode past the ceiling, a new or wider trusted entry, turning Never ask on, `allow_money: true`) returns `202`:
 
 ```json
 {"status": "needs_phone_approval", "code": "needs_phone_approval", "approval_id": "9f0c…",

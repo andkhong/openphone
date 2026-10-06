@@ -551,7 +551,7 @@ class DeviceManager:
             self.permissions.set(sid, new)
             self.push_permissions(session)
             return {"status": "applied", "settings": perm.public(new)}
-        wanted = "never" if any(x.startswith("never:") for x in loosens) else max(
+        wanted = "never" if any(x.startswith(("never:", "money:")) for x in loosens) else max(
             [x.split(":")[1] for x in loosens if x.startswith("ceiling:")] + ["trusted" if any(
                 x.startswith("trusted:") for x in loosens) else "ask"], key=perm.rank)
         if perm.looser(wanted, max_mode):
@@ -579,7 +579,8 @@ class DeviceManager:
                   "action": action, "digest": action_digest(action),
                   "who": {"name": requester, "human": True}, "sent": set(), "kind": "mode_change", "details": {},
                   "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
-                                                                          if k in ("default_mode", "ceiling", "never")}}}
+                                                                          if k in ("default_mode", "ceiling", "never",
+                                                                                   "allow_money")}}}
         with self._approvals_lock:
             older = [(a, r) for a, r in self.approvals.items()
                      if r.get("kind") == "mode_change" and r["session"] is session]
@@ -641,10 +642,12 @@ class DeviceManager:
             return {k: row[k] for k in ("id", "status", "device_id", "question", "created", "decided")}
 
     def push_permissions(self, session: Session) -> None:
-        """Tell the phone its mode, so its notification can show the `never` banner ("Turn off")."""
+        """Tell the phone its mode, so its notification can show the `never` banner ("Turn off"), which
+        says "including purchases" while never_money is on."""
         settings = self.permission_settings(session.info.id)
         self._post(session, {"type": "permissions", "default_mode": settings["default_mode"],
-                             "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"]})
+                             "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"],
+                             "never_money": settings["never_money"]})
 
     def phone_turned_off_never(self, session: Session) -> None:
         """"Turn off" on the phone: back to auto. A tightening, so it needs no signature."""

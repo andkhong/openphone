@@ -163,7 +163,7 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
 | **Plan first** | `plan` | Once for a short numbered plan, before anything happens. Then only for a risky step the plan doesn't name, and for every payment. Saying no ends the task; typing changes makes the agent propose a revised plan. |
 | **Auto** (default) | `auto` | At the commit point of a send, delete, post or payment the request didn't ask for. A requested one runs **once**, in the task's own app. Payments always ask (once per purchase, see below). |
 | **Trusted apps** | `trusted` | Like Auto, but risky actions in apps or categories the owner trusts run without asking. |
-| **Never ask** | `never` | Never. Payments, autofill and blocked apps are **refused** instead. Time-limited (1 h, 24 h or 7 d), only after the owner approves it on that phone. |
+| **Never ask** | `never` | Never. Purchases (unless the owner also turned on **Also allow purchases**), autofill and blocked apps are **refused** instead. Time-limited (1 h, 24 h or 7 d), only after the owner approves it on that phone. |
 
 ### What counts, and when it asks
 
@@ -173,7 +173,8 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   (Total $12.99). Should I go ahead?").
 - **Payments** (`money_keywords`: buy, pay, order, checkout, subscribe, purchase, transfer, book,
   donate, place order, top up…) always ask, even when requested, unless the app has a trusted `pay`
-  entry. After an approved payment, **one** follow-up commit tap is covered: only for the terminal
+  entry (in Auto and Trusted; it doesn't count under Never ask). Under Never ask they are refused
+  unless the owner turned on **Also allow purchases** with it (below). After an approved payment, **one** follow-up commit tap is covered: only for the terminal
   words (place order, confirm purchase, pay, confirm…), in the same app and task, within 3 minutes,
   and never after an app switch. Approving a terminal tap covers nothing more, and words that start
   a new purchase (buy now, subscribe, book, top up, donate) always ask again.
@@ -223,7 +224,7 @@ Trusted; Auto by default), its **trusted entries** and, while it's on, a **Never
 - **Tightening** (a stricter default or ceiling, removing a trusted entry, turning Never ask off)
   takes effect at once, from the dashboard, the API or MCP.
 - **Loosening** (a mode past the ceiling, any new or wider trusted entry, turning on Never ask,
-  adding `pay`) is never applied directly. The server sends a `mode_change` approval to **that phone
+  adding `pay`, allowing purchases under Never ask) is never applied directly. The server sends a `mode_change` approval to **that phone
   only** ("Allow agents to act without asking on this phone for 1 hour?"); it applies once the phone
   answers with a fresh signature by its own screen-lock key. The dashboard shows "Approve on your
   phone" and waits; the API answers `202 needs_phone_approval` with an `approval_id` to poll.
@@ -244,10 +245,18 @@ Trusted; Auto by default), its **trusted entries** and, while it's on, a **Never
 - While it's on, the phone's OpenMob notification shows a banner ("Agents can act without asking
   until 21:00") with **Turn off**, and the dashboard's live panel shows a warning chip. Turn off works
   from anywhere: the notification, the dashboard, the API (`never: "off"`) or MCP.
-- **No prompts, but refusals stay.** Payments are refused unless the app has a trusted `pay` entry;
-  autofill and saved-credential suggestions are refused; security-critical Settings stay refused;
+- **No prompts, but refusals stay.** Purchases are refused (a trusted `pay` entry doesn't change
+  that under Never ask) unless the owner turned on **Also allow purchases**; autofill and saved-credential suggestions are refused; security-critical Settings stay refused;
   OpenMob itself and sensitive apps (banking, payments, wallets, password managers) are blocked for
   **every** task, the owner's own included, whatever `allow_sensitive_apps` says.
+- **Also allow purchases.** A separate checkbox when enabling Never ask (off by default, never
+  remembered), or `allow_money: true` next to `never` in the API or MCP. It is only accepted together
+  with turning Never ask on, and always needs the phone's approval, worded explicitly ("Allow agents to
+  act without asking on this phone **including purchases** for 1 hour?"); the flag is inside the signed
+  change, and the app asks a second time ("Also allow purchases?") before the screen lock. It ends with
+  that Never ask window (re-enabling Never ask without it, or `allow_money: false`, turns it off), and
+  the banner says so: "Agents can act without asking, including purchases, until 21:00". Blocked apps
+  stay blocked, and a key's `max_mode` still caps its tasks (a task in a tighter mode still asks).
 - Expiry times are checked by the server against its own clock. (The phone-side gatekeeper will use
   a monotonic clock, so changing the phone's time can't extend it.)
 
@@ -256,8 +265,9 @@ Trusted; Auto by default), its **trusted entries** and, while it's on, a **Never
 For headless automation, give a **spare phone** the Never ask mode: from the dashboard pick
 **Never ask → Enable → 7 days** (or `PATCH /v1/devices/{id}/permissions {"never": "7d"}` from a key
 whose `max_mode` is `never`) and approve it on the phone. Leave your own phone on Auto and add
-trusted apps with "Always allow" as you go. Keep payments off test phones, or add one trusted `pay`
-entry for the one store you test against.
+trusted apps with "Always allow" as you go. Keep purchases off test phones; turn on **Also allow
+purchases** only for a session that must buy, and only on a phone whose payment methods you can
+afford to have used.
 
 ### How `confirm_approve` relates
 

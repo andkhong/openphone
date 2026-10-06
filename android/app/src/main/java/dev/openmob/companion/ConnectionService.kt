@@ -399,7 +399,8 @@ class ConnectionService : Service() {
                 // The phone's permission mode: while agents may act without asking, the notification says so.
                 "permissions" -> main.post {
                     val until = message.optDouble("never_until", 0.0).let { if (it.isNaN()) 0L else it.toLong() }
-                    AppState.setNeverUntil(if (message.optString("ceiling") == "never") until else 0)
+                    AppState.setNeverUntil(if (message.optString("ceiling") == "never") until else 0,
+                                           message.optBoolean("never_money"))
                     updateNotification(statusLine)
                     scheduleNeverExpiry()
                 }
@@ -468,7 +469,7 @@ class ConnectionService : Service() {
         val neverUntil = AppState.neverUntil
         val never = neverUntil * 1000 > System.currentTimeMillis()
         val banner = if (never) getString(
-            R.string.never_banner,
+            if (AppState.neverMoney) R.string.never_banner_money else R.string.never_banner,
             android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(neverUntil * 1000)),
         ) else ""
         val builder = Notification.Builder(this, CHANNEL)

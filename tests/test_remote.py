@@ -71,6 +71,7 @@ class FakePhone:
         self.legacy_signing = legacy_signing  # sign like an app from before action digests
         self.approval_key = approval_key or (public_key_b64(signer) if signer else None)
         self.approval_requests = []  # every approval_request received
+        self.permission_pushes = []  # every "permissions" message (what the phone's banner shows)
         self.approval_cancels = []  # ids of approval requests the server withdrew
         self.key = key
         self.platform = platform
@@ -126,6 +127,8 @@ class FakePhone:
                         self.events.append((msg["kind"], msg["message"]))
                     elif msg["type"] == "approval_cancel":
                         self.approval_cancels.append(msg["id"])
+                    elif msg["type"] == "permissions":
+                        self.permission_pushes.append(msg)
                     elif msg["type"] == "approval_request":
                         self.approval_requests.append(msg)
                         if self.approve is not None:

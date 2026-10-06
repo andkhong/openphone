@@ -128,6 +128,7 @@ class Permissions(BaseModel):
     ceiling: str = Field(description="The loosest mode this phone allows right now (never while it's on).")
     standing_ceiling: str
     never_until: float | None = None
+    never_money: bool = Field(False, description="While never is on: purchases also run without asking.")
     trusted: list[dict]
     modes: list[str]
     key_max_mode: str = Field(description="The loosest mode this key's tasks may ask for.")
@@ -366,6 +367,10 @@ def build_server(service: V1Service) -> MCPServer:
                            Field(description="The loosest mode the phone allows.")] = None,
         never: Annotated[Literal["1h", "24h", "7d", "off"] | None,
                          Field(description="Turn never-ask on for a while, or off.")] = None,
+        allow_money: Annotated[bool | None,
+                               Field(description="With never: also let purchases run without asking (off by "
+                                                 "default). Only ask for this when the user explicitly wants it.")]
+        = None,
     ) -> Annotated[CallToolResult, PermissionChange]:
         """Change a phone's permission settings. Tightening (a stricter mode, turning never off) applies at
         once. Loosening never applies from here: it sends the owner an approval on the phone and returns
@@ -374,6 +379,8 @@ def build_server(service: V1Service) -> MCPServer:
         p = _principal(ctx)
         device = device_id or await _call(s.only_device, p)
         patch = {k: v for k, v in {"default_mode": default_mode, "ceiling": ceiling, "never": never}.items() if v}
+        if allow_money is not None:
+            patch["allow_money"] = allow_money
         data = await _call(s.change_permissions, p, device, patch)
         line = ("Applied." if data["status"] == "applied"
                 else "needs_phone_approval: " + ERROR_HINTS["needs_phone_approval"])

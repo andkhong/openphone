@@ -203,7 +203,7 @@ know them shows the `question` as before.
 |---|---|
 | `kind` | `action` (a risky tap, the default), `step` (Ask-every-step mode: the next change), `plan` (Plan-first mode: the numbered plan is in `question`, its steps in `plan`) or `mode_change` (agents would ask less on **this** phone; only sent to that phone) |
 | `plan` | For `kind: "plan"`: the steps, as strings |
-| `change` | For `kind: "mode_change"`: `{loosens, default_mode?, ceiling?, never?}`, informational. The `question` says it in words, e.g. "Allow agents to act without asking on this phone for 1 hour?" |
+| `change` | For `kind: "mode_change"`: `{loosens, default_mode?, ceiling?, never?, allow_money?}`, informational. The `question` says it in words, e.g. "Allow agents to act without asking on this phone for 1 hour?" (with `allow_money`: "…on this phone including purchases for 1 hour?"). The app reads both from the signed `action` (its `input` is the question, then the change as JSON), shows that question, and when the change has `"allow_money": true` asks a second time ("Also allow purchases?") before the screen lock |
 | `always` | Offered only on the phone that would act: `{app, kind, days, text, confirm_twice, target?}`. Shown as an **Always allow this** checkbox, off by default, labelled with `text` ("Agents could send any WhatsApp message as you for 30 days"). With `confirm_twice` (payments) the app asks a second time before the screen lock |
 
 | `action` | What exactly will happen, as fields: `{tool, package, text, desc, resource_id, bounds, input}` (the target element's identity, any typed text, URL or key; for a plan or mode change, the plan or the change in `input`). The app shows it ("Exactly: Tap “Buy now” (id buy_now) in com.amazon…") |
@@ -219,11 +219,12 @@ accepts them only with a valid signature by that phone's approval key (never fro
 **`permissions`** (server to phone): the phone's permission mode, after the `welcome` and whenever it
 changes.
 ```json
-{"type": "permissions", "default_mode": "never", "ceiling": "never", "never_until": 1791223200}
+{"type": "permissions", "default_mode": "never", "ceiling": "never", "never_until": 1791223200, "never_money": false}
 ```
 While `ceiling` is `never` and `never_until` (unix seconds) is in the future, the app shows a banner
-in its connection notification ("Agents can act without asking until 21:00") with a **Turn off**
-action, and clears it at `never_until`.
+in its connection notification ("Agents can act without asking until 21:00", or with `never_money`
+"Agents can act without asking, including purchases, until 21:00") with a **Turn off** action, and
+clears it at `never_until`.
 
 **`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
 Never ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.

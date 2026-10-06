@@ -1012,7 +1012,8 @@ class Agent:
         describe the same action, or the screen changed while the owner was asked.
 
         Refused in every mode: security-critical Settings pages (and a blocked app's info page); under
-        `never` also money (without a trusted pay entry for the app) and autofill/credential suggestions.
+        `never` also money (unless the owner allowed purchases with it: never_money) and autofill/credential
+        suggestions.
         Risky: a confirm or money keyword (minus on-the-way phrases like "Add to cart"), an autofill
         suggestion, a Settings change outside the everyday allowlist, or the classifier's risk.
         Requested: Jev judges that the request explicitly asked for it, or (without Jev) the matched
@@ -1084,9 +1085,11 @@ class Agent:
         share = gate.is_share(hits)
         settings = state.perms.current_settings()
         if mode == "never" or cfg.confirm_actions == "never":
-            if money and not trusted_for(settings, package, "pay", cfg.app_categories, False):
-                return self._refuse(shown, "payments are off while agents act without asking (a trusted pay "
-                                           "entry for this app allows them).")
+            # Purchases run unasked only when the owner turned on "Also allow purchases" with Never ask
+            # (signed on the phone, ending with that window). A per-app pay entry doesn't count here.
+            if money and not settings.get("never_money"):
+                return self._refuse(shown, "purchases are off while agents act without asking (the owner can "
+                                           "turn on \"Also allow purchases\" with Never ask, on the phone).")
             return None
         if mode == "ask" and state.step_approved:
             return None  # the owner just approved this very action

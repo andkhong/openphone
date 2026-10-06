@@ -38,4 +38,22 @@ class ActionDigestTest {
                                         "package" to "com.amazon")),
         )
     }
+
+    @Test
+    fun aPermissionChangeThatAllowsPurchasesIsReadFromTheSignedAction() {
+        // As the server builds it: the question, then the change as JSON (sorted keys).
+        val money = mapOf("tool" to "mode_change", "input" to
+            "Allow agents to act without asking on this phone including purchases for 1 hour?\n" +
+            "{\"allow_money\": true, \"never\": \"1h\"}")
+        val plain = mapOf("tool" to "mode_change", "input" to
+            "Allow agents to act without asking on this phone for 1 hour?\n{\"never\": \"1h\"}")
+        org.junit.Assert.assertTrue(ActionDigest.allowsMoney(money))
+        org.junit.Assert.assertFalse(ActionDigest.allowsMoney(plain))
+        org.junit.Assert.assertFalse(ActionDigest.allowsMoney(plain + ("tool" to "tap")))
+        org.junit.Assert.assertFalse(ActionDigest.allowsMoney(mapOf("tool" to "mode_change", "input" to
+            "{\"allow_money\": false, \"never\": \"1h\"}")))
+        assertEquals("Allow agents to act without asking on this phone including purchases for 1 hour?",
+                     ActionDigest.signedQuestion(money))
+        assertEquals("", ActionDigest.signedQuestion(mapOf("tool" to "tap", "input" to "x\ny")))
+    }
 }

@@ -320,12 +320,16 @@ for; payments always ask), `ask`, `plan`, `trusted` or `never`. See
 - A task in `needs_confirmation` is waiting for the owner's approval on the phone. Keep polling
   `get_task` with `wait_seconds`, don't start the task again, and only decline
   (`answer_question` with `approve: false`) if the user tells you to.
-- Refusals (a blocked app, a payment under `never`, a security-critical Settings page) end up in the
+- Refusals (a blocked app, a purchase under `never` without the owner's "Also allow purchases", a
+  security-critical Settings page) end up in the
   task's outcome. Report them; don't try another way around.
 
 **Headless automation.** For unattended runs, the owner grants it once, on the phone: either
 trusted apps (tap **Always allow this** on a prompt, e.g. "send in Slack for 30 days") or a
 dedicated test phone in **Never ask** for up to 7 days (with a key whose `max_mode` is `never`).
+Purchases stay refused under Never ask unless the owner also allows them (`allow_money: true` on
+`change_permissions`, approved on the phone with explicit wording, for that window only); only ask
+for that when the user explicitly wants purchases.
 Your agent can ask for these with `change_permissions`, but only the owner's screen lock grants
 them.
 

@@ -30,6 +30,9 @@ object AppState {
     /** Agents may act without asking until this unix time (seconds); 0: they ask as usual. */
     @Volatile var neverUntil: Long = 0
         private set
+    /** While never is on: purchases also run without asking ("Also allow purchases"). */
+    @Volatile var neverMoney: Boolean = false
+        private set
 
     private val events = ArrayDeque<Event>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
@@ -48,8 +51,9 @@ object AppState {
         notifyListeners()
     }
 
-    fun setNeverUntil(until: Long) {
+    fun setNeverUntil(until: Long, money: Boolean = false) {
         neverUntil = until
+        neverMoney = until > 0 && money
         notifyListeners()
     }
 

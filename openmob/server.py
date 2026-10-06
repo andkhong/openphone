@@ -71,6 +71,7 @@ class PermissionsIn(BaseModel):
     ceiling: Literal["ask", "plan", "auto", "trusted"] | None = None
     trusted: list[dict] | None = None  # the whole new list: [{app | category, kinds, expires_at}]
     never: Literal["1h", "24h", "7d", "off"] | None = None
+    allow_money: bool | None = None  # "Also allow purchases" with never (off by default; the phone approves)
 
 
 class Credentials(BaseModel):

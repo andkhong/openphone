@@ -7,13 +7,16 @@ Five modes, tightest first (docs/safety.md#permission-modes):
     auto     The default: asks at the commit point of risky actions (Send, Place order, Delete…) the
              request didn't ask for; a requested one runs once, in the task's app; money asks once.
     trusted  Like auto, and risky actions in owner-chosen apps or categories run without asking.
-    never    No prompts, for a limited time. Blocked apps stay blocked.
+    never    No prompts, for a limited time. Blocked apps stay blocked. Purchases are refused unless the
+             owner also turned on "Also allow purchases" when enabling it (never_money, below).
 
 A mode only decides whether to ask. Approving always takes the owner's screen lock on a phone.
 
-Per phone we keep {default_mode, ceiling, trusted, never_until}. `ceiling` is the loosest mode that
-phone allows (ask … trusted); `never` is on while never_until is in the future. Tightening is free
-from anywhere; loosening past the ceiling, adding trusted entries and turning on `never` need a
+Per phone we keep {default_mode, ceiling, trusted, never_until, never_money}. `ceiling` is the loosest
+mode that phone allows (ask … trusted); `never` is on while never_until is in the future. `never_money`
+("Also allow purchases") lets money actions run under `never`; it can only be turned on together with
+`never` (the patch's `allow_money`), and it ends with that window. Tightening is free from anywhere;
+loosening past the ceiling, adding trusted entries, turning on `never` and allowing purchases need a
 screen-lock-signed approval on that phone (DeviceManager.request_permission_change).
 """
 
@@ -36,7 +39,7 @@ DESCRIPTIONS = {
     "plan": "Approve a short plan once; asks again only off-plan or to pay.",
     "auto": "Asks at the final step of sends, deletes and payments you didn't ask for.",
     "trusted": "Like Auto, and apps or categories you trust act without asking.",
-    "never": "No prompts for a while. Blocked apps stay blocked.",
+    "never": "No prompts for a while. Blocked apps stay blocked; purchases are refused unless you also allow them.",
 }
 DEFAULT_MODE = "auto"
 KINDS = ("send", "delete", "post", "pay", "fill")
@@ -147,7 +150,8 @@ def looser(a: str, b: str) -> bool:
 
 
 def default_settings() -> dict:
-    return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None}
+    return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
+            "never_money": False}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -162,6 +166,8 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
             s["default_mode"] = settings["default_mode"]
         until = settings.get("never_until")
         s["never_until"] = float(until) if isinstance(until, (int, float)) and until > now else None
+        # Purchases without asking last only as long as the never window they were allowed with.
+        s["never_money"] = bool(s["never_until"]) and settings.get("never_money") is True
         s["trusted"] = [e for e in (settings.get("trusted") or [])
                         if isinstance(e, dict) and (e.get("expires_at") or 0) > now]
     if s["default_mode"] == "never" and not s["never_until"]:
@@ -181,7 +187,8 @@ def public(settings: dict, now: float | None = None) -> dict:
     """The settings as the dashboard and the API show them."""
     s = normalize(settings, now)
     return {"default_mode": s["default_mode"], "ceiling": effective_ceiling(s, now), "standing_ceiling": s["ceiling"],
-            "never_until": s["never_until"], "trusted": s["trusted"], "modes": list(MODES)}
+            "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
+            "modes": list(MODES)}
 
 
 def validate_entry(entry: dict, categories: dict, now: float | None = None) -> dict:
@@ -227,7 +234,9 @@ def _covered(new: dict, old_entries: list[dict]) -> bool:
 def apply_patch(current: dict, patch: dict, categories: dict, now: float | None = None) -> tuple[dict, list[str]]:
     """The settings after `patch`, and what in it loosens them (empty: a pure tightening, which needs
     no approval). patch: {default_mode?, ceiling?, trusted? (the whole new list), never? ("1h" | "24h" |
-    "7d" | "off")}. Raises PermissionsInvalid for invalid values."""
+    "7d" | "off"), allow_money? (bool)}. `allow_money: true` ("Also allow purchases") goes only with a
+    `never` duration and always needs the phone's approval; `never` without it (or `allow_money: false`)
+    turns purchases off. Raises PermissionsInvalid for invalid values."""
     now = time.time() if now is None else now
     cur = normalize(current, now)
     new = {**cur, "trusted": list(cur["trusted"])}
@@ -239,17 +248,29 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
         if looser(ceiling, cur["ceiling"]):
             loosens.append(f"ceiling:{ceiling}")
         new["ceiling"] = ceiling
+    allow_money = patch.get("allow_money")
+    if allow_money is not None and not isinstance(allow_money, bool):
+        raise PermissionsInvalid("allow_money is true or false.")
+    if allow_money and patch.get("never") not in NEVER_DURATIONS:
+        raise PermissionsInvalid("allow_money goes with turning on never (never: 1h, 24h or 7d), approved on "
+                                 "the phone.")
     if "never" in patch and patch["never"] is not None:
         never = patch["never"]
         if never == "off":
             new["never_until"] = None
+            new["never_money"] = False
         elif never in NEVER_DURATIONS:
             until = now + NEVER_DURATIONS[never]
             if not cur["never_until"] or until > cur["never_until"] + 60:
                 loosens.append(f"never:{never}")
             new["never_until"] = until
+            new["never_money"] = bool(allow_money)  # off unless asked for again, explicitly
+            if allow_money:  # always the phone's approval, with its own wording (describe_loosening)
+                loosens.append(f"money:{never}")
         else:
             raise PermissionsInvalid(f"never must be one of: {', '.join(NEVER_DURATIONS)} or off.")
+    if allow_money is False:
+        new["never_money"] = False
     if "trusted" in patch and patch["trusted"] is not None:
         if not isinstance(patch["trusted"], list) or len(patch["trusted"]) > MAX_ENTRIES:
             raise PermissionsInvalid(f"trusted is a list of at most {MAX_ENTRIES} entries.")
@@ -284,11 +305,13 @@ def raise_for_mode(current: dict, mode: str, never: str | None = None) -> dict:
 def describe_loosening(loosens: list[str]) -> str:
     """The phone's question for a loosening, in plain words."""
     parts = []
+    money = any(item.startswith("money:") for item in loosens)
     for item in loosens:
         kind, _, rest = item.partition(":")
-        if kind == "never":
+        if kind in ("never", "money"):
             span = {"1h": "1 hour", "24h": "24 hours", "7d": "7 days"}[rest]
-            parts.append(f"Allow agents to act without asking on this phone for {span}?")
+            parts.append(f"Allow agents to act without asking on this phone including purchases for {span}?" if money
+                         else f"Allow agents to act without asking on this phone for {span}?")
         elif kind == "ceiling":
             parts.append(f"Allow the {LABELS[rest]} mode on this phone?")
         elif kind == "trusted":

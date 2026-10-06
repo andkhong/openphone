@@ -183,6 +183,12 @@
     <string name="approval_always_confirm_yes">Allow payments</string>
     <string name="approval_always_confirm_no">Just this once</string>
     <string name="never_banner">Agents can act without asking until %1$s</string>
+    <string name="never_banner_money">Agents can act without asking, including purchases, until %1$s</string>
+    <string name="approval_explain_mode_money">Agents would act without asking on this phone, and could also buy, pay and subscribe with your saved payment methods until this ends. This needs your screen lock. If you didn\'t ask for this, deny it.</string>
+    <string name="approval_money_confirm_title">Also allow purchases?</string>
+    <string name="approval_money_confirm_body">Agents could make purchases on this phone without asking you until Never ask ends. Blocked apps stay blocked. Only allow this if you trust what\'s driving the phone.</string>
+    <string name="approval_money_confirm_yes">Allow purchases</string>
+    <string name="approval_money_confirm_no">Cancel</string>
     <string name="never_turn_off">Turn off</string>
     <string name="never_turned_off">Agents will ask you again on this phone.</string>
 

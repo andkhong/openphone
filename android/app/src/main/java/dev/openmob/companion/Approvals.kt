@@ -46,8 +46,14 @@ object Approvals {
         val action: Map<String, String> = emptyMap(), val digest: String = "", val signatureRequired: Boolean = false,
         val canApprove: Boolean = true, val cannotApproveReason: String = "",
     ) {
+        /** For a permission change, the question as signed (it names "including purchases"), else the question. */
+        private val asked: String get() = ActionDigest.signedQuestion(action).ifEmpty { question }
+
         /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
-        val shownQuestion: String get() = if (deviceName.isEmpty()) question else "On $deviceName: $question"
+        val shownQuestion: String get() = if (deviceName.isEmpty()) asked else "On $deviceName: $asked"
+
+        /** A permission change that also allows purchases without asking: confirmed a second time. */
+        val allowsMoney: Boolean get() = ActionDigest.allowsMoney(action)
 
         /** What exactly will happen, from the action's own fields (empty for an older server). */
         val actionLine: String get() = if (action.isEmpty()) "" else ActionDigest.describe(action)

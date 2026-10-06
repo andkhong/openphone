@@ -85,6 +85,7 @@ class PermissionsPatch(BaseModel):
     ceiling: Literal["ask", "plan", "auto", "trusted"] | None = None
     trusted: list[dict] | None = None
     never: Literal["1h", "24h", "7d", "off"] | None = None
+    allow_money: bool | None = None  # with never: purchases too (a loosening: 202 needs_phone_approval)
 
 
 class SettingsIn(BaseModel):

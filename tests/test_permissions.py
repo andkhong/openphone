@@ -298,10 +298,39 @@ def test_never_runs_without_prompts_but_refuses_money_and_autofill(tmp_path):
     a, driver, io, perms, _ = agent([tap("Buy now")], tmp_path, package=SHOP, settings=never_settings(), mode="never")
     a.run("buy the cable", permissions=perms)
     assert not io.questions and not taps(driver)
+    # A per-app pay entry no longer lets money run under never: only "Also allow purchases" does.
     paid = {**never_settings(), "trusted": [entry(app=SHOP, kinds=["pay"])]}
     a, driver, io, perms, _ = agent([tap("Buy now")], tmp_path, package=SHOP, settings=paid, mode="never")
     a.run("buy the cable", permissions=perms)
+    assert not io.questions and not taps(driver)
+    allowed = {**never_settings(), "never_money": True}
+    a, driver, io, perms, _ = agent([tap("Buy now")], tmp_path, package=SHOP, settings=allowed, mode="never")
+    a.run("buy the cable", permissions=perms)
     assert not io.questions and taps(driver)
+
+
+def test_allow_purchases_goes_only_with_never_and_ends_with_it():
+    cats = perm.DEFAULT_APP_CATEGORIES
+    base = perm.default_settings()
+    on, loosens = perm.apply_patch(base, {"never": "1h", "allow_money": True}, cats)
+    assert on["never_money"] and "money:1h" in loosens
+    assert perm.describe_loosening(loosens) == ("Allow agents to act without asking on this phone including "
+                                                "purchases for 1 hour?")
+    assert perm.describe_loosening(perm.apply_patch(base, {"never": "1h"}, cats)[1]) == (
+        "Allow agents to act without asking on this phone for 1 hour?")
+    assert perm.apply_patch(base, {"never": "1h"}, cats)[0]["never_money"] is False  # off by default
+    with pytest.raises(perm.PermissionsInvalid):
+        perm.apply_patch(on, {"allow_money": True}, cats)  # only together with turning never on
+    # Extending never without it (or allow_money false, or never off) turns purchases off: tightenings.
+    assert perm.apply_patch(on, {"never": "24h"}, cats)[0]["never_money"] is False
+    off, loosens = perm.apply_patch(on, {"allow_money": False}, cats)
+    assert not off["never_money"] and loosens == [] and off["never_until"]
+    assert perm.apply_patch(on, {"never": "off"}, cats) == ({**perm.normalize(base)}, [])
+    # Re-asking for purchases always needs the phone, even while they are on.
+    assert "money:1h" in perm.apply_patch(on, {"never": "1h", "allow_money": True}, cats)[1]
+    # It expires with the never window.
+    assert perm.normalize({**on, "never_until": time.time() - 1})["never_money"] is False
+    assert perm.public(on)["never_money"] is True
 
 
 def test_never_expiry_reverts_to_auto_and_blocks_sensitive_apps(tmp_path):

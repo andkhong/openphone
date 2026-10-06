@@ -26,6 +26,20 @@ object ActionDigest {
         return MessageDigest.getInstance("SHA-256").digest(out.toByteArray()).joinToString("") { "%02x".format(it) }
     }
 
+    private val ALLOW_MONEY = Regex("\"allow_money\":\\s*true\\b")
+
+    /**
+     * A permission change (`mode_change`) that would also let purchases run without asking ("Also allow
+     * purchases" with Never ask). Read from the signed action itself (its input is the question, then
+     * the change as JSON), never from unsigned fields, so the app always asks the second time for it.
+     */
+    fun allowsMoney(fields: Map<String, String>): Boolean =
+        fields["tool"] == "mode_change" && ALLOW_MONEY.containsMatchIn(fields["input"].orEmpty().substringAfter('\n', ""))
+
+    /** For a `mode_change`: the question as signed (the input's first line), or "" for anything else. */
+    fun signedQuestion(fields: Map<String, String>): String =
+        if (fields["tool"] == "mode_change") fields["input"].orEmpty().substringBefore('\n').trim() else ""
+
     /** One line saying what will happen: `tap "Buy now" (id buy_now) in com.amazon… · "typed text"`. */
     fun describe(fields: Map<String, String>): String {
         val tool = fields["tool"].orEmpty()

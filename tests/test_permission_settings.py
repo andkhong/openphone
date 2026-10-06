@@ -96,6 +96,71 @@ def test_dashboard_tightens_freely_but_loosening_waits_for_the_phone(hosted):
     assert settings_of(h, dev)["default_mode"] == "auto"
 
 
+def test_purchases_under_never_only_with_the_signed_allow_money_flag(hosted):
+    h = hosted
+    dev = h.ids.a1
+    h.pa1.driver.package = "com.example.shop"
+    poll = f"/api/devices/app-{dev}/permissions/approvals/{{}}"
+
+    def enable(body):
+        r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json=body)
+        assert r.status_code == 202 and r.json()["status"] == "needs_phone_approval"
+        approval_id = r.json()["approval_id"]
+        assert wait_for(lambda: any(q["id"] == approval_id for q in h.pa1.approval_requests))
+        request = next(q for q in h.pa1.approval_requests if q["id"] == approval_id)
+        h.pa1.send(signed(h.signers.a1, request))
+        assert wait_for(lambda: h.alice.get(poll.format(approval_id)).json()["status"] == "approved")
+        return request
+
+    def buy():
+        before = len(h.pa1.driver.actions)
+        h.alice.post(f"/api/devices/app-{dev}/command", json={"text": "check the cart", "permission_mode": "never"})
+        assert wait_for(lambda: list(h.manager.get(f"app-{dev}").coordinator.task_info.values())[-1]["status"]
+                        in ("succeeded", "failed"))
+        return any(a[0] == "tap" for a in h.pa1.driver.actions[before:])
+
+    # Never ask without the flag: the purchase is refused (no prompt either).
+    request = enable({"never": "1h"})
+    assert "purchases" not in request["question"] and not settings_of(h, dev)["never_money"]
+    asked = len(h.pa1.approval_requests)
+    assert not buy() and len(h.pa1.approval_requests) == asked
+    # With it: explicit wording, the flag inside the signed action, and only the phone's signature sets it.
+    r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json={"never": "1h", "allow_money": True})
+    assert r.status_code == 202
+    approval_id = r.json()["approval_id"]
+    assert wait_for(lambda: any(q["id"] == approval_id for q in h.pa1.approval_requests))
+    request = next(q for q in h.pa1.approval_requests if q["id"] == approval_id)
+    assert request["question"] == "Allow agents to act without asking on this phone including purchases for 1 hour?"
+    assert request["change"]["allow_money"] is True and '"allow_money": true' in request["action"]["input"]
+    h.pa1.send({"type": "approval", "id": approval_id, "approved": True})  # unsigned
+    h.pa1.send(signed(new_signer(), request))  # another key
+    h.pa2.send(signed(h.signers.a2, request))  # another phone
+    assert not wait_for(lambda: h.alice.get(poll.format(approval_id)).json()["status"] != "pending", timeout=1.0)
+    assert not settings_of(h, dev)["never_money"]
+    h.pa1.send(signed(h.signers.a1, request))
+    assert wait_for(lambda: h.alice.get(poll.format(approval_id)).json()["status"] == "approved")
+    assert settings_of(h, dev)["never_money"] is True
+    # The phone's banner is told (it then reads "…including purchases").
+    assert wait_for(lambda: h.pa1.permission_pushes and h.pa1.permission_pushes[-1]["never_money"] is True)
+    assert buy()
+    # A task in a tighter mode still asks: the flag only matters under never.
+    asked = len(h.pa1.approval_requests)
+    h.alice.post(f"/api/devices/app-{dev}/command", json={"text": "check the cart", "permission_mode": "auto"})
+    assert wait_for(lambda: len(h.pa1.approval_requests) > asked)
+    h.pa1.send({"type": "approval", "id": h.pa1.approval_requests[-1]["id"], "approved": False})
+    # It ends with the never window.
+    raw = h.store.device_permissions(dev)
+    h.store.set_device_permissions(dev, {**raw, "never_until": time.time() - 1})
+    assert settings_of(h, dev)["never_money"] is False
+
+
+def test_allow_money_can_only_be_asked_for_with_never(hosted):
+    h = hosted
+    dev = f"app-{h.ids.a1}"
+    r = h.alice.patch(f"/api/devices/{dev}/permissions", json={"allow_money": True})
+    assert r.status_code == 400 and settings_of(h, h.ids.a1)["never_money"] is False
+
+
 def test_never_expires_back_to_auto(hosted):
     h = hosted
     sid = f"app-{h.ids.a1}"
@@ -156,6 +221,9 @@ def test_api_loosening_returns_needs_phone_approval(hosted):
     dev = f"app-{h.ids.a1}"
     r = v1.patch(f"/v1/devices/{dev}/permissions", json={"default_mode": "plan"})
     assert r.status_code == 200 and r.json()["settings"]["default_mode"] == "plan"
+    r = v1.patch(f"/v1/devices/{dev}/permissions", json={"never": "1h", "allow_money": True})
+    assert r.status_code == 202 and "including purchases" in r.json()["question"]
+    assert v1.get(f"/v1/devices/{dev}/permissions").json()["never_money"] is False
     r = v1.patch(f"/v1/devices/{dev}/permissions", json={"never": "24h"})
     assert r.status_code == 202 and r.json()["code"] == "needs_phone_approval"
     approval = r.json()["approval_id"]
@@ -244,3 +312,10 @@ def test_mcp_next_hints_for_each_state(api):
     task = ok(call(api, api.alice, "run_task", instruction="check the cart", wait_seconds=10))
     assert task["status"] == "needs_confirmation" and task["next"] == waiting
     assert task["permission_mode"] == "auto"
+
+
+def test_the_dashboard_offers_also_allow_purchases_off_by_default(hosted):
+    page = hosted.alice.get("/").text
+    assert "Also allow purchases" in page and "allow_money: true" in page
+    assert "let neverMoney = false;" in page  # unchecked by default, and reset after each request
+    assert "including purchases" in page  # the chip and banner say so while it's on
