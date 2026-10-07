@@ -280,27 +280,54 @@
   }
 
   /* Live screen panel */
-  .panel { width: 340px; flex: none; border-left: 1px solid var(--line); background: var(--surface); padding: 14px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .panel { width: 380px; flex: none; border-left: 1px solid var(--line); background: var(--surface); padding: 12px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+  .panel { transition: width 200ms ease-out; }
   .panel.hidden { display: none; }
-  .panel-head { display: flex; align-items: center; gap: 8px; }
-  .panel-head h2 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
-  /* The frame hugs the picture: its width follows the screen's shape, so a tall phone shown in a
-     short window gets a narrower frame instead of black bars on both sides. */
-  .phone { background: #0a0b0d; border-radius: 30px; padding: 8px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.08); width: fit-content; max-width: 100%; margin: 0 auto; }
-  .phone-screen { position: relative; border-radius: 23px; overflow: hidden; background: #14161b; }
-  .phone-screen.blank { aspect-ratio: 9 / 19; width: min(284px, calc((100vh - 170px) * 9 / 19)); }
-  .phone img, .phone canvas { width: auto; height: auto; max-width: min(284px, 100%); display: block; max-height: calc(100vh - 170px); background: #14161b; }
+  .panel.landscape-expanded { width: min(58vw, 860px); max-width: calc(100vw - 320px); }
+  .app:has(> .sidebar:not(.hidden)) .panel.landscape-expanded { max-width: max(380px, calc(100vw - 592px)); }
+  .panel > :not(.screen-stage) { flex-shrink: 0; }
+  .panel-head { display: flex; align-items: center; gap: 10px; }
+  .panel-head h2 { font-size: 16px; font-weight: 600; margin: 0; flex: 1; }
+  .panel-head .pill { font-size: 12px; }
+  .device-slot { display: flex; align-items: center; gap: 6px; }
+  .device-slot .select { flex: 1; }
+  .device-slot .icon-btn { width: 30px; height: 34px; min-height: 34px; flex: none; }
+  .device-slot .select { min-height: 44px; font-size: 13px; text-overflow: ellipsis; }
+  .phone-name-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+  .phone-name-form small { grid-column: 1 / -1; }
+  .phone-name-form .input { min-height: 34px; font-size: 13px; }
+  /* Size the entire phone to the space between the picker and controls, including landscape frames. */
+  .screen-stage { flex: 1; min-height: 180px; display: grid; place-items: center; padding: 4px 8px 12px; }
+  .phone { background: #0a0b0d; border-radius: 28px; padding: 6px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.12); width: 260px; max-width: 100%; }
+  .phone-screen { position: relative; aspect-ratio: var(--screen-aspect, 9 / 19); border-radius: 22px; overflow: hidden; background: #14161b; }
+  .phone img, .phone canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #14161b; }
   .phone-screen.blank img, .phone-screen.blank canvas { display: none; }
-  /* What the live view is showing (video or snapshots, its size and rate) and the quality choice. */
-  .screen-meta { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 300px; margin: -4px auto 0; min-height: 28px; }
-  .screen-info { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Stream measurements and quality live together, outside the phone's screen. */
+  .screen-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 10px 0 0; border-top: 1px solid var(--line); }
+  .screen-info { min-width: 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.6; overflow-wrap: anywhere; }
+  .stream-status { display: flex; align-items: center; gap: 7px; }
+  .stream-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
+  .screen-info[data-state="active"] .stream-status::before { background: var(--ok); }
+  .screen-info[data-state="paused"] .stream-status::before { background: var(--warn); }
+  .stream-detail { display: block; margin-left: 13px; white-space: nowrap; }
   .screen-info b { font-weight: 600; color: var(--fg); }
-  .screen-info.jpeg b { color: var(--warn); }
-  .screen-meta .select { width: auto; min-height: 28px; padding: 2px 8px; font-size: 12px; border-radius: 8px; flex: none; }
+  .screen-quality { min-width: 0; }
+  .screen-meta .select { width: 174px; max-width: 100%; min-height: 34px; padding: 4px 8px; font-size: 11px; border-radius: 8px; }
+  .landscape-layout { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .landscape-layout > span { flex: 1; color: var(--muted); font-size: 12px; }
+  .layout-toggle { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; }
+  .layout-toggle button { border: 0; border-radius: 6px; padding: 5px 9px; background: transparent; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .layout-toggle button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-sm); font-weight: 600; }
+  .screen-notice { border-radius: 10px; padding: 10px 12px; color: var(--warn); background: var(--warn-soft); font-size: 12px; overflow-wrap: anywhere; }
+  .phone-notices { display: grid; gap: 8px; }
+  .phone-notices:not(:has(> :not([hidden]))) { display: none; }
+  .phone-notices .pill { justify-self: start; max-width: 100%; white-space: normal; text-align: left; }
+  @media (max-width: 360px) {
+    .screen-meta { grid-template-columns: minmax(0, 1fr); }
+    .screen-meta .select { width: 100%; }
+  }
   .screen-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; text-align: center; color: #c9ced8; font-size: 13px; }
   .screen-overlay svg { width: 30px; height: 30px; opacity: .6; }
-  .screen-overlay.banner { inset: auto 8px 8px 8px; padding: 8px 10px; border-radius: 12px; background: rgba(10, 11, 13, .82); flex-direction: row; justify-content: flex-start; gap: 8px; text-align: left; }
-  .screen-overlay.banner svg { width: 16px; height: 16px; flex: none; }
   .status { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
   .dot.idle { background: var(--ok); }
@@ -308,13 +335,15 @@
   .dot.asking { background: var(--warn); }
   .dot.offline { background: var(--bad); }
   .panel-info { display: grid; gap: 2px; }
+  .panel-info:not(:has(small:not(:empty))) { display: none; }
   .panel small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   .panel small:empty { display: none; }
 
   .scrim { position: fixed; inset: 0; background: var(--overlay); z-index: 45; }
   @media (max-width: 900px) {
     .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(300px, 86vw); }
-    .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(340px, 92vw); }
+    .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(400px, 100vw); }
+    .panel.landscape-expanded, .app:has(> .sidebar:not(.hidden)) .panel.landscape-expanded { width: 100vw; max-width: 100vw; }
     .nav-label { display: none; }
   }
   @media (max-width: 560px) {
@@ -485,25 +514,51 @@
 </div>
 </div>
   <aside class="panel" id="panel" aria-label="Phone screen">
-    <div class="panel-head"><h2>Live screen</h2><button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
-    <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
-    <div class="phone">
-      <div class="phone-screen blank" id="phoneScreen">
-        <img id="screen" alt="Live view of your phone's screen">
-        <canvas id="screenVideo" hidden aria-label="Live video of your phone's screen"></canvas>
-        <div class="screen-overlay" id="screenOverlay">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>
-          <span id="screenMsg">Connecting…</span>
+    <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Connecting</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
+    <div class="device-slot">
+      <select class="select" id="device" aria-label="Phone"></select>
+      <button class="btn btn-ghost icon-btn" id="renamePhone" type="button" aria-label="Name this phone" title="Set a friendly name in this browser" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16zM13 7l4 4"/></svg></button>
+    </div>
+    <form class="phone-name-form" id="phoneNameForm" hidden>
+      <label class="sr-only" for="phoneName">Friendly phone name</label>
+      <input class="input" id="phoneName" maxlength="60" placeholder="e.g. My Galaxy" autocomplete="off">
+      <button class="btn btn-sm" type="submit">Save</button>
+      <button class="btn btn-ghost icon-btn" id="phoneNameCancel" type="button" aria-label="Cancel phone rename">×</button>
+      <small>Saved in this browser. Leave blank to use the reported name.</small>
+    </form>
+    <div class="screen-stage" id="screenStage">
+      <div class="phone">
+        <div class="phone-screen blank" id="phoneScreen">
+          <img id="screen" alt="Live view of your phone's screen">
+          <canvas id="screenVideo" hidden aria-label="Live video of your phone's screen"></canvas>
+          <div class="screen-overlay" id="screenOverlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>
+            <span id="screenMsg">Connecting…</span>
+          </div>
         </div>
       </div>
     </div>
+    <div class="phone-notices">
+      <button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button>
+      <div class="screen-notice" id="screenNotice" role="status" hidden></div>
+    </div>
     <div class="screen-meta">
       <span class="screen-info" id="screenInfo" role="note"></span>
-      <select class="select" id="screenQuality" aria-label="Live screen quality" title="Live screen quality">
-        <option value="sharp">Sharp</option>
-        <option value="balanced">Balanced</option>
-        <option value="saver">Data saver</option>
-      </select>
+      <div class="screen-quality">
+        <label class="sr-only" for="screenQuality">Quality</label>
+        <select class="select" id="screenQuality" aria-label="Live screen quality" title="Live screen quality">
+          <option value="sharp">Sharp</option>
+          <option value="balanced">Balanced</option>
+          <option value="saver">Data saver</option>
+        </select>
+      </div>
+      <div class="landscape-layout" id="landscapeLayout" hidden>
+        <span>Landscape</span>
+        <div class="layout-toggle" role="group" aria-label="Landscape screen layout">
+          <button id="landscapeExpand" type="button" aria-pressed="true" title="Widen the phone pane for a larger landscape view">Expand pane</button>
+          <button id="landscapeFit" type="button" aria-pressed="false" title="Keep the phone pane compact and fit the whole screen inside">Fit pane</button>
+        </div>
+      </div>
     </div>
     <span class="sr-only" id="state" role="status" aria-live="polite">Connecting…</span>
     <div class="panel-info">
@@ -556,6 +611,7 @@ const EXAMPLES = [
 let accounts = false;
 let deviceId = null;
 let deviceCount = 0;
+let phoneChoices = [];
 let last = null;            // latest status snapshot
 let lastSignature = "";     // re-render only when something changed
 let pendingNotes = new Set();  // ids of memory suggestions still waiting for Keep/Dismiss
@@ -661,25 +717,63 @@ async function loadModels() {
   } catch {}
 }
 
+function phoneNickname(id) {
+  try { return id ? localStorage.getItem(`openmob.phoneName.${id}`) || "" : ""; } catch { return ""; }
+}
+function deviceLabel(d) {
+  const model = (d.model || "").trim();
+  const name = phoneNickname(d.id) || (d.name || "").trim();
+  if (name && name !== model) return model ? `${name} (${model})` : name;
+  // Model codes aren't marketing names. Keep the code and make its purpose clear.
+  const code = model.match(/^(.+?)\s+((?:SM-|GT-|CPH|XT)\S+)$/i);
+  return code ? `${code[1]} phone (${code[2]})` : model || "Android phone";
+}
+
 async function loadDevices(rescan = false) {
   try {
     const devices = await api(`/api/devices${rescan ? "?rescan=true" : ""}`);
+    phoneChoices = devices;
     deviceCount = devices.length;
     // Every paired phone is listed; one that hasn't connected since the server started can't be picked yet.
     const usable = devices.filter((d) => d.session !== false);
     $("device").replaceChildren(...devices.map((d) => {
-      const o = el("option", "", `${d.model}${d.online ? "" : " · offline"}`);
+      const o = el("option", "", `${deviceLabel(d)}${d.online ? "" : " · offline"}`);
       o.value = d.id;
       o.disabled = d.session === false;
       return o;
     }));
     $("device").hidden = !devices.length;
+    $("renamePhone").disabled = !usable.length;
     showNewPhone(devices);
     if (!usable.length) { deviceId = null; render(null); return; }
     if (!usable.some((d) => d.id === deviceId)) { deviceId = (usable.find((d) => d.online) || usable[0]).id; resetScreen(); }
     $("device").value = deviceId;
+    $("device").title = deviceLabel(usable.find((d) => d.id === deviceId));
   } catch (e) { $("state").textContent = e.message; }
 }
+
+$("renamePhone").onclick = () => {
+  const phone = phoneChoices.find((d) => d.id === deviceId);
+  if (!phone) return;
+  $("phoneNameForm").dataset.device = phone.id;
+  $("phoneNameForm").hidden = false;
+  $("phoneName").value = phoneNickname(phone.id) || (phone.name !== phone.model ? phone.name : "") || "";
+  $("phoneName").focus();
+  $("phoneName").select();
+};
+const closePhoneName = () => { $("phoneNameForm").hidden = true; $("renamePhone").focus(); };
+$("phoneNameCancel").onclick = closePhoneName;
+$("phoneNameForm").onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); closePhoneName(); } };
+$("phoneNameForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const id = $("phoneNameForm").dataset.device;
+  try {
+    const key = `openmob.phoneName.${id}`, value = $("phoneName").value.trim().slice(0, 60);
+    value ? localStorage.setItem(key, value) : localStorage.removeItem(key);
+  } catch { alert("The name couldn't be saved in this browser."); return; }
+  closePhoneName();
+  await loadDevices();
+};
 
 // "New phone added: SM-S948U1" for a pairing in the last 15 minutes that this browser hasn't
 // acknowledged, with one-click Remove (each pairing is also in the account's audit log).
@@ -1794,7 +1888,7 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- header ----------
 
-$("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); perms = null; modeStatus = ""; resetScreen(); pollNow(); };
+$("device").onchange = (e) => { $("phoneNameForm").hidden = true; deviceId = e.target.value; lastSignature = ""; openSteps.clear(); perms = null; modeStatus = ""; resetScreen(); pollNow(); };
 $("newChat").onclick = async () => {
   if (!deviceId) return;
   try {
@@ -1887,8 +1981,7 @@ const screenReason = (message) => (message || "screen unavailable").replace(/^\w
 let frameTime = 0;          // X-Frame-Time of the polled frame on screen; the server sends a newer one
 let screenSocketAfter = 0;  // after a failed socket, poll until this time, then try the socket again
 
-// What the panel says around the picture: a full cover before the first frame, a banner over a
-// stale frame when the phone reports a problem, and a badge for the stream's kind.
+// Show notices beside the view, never on top of a received frame. The approval screen is hidden.
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
   const reconnecting = !!(last && last.device && last.device.reconnecting);
@@ -1902,17 +1995,23 @@ function renderScreenState() {
     : approving ? "Waiting for your approval on the phone. The approval screen is hidden from the live view for your security."
     : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
-  $("screenOverlay").hidden = !cover && !screenError && !reconnecting;
-  $("screenOverlay").classList.toggle("banner", !cover);
+  $("screenOverlay").hidden = !cover;
   $("screenMsg").textContent = message;
+  const notice = $("screenNotice");
+  notice.hidden = cover || (!screenError && !reconnecting && !offline);
+  notice.textContent = reconnecting ? "Reconnecting… Showing the last received frame."
+    : offline ? "Phone offline. Showing the last received frame."
+    : screenError ? `${screenError} Showing the last received frame.` : "";
   const badge = $("liveBadge");
   const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"]
     : confirming ? ["Approve on phone", "warn dotted live"] : phone === "asking" ? ["Needs you", "warn dotted live"]
-    : phone === "running" ? ["Working", "info dotted live"] : screenError ? ["Unavailable", "warn dotted"]
-    : hasFrame ? ["Ready", "ok dotted"] : ["Connecting", "dotted"];
+    : screenError ? ["Unavailable", "warn dotted"]
+    : !offline ? ["Connected", "ok dotted"] : ["Connecting", "dotted"];
   badge.textContent = text;
   badge.className = `pill ${cls}`;
   badge.title = screenMode === "video" ? "Smooth H.264 video from the phone" : hasFrame ? "Snapshots from the phone, refreshed continuously" : "";
+  fitScreen();
+  renderScreenInfo();
 }
 
 function resetScreen() {
@@ -1921,6 +2020,7 @@ function resetScreen() {
   screenError = "";
   frameTime = 0;
   Object.assign(liveStats, { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0 });
+  fitScreen();
   renderScreenState();
   renderScreenInfo();
 }
@@ -1940,9 +2040,11 @@ async function showFrame(blob) {
   img.src = URL.createObjectURL(blob);
   try { await img.decode(); } catch {}
   if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+  const resized = liveStats.width !== img.naturalWidth || liveStats.height !== img.naturalHeight;
   liveStats.width = img.naturalWidth;
   liveStats.height = img.naturalHeight;
   liveStats.frames++;
+  if (resized) fitScreen();
 }
 
 // Quality of the live view, and the size it is shown at. The server sizes the stream (or the
@@ -1961,6 +2063,35 @@ function screenView() {
 // What's on screen and how well it's arriving, for the line under the phone (and for debugging:
 // window.openmobLive in the console).
 const liveStats = window.openmobLive = { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0, decodeMs: 0, lastPts: 0, lastPaint: 0 };
+let landscapeLayout = "expand";
+try { if (localStorage.getItem("openmob.landscapeLayout") === "fit") landscapeLayout = "fit"; } catch {}
+
+function applyLandscapeLayout() {
+  const landscape = hasFrame && liveStats.width > liveStats.height;
+  $("landscapeLayout").hidden = !landscape;
+  $("panel").classList.toggle("landscape-expanded", landscape && landscapeLayout === "expand");
+  $("landscapeExpand").setAttribute("aria-pressed", String(landscapeLayout === "expand"));
+  $("landscapeFit").setAttribute("aria-pressed", String(landscapeLayout === "fit"));
+}
+for (const [id, layout] of [["landscapeExpand", "expand"], ["landscapeFit", "fit"]]) {
+  $(id).onclick = () => {
+    landscapeLayout = layout;
+    try { localStorage.setItem("openmob.landscapeLayout", layout); } catch {}
+    fitScreen();
+  };
+}
+
+function fitScreen() {
+  applyLandscapeLayout();
+  const stage = $("screenStage");
+  if (!stage.clientWidth || !stage.clientHeight) return;
+  const aspect = !$("phoneScreen").classList.contains("blank") && liveStats.width && liveStats.height
+    ? liveStats.width / liveStats.height : 9 / 19;
+  // Keep breathing room around the bezel while using the available height for the complete frame.
+  const width = Math.min(stage.clientWidth - 16, (stage.clientHeight - 28) * aspect + 12);
+  $("phoneScreen").style.setProperty("--screen-aspect", aspect);
+  $("phoneScreen").parentElement.style.width = `${Math.max(36, width)}px`;
+}
 let statsAt = performance.now();
 setInterval(() => {
   const now = performance.now(), secs = (now - statsAt) / 1000;
@@ -1976,25 +2107,43 @@ function renderScreenInfo() {
   const video = screenMode === "video";
   info.className = `screen-info ${screenMode}`;
   info.replaceChildren();
-  if (!hasFrame || !screenMode) { info.title = ""; return; }
+  const connected = deviceId && last && last.device && last.device.online !== false && !last.device.reconnecting;
+  const approval = last && last.state === "asking" && last.question_kind === "confirm";
+  const active = hasFrame && connected && !screenError && !approval;
+  const resolution = hasFrame && liveStats.width && !approval ? `${Math.max(liveStats.width, liveStats.height)}p` : "";
+  for (const option of $("screenQuality").options) {
+    const label = `Quality: ${SCREEN_QUALITIES[option.value]}${option.value === screenQuality && resolution ? ` (${resolution})` : ""}`;
+    if (option.textContent !== label) option.textContent = label;
+  }
+  info.dataset.state = active ? "active" : hasFrame ? "paused" : "waiting";
+  const status = el("span", "stream-status");
+  const label = !deviceId ? "No stream" : approval ? "Screen hidden for approval"
+    : !hasFrame ? "Waiting for screen" : active ? "Active stream" : "Stream paused";
+  status.append(el("b", "", label));
+  info.append(status);
+  if (!hasFrame || !screenMode || approval) { info.title = ""; return; }
   const parts = [];
   if (liveStats.width) parts.push(`${Math.max(liveStats.width, liveStats.height)}p`);  // long side, like "1280p"
-  parts.push(`${liveStats.fps < 3 ? liveStats.fps.toFixed(1) : Math.round(liveStats.fps)} fps`);
-  if (video && liveStats.kbps) parts.push(liveStats.kbps >= 1000 ? `${(liveStats.kbps / 1000).toFixed(1)} Mbps` : `${liveStats.kbps} kbps`);
-  info.append(el("b", "", video ? "Video" : "Screenshots"), ` · ${parts.join(" · ")}`);
+  if (active) parts.push(`${liveStats.fps < 3 ? liveStats.fps.toFixed(1) : Math.round(liveStats.fps)} fps`);
+  info.append(el("span", "stream-detail", parts.join(" · ")));
   info.title = video
-    ? `Live H.264 video from the phone, ${liveStats.width}×${liveStats.height}, sized for this panel.`
+    ? `Live H.264 video from the phone, ${liveStats.width}×${liveStats.height}, sized for this panel.${active && liveStats.kbps ? ` ${liveStats.kbps} kbps received.` : ""}`
     : "Snapshots, a few a second. For smooth, sharp video, allow screen sharing when you connect the OpenMob app (update the app if it doesn't ask).";
 }
 
 $("screenQuality").onchange = (e) => {
   screenQuality = e.target.value;
   try { localStorage.setItem("openmob.screenQuality", screenQuality); } catch {}
+  renderScreenInfo();
   sendView();
 };
 let sendView = () => {};  // set while a screen socket is open
 let viewTimer = 0;
-new ResizeObserver(() => { clearTimeout(viewTimer); viewTimer = setTimeout(() => sendView(), 400); }).observe($("phoneScreen"));
+new ResizeObserver(fitScreen).observe($("screenStage"));
+new ResizeObserver(() => {
+  clearTimeout(viewTimer);
+  viewTimer = setTimeout(() => sendView(), 400);
+}).observe($("phoneScreen"));
 matchMedia("(min-resolution: 2dppx)").addEventListener("change", () => sendView());  // moved to another display
 
 // Smooth live view: H.264 from the phone, decoded with WebCodecs onto the canvas. Phones whose owner
@@ -2026,6 +2175,7 @@ function videoPlayer(askKeyframe) {
   // into it with high-quality smoothing: sharper text than letting CSS shrink a large canvas.
   const paint = (frame) => {
     const vw = frame.displayWidth, vh = frame.displayHeight;
+    const resized = vw !== liveStats.width || vh !== liveStats.height;
     const shown = (canvas.clientWidth || vw) * (window.devicePixelRatio || 1);
     const fit = Math.min(1, shown / vw);
     const w = Math.round(vw * fit), h = Math.round(vh * fit);
@@ -2037,6 +2187,7 @@ function videoPlayer(askKeyframe) {
     if (at !== undefined) { liveStats.decodeMs = Math.round(performance.now() - at); sent.delete(frame.timestamp); }
     if (sent.size > 64) sent.clear();
     Object.assign(liveStats, { width: vw, height: vh, lastPts: frame.timestamp, lastPaint: performance.timeOrigin + performance.now() });
+    if (resized) fitScreen();
     liveStats.frames++;
     frame.close();
     showSurface("screenVideo");
