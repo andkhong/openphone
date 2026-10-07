@@ -168,7 +168,8 @@ MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speec
 
 
 def create_app(manager: DeviceManager, token: str | None = None, store=None, transcriber=None,
-               ledger=None, webhook_allow_private: bool = False) -> FastAPI:
+               ledger=None, webhook_allow_private: bool = False,
+               session_cookie: str = "openmob_session") -> FastAPI:
     """Two modes. Without `store`: one shared token guards everything (local/demo).
     With an AccountStore: users sign in, phones carry their own key, and everyone sees only
     their own phones — a pairing code works only for the account that made it. Accounts mode
@@ -177,7 +178,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
 
     def session_token(request: Request) -> str | None:
         # Cookie (browsers) or header (phone app, bridge). Never the URL: links get copied and logged.
-        return request.cookies.get("openmob_session") or request.headers.get("x-openmob-session")
+        return request.cookies.get(session_cookie) or request.headers.get("x-openmob-session")
 
     def account(request: Request) -> str | None:
         """Logged-in account, or None in token mode."""
@@ -260,7 +261,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
 
     def _set_session(response: Response, account_id: str) -> str:
         tok = store.create_session(account_id)
-        response.set_cookie("openmob_session", tok, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
+        response.set_cookie(session_cookie, tok, httponly=True, samesite="lax", max_age=30 * 24 * 3600)
         return tok
 
     signups = FailureWindow()
@@ -328,7 +329,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
     def logout(request: Request, response: Response) -> dict:
         if store is not None:
             store.end_session(session_token(request))
-        response.delete_cookie("openmob_session")
+        response.delete_cookie(session_cookie)
         return {"ok": True}
 
     @app.get("/api/auth/me")

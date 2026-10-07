@@ -72,3 +72,13 @@ def test_auth_error_raises():
 def test_describe_screen_dedupes_and_trims():
     screen = describe_screen(None, ["Button"], ["Menu", "menu", "x", "Start"])
     assert screen == {"foreground_app": "unknown", "ui_elements": ["Button"], "text_on_screen": ["Menu", "Start"]}
+
+
+def test_benchmark_attribution_counts_attempts_errors_and_served_model():
+    c = client_with(lambda r: httpx.Response(200, json={"model": "jev-pinned", "answers": {}}))
+    assert c.ask({}, {"q": {"type": "noul", "instructions": "Yes?"}}) == {}
+    assert c.request_count == 1 and c.error_count == 0 and c.served_model == "jev-pinned"
+    c = client_with(lambda r: httpx.Response(401, text="denied"))
+    with pytest.raises(JevError):
+        c.ask({}, {})
+    assert c.request_count == 1 and c.error_count == 1

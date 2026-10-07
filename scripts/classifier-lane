@@ -1,0 +1,5 @@
+#!/bin/sh
+set -eu
+lane_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$lane_root"
+exec "$lane_root/.venv/bin/python" -m openmob.classifier_lane "$@"

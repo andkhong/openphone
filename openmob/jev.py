@@ -48,10 +48,11 @@ class ScreenAssessment:
     probability: float
     confidence: float
     task_done: float  # probability (0-1) that the user's request already looks complete
+    classifier: str = "Jev"
 
     def summary(self) -> str:
         return (
-            f"Jev screen state: {self.state} (p={self.probability:.2f}, confidence={self.confidence:.2f}); "
+            f"{self.classifier} screen state: {self.state} (p={self.probability:.2f}, confidence={self.confidence:.2f}); "
             f"request looks complete: p={self.task_done:.2f}"
         )
 
@@ -139,6 +140,9 @@ class JevClient:
     ):
         self.model = model
         self.max_retries = max_retries
+        self.request_count = 0
+        self.error_count = 0
+        self.served_model = None
         self.on_usage = None  # callable(input_tokens), e.g. an agent's Usage.add_jev
         self._http = http or httpx.Client(
             base_url=base_url,
@@ -146,11 +150,25 @@ class JevClient:
             headers={"Authorization": f"Bearer {api_key}"},
         )
 
+    def close(self):
+        self._http.close()
+
     def ask(self, state, questions: dict) -> dict:
         """POST /v1/systemone. Returns the `answers` mapping."""
+        try:
+            return self._ask(state, questions)
+        except JevError:
+            self.error_count += 1
+            raise
+        except (KeyError, TypeError, ValueError, AttributeError):
+            self.error_count += 1
+            raise JevError("Jev returned a malformed response") from None
+
+    def _ask(self, state, questions: dict) -> dict:
         body = {"state": state, "model": self.model, "questions": questions}
         for attempt in range(self.max_retries + 1):
             try:
+                self.request_count += 1
                 response = self._http.post("/v1/systemone", json=body)
             except httpx.HTTPError as exc:
                 if attempt == self.max_retries:
@@ -162,6 +180,7 @@ class JevClient:
                 if response.status_code != 200:
                     raise JevError(f"Jev returned {response.status_code}: {response.text[:300]}")
                 data = response.json()
+                self.served_model = data.get("model", self.model)
                 if self.on_usage:
                     self.on_usage(int((data.get("usage") or {}).get("input_tokens", 0)))
                 return data["answers"]
@@ -194,8 +213,14 @@ class JevJudge:
         # assess_tap itself; app picking runs inside the app resolver, where it can't.
         self.on_timing = None
 
-    def assess_screen(self, request: str, screen: dict) -> ScreenAssessment:
-        answers = self.client.ask({"user_request": request, "screen": screen}, self._screen_questions())
+    def _ask(self, state, questions, images=None):
+        # Preserve the existing text-only client and test-double contract.
+        if images:
+            return self.client.ask(state, questions, images=images)
+        return self.client.ask(state, questions)
+
+    def assess_screen(self, request: str, screen: dict, *, images=None) -> ScreenAssessment:
+        answers = self._ask({"user_request": request, "screen": screen}, self._screen_questions(), images=images)
         return self._assessment(answers)
 
     @staticmethod
@@ -215,27 +240,27 @@ class JevJudge:
             task_done=float(answers["done"]["noul"]),
         )
 
-    def assess_tap(self, request: str, target: str, screen: dict) -> tuple[float, float]:
+    def assess_tap(self, request: str, target: str, screen: dict, *, images=None) -> tuple[float, float]:
         """(risk, requested): how likely tapping `target` is costly or irreversible, and how likely
         the user's request explicitly asked for exactly that. Both 0-1."""
-        answers = self.client.ask(
+        answers = self._ask(
             {"user_request": request, "tap_target": target, "screen": screen},
             {
                 "risky": {"type": "noul", "instructions": RISK_INSTRUCTIONS},
                 "requested": {"type": "noul", "instructions": REQUESTED_INSTRUCTIONS},
-            },
+            }, images=images,
         )
         return float(answers["risky"]["noul"]), float(answers["requested"]["noul"])
 
-    def next_step(self, request: str, screen: dict, recent_actions: list[dict], targets: dict[str, dict[str, str]]) -> StepChoice:
+    def next_step(self, request: str, screen: dict, recent_actions: list[dict], targets: dict[str, dict[str, str]], *, images=None) -> StepChoice:
         """The fast path's one call: the next operation and, for operations that need one, its target.
 
         `targets` maps an operation (TAP, TYPE_TEXT) to its compatible elements {index: description};
         an operation needing a target that has none is left out of the choice. Each target head is
         its own choice question in the same request (the pattern of browser-use/jev-ultrafast)."""
-        answers = self.client.ask(
+        answers = self._ask(
             {"user_request": request, "screen": screen, "recent_actions": recent_actions[-RECENT_ACTIONS:]},
-            self._step_questions(targets),
+            self._step_questions(targets), images=images,
         )
         return self._step_choice(answers, targets)
 
@@ -264,7 +289,7 @@ class JevJudge:
         return StepChoice(*operation, targets=chosen)
 
     def observe_step(self, request: str, screen: dict, recent_actions: list[dict], targets: dict[str, dict[str, str]],
-                     risk_targets: dict[str, str], requested_targets: dict[str, str]) -> StepVerdict:
+                     risk_targets: dict[str, str], requested_targets: dict[str, str], *, images=None) -> StepVerdict:
         """One request per step: assess_screen's heads (screen state, task done), next_step's heads
         (operation and targets), and the risky-tap check's two questions for candidate targets
         (`risk_targets` / `requested_targets`: {key: target description}). Every question sees the
@@ -277,9 +302,9 @@ class JevJudge:
         for key, target in requested_targets.items():
             questions[f"requested_{key}"] = {"type": "noul",
                                              "instructions": {"tap_target": target, "question": REQUESTED_ITEM_INSTRUCTIONS}}
-        answers = self.client.ask(
+        answers = self._ask(
             {"user_request": request, "screen": screen, "recent_actions": recent_actions[-RECENT_ACTIONS:]},
-            questions,
+            questions, images=images,
         )
         risks = {k: float(answers[f"risky_{k}"]["noul"]) for k in risk_targets if f"risky_{k}" in answers}
         requested = {k: float(answers[f"requested_{k}"]["noul"]) for k in requested_targets if f"requested_{k}" in answers}
@@ -301,7 +326,7 @@ class JevJudge:
         random.shuffle(items)  # Jev favors earlier options; don't let list order decide.
         criteria = {pkg: desc for pkg, desc in items}
         criteria["none"] = "None of the listed apps matches the spoken name."
-        answers = self.client.ask(
+        answers = self._ask(
             {"spoken_app_name": spoken_name},
             {
                 "app": {

@@ -1,0 +1,7 @@
+# Shared settings: only provider, image input, port, and data directory differ.
+clef_model: clef-flash
+clef_images: always
+ocr: true
+# Keep completion confirmation identical while evaluating the replacement.
+fast_path_done: false
+speak: false

@@ -543,7 +543,8 @@ class Agent:
                     except (KeyError, TypeError, ValueError) as exc:  # a malformed answer: the vision step
                         self.io.event("error", f"Fast step skipped: {exc}")
                 else:
-                    obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
+                    obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs),
+                                                       **self._classifier_images(obs))
             except JevError as exc:
                 self.io.event("error", str(exc))
         return obs
@@ -567,7 +568,7 @@ class Agent:
         requested = {k: label for k, label in risk.items() if self._keyword_hits(label)}
         verdict = self.timer.timed("jev", self.judge.observe_step, state.task,
                                    fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads,
-                                   risk, requested)
+                                   risk, requested, **self._classifier_images(obs))
         obs.assessment, obs.choice = verdict.assessment, verdict.choice
         obs.risks = {int(k): v for k, v in verdict.risks.items()}
         obs.requested = {int(k): v for k, v in verdict.requested.items()}
@@ -616,6 +617,16 @@ class Agent:
                 continue
             elements.append(UIElement(start + len(elements), box.text.strip(), "", "", "OCRText", True, None, (x1, y1, x2, y2)))
         return elements
+
+    def _classifier_images(self, obs: Observation) -> dict:
+        cfg = self.config
+        if cfg.classifier_provider != "clef" or cfg.clef_images == "off":
+            return {}
+        if cfg.clef_images == "auto" and fast.eligible(obs.elements, cfg.fast_path_min_elements):
+            return {}
+        from ..clef import encode_image
+        # Observation caches this capture: risk checks and the main model reuse the same frame.
+        return {"images": [encode_image(obs.shot.jpeg)]}
 
     @staticmethod
     def _describe(obs: Observation) -> dict:
@@ -1373,7 +1384,7 @@ class Agent:
                     risk, asked = obs.risks[element.index], obs.requested.get(element.index, 0.0)
                 else:
                     risk, asked = self.timer.timed("jev", self.judge.assess_tap, state.task, caution or shown,
-                                                   self._describe(obs))
+                                                   self._describe(obs), **self._classifier_images(obs))
                 risky = risky or risk >= cfg.jev_risk_threshold
                 # The classifier only ever adds caution. It reads on-screen text, so a screen could
                 # talk it into "the user asked for this"; it may veto "requested", never grant it.
@@ -1937,7 +1948,8 @@ class Agent:
             heads = fast.targets(obs.elements)
             try:
                 choice = self.timer.timed("jev", self.judge.next_step, state.task,
-                                          fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads)
+                                          fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads,
+                                          **self._classifier_images(obs))
             except (JevError, KeyError, TypeError, ValueError) as exc:
                 self.io.event("error", f"Fast step skipped: {exc}")
                 return None

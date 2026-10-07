@@ -13,3 +13,6 @@ deploy/OpenMob.apk
 
 # openmob bench-api results
 bench-results/
+
+# Isolated classifier server data and credentials
+.classifier-data/

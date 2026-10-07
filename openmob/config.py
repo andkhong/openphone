@@ -79,7 +79,7 @@ DEFAULT_SENSITIVE_APPS = [
 FAST_PATH_MODES = ("off", "fast_tier", "on")
 
 REMOVED_KEYS = {"hotkey"}
-SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
+SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "clef_api_key", "source"}  # Mac push-to-talk was removed
 
 CONFIG_LOCATIONS = [
     Path("config.yaml"),
@@ -185,6 +185,10 @@ class Config:
     history_retention_days: int = 30
 
     # TypeSafe Jev (text-only classifier). Enabled when TYPESAFE_API_KEY is set.
+    classifier_provider: str = "jev"  # jev | clef; experimental lane only
+    clef_model: str = "clef-flash"
+    clef_account_id: str = ""
+    clef_images: str = "auto"  # off | auto (sparse UI) | always
     jev_model: str = "jev-latest"
     jev_base_url: str = "https://api.typesafe.ai"
     jev_min_confidence: float = 0.6
@@ -241,6 +245,7 @@ class Config:
     compatible_api_key: str | None = None  # OPENAI_COMPATIBLE_API_KEY (often not needed locally)
     workspace_id: str | None = None
     jev_api_key: str | None = None
+    clef_api_key: str | None = None  # CLOUDFLARE_API_TOKEN (environment only)
     source: Path | None = None
 
 
@@ -270,6 +275,14 @@ def load_config(path: str | Path | None = None) -> Config:
     # Needed only for API keys that aren't scoped to a workspace.
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
+    cfg.clef_api_key = os.environ.get("CLOUDFLARE_API_TOKEN")
+    cfg.clef_account_id = os.environ.get("CLOUDFLARE_ACCOUNT_ID", cfg.clef_account_id)
+    if cfg.classifier_provider not in {"jev", "clef"}:
+        raise ValueError("classifier_provider must be jev or clef")
+    if cfg.clef_model not in {"clef", "clef-flash"}:
+        raise ValueError("clef_model must be clef or clef-flash")
+    if cfg.clef_images not in {"off", "auto", "always"}:
+        raise ValueError("clef_images must be off, auto, or always")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
         cfg.jev_enabled = False
     if os.environ.get("OPENMOB_ADAPTIVE_SETTLE", "").strip().lower() in {"0", "off", "false", "no"}:

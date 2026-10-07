@@ -26,7 +26,7 @@ def make_anthropic_client(cfg: Config):
 def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=None):
     from .agent import Agent
     from .agent.models import ModelRouter
-    from .jev import JevClient, JevJudge
+    from .classifiers import make_judge
     from .phone.apps import AppResolver, chain_pickers, make_jev_picker, make_llm_picker
 
     router = ModelRouter(cfg)
@@ -40,9 +40,7 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
     # App names are picked by a small model: the resolver model if its provider is set up, else the default.
     picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
-    judge = None
-    if cfg.jev_api_key and cfg.jev_enabled:
-        judge = JevJudge(JevClient(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url))
+    judge = make_judge(cfg)
     picker = chain_pickers(
         make_jev_picker(judge, cfg.jev_min_confidence) if judge else None,
         make_llm_picker(router, picker_model),
