@@ -35,9 +35,11 @@ quality are grouped below the picture. Offline and stream-error notices sit outs
 frame. Phone approvals continue to hide the screen entirely.
 
 The quality picker includes the received frame's long-side resolution, such as **Quality: Sharp
-(1280p)**; this is a measurement, not a fixed resolution promised by the preset. The pencil beside
+(1280p)**; this is a measurement, not a fixed resolution promised by the preset. The pencil inside
 the device picker sets a friendly phone name in this browser while retaining the reported model
-number. Clear the name to restore the reported label.
+number. Reported names use readable casing; custom names retain the owner's spelling. Clear the
+name to restore the reported label. The header has extra top spacing, and a shared footer container
+aligns stream measurements with the quality selector below the unobstructed phone frame.
 
 When incoming frames are landscape, **Expand pane** (the default) widens the right pane and leaves
 room for the chat. **Fit pane** keeps the compact pane and scales the whole screen to fit. The
