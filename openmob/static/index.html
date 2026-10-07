@@ -6,7 +6,7 @@
 <title>OpenMob</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
 <script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="stylesheet" href="/static/ds.css">
 <style>
@@ -46,10 +46,11 @@
   .tip:hover::after, .tip:focus-visible::after { content: attr(data-tip) "   " attr(data-kbd); white-space: pre; position: absolute; top: calc(100% + 6px); left: 0; z-index: 70; padding: 5px 9px; border-radius: 8px; background: var(--fg); color: var(--bg); font-size: 12.5px; font-weight: 500; line-height: 1.3; pointer-events: none; box-shadow: var(--shadow); }
   .side-head .tip:last-child:hover::after, .side-head .tip:last-child:focus-visible::after { left: auto; right: 0; }
 
-  /* Sidebar: saved chats, plus the way to memory and the developer API */
-  .sidebar { width: 272px; flex: none; border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; padding: 12px 10px; gap: 8px; min-height: 0; }
+  /* Sidebar: saved chats and the developer API */
+  .sidebar { width: 272px; flex: none; border-right: 1px solid var(--line); background: var(--sidebar); display: flex; flex-direction: column; padding: 12px 10px; gap: 8px; min-height: 0; }
   .sidebar.hidden { display: none; }
   .new-chat { justify-content: flex-start; font-weight: 600; }
+  .developer-link { flex: none; justify-content: flex-start; }
   .side-label { color: var(--faint); font-size: 12px; font-weight: 600; margin: 8px 8px 0; }
   .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; margin: 0 -2px; padding: 0 2px; }
   .chat-item { display: flex; align-items: center; gap: 2px; border-radius: 10px; min-width: 0; }
@@ -173,12 +174,6 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chips button { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-pill); padding: 8px 14px; cursor: pointer; color: var(--muted); font-size: 14px; text-align: left; }
   .chips button:hover { color: var(--fg); border-color: var(--line-strong); }
-  .discover { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 28px; text-align: left; }
-  .discover a { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); color: var(--fg); text-decoration: none; font-size: 14px; }
-  .discover a:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
-  .discover svg { width: 20px; height: 20px; color: var(--accent); flex: none; margin-top: 1px; }
-  .discover b { display: block; font-weight: 600; }
-  .discover span { color: var(--muted); font-size: 13px; }
   .onboard { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--shadow); margin-top: 6px; }
   .onboard ol { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 14px; counter-reset: step; }
   .onboard li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; counter-increment: step; }
@@ -229,8 +224,8 @@
   .mode-chip:hover, .mode-chip[aria-expanded="true"] { background: var(--surface-2); color: var(--fg); }
   .mode-chip svg { width: 14px; height: 14px; flex: none; }
   .mode-chip.never { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
-  .mode-menu { position: absolute; bottom: calc(100% + 8px); right: 0; width: 340px; max-width: calc(100vw - 2 * var(--gutter)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 6px; z-index: 40; }
-  .mode-menu .mm-head { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px 6px; }
+  .mode-menu { position: fixed; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 6px; z-index: 40; }
+  .mode-menu .mm-head { position: sticky; top: -6px; z-index: 1; display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--line); }
   .mode-menu .mm-head b { font-size: 13px; }
   .mode-menu .mm-head span { color: var(--faint); font-size: 12px; margin-left: auto; }
   .mode-item { display: grid; grid-template-columns: 1fr auto 18px; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--fg); font: inherit; }
@@ -253,7 +248,7 @@
   .mode-never .spans button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
   .mode-status { margin: 6px 4px 2px; font-size: 13px; }
   .mode-status:empty { display: none; }
-  .mode-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px 4px; color: var(--faint); font-size: 12px; }
+  .mode-foot { position: sticky; bottom: -6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px 6px; color: var(--faint); font-size: 12px; background: var(--surface); border-top: 1px solid var(--line); }
   .mode-foot button { border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
   .text.ask { white-space: pre-line; }
   #neverChip { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; order: 9; width: 100%; justify-content: center; min-height: 26px; }
@@ -273,7 +268,6 @@
   .trusted-add { display: grid; gap: 8px; }
   .trusted-add .kinds { display: flex; gap: 12px; flex-wrap: wrap; }
   @media (max-width: 560px) {
-    .mode-menu { position: fixed; left: var(--gutter); right: var(--gutter); bottom: 96px; width: auto; max-height: 70vh; overflow-y: auto; }
     .taskbar { flex-wrap: wrap; }
     .taskbar .task-now { order: 9; flex-basis: 100%; }
     .taskbar .task-meta { margin-left: auto; }
@@ -387,6 +381,7 @@
     <input class="input chat-search" id="chatSearch" type="search" placeholder="Search chats" aria-label="Search chats" hidden>
     <div class="side-label" id="chatsLabel">Chats</div>
     <div class="chat-list" id="chatList" aria-labelledby="chatsLabel"></div>
+    <a class="btn btn-ghost developer-link" id="developerLink" title="Connect your own agent or app to control your phone." href="/developer" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>Developer API</a>
     <div class="side-foot">
       <details class="menu account" id="menu">
         <summary class="account-btn" aria-label="Account and settings" title="Account and settings">
@@ -400,7 +395,6 @@
           <a id="memoryLink" href="/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>What I've learned</a>
           <a id="connectPhone" href="/connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Connect a phone</a>
           <a id="phonesLink" href="/phones" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>Your phones</a>
-          <a id="developerLink" href="/developer" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>Developer API &amp; AI agents</a>
           <a id="adminLink" href="/admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Admin</a>
           <hr>
           <div class="menu-label">Preferences</div>
@@ -603,14 +597,15 @@ const icon = (name, cls) => {
   return svg;
 };
 const EXAMPLES = [
-  "Open YouTube and search for lofi music",
-  "Open Settings and turn on dark mode",
-  "Open Chrome and go to wikipedia.org",
-  "Set a timer for 10 minutes",
+  "Send the latest screenshot to Mom on WhatsApp",
+  "Order an iced latte on DoorDash",
+  "Turn on dark mode and enable power saving",
+  "Find an Italian restaurant rated 4+ stars nearby on Maps",
 ];
 
 let accounts = false;
 let deviceId = null;
+let modelChanging = false;
 let deviceCount = 0;
 let phoneChoices = [];
 let last = null;            // latest status snapshot
@@ -1113,21 +1108,6 @@ function modelTokens(u, onlyModel) {
   return entries.map(([m, c]) => `${fmt(c.input + c.output)} tokens · ${modelName(m)}`).join("  ·  ");
 }
 
-function discoverLinks() {
-  const box = el("div", "discover");
-  const link = (href, name, title, text) => {
-    const a = el("a");
-    a.href = href;
-    const txt = el("div");
-    txt.append(el("b", "", title), el("span", "", text));
-    a.append(icon(name), txt);
-    return a;
-  };
-  box.append(link(withToken("/memory"), "star", "What I've learned", "Notes about you and your apps that make every task smarter."));
-  if (accounts) box.append(link("/developer", "code", "Connect an AI agent", "Let Claude, Cursor or your own code use your phone."));
-  return box;
-}
-
 function renderFirstRun() {
   const box = el("div", "empty");
   box.append(el("h1", "", "Connect your phone to get started"));
@@ -1169,8 +1149,8 @@ function renderEmpty() {
     call.append(icon("alert"), txt);
     box.append(call);
   }
-  box.append(el("h1", "", "What should your phone do?"));
-  box.append(el("p", "", "Ask in plain words. The agent works on your phone step by step, and you can watch it live."));
+  box.append(el("h1", "", "What can your phone do for you?"));
+  box.append(el("p", "", "Just describe a task. The agent handles the taps, swipes, and apps for you in real time."));
   const chips = el("div", "chips");
   for (const t of EXAMPLES) {
     const b = el("button", "", t);
@@ -1178,7 +1158,7 @@ function renderEmpty() {
     b.onclick = () => send(t);
     chips.append(b);
   }
-  box.append(chips, discoverLinks());
+  box.append(chips);
   return box;
 }
 
@@ -1222,7 +1202,7 @@ function render(s) {
   const selected = (s && s.model) || $("model").value;
   const sessionText = modelTokens(sess, selected);
   $("sessionTokens").textContent = sessionText ? `This session: ${sessionText}` : "";
-  if (s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
+  if (!modelChanging && s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
   syncPerms(s);
   renderTaskBar(s);
   renderScreenState();
@@ -1277,7 +1257,7 @@ function updateComposer() {
   const sendLabel = queueNext && taskOn ? "Queue as a new task" : running ? "Send correction" : asking ? "Send answer" : "Send";
   btn.setAttribute("aria-label", busy ? "Stop" : sendLabel);
   btn.title = busy ? "Stop the task" : sendLabel;
-  btn.disabled = !deviceId || (!busy && !hasText);
+  btn.disabled = !deviceId || (!busy && (modelChanging || !hasText));
   if (!taskOn && queueNext) queueNext = false;
   $("queueToggle").hidden = !taskOn;
   $("queueToggle").setAttribute("aria-pressed", String(queueNext));
@@ -1309,6 +1289,7 @@ $("text").addEventListener("keydown", (e) => {
 $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
   if ($("send").classList.contains("stop")) { stopTask(); return; }
+  if (modelChanging) return;
   const text = $("text").value;
   const mode = queueNext && last && last.task_id ? "queue" : "auto";
   $("text").value = "";
@@ -1322,14 +1303,31 @@ $("stopTask").onclick = () => stopTask();
 $("model").onchange = async (e) => {
   syncModelLabel();
   if (!deviceId) return;
+  const target = deviceId;
+  const previous = last && last.model;
+  modelChanging = true;
+  $("model").disabled = true;
+  updateComposer();
   try {
-    const r = await api(`/api/devices/${deviceId}/model`, {
+    const r = await api(`/api/devices/${target}/model`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: e.target.value }),
     });
+    if (deviceId !== target) return;
+    if (last) last.model = r.model;
+    $("model").value = r.model;
     const name = shortModel(modelLabels[r.model] || r.model);
     $("hint").dataset.note = r.applies === "now" ? `Using ${name}.` : `${name} applies from the next task.`;
+  } catch (err) {
+    if (deviceId === target) {
+      if (previous) $("model").value = previous;
+      setHint(err.message);
+    }
+  } finally {
+    modelChanging = false;
+    $("model").disabled = false;
+    syncModelLabel();
     updateComposer();
-  } catch (err) { setHint(err.message); }
+  }
 };
 
 // ---------- permission modes: when the phone asks you before acting ----------
@@ -1420,6 +1418,7 @@ function modeRow(m, n) {
 
 function renderModeMenu() {
   const menu = $("modeMenu");
+  const scrollTop = menu.scrollTop;
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.mode : null;
   const head = el("div", "mm-head");
   head.append(el("b", "", "When should your phone ask you?"), el("span", "", "1–5"));
@@ -1465,10 +1464,36 @@ function renderModeMenu() {
   settings.onclick = () => { closeModeMenu(); openPerms(); };
   foot.append(settings);
   menu.replaceChildren(head, ...rows, el("hr"), box, status, foot);
+  menu.scrollTop = scrollTop;
   if (focused) {
     const again = menu.querySelector(`[data-mode="${focused}"]`);
-    if (again) again.focus();
+    if (again) again.focus({ preventScroll: true });
   }
+  positionModeMenu();
+}
+
+function positionModeMenu() {
+  const menu = $("modeMenu");
+  if (menu.hidden) return;
+  const viewport = window.visualViewport;
+  const x = viewport ? viewport.offsetLeft : 0;
+  const y = viewport ? viewport.offsetTop : 0;
+  const width = viewport ? viewport.width : window.innerWidth;
+  const height = viewport ? viewport.height : window.innerHeight;
+  const anchor = $("modeChip").getBoundingClientRect();
+  const margin = 12, gap = 8;
+  const above = Math.max(0, anchor.top - gap - y - margin);
+  const below = Math.max(0, y + height - margin - anchor.bottom - gap);
+  const upward = above >= below;
+  menu.style.maxWidth = `${Math.max(0, width - 2 * margin)}px`;
+  menu.style.maxHeight = `${Math.min(560, upward ? above : below)}px`;
+  menu.style.left = `${Math.max(x + margin, Math.min(anchor.right - menu.offsetWidth, x + width - margin - menu.offsetWidth))}px`;
+  menu.style.top = `${upward ? anchor.top - gap - menu.offsetHeight : anchor.bottom + gap}px`;
+}
+window.addEventListener("resize", positionModeMenu);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", positionModeMenu);
+  window.visualViewport.addEventListener("scroll", positionModeMenu);
 }
 
 function openModeMenu() {
