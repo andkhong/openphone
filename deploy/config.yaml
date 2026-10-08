@@ -1,7 +1,8 @@
 # Server config baked into the Fly image. Secrets (ANTHROPIC_API_KEY, ANTHROPIC_WORKSPACE_ID,
-# TYPESAFE_API_KEY) come from `fly secrets`, never from this file.
+# OPENAI_API_KEY, GEMINI_API_KEY, QWEN_API_KEY/DASHSCOPE_API_KEY, XAI_API_KEY, TYPESAFE_API_KEY)
+# come from `fly secrets`, never from this file.
 model: claude-sonnet-5-5
-resolver_model: claude-haiku-4-5-20251001
+resolver_model: claude-haiku-5-5
 max_steps: 40
 confirm_actions: unrequested
 server_host: 0.0.0.0
