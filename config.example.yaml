@@ -15,7 +15,8 @@ resolver_model: claude-haiku-5-5
 # models:
 #   - {id: claude-sonnet-5-5, label: "Sonnet 5.5 (balanced, recommended)", provider: anthropic}
 #   - {id: claude-opus-5-5, label: "Opus 5.5 (smartest, slower, pricier)", provider: anthropic}
-#   - {id: claude-haiku-5-5, label: "Haiku 5.5 (fastest, cheapest)", provider: anthropic}
+#   - {id: claude-haiku-5-5, label: "Haiku 5.5 (fastest, cheapest)", provider: anthropic,
+#      effort: high, max_tokens: 8192, vision_max_tokens: 8192}
 #   - {id: gpt-6.1-sol, label: "GPT-6.1 Sol", provider: openai,
 #      reasoning_effort: low, max_tokens: 8192, vision_max_tokens: 8192}
 #   - {id: gpt-6-astra, label: "GPT-6 Astra", provider: openai,
@@ -37,7 +38,7 @@ resolver_model: claude-haiku-5-5
 # Optional per model: max_tokens (default 1024; raise it for reasoning models, whose thinking counts).
 # vision_max_tokens overrides the vision-step cap (reasoning models need room for thinking and tools).
 # Claude models: effort (low | medium | high | xhigh | max) and thinking (adaptive | disabled | between_tools);
-# left out, the model's defaults apply (Haiku 5.5: medium effort, adaptive thinking).
+# left out, the model's defaults apply. OpenMob's default list runs Haiku 5.5 at high effort.
 #   e.g. - {id: claude-haiku-5-5, label: "Haiku 5.5 (fast)", effort: low, thinking: disabled}
 # openai_compatible_base_url: http://localhost:11434/v1   # default for compatible models without base_url
 # Qwen defaults to Singapore; use the endpoint matching your key's region/workspace.

@@ -23,7 +23,10 @@ DEFAULT_MODELS = [
     {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)", "provider": "anthropic"},
     {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)", "provider": "anthropic"},
     {"id": "claude-fable-5-1", "label": "Fable 5.1", "provider": "anthropic"},
-    {"id": "claude-haiku-5-5", "label": "Haiku 5.5 (fastest, cheapest)", "provider": "anthropic"},
+    # High effort (owner's choice, 2026-10-08). Its thinking counts toward max_tokens, so the vision
+    # step gets the same room instead of the 512-token cap, which would cut it off and ask again.
+    {"id": "claude-haiku-5-5", "label": "Haiku 5.5 (fastest, cheapest)", "provider": "anthropic",
+     "effort": "high", "max_tokens": 8192, "vision_max_tokens": 8192},
     {"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "provider": "openai", "context": 1_050_000,
      "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
     {"id": "gpt-6-astra", "label": "GPT-6 Astra", "provider": "openai", "context": 1_050_000,
