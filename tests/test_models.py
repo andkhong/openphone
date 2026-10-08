@@ -587,3 +587,17 @@ def test_anthropic_effort_and_thinking_come_from_the_model_options(tmp_path):
     path.write_text("models:\n  - {id: claude-haiku-5-5, effort: fastest}\n")
     with pytest.raises(ValueError, match="effort is one of"):
         load_config(path)
+
+
+def test_haiku_5_5_runs_at_high_effort_with_room_for_its_thinking(tmp_path):
+    path = tmp_path / "config.yaml"
+    path.write_text("max_steps: 10\n")
+    cfg = load_config(path)
+    create = Recorder(SimpleNamespace(content=[SimpleNamespace(type="text", text="com.chess")], stop_reason="end_turn",
+                                      model="claude-haiku-5-5", usage=None))
+    router = ModelRouter(cfg, clients={"anthropic": SimpleNamespace(messages=SimpleNamespace(create=create))})
+    route = router.route("claude-haiku-5-5")
+    assert (route.adapter.effort, route.spec.max_tokens, route.spec.options["vision_max_tokens"]) == ("high", 8192, 8192)
+    assert router.complete_text("claude-haiku-5-5", "Which package is Chess?", max_tokens=100) == "com.chess"
+    sent = create.calls[0]
+    assert sent["output_config"] == {"effort": "high"} and sent["max_tokens"] == 8192  # thinking can't starve the answer

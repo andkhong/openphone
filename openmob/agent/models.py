@@ -800,9 +800,12 @@ class ModelRouter:
         return Route(adapter, spec, _capabilities(adapter.capabilities(model), spec))
 
     def complete_text(self, model: str, prompt: str, max_tokens: int = 100) -> str:
-        """A one-shot text question (no tools, no screenshot), e.g. picking an app by name."""
+        """A one-shot text question (no tools, no screenshot), e.g. picking an app by name. A thinking
+        model spends part of max_tokens on thought, so the model's own limit is the floor: a short
+        answer stays short, but the thinking can't use up the room for it."""
         route = self.route(model)
-        response = route.adapter.complete(ModelRequest(model, "", [], [{"role": "user", "content": prompt}], max_tokens))
+        limit = max(max_tokens, route.spec.max_tokens)
+        response = route.adapter.complete(ModelRequest(model, "", [], [{"role": "user", "content": prompt}], limit))
         return "".join(response.text).strip()
 
     def _client(self, spec: ModelSpec):
