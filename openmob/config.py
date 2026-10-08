@@ -163,6 +163,9 @@ class Config:
     replay_paths: bool = False
     replay_min_overlap: float = 0.7  # the share of a stored screen's labels that must be on screen to replay its step
     replay_max_goals: int = 100  # requests whose paths are kept (the oldest go first)
+    # Also store paths from isolated callers (API keys). Off: the owner's call (2026-10-08); on only to
+    # warm the cache in API-driven benchmarks. OPENMOB_REPLAY_STORE_API=on overrides.
+    replay_store_api: bool = False
     # Plan with the main model, execute with the classifier (agent/plan.py, docs/design/fewer-model-calls.md): on a
     # cold run the model's first reply lays the request out as sub-goals with a screen cue each (plan_steps); then
     # each step asks the classifier about the current sub-goal and runs its tap, scroll, Back or app launch through
@@ -327,6 +330,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_REPLAY", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.replay_paths = os.environ["OPENMOB_REPLAY"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_REPLAY_STORE_API", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.replay_store_api = os.environ["OPENMOB_REPLAY_STORE_API"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_PLAN_EXECUTE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")

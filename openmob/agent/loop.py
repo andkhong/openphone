@@ -291,9 +291,10 @@ class Agent:
         result.mode = perms.mode()
         # A path worth replaying: the task succeeded, only navigated (the request as it stands, corrections
         # included), typed nothing, asked nothing and tapped nothing risky, and came from the phone's own chat
-        # (not an isolated caller such as an API key: whether those may store paths is the owner's call).
+        # (not an isolated caller such as an API key: the owner's call; replay_store_api opts in, for benchmarks).
         if (self._replay_on() and result.success and state.path and state.prompts == 0 and not state.typed
-                and not state.risky and not isolated and replay.eligible(state.task, self.config.confirm_keywords)):
+                and not state.risky and (not isolated or self.config.replay_store_api)
+                and replay.eligible(state.task, self.config.confirm_keywords)):
             self.paths.put(replay.goal_key(task), state.path)
         if not isolated:
             self.recent.append((task, result.summary))

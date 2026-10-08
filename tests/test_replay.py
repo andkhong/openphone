@@ -420,3 +420,10 @@ def test_replayed_steps_count_in_the_timings_report(tmp_path):
     h.record_step(chat, "t1", {"idx": 2, "tool": "press_key", "is_error": False, "source": "auto_dialog", "total_ms": 300})
     rows = h.step_timings()
     assert [r["idx"] for r in rows] == [1] and rows[0]["fast"] == 1
+
+
+def test_benchmarks_can_opt_in_to_storing_api_tasks(tmp_path):
+    store = replay.PathStore()
+    agent, _, _ = make([TAP_DISPLAY, DONE], Phone(SETTINGS, {"Display": DISPLAY}), tmp_path, paths=store,
+                       replay_store_api=True)
+    assert agent.run(TASK, isolated=True).success and len(store) == 1
