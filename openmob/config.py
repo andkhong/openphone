@@ -175,6 +175,12 @@ class Config:
     plan_execute: bool = False
     plan_max_steps_per_goal: int = 4
     settle_delay: float = 0.8
+    # The most to wait after a scroll: a fling keeps the list moving past settle_delay (measured on a
+    # Samsung: 0.8 s never sufficed), so the next look read moving positions and its tap was refused.
+    # Adaptive settle still returns as soon as the list stops. 1.2 s (measured 2026-10-08, 3 runs per
+    # value): no refused taps and 1-2 fewer model calls at the same task time as 0.8 s; 1.6 s was no
+    # better and slower on long lists. OPENMOB_SCROLL_SETTLE_S overrides.
+    scroll_settle_delay: float = 1.2
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
     # change for settle_quiet_ms), capped at the delays above. Needs a phone whose app offers wait_idle;
@@ -334,6 +340,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.replay_store_api = os.environ["OPENMOB_REPLAY_STORE_API"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_PLAN_EXECUTE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_SCROLL_SETTLE_S", "").strip():
+        cfg.scroll_settle_delay = float(os.environ["OPENMOB_SCROLL_SETTLE_S"])
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
