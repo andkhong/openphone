@@ -156,6 +156,24 @@ class Config:
     # Take the screenshot while the app and element reads run, instead of after them (phones answer
     # calls concurrently). Off until measured on real phones. OPENMOB_PARALLEL_OBSERVE=on overrides.
     parallel_observe: bool = False
+    # Replay UI paths that worked before (agent/replay.py, docs/design/fewer-model-calls.md): on a request seen
+    # before, the stored path's taps, scrolls, Backs and app launches run without the main model while each
+    # screen matches, through every check an action gets. Only successful navigation-only tasks that typed
+    # nothing, asked nothing and tapped nothing risky are stored. Off until measured. OPENMOB_REPLAY=on overrides.
+    replay_paths: bool = False
+    replay_min_overlap: float = 0.7  # the share of a stored screen's labels that must be on screen to replay its step
+    replay_max_goals: int = 100  # requests whose paths are kept (the oldest go first)
+    # Also store paths from isolated callers (API keys). Off: the owner's call (2026-10-08); on only to
+    # warm the cache in API-driven benchmarks. OPENMOB_REPLAY_STORE_API=on overrides.
+    replay_store_api: bool = False
+    # Plan with the main model, execute with the classifier (agent/plan.py, docs/design/fewer-model-calls.md): on a
+    # cold run one dedicated model call before the step loop (its only tool: plan_steps) lays the request out as
+    # sub-goals with a screen cue each; a reply without a plan changes nothing. Then each step asks the classifier
+    # about the current sub-goal and runs its tap, scroll, Back or app launch through every check. The model takes over, told the plan and progress, when the classifier isn't sure, a step changes
+    # nothing, a cue doesn't appear within plan_max_steps_per_goal steps, a popup / login / loading screen comes up,
+    # the next step would type, or the user corrects. Needs Jev. Off until measured. OPENMOB_PLAN_EXECUTE=on overrides.
+    plan_execute: bool = False
+    plan_max_steps_per_goal: int = 4
     settle_delay: float = 0.8
     # The most to wait after a scroll: a fling keeps the list moving past settle_delay (measured on a
     # Samsung: 0.8 s never sufficed), so the next look read moving positions and its tap was refused.
@@ -316,6 +334,12 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.max_actions_per_turn = int(os.environ["OPENMOB_MAX_ACTIONS"])
     if os.environ.get("OPENMOB_PARALLEL_OBSERVE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_REPLAY", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.replay_paths = os.environ["OPENMOB_REPLAY"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_REPLAY_STORE_API", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.replay_store_api = os.environ["OPENMOB_REPLAY_STORE_API"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_PLAN_EXECUTE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_SCROLL_SETTLE_S", "").strip():
         cfg.scroll_settle_delay = float(os.environ["OPENMOB_SCROLL_SETTLE_S"])
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")

@@ -291,6 +291,49 @@ PLAN_TOOL = {
 PLAN_TOOL_SPEC = {"name": PLAN_TOOL["name"], "description": PLAN_TOOL["description"],
                   "parameters": PLAN_TOOL["input_schema"]}
 
+# Plan with the model, execute with the classifier (config.plan_execute): offered only then (agent/plan.py).
+PLAN_STEPS_TOOL = {
+    "name": "plan_steps",
+    "description": (
+        "Lay out a request that opens or shows things as 1-8 sub-goals for a quick helper that works from the "
+        "element list without you. Each has a goal (one short imperative: 'Open the Apps list') and a cue: a label "
+        "that is on screen only once that sub-goal is reached (the destination's title, or something on that page: "
+        "'Brightness level'), never the item tapped to get there. The helper taps, scrolls, presses Back and opens "
+        "apps toward each sub-goal, and comes back to you with the plan and progress when a screen doesn't fit. "
+        "Typing, links and anything risky stay yours. Call it once, as your first action; call it again to re-plan."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "steps": {
+                "type": "array", "minItems": 1, "maxItems": 8,
+                "items": {"type": "object", "properties": {
+                    "goal": {"type": "string", "description": "One sub-goal, in plain words"},
+                    "cue": {"type": "string", "description": "A label visible once it's reached"},
+                }, "required": ["goal", "cue"]},
+            },
+        },
+        "required": ["steps"],
+    },
+}
+PLAN_STEPS_TOOL_SPEC = {"name": PLAN_STEPS_TOOL["name"], "description": PLAN_STEPS_TOOL["description"],
+                        "parameters": PLAN_STEPS_TOOL["input_schema"]}
+# The dedicated planning request on a cold run (loop.Agent._plan_request): plan_steps is its only tool.
+PLAN_REQUEST_PROMPT = (
+    "You are OpenMob, an agent that operates the user's Android phone. Before acting on the request, lay out its "
+    "navigation as sub-goals for a quick helper that works from the element list without you: call plan_steps with "
+    "1-8 steps, each a goal (one short imperative: 'Open the Apps list') and a cue, a label that is on screen only "
+    "once that sub-goal is reached (the destination's title, or something on that page), never the item tapped to "
+    "get there. You see the current screen; the first sub-goal starts from it. Leave out typing, links and anything "
+    "that spends, sends or deletes: the helper hands those to you. If there is no navigation to plan, say so in one "
+    "short sentence."
+)
+PLAN_STEPS_NOTE = (
+    "\nA quick helper can do the navigation for you: for a request that only opens or shows things in an app with "
+    "a readable element list, call plan_steps first (sub-goals with a cue each). You'll be asked again only when a "
+    "screen doesn't fit the plan, with the plan and the progress so far.\n"
+)
+
 MODE_NOTES = {
     "ask": "\nPermission mode: Ask every step. The owner approves each change on their phone, so don't also "
            "call ask_user to confirm; ask only when the request is ambiguous.\n",
