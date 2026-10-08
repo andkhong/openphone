@@ -408,7 +408,7 @@ class Agent:
         With vision_stream (and a provider that streams), `act` runs each tool call as soon as its
         block is complete, before the reply ends."""
         full = route.spec.max_tokens
-        cap = self.config.vision_max_tokens
+        cap = int(route.spec.options.get("vision_max_tokens", self.config.vision_max_tokens))
         limit = min(cap, full) if cap > 0 else full
         response = None
         if act is not None and self.config.vision_stream and hasattr(route.adapter, "stream"):

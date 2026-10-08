@@ -306,7 +306,7 @@ None of this is in the public API's events: per-step token counts stay internal.
 
 `openmob bench` drives an adb phone from its own process. `openmob bench-api` measures what an API
 caller gets instead: every run is a developer-API task on a running server and a real phone. Tiers
-switch per task (`fast` = Haiku 4.5, `balanced` = Sonnet 5.5, `best`), so no server restart is
+switch per task (`fast` = Haiku 5.5, `balanced` = Sonnet 5.5, `best`), so no server restart is
 needed. Permission modes are passed through as `permission_mode` on the task (for servers that support
 them).
 

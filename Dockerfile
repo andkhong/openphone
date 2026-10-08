@@ -13,7 +13,7 @@ COPY openmob ./openmob
 COPY docs/quickstart.md docs/concepts.md docs/phone-setup.md docs/api.md docs/mcp.md docs/examples.md \
      docs/webhooks.md docs/safety.md docs/conventions.md docs/errors.md docs/testing.md \
      docs/self-hosting.md ./docs/
-RUN pip install .
+RUN pip install ".[openai,gemini]"
 
 COPY deploy/config.yaml ./config.yaml
 COPY deploy/OpenMob.apk ./OpenMob.apk
