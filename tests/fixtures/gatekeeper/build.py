@@ -393,6 +393,26 @@ SCENARIOS = [
     sc("stop drops never at once", [
         {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
         {"stop": True}, step("tap", "whatsapp_chat", ask("send"), mode="never", **SEND)], tags=["modes"]),
+    # Settings deep links (docs/design/deep-links.md): judged like opening that page
+    sc("settings deep links: everyday pages open, date & time asks, blocked apps' pages and unknown keys are refused", [
+        step("open_settings", "launcher", allow(), page="display"),
+        step("open_settings", "launcher", allow(), page="wifi"),
+        step("open_settings", "launcher", allow(), page="app_notifications", package="com.android.chrome"),
+        step("open_settings", "launcher", allow(), page="app_details", package=AMAZON),
+        step("open_settings", "launcher", ask("settings", level="fingerprint"), page="date_time"),
+        step("open_settings", "launcher", refuse("gate_blocked_app"), page="app_details", package="com.chase.sig.android"),
+        step("open_settings", "launcher", refuse("gate_blocked_app"), page="app_notifications", package="dev.openmob.companion"),
+        step("open_settings", "launcher", refuse("gate_denied_page", rule="builtin:settings_package"), page="app_details"),
+        step("open_settings", "launcher", refuse("gate_denied_page", rule="builtin:settings_unknown_page"), page="accessibility"),
+        step("open_settings", "launcher", refuse("gate_denied_page", rule="builtin:settings_unknown_page"),
+             page="android.settings.ACCESSIBILITY_SETTINGS"),
+    ], tags=["settings", "hard_deny"]),
+    sc("settings deep links under Don't ask and Ask every step", [
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("open_settings", "launcher", allow(), mode="never", page="display"),
+        step("open_settings", "launcher", refuse("gate_denied", rule="never:settings_page"), mode="never", page="date_time"),
+        step("open_settings", "launcher", ask("step", level="tap"), mode="ask", page="display"),
+    ], tags=["settings", "modes"]),
     # hard denies
     sc("blocked apps: launching, tapping and links", [
         step("launch_app", "launcher", refuse("gate_blocked_app"), package="com.chase.sig.android"),

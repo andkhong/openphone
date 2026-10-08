@@ -22,8 +22,19 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RULES_PATH = ROOT / "android/app/src/main/resources/gatekeeper/rules.json"
+
+
+def _settings_pages() -> dict:
+    """The server's copy of the phone's open_settings table (key -> page with action, title, tier, needs_package)."""
+    import sys
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    from openmob.phone.settings_pages import PAGES
+
+    return PAGES
 MODES = {"ask": 0, "plan": 1, "auto": 1, "trusted": 2, "never": 3}
-ACTION_PARAMS = ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "name", "package", "url")
+ACTION_PARAMS = ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "name", "package", "url", "page")
 
 
 # --- text ---------------------------------------------------------------------------------------
@@ -509,6 +520,7 @@ class Judgement:
     app: bool = False  # the target is an app window (an app switch ends a purchase flow)
     label: list = field(default_factory=list)  # the target's words (a cart or checkout word ends a purchase flow)
     money_fp: str = ""  # strict_fp plus the currency amounts a money commit is about (any change voids a permit)
+    wording: str = ""  # how a prompt names this action from what the phone sees (a deep link names its page)
 
 
 @dataclass
@@ -594,8 +606,12 @@ def _canon_value(v) -> str:
 
 
 class Gatekeeper:
-    def __init__(self, rules: Rules | None = None, clock: Clock | None = None, verifier=None, device: str = "dev"):
+    def __init__(self, rules: Rules | None = None, clock: Clock | None = None, verifier=None, device: str = "dev",
+                 pages=None):
         self.r = rules or Rules.load()
+        # The Settings pages open_settings can open: the app's fixed table (SettingsPages.kt; the server's copy is
+        # openmob/phone/settings_pages.py, checked against the Kotlin file by a test). Tests inject other tables.
+        self.pages = pages or _settings_pages().get
         self.clock = clock or Clock()
         self.verifier = verifier or TestVerifier()
         self.tap_verifier = TapVerifier()
@@ -1055,7 +1071,7 @@ class Gatekeeper:
         if f is None:
             return
         name = str(params.get("name", "")).upper()
-        if (method in ("launch_app", "open_url") or (method == "key" and name in ("BACK", "HOME", "APP_SWITCH"))
+        if (method in ("launch_app", "open_url", "open_settings") or (method == "key" and name in ("BACK", "HOME", "APP_SWITCH"))
                 or (j.app and j.package and j.package != f["package"])
                 or (j.label and any_phrase(j.label, self.r.d["cart_words"]))):
             self.followup = None
@@ -1369,7 +1385,8 @@ class Gatekeeper:
         app = self.label(screen, j.package) if j.package else "this phone"
         return {"type_text": f"Allow typing into a field in {app}?", "key": f"Allow pressing Enter in {app}?",
                 "launch_app": f"Allow opening {app}?",
-                "open_url": f"Allow opening {params.get('url', '')!s:.80} in {app}?"}.get(
+                "open_url": f"Allow opening {params.get('url', '')!s:.80} in {app}?",
+                "open_settings": j.wording or "Allow opening a Settings page?"}.get(
             method, f"Allow this action in {app}?")
 
     def judge(self, method: str, params: dict, screen: Screen) -> Judgement:
@@ -1391,7 +1408,44 @@ class Gatekeeper:
             return self._judge_launch(str(params.get("package", "")), screen)
         if method == "open_url":
             return self._judge_url(str(params.get("url", "")), screen, method)
+        if method == "open_settings":
+            return self._judge_open_settings(str(params.get("page", "")), str(params.get("package", "")), screen)
         return Judgement()  # wake_unlock: wakes the screen, never touches a secure lock
+
+    def _judge_open_settings(self, key: str, package: str, screen: Screen) -> Judgement:
+        """A Settings deep link (docs/design/deep-links.md), judged like opening that page (D2): the key must be in
+        the phone's fixed table; a page the hard-deny list names (by action, like an activity, or by title) is
+        refused whatever the table says; an app's own pages are refused for blocked apps and OpenMob; an ask-tier
+        page (manual date and time) asks with the screen lock; everyday pages open."""
+        r = self.r
+        fp = f"settings|{key}|{package}"
+        j = Judgement(fp=fp, strict_fp=fp, changing=True)
+        page = self.pages(key)
+        if page is None:
+            j.refuse = ("gate_denied_page", "builtin:settings_unknown_page",
+                        f"No Settings page '{key}' on this phone's list. Navigate there instead.")
+            return j
+        if re.compile(r.s["refuse_activities"]).search(page.action) or any_phrase(tokens(page.title), r.s["refuse"]):
+            j.refuse = ("gate_denied_page", "builtin:settings_security",
+                        "This Settings page is security-critical; agents can't open it.")
+            return j
+        if page.needs_package:
+            j.package = package
+            if not package:
+                j.refuse = ("gate_denied_page", "builtin:settings_package", f"The {page.title} page needs an app's package.")
+            elif package in r.own:
+                j.refuse = ("gate_blocked_app", "builtin:own_app", "OpenMob's own Settings pages are off-limits to agents.")
+            elif r.blocked(package):
+                j.refuse = ("gate_blocked_app", "builtin:sensitive_apps",
+                            f"Blocked on the phone: {package} is a sensitive app, so its Settings pages are off-limits too. "
+                            "Call done.")
+            if j.refuse:
+                return j
+        j.wording = f"Allow opening the {page.title} Settings page" + (
+            f" of {self.label(screen, package)}" if package else "") + "?"
+        if page.tier == "ask":
+            j.risk = Risk("settings", "settings_page", always=True, wording=j.wording)
+        return j
 
     def _uninstall_dialog(self, w: Window) -> bool:
         rx = re.compile(self.r.d["uninstall"]["message"])

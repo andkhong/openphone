@@ -1,5 +1,6 @@
 package dev.openmob.companion.gate
 
+import dev.openmob.companion.SettingsPages
 import dev.openmob.companion.gate.GateScenarioTest.Companion.RULES
 import dev.openmob.companion.gate.GateScenarioTest.Companion.SCREENS
 import dev.openmob.companion.gate.GateScenarioTest.Companion.VERIFIER
@@ -135,6 +136,88 @@ class GatekeeperTest {
         assertEquals("requested", gk.admit("tap", send, screen).rule)
         clock.elapsed += 500
         assertEquals("ask", gk.admit("tap", buy, SCREENS.getValue("amazon_product")).decision)
+    }
+
+    // --- Settings deep links (open_settings), judged like opening that page -------------------------------
+
+    private fun open(page: String, pkg: String? = null, mode: String? = null, g: Gatekeeper = gk) =
+        g.admit("open_settings", mapOf<String, Any?>("page" to page) + (pkg?.let { mapOf("package" to it) } ?: emptyMap()) +
+            (mode?.let { mapOf("mode" to it) } ?: emptyMap()), SCREENS.getValue("launcher"))
+
+    @Test fun everydayPagesOpenAndAnAskPageAsksWithTheScreenLock() {
+        for (page in listOf("display", "wifi", "bluetooth", "sound", "battery", "location", "notifications", "apps",
+                            "storage", "airplane_mode")) {
+            val adm = open(page)
+            assertTrue(page, adm.allowed)
+            assertTrue(page, gk.reverify(adm, SCREENS.getValue("launcher")).allowed) // nothing on screen to re-check
+            clock.elapsed += 300
+        }
+        assertTrue(open("app_notifications", "com.android.chrome").allowed)
+        val ask = open("date_time")
+        assertEquals("ask", ask.decision)
+        assertEquals("settings", ask.kind)
+        assertEquals("fingerprint", ask.level)
+        assertEquals("Allow opening the Date & time Settings page?", ask.wording)
+        assertNull(ask.grantOffer) // no "Always allow" for a deep link
+        // The owner's screen-lock yes covers exactly this call, once.
+        val m = gk.approvalMessage(ask.approvalId)!!
+        assertTrue(gk.approve(ask.approvalId, m, sign(m)))
+        clock.elapsed += 300
+        val again = open("date_time")
+        assertTrue(again.allowed && again.permit != null)
+        assertTrue(gk.reverify(again, SCREENS.getValue("launcher")).allowed)
+        clock.elapsed += 2000
+        assertEquals("ask", open("date_time").decision)
+    }
+
+    @Test fun blockedAppsPagesUnknownKeysAndMissingPackagesAreRefused() {
+        assertEquals("gate_blocked_app", open("app_details", "com.chase.sig.android").code)
+        assertEquals("gate_blocked_app", open("app_notifications", "dev.openmob.companion").code)
+        assertEquals("builtin:settings_package", open("app_details").rule)
+        assertEquals("gate_denied_page", open("accessibility").code)
+        assertEquals("gate_denied_page", open("android.settings.ACCESSIBILITY_SETTINGS").code)
+        assertEquals("gate_denied_page", open("").code)
+    }
+
+    @Test fun aKeyForAHardDeniedPageWouldBeRefusedInEveryMode() {
+        // No such key exists in the table; were one added, the hard-deny list still refuses it (by action or title).
+        val extra = mapOf(
+            "accessibility" to SettingsPages.Page("accessibility", "android.settings.ACCESSIBILITY_SETTINGS", "Accessibility", SettingsPages.Tier.EVERYDAY, false),
+            "language" to SettingsPages.Page("language", "android.settings.LOCALE_SETTINGS", "Languages", SettingsPages.Tier.EVERYDAY, false),
+            "lock" to SettingsPages.Page("lock", "android.settings.LOCK_STUFF", "Screen lock", SettingsPages.Tier.EVERYDAY, false),
+        )
+        val g = Gatekeeper(RULES, clock, VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER,
+                           pages = { extra[it] ?: SettingsPages.lookup(it) })
+        for (key in extra.keys) {
+            assertEquals(key, "builtin:settings_security", open(key, g = g).rule)
+            assertEquals(key, "builtin:settings_security", open(key, mode = "never", g = g).rule)
+        }
+        assertTrue(open("display", g = g).allowed)
+    }
+
+    @Test fun deepLinksUnderDontAskAndAskEveryStep() {
+        assertTrue(policy(mapOf("type" to "never", "duration_ms" to 3_600_000L)))
+        assertTrue(open("display", mode = "never").allowed)
+        assertEquals("never:settings_page", open("date_time", mode = "never").rule)
+        assertEquals("gate_blocked_app", open("app_details", "com.chase.sig.android", mode = "never").code)
+        val step = open("display", mode = "ask")
+        assertEquals("ask", step.decision)
+        assertEquals("step", step.kind)
+        assertEquals("Allow opening the Display Settings page?", step.wording)
+    }
+
+    @Test fun aDeepLinkEndsAPurchaseFlowLikeAnAppSwitch() {
+        val shop = SCREENS.getValue("amazon_product")
+        val ask = gk.admit("tap", buy, shop)
+        val m = gk.approvalMessage(ask.approvalId)!!
+        assertTrue(gk.approve(ask.approvalId, m, sign(m)))
+        clock.elapsed += 500
+        val run = gk.admit("tap", buy, shop)
+        assertTrue(run.allowed && gk.reverify(run, shop).allowed) // Buy now runs: the follow-up permit starts
+        clock.elapsed += 500
+        assertTrue(open("wifi").allowed) // leaving for Settings ends it
+        clock.elapsed += 500
+        assertEquals("ask", gk.admit("tap", mapOf("x" to 540L, "y" to 1660L), SCREENS.getValue("amazon_checkout")).decision)
     }
 
     @Test fun actRateLimitRefillsAtFivePerSecond() {

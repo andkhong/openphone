@@ -22,7 +22,7 @@ from .protocol import METHODS, decode_element, decode_screenshot
 REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle",
               "resolve_url", "wait_for"}
 # Calls the phone's gatekeeper judges as actions (they carry the task's mode, task id and the server's hint).
-GATED = {"tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url"}
+GATED = {"tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "open_settings"}
 
 
 class PhoneLink:

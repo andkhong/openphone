@@ -5,7 +5,7 @@
     "meta": ["device_state", "wait_idle"],
     "read": ["screenshot", "ui_elements", "wait_for", "current_app", "launchable_packages", "app_labels", "resolve_url",
              "stream_start", "stream_stop", "stream_keyframe"],
-    "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "wake_unlock"],
+    "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "open_settings", "wake_unlock"],
     "task": ["task_grant"]
   },
   "own_packages": ["dev.openmob.companion"],

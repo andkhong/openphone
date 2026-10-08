@@ -527,6 +527,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
         val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
             ?: throw IllegalStateException("This phone has no ${req.page.title} Settings page. Navigate there instead.")
+        gate()
         try {
             service.startActivity(intent)
         } catch (_: ActivityNotFoundException) {

@@ -662,7 +662,10 @@ Methods fall into three classes (the built-in rule file `gatekeeper/rules.json` 
 `launchable_packages`, `app_labels`, `resolve_url`, `stream_*`: allowed, but `screenshot` is a black frame,
 `ui_elements` is `[]` and `wait_for` answers `{"met": false, "redacted": true}` while a blocked app is visible in any
 window; `wait_for` checks again on every read during the wait, so it never evaluates a protected app's text) and **act** (`tap`, `long_press`, `swipe`,
-`type_text`, `key`, `launch_app`, `open_url`, `wake_unlock`). Anything else is refused with `gate_unknown_method`.
+`type_text`, `key`, `launch_app`, `open_url`, `open_settings`, `wake_unlock`). Anything else is refused with `gate_unknown_method`.
+`open_settings` (§4.17) is judged like opening that Settings page: everyday pages are allowed, `date_time` asks (kind
+`settings`, the screen lock; refused under `never`), an app page for a blocked app or OpenMob is `gate_blocked_app`, an
+unknown key is `gate_denied_page`, and so is any key whose action or title the hard-deny list names, in every mode.
 Act calls are re-checked right before the side effect (the target under the point must still be the same).
 
 Act calls may carry three extra params, which the gate reads and which never relax anything:

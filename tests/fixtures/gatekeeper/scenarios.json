@@ -1466,6 +1466,214 @@
   ]
  },
  {
+  "name": "settings deep links: everyday pages open, date & time asks, blocked apps' pages and unknown keys are refused",
+  "tags": [
+   "settings",
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "wifi"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_notifications",
+      "package": "com.android.chrome"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details",
+      "package": "com.amazon.mShop.android.shopping"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "date_time"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details",
+      "package": "com.chase.sig.android"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_notifications",
+      "package": "dev.openmob.companion"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_package"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "accessibility"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_unknown_page"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "android.settings.ACCESSIBILITY_SETTINGS"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_unknown_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "settings deep links under Don't ask and Ask every step",
+  "tags": [
+   "settings",
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "never",
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "never",
+      "page": "date_time"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:settings_page"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "ask",
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
   "name": "blocked apps: launching, tapping and links",
   "tags": [
    "hard_deny"

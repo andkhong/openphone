@@ -1,5 +1,6 @@
 package dev.openmob.companion.gate
 
+import dev.openmob.companion.SettingsPages
 import java.util.UUID
 
 /*
@@ -68,6 +69,8 @@ class Gatekeeper(
     private val extraProof: ((canon: String, record: Map<String, Any?>, proof: PolicyProof) -> Boolean)? = null,
     /** The tap key (not bound to the screen lock): only OpenMob's own Allow button signs with it. */
     private val tapVerifier: GateVerifier = GateVerifier { _, _ -> false },
+    /** The Settings pages `open_settings` can open (the app's fixed table); tests inject other tables. */
+    private val pages: (String) -> SettingsPages.Page? = SettingsPages::lookup,
 ) {
     private class Grant(val kind: String, val binding: String, val durationMs: Long, var issued: Long, val canon: String)
     class Pending(val id: String, val binding: String, val created: Long, val risk: Risk, val pkg: String,
@@ -556,7 +559,8 @@ class Gatekeeper(
     private fun trackFollowup(method: String, params: Map<String, Any?>, j: Judgement) {
         val f = followup ?: return
         val name = params["name"]?.toString().orEmpty().uppercase()
-        if (method == "launch_app" || method == "open_url" || (method == "key" && name in setOf("BACK", "HOME", "APP_SWITCH")) ||
+        if (method == "launch_app" || method == "open_url" || method == "open_settings" ||
+            (method == "key" && name in setOf("BACK", "HOME", "APP_SWITCH")) ||
             (j.app && j.pkg.isNotEmpty() && j.pkg != f.pkg) || (j.label.isNotEmpty() && has(j.label, rules.list("cart_words")))) {
             followup = null
             return
@@ -915,6 +919,7 @@ class Gatekeeper(
             "key" -> "Allow pressing Enter in $app?"
             "launch_app" -> "Allow opening $app?"
             "open_url" -> "Allow opening ${params["url"]?.toString().orEmpty().take(80)} in $app?"
+            "open_settings" -> j.wording.ifEmpty { "Allow opening a Settings page?" }
             else -> "Allow this action in $app?"
         }
     }
@@ -939,7 +944,41 @@ class Gatekeeper(
         "key" -> judgeKey(params["name"]?.toString().orEmpty().uppercase(), screen)
         "launch_app" -> judgeLaunch(params["package"]?.toString().orEmpty())
         "open_url" -> judgeUrl(params["url"]?.toString().orEmpty(), screen)
+        "open_settings" -> judgeOpenSettings(params["page"]?.toString().orEmpty(), params["package"]?.toString().orEmpty(), screen)
         else -> Judgement() // wake_unlock: wakes the screen, never touches a secure lock
+    }
+
+    /** A Settings deep link (docs/design/deep-links.md), judged like opening that page (D2): the key must be in the
+     *  phone's fixed table; a page the hard-deny list names (by action, like an activity, or by title) is refused
+     *  whatever the table says; an app's own pages are refused for blocked apps and OpenMob; an ask-tier page
+     *  (manual date and time) asks with the screen lock; everyday pages open. */
+    private fun judgeOpenSettings(key: String, pkg: String, screen: GScreen): Judgement {
+        val fp = "settings|$key|$pkg"
+        val j = Judgement(fp = fp, strictFp = fp, changing = true)
+        val page = pages(key)
+        if (page == null) {
+            j.refuse = Triple("gate_denied_page", "builtin:settings_unknown_page",
+                "No Settings page '$key' on this phone's list. Navigate there instead.")
+            return j
+        }
+        if (rules.rx(rules.sStr("refuse_activities")).containsMatchIn(page.action) || has(GateText.tokens(page.title), rules.sList("refuse"))) {
+            j.refuse = Triple("gate_denied_page", "builtin:settings_security", "This Settings page is security-critical; agents can't open it.")
+            return j
+        }
+        if (page.needsPackage) {
+            j.pkg = pkg
+            j.refuse = when {
+                pkg.isEmpty() -> Triple("gate_denied_page", "builtin:settings_package", "The ${page.title} page needs an app's package.")
+                pkg in rules.own -> Triple("gate_blocked_app", "builtin:own_app", "OpenMob's own Settings pages are off-limits to agents.")
+                rules.blocked(pkg) -> Triple("gate_blocked_app", "builtin:sensitive_apps",
+                    "Blocked on the phone: $pkg is a sensitive app, so its Settings pages are off-limits too. Call done.")
+                else -> null
+            }
+            if (j.refuse != null) return j
+        }
+        j.wording = "Allow opening the ${page.title} Settings page" + (if (pkg.isNotEmpty()) " of ${label(screen, pkg)}" else "") + "?"
+        if (page.tier == SettingsPages.Tier.ASK) j.risk = Risk("settings", "settings_page", always = true, wording = j.wording)
+        return j
     }
 
     private fun surfaceRefusal(w: GWindow): Triple<String, String, String>? {
