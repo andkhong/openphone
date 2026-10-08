@@ -875,10 +875,21 @@ class MainActivity : Activity() {
     }
 
     private fun onAccessibilityClicked() {
-        // The disclosure is visible in the setup row before this explicit button press.
         // App info only offers approval after Android has shown its initial denial.
-        if (accessibilityRestriction == AccessibilitySetup.Restriction.NEEDS_APPROVAL)
-            openAppInfo() else openAccessibilitySettings()
+        afterDisclosure {
+            if (accessibilityRestriction == AccessibilitySetup.Restriction.NEEDS_APPROVAL)
+                openAppInfo() else openAccessibilitySettings()
+        }
+    }
+
+    /** Prominent disclosure and an explicit Agree before any route to the Accessibility switch. */
+    private fun afterDisclosure(then: () -> Unit) {
+        AlertDialog.Builder(this)
+            .setTitle(R.string.ui_disclosure_title)
+            .setMessage(R.string.ui_disclosure_body)
+            .setPositiveButton(R.string.ui_disclosure_agree) { _, _ -> then() }
+            .setNegativeButton(R.string.ui_disclosure_decline, null)
+            .show()
     }
 
     /** Android 13+ blocks Accessibility for sideloaded apps until "Allow restricted settings". */
@@ -903,7 +914,7 @@ class MainActivity : Activity() {
         restrictedHelp.addView(text(getString(R.string.ui_restricted_steps), 14f, color(R.color.om_text)), margins(top = 8))
         restrictedHelp.addView(text(getString(R.string.ui_restricted_missing), 13f, color(R.color.om_text_tertiary)), margins(top = 8))
         restrictedHelp.addView(button(getString(R.string.ui_restricted_button), Style.SECONDARY) { openAppInfo() }, margins(top = 12))
-        restrictedHelp.addView(button(getString(R.string.ui_step_a11y_button), Style.SECONDARY) { openAccessibilitySettings() }, margins(top = 8))
+        restrictedHelp.addView(button(getString(R.string.ui_step_a11y_button), Style.SECONDARY) { afterDisclosure { openAccessibilitySettings() } }, margins(top = 8))
         column.addView(restrictedHelp, margins(top = 6, width = match))
     }
 
@@ -992,7 +1003,7 @@ class MainActivity : Activity() {
 
     private fun runShortcut(action: String) {
         when (action) {
-            // Show the inline disclosure before the owner presses the setup button.
+            // Scroll to the setup step; its button shows the disclosure before anything is granted.
             Shortcuts.OPEN_ACCESSIBILITY -> if (isAccessibilityOn) {
                 toast(getString(R.string.ui_step_a11y_done))
             } else {

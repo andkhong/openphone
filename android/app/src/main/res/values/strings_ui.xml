@@ -40,6 +40,12 @@
     <string name="ui_step_notif_done">Notifications are allowed.</string>
     <string name="ui_step_notif_button">Allow notifications</string>
 
+    <!-- Prominent disclosure -->
+    <string name="ui_disclosure_title">Allow OpenMob to control this phone?</string>
+    <string name="ui_disclosure_body">OpenMob uses Android\'s Accessibility service so the AI agent on the server you paired with can:\n\n• See what is on your screen (screenshots and on-screen text)\n• Tap, type, swipe and open apps on your behalf\n\nThis only happens while you are connected, and a notification is shown the whole time. Screen contents go only to your own server. OpenMob never types passwords or PINs.\n\nYou can disconnect any time from the notification, and turn this off again in Settings › Accessibility.</string>
+    <string name="ui_disclosure_agree">Agree &amp; continue</string>
+    <string name="ui_disclosure_decline">Not now</string>
+
     <!-- Connection -->
     <string name="ui_connection_title">Connection</string>
     <string name="ui_connect">Connect</string>

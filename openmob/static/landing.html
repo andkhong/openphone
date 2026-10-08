@@ -85,6 +85,11 @@ h2 { font: 500 39px/1.2 var(--serif); letter-spacing: -.035em; margin: 14px 0 0;
 .closing { padding: 75px 0; display: flex; align-items: center; justify-content: space-between; gap: 35px; }
 .closing h2 { font-size: 33px; margin: 0; }
 .closing p { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+.access ol { margin: 18px 0 0; padding-left: 18px; color: var(--muted); font-size: 14px; line-height: 1.7; max-width: 560px; }
+.access ol li { margin: 6px 0; }
+.access ol b { color: var(--fg); font-weight: 600; }
+.access .op-note { margin-top: 16px; font-size: 13px; max-width: 560px; }
+.access code { font-size: 12px; background: var(--code); border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; overflow-wrap: anywhere; }
 footer { border-top: 1px solid var(--line); padding: 28px 0 35px; display: flex; justify-content: space-between; align-items: center; gap: 24px; }
 footer .brand { font-size: 21px; }
 footer p, footer a:not(.brand) { color: var(--muted); font-size: 11px; }
@@ -103,7 +108,7 @@ footer p, footer a:not(.brand) { color: var(--muted); font-size: 11px; }
 <div class="wrap">
   <header class="nav">
     <a class="brand" href="/" aria-label="OpenMob home">OpenMob</a>
-    <nav class="nav-links" aria-label="Main navigation"><a href="#how">How it works</a><a href="#control">Your control</a></nav>
+    <nav class="nav-links" aria-label="Main navigation"><a href="#how">How it works</a><a href="#control">Your control</a><a href="#access">Get access</a></nav>
     <a class="login" href="/login">Log in <svg class="arrow" aria-hidden="true"><use href="#arrow"/></svg></a>
   </header>
   <main id="main">
@@ -112,8 +117,8 @@ footer p, footer a:not(.brand) { color: var(--muted); font-size: 11px; }
         <div class="eyebrow"><span class="dot"></span> A new way to use your phone</div>
         <h1 id="hero-title">Your apps.<br><em>At your command.</em></h1>
         <p class="lede">Tell your phone what to do. OpenMob brings AI into the apps you already use, turning everyday requests into actions on your real phone.</p>
-        <div class="cta"><a class="primary" href="/login?mode=signup">Get started <svg class="arrow" aria-hidden="true"><use href="#arrow"/></svg></a><a class="text-link" href="#how">See how it works <span aria-hidden="true">↗</span></a></div>
-        <p class="fine">Made for Android. Built around you.</p>
+        <div class="cta"><a class="primary" href="#access">Get access <svg class="arrow" aria-hidden="true"><use href="#arrow"/></svg></a><a class="text-link" href="#how">See how it works <span aria-hidden="true">↗</span></a></div>
+        <p class="fine">Invite-only beta for Android 11 and newer.</p>
       </div>
       <div class="showcase" role="img" aria-label="Illustrative workflow: OpenMob opens Maps, searches for nearby coffee, and finds a few places to try.">
         <div class="orbit" aria-hidden="true"></div>
@@ -133,7 +138,7 @@ footer p, footer a:not(.brand) { color: var(--muted); font-size: 11px; }
         <span class="sample-label">Illustrative workflow</span>
       </div>
     </section>
-    <section class="models" aria-label="Supported model families"><p>Your choice of intelligence.</p><div class="model-list"><span class="serif">Claude</span><span>OpenAI</span><span>Gemini</span><span>Qwen</span><span class="serif">Grok</span></div></section>
+    <section class="models" aria-label="Supported model families"><p>Claude by default. Self-hosted servers can add others.</p><div class="model-list"><span class="serif">Claude</span><span>OpenAI</span><span>Gemini</span><span>OpenAI-compatible</span></div></section>
     <section class="section" id="how" aria-labelledby="how-title">
       <div class="section-intro"><div><div class="eyebrow">Less friction. More possibility.</div><h2 id="how-title">From a thought<br>to a thing done.</h2></div><p>Your apps don’t need to change. OpenMob reads the screen and takes the steps you would, with you in control.</p></div>
       <div class="steps">
@@ -148,11 +153,23 @@ footer p, footer a:not(.brand) { color: var(--muted); font-size: 11px; }
         <div class="principle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="3"/><path d="M10 18h4"/></svg><div><strong>A phone paired to you</strong><span>Your account connects to your devices, with approval on the phone.</span></div></div>
         <div class="principle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="m12 2 8 4v6c0 5-8 10-8 10S4 17 4 12V6l8-4Z"/><path d="m8 12 3 3 5-6"/></svg><div><strong>Permission on your terms</strong><span>Set how often to ask. Looser permissions need your approval on the device.</span></div></div>
         <div class="principle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="12" cy="12" r="9"/><rect x="9" y="9" width="6" height="6" rx="1"/></svg><div><strong>Always a way to stop</strong><span>Stop the task from your dashboard or disconnect on your phone.</span></div></div>
+        <div class="principle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"/><circle cx="12" cy="12" r="3"/></svg><div><strong>Who sees your screen</strong><span>Screens are read by Claude (Anthropic) and classified by Jev (TypeSafe) to decide each step. Screenshots aren’t stored.</span></div></div>
+        <div class="principle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><div><strong>No passwords, no unlocking</strong><span>OpenMob never types passwords or PINs and can’t unlock your phone.</span></div></div>
       </div>
     </section>
-    <section class="closing"><div><h2>A little less tapping.<br>A little more living.</h2><p>Explore what your phone can do with OpenMob.</p></div><a class="primary" href="/login?mode=signup">Get started <svg class="arrow" aria-hidden="true"><use href="#arrow"/></svg></a></section>
+    <section class="closing access" id="access" aria-labelledby="access-title">
+      <div><h2 id="access-title">Get access</h2><p>OpenMob is in an invite-only beta for Android 11 and newer.</p>
+        <ol>
+          <li><b>Already invited?</b> Open the one-time sign-in link you were sent. It signs you in and opens your dashboard.</li>
+          <li><b>Link expired?</b> Ask whoever invited you for a new one. Links work once and expire after 10 minutes.</li>
+          <li><b>Want to join?</b> Ask the person running this OpenMob server for an invite.</li>
+        </ol>
+        <p class="op-note">Running this server? Create an account with <code>openmob account add you@example.com</code>, then make a sign-in link with <code>openmob account link you@example.com</code>.</p>
+      </div>
+      <a class="primary" href="/login">Log in <svg class="arrow" aria-hidden="true"><use href="#arrow"/></svg></a>
+    </section>
   </main>
-  <footer><a class="brand" href="/">OpenMob</a><p>Intelligence, meet your everyday.</p></footer>
+  <footer><a class="brand" href="/">OpenMob</a><p>AI agent for Android. Screens are read by Claude (Anthropic) and classified by Jev (TypeSafe) to decide each step.</p></footer>
 </div>
 <script>
 fetch("/api/auth/me").then((r) => r.json()).then((me) => {
