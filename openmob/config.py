@@ -148,6 +148,11 @@ class Config:
     # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
     # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
     vision_stream: bool = False
+    # Actions the main model may take from one reply (1: one per turn). Above 1 it may chain a few whose
+    # next screen it can predict (a chess piece then its square, type then Enter): each still passes
+    # every check, and the rest of the turn is skipped at any error, owner prompt or unexpected screen.
+    # Streaming actions (vision_stream) is off while this is above 1. OPENMOB_MAX_ACTIONS overrides.
+    max_actions_per_turn: int = 1
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -298,6 +303,8 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.aliases = {str(k): str(v) for k, v in (cfg.aliases or {}).items()}
     cfg.api_key = os.environ.get("ANTHROPIC_API_KEY")
     # Needed only for API keys that aren't scoped to a workspace.
+    if os.environ.get("OPENMOB_MAX_ACTIONS", "").strip().isdigit():
+        cfg.max_actions_per_turn = int(os.environ["OPENMOB_MAX_ACTIONS"])
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
