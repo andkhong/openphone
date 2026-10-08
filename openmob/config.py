@@ -148,6 +148,11 @@ class Config:
     # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
     # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
     vision_stream: bool = False
+    # Actions the main model may take from one reply (1: one per turn). Above 1 it may chain a few whose
+    # next screen it can predict (a chess piece then its square, type then Enter): each still passes
+    # every check, and the rest of the turn is skipped at any error, owner prompt or unexpected screen.
+    # Streaming actions (vision_stream) is off while this is above 1. OPENMOB_MAX_ACTIONS overrides.
+    max_actions_per_turn: int = 1
     # Take the screenshot while the app and element reads run, instead of after them (phones answer
     # calls concurrently). Off until measured on real phones. OPENMOB_PARALLEL_OBSERVE=on overrides.
     parallel_observe: bool = False
@@ -301,6 +306,8 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.aliases = {str(k): str(v) for k, v in (cfg.aliases or {}).items()}
     cfg.api_key = os.environ.get("ANTHROPIC_API_KEY")
     # Needed only for API keys that aren't scoped to a workspace.
+    if os.environ.get("OPENMOB_MAX_ACTIONS", "").strip().isdigit():
+        cfg.max_actions_per_turn = int(os.environ["OPENMOB_MAX_ACTIONS"])
     if os.environ.get("OPENMOB_PARALLEL_OBSERVE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
