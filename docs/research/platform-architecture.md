@@ -136,8 +136,8 @@ verified quotes are in `review_B_of_A.md`.
 13. **Game play on the hosted server lacks OCR.** README: games are read via Apple Vision OCR on the
     Mac; the Dockerfile says "no adb, mic or OCR here". On hosted, games fall back to raw screenshots.
     (Architect A's area, but it constrains latency budgets in section 3.6.)
-14. **Single-machine resource mix.** Whisper (`faster_whisper` baked into the image, 2 GB VM) shares the
-    box with every phone socket and agent loop.
+14. **Single-machine resource mix (resolved 2026-10-06).** Whisper was removed from the server
+    and Docker image; speech-model loading no longer shares resources with phone sockets and agent loops.
 
 ### 1.3 Risks in the current code
 
@@ -830,7 +830,7 @@ The exact merged table (scopes, REST, MCP tools, resources, each marked agree/co
 | S0.5 | < 1k | One machine, **Postgres** (Fly Managed Postgres) for accounts, devices, keys, oauth, tasks, events, ledger, audit, history, and A's learning
 tables (`learning` schema). Templates and teach-mode frames go to object storage (Fly Tigris,
 per-account encryption, 1-day lifecycle for demo frames). Learner runs from a Postgres job queue
-(`SELECT … FOR UPDATE SKIP LOCKED`, one job per account at a time) on separate worker machines. `accounts.json` and the two SQLite DBs migrated (dual-write window, then cut over). Whisper moved to a separate Fly app (or a speech API) so a transcription spike can't starve phone sockets. |
+(`SELECT … FOR UPDATE SKIP LOCKED`, one job per account at a time) on separate worker machines. `accounts.json` and the two SQLite DBs migrated (dual-write window, then cut over). |
 | S1 | 1k-20k | N machines in one region behind Fly's proxy. Presence registry + fly-replay routing. Shared quotas. Outbox worker. |
 | S2 | 20k+ / global users | Machines in 3 regions (sjc, iad, ams/fra), phones connect to the nearest region via anycast; Postgres primary in one region with read replicas; replay across regions by instance id. |
 
@@ -899,7 +899,7 @@ Effort = one experienced engineer, focused weeks. Ordered so each phase ships us
 | **P2a Remote MCP (keys)** | `/mcp` with SDK v2 `MCPServer` (both protocol eras), Streamable HTTP; tools `list_devices, run_task, get_task, answer_question, cancel_task, get_screenshot`; long-poll + progress; `om_live_` bearer; stdio shim `openmob mcp`; docs + "Add to Cursor/Claude Code" snippets; MCP Inspector conformance in CI | 1.5 wk | Client timeouts differ (tune `wait_seconds`) |
 | **P2b OAuth AS + consumer connector** | Google/Apple sign-in + passkeys; AS with CIMD + DCR + PKCE + RFC 8707/9728; grants table; consent page; phone approval of grants (WS push); revoke from dashboard and phone; elicitation for `needs_input`; phone-side approval for confirmations | 3-4 wk | OAuth bugs are security bugs: external review; client quirks (claude.ai vs ChatGPT vs Cursor), test each |
 | **P2c Distribution & friction** | openmob.app/get download page with signed APKs and in-app updater; guided restricted-settings + accessibility flow with funnel analytics; Google sign-in = pairing; battery exemption + OEM guidance; FCM wake; restart-on-boot (`specialUse` FGS is allowed from BOOT_COMPLETED); Claude Directory + ChatGPT app submissions | 3-4 wk (directory review adds calendar time) | Play Protect warnings on sideloaded APKs; Android tightening accessibility for non-tools (Android 17 Advanced Protection); directory reviewers balking at a consumer device-control connector (mitigate with strong consent story, annotations, test account) |
-| **P2d Postgres + routing (S0.5→S1)** | Migrate stores; presence registry; fly-replay; shared quotas; Whisper split; asyncio workers; drain on deploy | 3 wk | Migration correctness: dual-write + shadow reads; replay edge cases for SSE |
+| **P2d Postgres + routing (S0.5→S1)** | Migrate stores; presence registry; fly-replay; shared quotas; asyncio workers; drain on deploy | 3 wk | Migration correctness: dual-write + shadow reads; replay edge cases for SSE |
 | **P2e Low-level toolset (model A)** | `device:control` scope, lease, `phone_*` tools, guard on resolved elements, trace capture for Architect A | 1.5 wk | Fighting between agent and lease; injection exposure for callers (document) |
 | **P2e+ Learning platform (with A)** | merged scopes; Task `kind`; learning REST/MCP surface; Postgres `learning` schema + object storage; Learner job queue; credits for macros/routines; grants for budgets, consents for ToS; routine admission control | 2-3 wk (alongside A's phases 1-4a) | Defaults for 3P too permissive (mitigated by the split table); routine CPU on shared machines |
 | **P2f MCP Apps UI + Tasks** | `ui://` live view + approve widget; MCP Tasks for `run_task` | 2 wk | Spec churn; per-client support |

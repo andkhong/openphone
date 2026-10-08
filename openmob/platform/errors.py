@@ -47,9 +47,5 @@ class RateLimited(ServiceError):
         super().__init__(message, headers={"Retry-After": str(retry_after)} if retry_after else None, **kw)
 
 
-class NotEnabled(ServiceError):
-    status = 501
-
-
 class Unavailable(ServiceError):
     status = 503

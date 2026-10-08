@@ -175,34 +175,6 @@ def test_signed_out_visitors_get_the_landing_page(hosted):
     assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard
 
 
-class FakeTranscriber:
-    def transcribe(self, audio):
-        return "open youtube" if audio.read() else ""
-
-
-def test_transcribe_endpoint(tmp_path):
-    from openmob.accounts import AccountStore
-
-    store = AccountStore(tmp_path / "a.json")
-    manager = DeviceManager(Config(), lambda *a: None, Speaker(enabled=False), adb_discovery=False)
-    from fastapi.testclient import TestClient
-
-    with_whisper = TestClient(create_app(manager, store=store, transcriber=FakeTranscriber()))
-    without = TestClient(create_app(manager, store=store))
-    audio = {"file": ("voice.webm", b"fake-audio-bytes", "audio/webm")}
-    assert with_whisper.post("/api/transcribe", files=audio).status_code == 401  # signed out
-    for client in (with_whisper, without):
-        creds = {"email": f"u{id(client)}@example.com", "password": "password123"}
-        client.post("/api/auth/signup", json=creds)
-        client.post("/api/auth/login", json=creds)
-    assert with_whisper.post("/api/transcribe", files=audio).json() == {"text": "open youtube"}
-    assert without.post("/api/transcribe", files=audio).status_code == 501
-    import openmob.server as server_mod
-
-    big = {"file": ("voice.webm", b"x" * (server_mod.MAX_AUDIO_BYTES + 1), "audio/webm")}
-    assert with_whisper.post("/api/transcribe", files=big).status_code == 413
-
-
 def test_pairing_from_localhost_uses_the_computers_network_name(hosted, monkeypatch):
     # A phone can't reach "localhost" (and the computer's IP changes with sleep or another Wi-Fi):
     # the QR code points at its network name instead. Behind a tunnel the public address is kept.

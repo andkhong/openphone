@@ -124,11 +124,6 @@ full timeline of events. Each session is a task: the same id as `GET /v1/tasks/{
 The console's **Logs** page is your account's audit log: every key change, task, answer, cancel,
 screenshot and setting change, with the key that did it.
 
-## Memory
-
-OpenMob can keep short notes about you and your apps ("Use my work account for Uber receipts") and
-read them before each task. You choose per task whether a task uses them. See [Memory](memory.md).
-
 ## Safety
 
 Risky actions need the owner's approval on the phone, banking and password apps are off-limits by

@@ -152,14 +152,6 @@
   .answers { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
   .answers .or { color: var(--muted); font-size: 13px; }
   .callout.confirm { margin-top: 10px; }
-  .memory-note { margin-top: 12px; padding: 12px 14px; border-radius: var(--r); background: var(--surface); border: 1px solid var(--line); font-size: 14px; display: grid; grid-template-columns: 20px 1fr; gap: 4px 10px; }
-  .memory-note > svg { width: 18px; height: 18px; color: var(--accent); margin-top: 2px; }
-  .memory-note .msg { overflow-wrap: anywhere; }
-  .memory-note .answers, .memory-note .more { grid-column: 2; }
-  .memory-note .answers { margin-top: 4px; }
-  .memory-note .more { font-size: 13px; color: var(--muted); }
-  .memory-note .more a { color: var(--accent); text-decoration: none; }
-  .memory-note.pending { border-color: var(--accent-line); background: var(--accent-soft); }
   .foot { display: flex; align-items: center; gap: 2px; margin-top: 6px; color: var(--faint); font-size: 12px; flex-wrap: wrap; }
   .foot button { border: 0; background: transparent; color: var(--faint); cursor: pointer; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; }
   .foot button svg { width: 16px; height: 16px; }
@@ -205,12 +197,6 @@
   .model { appearance: none; -webkit-appearance: none; border: 0; background: transparent; color: var(--muted); padding: 6px 22px 6px 8px; border-radius: 8px; cursor: pointer; font-size: 13px; max-width: min(40vw, 180px); text-overflow: ellipsis; background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%); background-position: right 10px top 55%, right 6px top 55%; background-size: 4px 4px; background-repeat: no-repeat; }
   .model:hover { background-color: var(--surface-2); color: var(--fg); }
   .model optgroup { font-style: normal; font-weight: 600; }
-  .mic { width: 36px; height: 36px; border-radius: 50%; border: 0; background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; }
-  .mic svg { width: 19px; height: 19px; }
-  .mic:hover { background: var(--surface-2); color: var(--fg); }
-  .mic.rec { background: var(--bad); color: #fff; animation: blink 1.2s infinite; }
-  .mic.busy { opacity: .5; cursor: progress; }
-  .mic:disabled { opacity: .3; cursor: default; }
   .send { width: 36px; height: 36px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; display: flex; align-items: center; justify-content: center; flex: none; }
   .send svg { width: 18px; height: 18px; }
   .send:disabled { opacity: .35; cursor: default; }
@@ -387,12 +373,10 @@
         <summary class="account-btn" aria-label="Account and settings" title="Account and settings">
           <span class="acct-avatar" id="acctAvatar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-7 8-7s8 3 8 7"/></svg></span>
           <span class="acct-text"><span class="acct-name" id="acctName">This computer</span><span class="acct-sub" id="acctSub">Settings</span></span>
-          <span class="count warn" id="memoryBadge" hidden></span>
           <span class="chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9l4-4 4 4M8 15l4 4 4-4"/></svg></span>
         </summary>
         <div class="menu-items" role="menu">
           <div class="who" id="who" hidden></div>
-          <a id="memoryLink" href="/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>What I've learned</a>
           <a id="connectPhone" href="/connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Connect a phone</a>
           <a id="phonesLink" href="/phones" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>Your phones</a>
           <a id="adminLink" href="/admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Admin</a>
@@ -495,10 +479,6 @@
             <div class="mode-menu" id="modeMenu" role="menu" aria-label="Permission mode" hidden></div>
           </div>
           <select class="model" id="model" aria-label="Model for this phone" title="Model for this phone's next task"></select>
-          <!-- Dictation mic hidden for now: delete style="display:none" to bring it back. -->
-          <button class="mic" id="mic" type="button" aria-label="Dictate" title="Dictate (Whisper)" style="display:none">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-          </button>
           <button class="send" id="send" type="submit" aria-label="Send"></button>
         </div>
       </form>
@@ -583,7 +563,6 @@ const ICONS = {
   retry: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8M21 3v5h-5M21 12a9 9 0 0 1-15.5 6.2L3 16M3 21v-5h5"/></svg>',
   edit: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg>',
   trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
-  star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>',
   code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>',
   phone: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>',
   alert: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l9.5 17h-19zM12 10v4M12 17.5v.01"/></svg>',
@@ -610,8 +589,6 @@ let deviceCount = 0;
 let phoneChoices = [];
 let last = null;            // latest status snapshot
 let lastSignature = "";     // re-render only when something changed
-let pendingNotes = new Set();  // ids of memory suggestions still waiting for Keep/Dismiss
-const checkedNotes = new Set();  // suggestion ids we've already looked up once
 let lastChatId = null;
 let modelLabels = {};
 let openSteps = new Set();  // task ids whose step list the user expanded
@@ -622,7 +599,6 @@ let queueNext = false;      // "Queue as new task" is on for the next send
 let speak = false;
 let lastSpokenSeq = 0;
 try { speak = localStorage.getItem("openmob.speak") === "1"; } catch {}
-const withToken = (path) => token ? `${path}${path.includes("?") ? "&" : "?"}t=${encodeURIComponent(token)}` : path;
 
 // ---------- server ----------
 
@@ -998,36 +974,6 @@ function renderTurn(turn, s) {
     }
   });
 
-  // Memory: what the agent saved, or suggests saving (Keep/Dismiss while it's still pending).
-  for (const e of events.filter((x) => x.kind === "memory")) {
-    const id = e.data && e.data.note_id;
-    const proposed = e.data && e.data.status === "proposed";
-    if (proposed && !pendingNotes.has(id) && !checkedNotes.has(id)) {
-      checkedNotes.add(id);  // a suggestion that arrived since the last lookup: fetch its state once
-      loadPendingNotes().then(() => pollNow());
-    }
-    const waiting = proposed && pendingNotes.has(id);
-    const card = el("div", `memory-note${waiting ? " pending" : ""}`);
-    card.append(icon("star"), el("div", "msg", e.message));
-    if (waiting) {
-      const row = el("div", "answers");
-      const keep = el("button", "btn btn-sm btn-primary", "Keep");
-      const dismiss = el("button", "btn btn-sm", "Dismiss");
-      keep.type = dismiss.type = "button";
-      keep.onclick = () => decideNote(id, true);
-      dismiss.onclick = () => decideNote(id, false);
-      row.append(keep, dismiss);
-      card.append(row);
-    } else {
-      const more = el("div", "more");
-      const a = el("a", "", "See what I've learned");
-      a.href = withToken("/memory");
-      more.append(a);
-      card.append(more);
-    }
-    body.append(card);
-  }
-
   if (final) {
     body.append(el("div", `text${final.data.success ? "" : " error"}`, stripSteps(final.message)));
     const foot = el("div", "foot");
@@ -1073,31 +1019,6 @@ function renderTurn(turn, s) {
 
   wrap.append(agent);
   return wrap;
-}
-
-async function loadPendingNotes() {
-  try {
-    const notes = (await api("/api/memory")).notes;  // api() returns parsed JSON
-    const next = new Set(notes.filter((n) => n.status === "proposed").map((n) => n.id));
-    for (const n of notes) checkedNotes.add(n.id);
-    if ([...next].join() !== [...pendingNotes].join()) { pendingNotes = next; lastSignature = ""; }
-    for (const id of ["memoryBadge"]) {
-      $(id).hidden = !next.size;
-      $(id).textContent = next.size;
-    }
-    $("memoryBadge").title = `${next.size} suggestion${next.size === 1 ? "" : "s"} waiting for your OK`;
-  } catch {}  // memory is optional on some servers
-}
-
-async function decideNote(id, keep) {
-  try {
-    await api(`/api/memory/${id}`, keep
-      ? { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "active" }) }
-      : { method: "DELETE" });
-  } catch (e) { $("hint").dataset.note = e.message; }
-  await loadPendingNotes();
-  lastSignature = "";
-  pollNow();
 }
 
 const fmt = (n) => (n || 0) >= 10000 ? `${(n / 1000).toFixed(1)}k` : (n || 0).toLocaleString();
@@ -1264,7 +1185,7 @@ function updateComposer() {
   $("text").placeholder = !deviceId ? "Connect a phone to start" : queueNext && taskOn ? "Describe the next task…"
     : phoneOnly ? "Approve or decline on your phone…" : planning ? "Type changes to the plan, or approve it on your phone…" : asking ? "Type your answer…" : running ? "Correct or add to the current task…" : "Tell your phone what to do…";
   const offline = !last || (last.device && last.device.online === false);
-  $("hint").textContent = recorder ? $("hint").dataset.note : !deviceId ? "" : offline ? "Phone is offline." :
+  $("hint").textContent = !deviceId ? "" : offline ? "Phone is offline." :
     $("hint").dataset.note ? $("hint").dataset.note :
     queueNext && taskOn ? "Runs after the current task finishes." :
     phoneOnly ? "Approve on your phone, or press Stop." :
@@ -1277,7 +1198,7 @@ $("text").addEventListener("input", () => {
   const t = $("text");
   t.style.height = "auto";
   t.style.height = Math.min(t.scrollHeight, 200) + "px";
-  if (!recorder) delete $("hint").dataset.note;
+  delete $("hint").dataset.note;
   updateComposer();
 });
 $("text").addEventListener("keydown", (e) => {
@@ -1664,65 +1585,9 @@ $("trustedAdd").addEventListener("submit", (e) => {
   changePerms({ trusted: [...permView.trusted, entry] }, async () => { $("trustedApp").value = ""; await refreshPerms(); renderPerms(); }, permShow);
 });
 
-// ---------- mic: record in the browser, Whisper transcribes on the server ----------
-
-let recorder = null, recChunks = [], recStarted = 0, recTimer = null, recCancelled = false;
-const micReady = window.isSecureContext && navigator.mediaDevices && window.MediaRecorder;
-if (!micReady) {
-  $("mic").disabled = true;
-  $("mic").title = "The mic needs HTTPS or localhost";
-}
 function setHint(text) { $("hint").dataset.note = text; updateComposer(); }
 
-async function toggleMic() {
-  if (recorder) { recorder.stop(); return; }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    recorder = new MediaRecorder(stream);
-    recChunks = [];
-    recCancelled = false;
-    recorder.ondataavailable = (e) => e.data.size && recChunks.push(e.data);
-    recorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      clearInterval(recTimer);
-      const type = recorder.mimeType || "audio/webm";
-      recorder = null;
-      $("mic").classList.remove("rec");
-      if (recCancelled || !recChunks.length) { setHint(""); return; }
-      $("mic").classList.add("busy");
-      setHint("Transcribing…");
-      const form = new FormData();
-      form.append("file", new Blob(recChunks, { type }), "voice.webm");
-      try {
-        const r = await api("/api/transcribe", { method: "POST", body: form });
-        if (r.text) {
-          const t = $("text");
-          t.value = (t.value.trim() ? t.value.trimEnd() + " " : "") + r.text;
-          t.dispatchEvent(new Event("input"));
-          t.focus();
-          setHint("Check the text, then press Enter to send.");
-        } else {
-          setHint("Didn't catch that. Try again.");
-        }
-      } catch (e) { setHint(e.message); }
-      $("mic").classList.remove("busy");
-    };
-    recorder.start();
-    recStarted = Date.now();
-    $("mic").classList.add("rec");
-    const tick = () => {
-      const s = Math.floor((Date.now() - recStarted) / 1000);
-      setHint(`Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")} · click the mic to stop, Esc to cancel`);
-    };
-    tick();
-    recTimer = setInterval(tick, 500);
-  } catch (e) {
-    setHint(e.name === "NotAllowedError" ? "Microphone blocked. Allow it in the browser's site settings." : `Mic error: ${e.message}`);
-  }
-}
-$("mic").onclick = () => { if (!$("mic").classList.contains("busy")) toggleMic(); };
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && recorder) { recCancelled = true; recorder.stop(); return; }
   if (e.key === "Escape") {
     if (!$("searchOverlay").hidden) { closeSearch(); return; }
     if ($("menu").open) { $("menu").open = false; $("menu").querySelector("summary").focus(); return; }
@@ -2328,7 +2193,6 @@ async function screenLoop() {
 }
 
 if (token) {
-  for (const id of ["memoryLink"]) $(id).href = "/memory?t=" + encodeURIComponent(token);
   $("home").href = "/?t=" + encodeURIComponent(token);
 }
 updateComposer();
@@ -2360,9 +2224,8 @@ async function serverHeartbeat() {
   }
 }
 
-checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); loadPendingNotes(); statusLoop(); screenLoop(); serverHeartbeat(); }));
+checkAccount().then((ok) => ok && loadModels().then(loadDevices).then(() => { loadChats(); statusLoop(); screenLoop(); serverHeartbeat(); }));
 setInterval(loadChats, 15000);
-setInterval(loadPendingNotes, 15000);
 setInterval(() => loadDevices(false), 10000);
 </script>
 </body>

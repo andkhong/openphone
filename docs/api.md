@@ -21,9 +21,6 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" https://<server>/v1/devices
 | `POST` | [`/v1/tasks/{task_id}/answer`](#post-v1taskstask_idanswer) | `tasks:run` | Answer a question, or decline a risky action |
 | `POST` | [`/v1/tasks/{task_id}/cancel`](#post-v1taskstask_idcancel) | `tasks:run` | Cancel a task |
 | `GET` | [`/v1/devices/{device_id}/screenshot`](#get-v1devicesdevice_idscreenshot) | `screen:read` | The phone's screen now |
-| `GET` | [`/v1/memory`](#get-v1memory) | `memory:read` | List memory notes |
-| `POST` | [`/v1/memory`](#post-v1memory) | `memory:write` | Add a note |
-| `DELETE` | [`/v1/memory/{note_id}`](#delete-v1memorynote_id) | `memory:write` | Delete a note |
 | `POST` | [`/v1/orchestrations`](#post-v1orchestrations) | `tasks:run` | Start a run across several phones |
 | `GET` | [`/v1/orchestrations`, `/v1/orchestrations/{id}`](#get-v1orchestrationsid-and-get-v1orchestrations) | `tasks:read` | List runs, or get one |
 | `POST` | [`/v1/orchestrations/{id}/cancel`](#post-v1orchestrationsidcancel) | `tasks:run` | Cancel a run |
@@ -54,7 +51,7 @@ A key acts as your account on your phones. Keep it in an environment variable, n
 **A key sees only its own work.** Tasks and [orchestrations](#orchestrations) are visible only to
 the key that started them: getting, listing, the event stream, answering, cancelling and
 `GET /v1/history`. Another key's task, even on your own account, answers `404` exactly like an id
-that doesn't exist. Your phones and memory notes are shared by all your keys, and the dashboard and
+that doesn't exist. Your phones are shared by all your keys, and the dashboard and
 developer console show every key's work.
 
 | Problem | Status |
@@ -75,8 +72,6 @@ new key.
 | `tasks:read` | Read tasks and stream their events | Yes |
 | `screen:read` | Take screenshots. **Sensitive:** it sees everything on screen | No |
 | `history:read` | Read this key's past tasks with their instructions and outcomes (`GET /v1/history`) | No |
-| `memory:read` | Read your memory notes | No |
-| `memory:write` | Add and delete memory notes | No |
 | `devices:add` | Start pairings for your account (`openmob phone add`). **Sensitive:** the phone still has to confirm with its screen lock | No |
 
 ## Idempotent retries
@@ -242,7 +237,6 @@ curl -s -X POST https://<server>/v1/devices/app-3f2a9c/tasks \
 | `instruction` | string, 1–2000 characters | required | The goal, in plain words |
 | `tier` | string | `balanced` | `fast`, `balanced` or `best`. See [Tiers and credits](concepts.md#tiers-and-credits) |
 | `max_steps` | integer ≥ 1 | 40 | Stop after this many steps. Values above the server's maximum are capped |
-| `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md#memory-modes-for-a-task) |
 | `permission_mode` | string | the phone's default, tightened to your key's `max_mode` | When the phone asks its owner: `ask`, `plan`, `auto`, `trusted` or `never`. See [Permission modes](safety.md#permission-modes). Looser than your key's `max_mode` or the phone's ceiling: `403 mode_not_allowed` |
 
 Returns `201` with the new task, usually still `queued`:
@@ -276,7 +270,7 @@ queued only to fail; OpenMob never enters a PIN:
 | `409` `phone_unresponsive` | The phone is connected but didn't answer within 5 s (often: asleep). Wake it and open the OpenMob app |
 | `403` `mode_not_allowed` | `permission_mode` is looser than your key's `max_mode` or the phone's ceiling. Only the owner can allow more: tell your user, don't retry |
 | `409` `idempotency_conflict`, `idempotency_in_progress` | See [Idempotent retries](#idempotent-retries) |
-| `422` | `instruction` is empty, only whitespace or too long, `max_steps` is below 1, `memory` isn't one of the three values, or `permission_mode` isn't a mode |
+| `422` | `instruction` is empty, only whitespace or too long, `max_steps` is below 1, or `permission_mode` isn't a mode |
 | `429` | Rate limit, `too_many_tasks`, `daily_quota`, `credits_exhausted`, `account_daily_quota` or `account_credits_exhausted`. See [Errors & limits](errors.md#limits) |
 
 ### GET /v1/limits
@@ -373,7 +367,6 @@ data: {"id": "e111505afeb9", "status": "succeeded", "steps": 2, "credits": 6, �
 | `action` | An action it took and its result, as `tool: result` | `timings` |
 | `warning` | Something went wrong in a step; the task usually carries on | `timings` when a step failed |
 | `question` | It asked something (`needs_input`) or wants approval (`needs_confirmation`) | `confirmation`: true for an approval |
-| `memory` | It saved or proposed a memory note | |
 | `outcome` | The task's result | `success` |
 | `done` | The stream's last event; `data` is the final task | |
 
@@ -511,52 +504,6 @@ curl -s -H "Authorization: Bearer $OPENMOB_API_KEY" -o screen.jpg \
 | `404` | No such phone on your account |
 | `409` | The phone is offline |
 | `503` | The phone couldn't capture its screen right now; try again |
-
-## Memory
-
-Notes OpenMob reads before tasks. See [Memory](memory.md) for how they're used. If memory isn't
-enabled on the server, these routes return `501`.
-
-### GET /v1/memory
-
-Scope `memory:read`. All your notes, including proposals waiting for your approval.
-
-```json
-{"notes": [
-  {"id": "cdf1a8e1530a", "text": "Use my second account in games", "app": null, "status": "active", "created": 1791219552.32, "uses": 8},
-  {"id": "ba252e793f8d", "text": "Daily quests are under the scroll icon, top right", "app": "com.netease.yysls", "status": "active", "created": 1791219552.32, "uses": 0}
-]}
-```
-
-### POST /v1/memory
-
-Scope `memory:write`. Adds a note. `text` is 1–300 characters; `app` is an Android package name
-for a note about one app, or omitted for a note about you.
-
-```sh
-curl -s -X POST https://<server>/v1/memory \
-  -H "Authorization: Bearer $OPENMOB_API_KEY" -H "Content-Type: application/json" \
-  -d '{"text": "Use my work account for Uber receipts"}'
-```
-
-Returns `201`:
-
-```json
-{"id": "799fd944c960", "text": "Use my work account for Uber receipts", "app": null, "status": "active"}
-```
-
-Adding a note with the same text (and app) as an existing one returns the existing note. `400` if
-you already have 500 notes; `422` if `text` is empty or too long.
-
-### DELETE /v1/memory/{note_id}
-
-Scope `memory:write`. Deletes a note, or rejects a proposal.
-
-```json
-{"ok": true}
-```
-
-`404` if there's no such note on your account.
 
 ## Orchestrations
 

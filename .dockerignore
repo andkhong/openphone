@@ -10,7 +10,6 @@ docs/*
 !docs/errors.md
 !docs/examples.md
 !docs/mcp.md
-!docs/memory.md
 !docs/phone-setup.md
 !docs/quickstart.md
 !docs/safety.md

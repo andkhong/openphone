@@ -352,7 +352,7 @@ developer console still show every key's work. Rotating a key keeps it the same 
 
 ## Audit log
 
-Every key change, task, answer, approval, cancel, screenshot, memory change, webhook delivery,
+Every key change, task, answer, approval, cancel, screenshot, webhook delivery,
 setting change and phone connection replaced from a new address is written to an append-only audit log. Your account's entries are under **Logs** in
 the developer console, with the key that did each one. The log stores a hash of each instruction,
 never its text.
@@ -371,7 +371,6 @@ everything forever; one job deletes all of it every 6 hours):
 | Live task records | Server memory | Until they age out (200 per phone) or the server restarts |
 | Billing totals: task id, key, phone, tier, steps, credits, status, an instruction **hash** | `api_tasks` in the ledger | Kept (no text) |
 | Audit log (actions, with instruction **hashes**) | The ledger | Kept (no text) |
-| Memory notes | `memory.sqlite` | Until you delete them (they're your saved knowledge, not task logs) |
 
 - Screenshots are never stored.
 - To carry out a task, the phone's screen content is processed by the AI providers that power

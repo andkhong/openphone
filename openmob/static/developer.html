@@ -324,7 +324,6 @@
     <a class="nav-item" href="#/docs/api" data-route="docs/api"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5M13.5 4.5l-3 15"/></svg>API reference</a>
     <a class="nav-item" href="#/docs/mcp" data-route="docs/mcp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 8l-4.5 4.5a3 3 0 0 0 4.2 4.2L15 10.4M11 6.5l1.5-1.5a3 3 0 0 1 4.2 4.2L12 14M14 16l-1 1M19 13l1.5 1.5a3 3 0 0 1-4.2 4.2"/></svg>MCP</a>
     <a class="nav-item" href="#/docs/examples" data-route="docs/examples"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M7 10l3 2.5L7 15M12.5 15h4.5"/></svg>Code examples</a>
-    <a class="nav-item" href="#/docs/memory" data-route="docs/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8-4.3-4.1 5.9-.9z"/></svg>Memory</a>
     <a class="nav-item" href="#/docs/webhooks" data-route="docs/webhooks"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12h4l2-6 4 12 2-6h4"/></svg>Webhooks</a>
     <a class="nav-item" href="#/docs/safety" data-route="docs/safety"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Safety &amp; approvals</a>
     <a class="nav-item" href="#/docs/conventions" data-route="docs/conventions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01"/></svg>API conventions</a>
@@ -344,7 +343,6 @@
       </summary>
       <div class="menu-items" role="menu">
         <a href="/"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-5v-6h-4v6H5a1 1 0 0 1-1-1z"/></svg>Dashboard</a>
-        <a id="memoryLink" href="/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>What I've learned</a>
         <a id="connectPhone" href="/connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Connect a phone</a>
         <a id="adminLink" href="/admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Admin</a>
         <hr>
@@ -498,7 +496,7 @@
       <div class="toolbar">
         <select class="select" id="logAction" aria-label="Filter by action">
           <option value="">All actions</option><option value="task">Tasks</option><option value="key">Keys</option><option value="screen">Screenshots</option>
-          <option value="memory">Memory</option><option value="webhook">Webhooks</option><option value="settings">Settings</option>
+          <option value="webhook">Webhooks</option><option value="settings">Settings</option>
           <option value="orchestration">Orchestrations</option><option value="admin">Admin</option>
         </select>
         <input class="input" type="search" id="logSearch" placeholder="Filter by key, phone, task or outcome" aria-label="Filter logs">
@@ -584,8 +582,6 @@ const SCOPE_HELP = {
   "tasks:read": "Read tasks and their events",
   "screen:read": "See the phone's screen (sensitive)",
   "history:read": "Read your chat history",
-  "memory:read": "Read what the agent remembers",
-  "memory:write": "Add or delete memory notes",
 };
 const DEFAULT_SCOPES = ["devices:read", "tasks:run", "tasks:read"];
 const APPROVE_WARNING = "An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.";
@@ -603,7 +599,6 @@ const ICONS = {
   question: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 9a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.6M12 17v.01"/></svg>',
   outcome: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>',
   failed: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M7 7l10 10M17 7L7 17"/></svg>',
-  memory: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>',
   page: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
   doc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10A.5.5 0 0 1 7 20zM14 3.5V8h4M10 12.5h5M10 16h5"/></svg>',
   key: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="4"/><path d="M10.8 12.2L20 3M16 7l3 3"/></svg>',
@@ -780,7 +775,7 @@ const VIEWS = {
   webhooks: ["Build", "Webhooks"], logs: ["Build", "Logs"], agents: ["Connect", "AI agents (MCP)"], docs: ["Docs", ""], settings: ["Account", "Settings"],
 };
 const DOCS = { quickstart: "Quickstart", concepts: "Concepts", "phone-setup": "Set up a phone", api: "API reference",
-  mcp: "MCP", examples: "Code examples", memory: "Memory", webhooks: "Webhooks", safety: "Safety & approvals",
+  mcp: "MCP", examples: "Code examples", webhooks: "Webhooks", safety: "Safety & approvals",
   conventions: "API conventions", errors: "Errors & limits", testing: "Testing without a phone",
   "self-hosting": "Run your own server" };
 

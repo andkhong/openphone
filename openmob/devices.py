@@ -63,11 +63,9 @@ class DeviceManager:
     # A socket blip mid-task (Wi-Fi to cellular, a tunnel hiccup) pauses the task instead of killing it.
     reconnect_grace = 45.0
 
-    def __init__(self, cfg: Config, build_agent, speaker: Speaker, adb_discovery: bool = True, history=None,
-                 memory=None):
+    def __init__(self, cfg: Config, build_agent, speaker: Speaker, adb_discovery: bool = True, history=None):
         self.cfg = cfg
         self.history = history  # chat history store shared by every phone (None: not saved)
-        self.memory = memory  # pinned notes per account (None: the agent remembers nothing)
         self.adb_discovery = adb_discovery  # off for a hosted server: only app-connected phones
         self.build_agent = build_agent  # (cfg, io, driver, label_cache) -> Agent
         self.speaker = speaker
@@ -666,8 +664,6 @@ class DeviceManager:
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:
             coordinator.agent.platform = info.platform
-            coordinator.agent.memory = self.memory
-            coordinator.agent.account_id = account_id
         coordinator.start()
         threading.Thread(target=self._index_apps, args=(coordinator,), daemon=True).start()
         return Session(info, coordinator, driver, account_id)
