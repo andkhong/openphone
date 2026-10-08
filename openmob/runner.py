@@ -26,7 +26,7 @@ APPROVE_ON_PROMPT = "Approve this on the approval prompt, with your screen lock.
 
 STOP_PHRASES = {"stop", "cancel", "abort", "stop it", "never mind", "nevermind", "stop stop"}
 
-ICONS = {"correction": "✏️ ", "memory": "📌", "usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
+ICONS = {"correction": "✏️ ", "usage": "🧮", "jev": "🔎", "status": "·", "thought": "💭", "action": "👉", "error": "⚠️ ", "question": "❓", "result": "✅", "heard": "🎙"}
 
 
 FINAL_STATUSES = {"succeeded", "failed", "cancelled"}

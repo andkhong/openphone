@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import importlib.util
 import secrets
 import shutil
 import sys
@@ -77,11 +76,8 @@ def cmd_run(cfg: Config, args) -> None:
     speaker = Speaker(cfg.speak and not args.quiet, cfg.voice)
     from .history import History
 
-    from .memory import Memory
-
     history = History()  # saved chats: the data agents will learn from
-    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history,
-                            memory=Memory())  # pinned notes: what the agent remembers about its user
+    manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history)
     sessions = manager.refresh()
     for s in sessions:
         print(f"📱 {s.info.model} ({s.info.connection}, {s.info.transport})")
@@ -96,16 +92,6 @@ def cmd_run(cfg: Config, args) -> None:
             print("No phone online.")
         return session
 
-    transcriber = None
-    if importlib.util.find_spec("faster_whisper"):
-        from .voice.stt import Transcriber
-
-        transcriber = Transcriber(cfg.whisper_model)
-        threading.Thread(target=transcriber._load, daemon=True).start()  # load the model before the first use
-        print(f"🎙  Mic button: Whisper ({cfg.whisper_model}) transcribes on this server.")
-    else:
-        print("🎙  Mic button disabled: install Whisper with  pip install -e '.[voice]'")
-
     from .server import create_app, lan_ip, local_hostname, serve_in_background
 
     from .accounts import DATA_DIR
@@ -119,7 +105,7 @@ def cmd_run(cfg: Config, args) -> None:
         store = AccountStore()
         print(f"🔐 Accounts on: users sign in, and each phone pairs only to its owner's account ({store.path}).")
     token = cfg.server_token or secrets.token_urlsafe(8)
-    serve_in_background(create_app(manager, token, store=store, transcriber=transcriber), cfg.server_host, cfg.server_port)
+    serve_in_background(create_app(manager, token, store=store), cfg.server_host, cfg.server_port)
     # With accounts the dashboard uses a sign-in session, so links carry no secret.
     suffix = "/login" if store else f"/?t={token}"
     print(f"🖥  Dashboard: http://localhost:{cfg.server_port}{suffix}")
@@ -321,7 +307,7 @@ def _read_password(password_file: str | None, prompt: str) -> str:
 
 
 def cmd_account(cfg: Config, args) -> None:
-    """Manage accounts on this server (there's no web sign-up page yet)."""
+    """Manage accounts on this server. Web sign-up needs an invite code from `openmob account invite`."""
     import os
     import secrets as _secrets
 
@@ -331,6 +317,13 @@ def cmd_account(cfg: Config, args) -> None:
     if args.action == "list":
         accounts = store.admin_list_accounts()
         print("\n".join(a["email"] + ("  (admin)" if a["is_admin"] else "") for a in accounts) or "No accounts yet.")
+        return
+    if args.action == "invite":
+        code = store.create_invite()
+        base = args.server or _public_url(cfg.server_port) or f"http://localhost:{cfg.server_port}"
+        print("One-time invite (works once, for 7 days). Send the link, or the code to enter at Log in:")
+        print(f"{base.rstrip('/')}/login?invite={code}")
+        print(f"Code: {code}")
         return
     if not args.email:
         sys.exit(f"openmob account {args.action} needs an EMAIL.")
@@ -522,11 +515,11 @@ def main(argv: list[str] | None = None) -> None:
     p_bridge.add_argument("--email", help="account mode: pair this phone to your account (prompts for the password)")
     p_bridge.add_argument("--password-file", help="read the account password from this file instead of prompting")
 
-    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, sign-in link, admin)")
-    p_account.add_argument("action", choices=["add", "list", "link", "admin", "unadmin"])
+    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, invite, sign-in link, admin)")
+    p_account.add_argument("action", choices=["add", "list", "invite", "link", "admin", "unadmin"])
     p_account.add_argument("email", nargs="?")
     p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
-    p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")
+    p_account.add_argument("--server", help="link, invite: the server's public URL (default: the running tunnel)")
 
     p_key = sub.add_parser("key", help="developer API keys for an account (create, list, revoke)")
     p_key.add_argument("action", choices=["create", "list", "revoke"])

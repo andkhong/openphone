@@ -94,6 +94,8 @@
     <string name="ui_signin">Sign in</string>
     <string name="ui_create_account">Create account</string>
     <string name="ui_signin_missing">Enter your email and password.</string>
+    <string name="ui_invite_hint">Invite code (only to create an account)</string>
+    <string name="ui_invite_missing">Creating an account needs an invite code. Ask whoever runs your OpenMob server.</string>
     <string name="ui_working">Working…</string>
     <string name="ui_approve_description">The agent on this server will be able to see your screen and tap, type, swipe and open apps for you while you\'re connected. Only continue if you started this.</string>
     <string name="ui_need_screen_lock_title">Set a screen lock first</string>

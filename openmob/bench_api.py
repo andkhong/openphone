@@ -190,7 +190,7 @@ class ApiClient:
 def measure(task: ApiTask, instruction: str, condition: Condition, kind: str, round_no: int, client: ApiClient,
             device: str, timeout: float) -> ApiRun:
     run = ApiRun(task.name, condition.label, kind, round_no)
-    body = {"instruction": instruction, "memory": "off", **condition.body()}
+    body = {"instruction": instruction, **condition.body()}
     if task.max_steps and kind != "reset":
         body["max_steps"] = task.max_steps
     started = time.monotonic()

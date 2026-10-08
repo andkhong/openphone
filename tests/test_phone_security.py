@@ -50,7 +50,7 @@ def hosted(tmp_path):
 
     def user(email):
         c = httpx.Client(base_url=base)
-        c.post("/api/auth/signup", json={"email": email, "password": "password123"})
+        c.post("/api/auth/signup", json={"email": email, "password": "password123", "invite": store.create_invite()})
         r = c.post("/api/auth/login", json={"email": email, "password": "password123"})
         c.session_token = r.json()["session"]
         return c

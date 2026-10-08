@@ -30,7 +30,7 @@ from .. import permissions as perm
 from ..ledger import day_start
 from ..phone.base import DeviceError, PhoneTimeout
 from ..runner import FINAL_STATUSES
-from .errors import BadRequest, Conflict, Forbidden, NotEnabled, NotFound, RateLimited, Unavailable
+from .errors import BadRequest, Conflict, Forbidden, NotFound, RateLimited, Unavailable
 from .principal import Principal, resolve
 from .webhooks import WebhookOutbox
 
@@ -56,8 +56,7 @@ def register_model_names(names) -> None:
                          if names else None)
 EXCEPTION_TEXT = re.compile(r"^[A-Za-z_.]*(Error|Exception)\b")
 GENERIC_ERROR = "The task hit an internal error."
-PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "error": "warning", "question": "question",
-                "memory": "memory"}
+PUBLIC_KINDS = {"status": "status", "thought": "thought", "action": "action", "error": "warning", "question": "question"}
 OFFLINE = "That phone is offline. Open the OpenMob app on it."
 LOCKED = "That phone is locked with a PIN, pattern or password. Unlock it to continue."
 UNRESPONSIVE = "That phone is connected but isn't answering. Open the OpenMob app on it."
@@ -484,7 +483,7 @@ class V1Service:
             raise BadRequest(str(exc)) from None
 
     def create_task(self, p: Principal, device_id: str, instruction: str, tier: str | None = None,
-                    max_steps: int | None = None, memory: str = "on", check_phone: bool = True,
+                    max_steps: int | None = None, check_phone: bool = True,
                     clean_start: bool = False, permission_mode: str | None = None) -> dict:
         """`check_phone`: refuse a locked or unresponsive phone up front (orchestrations check it
         themselves). `clean_start`: press Home before the task (orchestrated steps). `permission_mode`:
@@ -497,8 +496,6 @@ class V1Service:
         mode = self.permission_mode(p, device_id, permission_mode)
         if not instruction or len(instruction) > MAX_INSTRUCTION:  # REST validates this before it gets here
             raise BadRequest(f"The instruction must be 1 to {MAX_INSTRUCTION} characters.")
-        if memory not in ("on", "read_only", "off"):
-            raise BadRequest("memory must be one of: on, read_only, off.")
         tier = tier or self.cfg.api_default_tier
         if tier not in self.cfg.api_tiers:
             raise BadRequest(f"Unknown tier. Choose one of: {', '.join(self.cfg.api_tiers)}")
@@ -540,7 +537,7 @@ class V1Service:
         self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction,
                           outcome=f"mode={mode}")
         # isolated: an API caller neither sees nor extends the phone chat's recent requests.
-        options = {"model": tier_cfg["model"], "max_steps": max_steps, "memory": memory, "isolated": True,
+        options = {"model": tier_cfg["model"], "max_steps": max_steps, "isolated": True,
                    "permission_mode": mode}
         if clean_start:
             options["go_home"] = True
@@ -718,35 +715,6 @@ class V1Service:
             raise Unavailable("The phone couldn't capture its screen right now.") from None
         self.ledger.audit("screen.read", p.account_id, p.id, device.id)
         return jpeg
-
-    def _memory(self):
-        if self.manager.memory is None:
-            raise NotEnabled("Memory isn't enabled on this server.")
-        return self.manager.memory
-
-    def list_memory(self, p: Principal) -> dict:
-        self.require(p, "memory:read")
-        notes = self._memory().list(p.account_id)
-        return {"notes": [{"id": n["id"], "text": n["text"], "app": n["package"], "status": n["status"],
-                           "created": n["created"], "uses": n["uses"]} for n in notes]}
-
-    def add_memory(self, p: Principal, text: str, app: str | None = None) -> dict:
-        from ..memory import NoteError
-
-        self.require(p, "memory:write")
-        try:  # owner keys only today, so the note is active (third parties will only propose)
-            note = self._memory().add(p.account_id, text, package=app, source="api")
-        except NoteError as exc:
-            raise BadRequest(str(exc)) from None
-        self.ledger.audit("memory.add", p.account_id, p.id, instruction=text)
-        return {"id": note["id"], "text": note["text"], "app": note["package"], "status": note["status"]}
-
-    def delete_memory(self, p: Principal, note_id: str) -> dict:
-        self.require(p, "memory:write")
-        if not self._memory().delete(p.account_id, note_id):
-            raise NotFound(f"Unknown note {note_id}")
-        self.ledger.audit("memory.delete", p.account_id, p.id)
-        return {"ok": True}
 
     def history(self, p: Principal, limit: int = 50, cursor: str | None = None) -> dict:
         """This key's own API tasks as history turns (instruction and outcome text from the chat

@@ -84,7 +84,7 @@ def test_console_endpoints_need_a_signed_in_owner(api):
 
 def test_docs_serve_only_the_allowlist(api):
     anonymous = httpx.Client(base_url=api.base)
-    for name in ("quickstart", "concepts", "phone-setup", "api", "mcp", "examples", "memory", "webhooks", "safety",
+    for name in ("quickstart", "concepts", "phone-setup", "api", "mcp", "examples", "webhooks", "safety",
                  "conventions", "errors", "testing", "self-hosting", "api.md"):
         r = anonymous.get(f"/docs/{name}")
         assert r.status_code == 200, name

@@ -114,6 +114,22 @@ def test_pairing_info_uses_public_address_and_requires_token():
     assert p["local"] is False
 
 
+def test_phone_setup_can_download_the_configured_apk(tmp_path, monkeypatch):
+    from openmob import server
+
+    apk = tmp_path / "app.apk"
+    apk.write_bytes(b"test-android-package")
+    monkeypatch.setattr(server, "APK", apk)
+    client = TestClient(create_app(FakeManager(coordinator()), token="secret"))
+    head = client.head("/download/openmob.apk")
+    assert head.status_code == 200
+    assert head.headers["content-type"] == "application/vnd.android.package-archive"
+    assert int(head.headers["content-length"]) == apk.stat().st_size
+    download = client.get("/download/openmob.apk")
+    assert download.status_code == 200 and download.content == apk.read_bytes()
+    assert 'filename="OpenMob.apk"' in download.headers["content-disposition"]
+
+
 class ScriptedAgent:
     """Runs instantly, logging one step; asks a question when told to."""
 

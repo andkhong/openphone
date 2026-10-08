@@ -23,14 +23,34 @@ DEFAULT_MODELS = [
     {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)", "provider": "anthropic"},
     {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)", "provider": "anthropic"},
     {"id": "claude-fable-5-1", "label": "Fable 5.1", "provider": "anthropic"},
-    {"id": "claude-haiku-4-5-20251001", "label": "Haiku 4.5 (fastest, cheapest)", "provider": "anthropic"},
+    # High effort (owner's choice, 2026-10-08). Its thinking counts toward max_tokens, so the vision
+    # step gets the same room instead of the 512-token cap, which would cut it off and ask again.
+    {"id": "claude-haiku-5-5", "label": "Haiku 5.5 (fastest, cheapest)", "provider": "anthropic",
+     "effort": "high", "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "provider": "openai", "context": 1_050_000,
+     "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "gpt-6-astra", "label": "GPT-6 Astra", "provider": "openai", "context": 1_050_000,
+     "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "gpt-6-luna", "label": "GPT-6 Luna", "provider": "openai", "context": 1_050_000,
+     "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "gemini-3.8-flash", "label": "Gemini 3.8 Flash", "provider": "google", "context": 1_048_576,
+     "thinking_level": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "qwen3.8-flash", "label": "Qwen 3.8 Flash", "provider": "qwen", "context": 1_000_000,
+     "max_tokens": 8192, "vision_max_tokens": 8192},
+    {"id": "grok-4.7", "label": "Grok 4.7", "provider": "xai", "context": 500_000,
+     "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
 ]
 
 # Who serves a model. Keys come from the environment only; `openai_compatible` is any endpoint that
 # speaks OpenAI Chat Completions (vLLM, Ollama, LM Studio, OpenRouter…) at a `base_url`.
-PROVIDERS = ("anthropic", "openai", "google", "openai_compatible")
+PROVIDERS = ("anthropic", "openai", "google", "qwen", "xai", "openai_compatible")
 # Optional per-model settings in `models:` besides id, label and provider.
-MODEL_OPTIONS = ("base_url", "api_key_env", "max_tokens", "vision", "tools", "context")
+MODEL_OPTIONS = ("base_url", "api_key_env", "max_tokens", "vision", "tools", "context",
+                 "reasoning_effort", "thinking_level", "vision_max_tokens", "effort", "thinking")
+# Claude models: `effort` is output_config.effort; `thinking` is the thinking type. Which pairs a model
+# accepts is the API's rule (Haiku 5.5: disabled at effort high or below; Sonnet 5.5: between_tools).
+CLAUDE_EFFORTS = ("low", "medium", "high", "xhigh", "max")
+CLAUDE_THINKING = ("adaptive", "disabled", "between_tools")
 
 
 def infer_provider(model_id: str) -> str | None:
@@ -42,6 +62,10 @@ def infer_provider(model_id: str) -> str | None:
         return "openai"
     if name.startswith(("gemini", "gemma")):
         return "google"
+    if name.startswith("qwen"):
+        return "qwen"
+    if name.startswith("grok"):
+        return "xai"
     return None
 
 
@@ -57,12 +81,16 @@ def normalize_model(entry) -> dict:
         raise ValueError(f"models: {model['id']} needs a provider: one of {', '.join(PROVIDERS)}")
     model["provider"] = provider
     model.update({k: entry[k] for k in MODEL_OPTIONS if entry.get(k) is not None})
+    if model.get("effort") is not None and model["effort"] not in CLAUDE_EFFORTS:
+        raise ValueError(f"models: {model['id']}: effort is one of {', '.join(CLAUDE_EFFORTS)}")
+    if model.get("thinking") is not None and model["thinking"] not in CLAUDE_THINKING:
+        raise ValueError(f"models: {model['id']}: thinking is one of {', '.join(CLAUDE_THINKING)}")
     return model
 
 # Developer API tiers: the public name -> the model that runs it, and what a step costs in credits.
 # The mapping is internal; API responses only ever show the tier name.
 DEFAULT_API_TIERS = {
-    "fast": {"model": "claude-haiku-4-5-20251001", "credits_per_step": 1},
+    "fast": {"model": "claude-haiku-5-5", "credits_per_step": 1},
     "balanced": {"model": "claude-sonnet-5-5", "credits_per_step": 3},
     "best": {"model": "claude-opus-5-5", "credits_per_step": 10},
 }
@@ -78,8 +106,8 @@ DEFAULT_SENSITIVE_APPS = [
 
 FAST_PATH_MODES = ("off", "fast_tier", "on")
 
-REMOVED_KEYS = {"hotkey"}
-SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
+REMOVED_KEYS = {"hotkey", "whisper_model"}
+SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "qwen_api_key", "xai_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
 
 CONFIG_LOCATIONS = [
     Path("config.yaml"),
@@ -91,12 +119,14 @@ CONFIG_LOCATIONS = [
 class Config:
     # Agent
     model: str = "claude-sonnet-5-5"
-    resolver_model: str = "claude-haiku-4-5-20251001"
+    resolver_model: str = "claude-haiku-5-5"
     # Models the dashboard may switch a phone to (an allowlist; anything else is refused):
     # {id, label, provider} plus optional base_url, api_key_env, max_tokens, vision, tools, context.
     models: list[dict] = field(default_factory=lambda: [dict(m) for m in DEFAULT_MODELS])
     # Default endpoint for `openai_compatible` models without their own base_url (not a secret).
     openai_compatible_base_url: str | None = None
+    qwen_base_url: str = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+    xai_base_url: str = "https://api.x.ai/v1"
     max_steps: int = 40
     keep_screenshots: int = 2
     # Vision-step speedups (docs/benchmarks.md, "Vision steps"). Each can be switched off to compare.
@@ -231,8 +261,6 @@ class Config:
 
     # Spoken replies on the Mac (macOS `say`)
     speak: bool = True
-    # Whisper model for the dashboard's mic button: tiny.en | base.en | small.en | medium.en
-    whisper_model: str = "base.en"
     voice: str | None = None
 
     # Phone-side web page
@@ -244,6 +272,8 @@ class Config:
     api_key: str | None = None  # ANTHROPIC_API_KEY
     openai_api_key: str | None = None
     google_api_key: str | None = None  # GEMINI_API_KEY or GOOGLE_API_KEY
+    qwen_api_key: str | None = None  # QWEN_API_KEY or DASHSCOPE_API_KEY
+    xai_api_key: str | None = None  # XAI_API_KEY
     compatible_api_key: str | None = None  # OPENAI_COMPATIBLE_API_KEY (often not needed locally)
     workspace_id: str | None = None
     jev_api_key: str | None = None
@@ -292,6 +322,10 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.fast_path = os.environ["OPENMOB_FAST_PATH"].strip().lower()
     cfg.openai_api_key = os.environ.get("OPENAI_API_KEY")
     cfg.google_api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    cfg.qwen_api_key = os.environ.get("QWEN_API_KEY") or os.environ.get("DASHSCOPE_API_KEY")
+    cfg.xai_api_key = os.environ.get("XAI_API_KEY")
+    cfg.qwen_base_url = os.environ.get("QWEN_BASE_URL", cfg.qwen_base_url)
+    cfg.xai_base_url = os.environ.get("XAI_BASE_URL", cfg.xai_base_url)
     cfg.compatible_api_key = os.environ.get("OPENAI_COMPATIBLE_API_KEY")
     cfg.openai_compatible_base_url = os.environ.get("OPENAI_COMPATIBLE_BASE_URL", cfg.openai_compatible_base_url)
     cfg.adb_serial = os.environ.get("ANDROID_SERIAL", cfg.adb_serial)

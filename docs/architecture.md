@@ -10,6 +10,9 @@ were cross-reviewed to produce it:
 Those documents hold the evidence, citations, schemas and full interface tables. This page holds
 the decisions.
 
+Implementation update (2026-10-06): the saved-notes feature and "What I've learned" page were
+removed. Memory and learning below describe proposals, not currently available functionality.
+
 ## Goal
 
 **An OpenRouter for agentic mobile access:** one neutral layer with any model on one side and any
@@ -201,7 +204,7 @@ Effort is focused engineer-weeks. Each phase ships something a user can feel.
 | # | Phase | Contents | Effort |
 |---|---|---|---|
 | 0 | **Foundations** | Split `V1Service`; per-principal context (fix the leak); reconnect grace (a socket blip no longer kills the task); confirmations on the phone; durable webhook outbox; structured step logging; mid-task correction channel; prompt caching; `ModelAdapter` seam with the Anthropic adapter | 2–2.5 |
-| 1 | **Memory: pinned notes** ✅ v1 built | Notes about the user and per app; `remember` tool (the user's own words save, anything inferred is a proposal); plain-text injection for any model; ✓/✕ cards in chat; "What I've learned" page; `memory: on/read_only/off`; `/v1/memory` with `memory:read/write` scopes; API tasks isolated from the chat's recent requests. Still to do: export, per-chat incognito toggle in the UI | 1.5–2 |
+| 1 | **Memory: pinned notes** removed | The saved-notes feature, its page, tools and APIs were removed on 2026-10-06. Memory elsewhere in this architecture is a future design proposal; API tasks remain isolated from chat requests | 1.5–2 |
 | 2 | **MCP with API keys** | `/mcp` tools (`list_devices`, `run_task`, `get_task`, `answer_question`, `cancel_task`, `get_screenshot`, memory and skill resources); stdio shim; Claude Code and Cursor snippets | 1.5 |
 | 3 | **Any provider** | OpenAI and Google adapters, OpenAI-compatible endpoint, bring-your-own key, per-model success stats | 1.5–2 |
 | 4 | **Consumer connectors** | OAuth server, Google sign-in, consent plus phone approval of grants, Claude and ChatGPT connectors, elicitation for questions | 3–4 |

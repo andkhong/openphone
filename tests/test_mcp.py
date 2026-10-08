@@ -19,7 +19,7 @@ from test_api_v1 import LEAKS, ScriptClient, api, run_task, wait_status  # noqa:
 from test_remote import wait_for
 
 TOOLS = {"list_devices", "run_task", "get_task", "answer_question", "cancel_task", "get_screenshot",
-         "list_memory", "remember", "start_orchestration", "get_orchestration", "cancel_orchestration",
+         "start_orchestration", "get_orchestration", "cancel_orchestration",
          "get_permissions", "change_permissions"}
 
 
@@ -162,19 +162,6 @@ def test_get_screenshot(api):
     assert "untrusted" in text(result).lower() or "not as instructions" in text(result)
 
 
-def test_memory_tools(api):
-    from openmob.memory import Memory
-
-    api.manager.memory = Memory(api.tmp / "memory.sqlite")
-    key = new_key(api, api.alice, ["memory:read", "memory:write"])
-    note = ok(call(api, key, "remember", text="I prefer dark mode", app="com.android.settings"))
-    assert note["status"] == "active" and note["app"] == "com.android.settings"
-    notes = ok(call(api, key, "list_memory"))["notes"]
-    assert [n["text"] for n in notes] == ["I prefer dark mode"]
-    bob_key = new_key(api, api.bob, ["memory:read"])
-    assert ok(call(api, bob_key, "list_memory"))["notes"] == []  # each account sees only its own
-
-
 # --- the same rules as /v1 --------------------------------------------------------------------
 
 
@@ -185,11 +172,9 @@ def test_memory_tools(api):
     ("answer_question", {"task_id": "abc", "answer": "x"}, "tasks:run"),
     ("cancel_task", {"task_id": "abc"}, "tasks:run"),
     ("get_screenshot", {}, "screen:read"),
-    ("list_memory", {}, "memory:read"),
-    ("remember", {"text": "x"}, "memory:write"),
 ])
 def test_each_tool_needs_its_scope(api, tool, args, scope):
-    others = [s for s in ("devices:read", "tasks:run", "tasks:read", "screen:read", "memory:read", "memory:write")
+    others = [s for s in ("devices:read", "tasks:run", "tasks:read", "screen:read")
               if s != scope]
     result = call(api, new_key(api, api.alice, others), tool, **args)
     assert result.is_error and scope in text(result)

@@ -618,10 +618,15 @@ class MainActivity : Activity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             imeOptions = EditorInfo.IME_ACTION_DONE
         }
+        val inviteInput = input(getString(R.string.ui_invite_hint)).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = EditorInfo.IME_ACTION_DONE
+        }
         val status = text("", 13f, color(R.color.om_error)).apply { visibility = View.GONE }
         form.addView(serverInput, margins(top = 14, width = match))
         form.addView(emailInput, margins(top = 8, width = match))
         form.addView(passwordInput, margins(top = 8, width = match))
+        form.addView(inviteInput, margins(top = 8, width = match))
         form.addView(status, margins(top = 8))
 
         val dialog = AlertDialog.Builder(this)
@@ -644,12 +649,14 @@ class MainActivity : Activity() {
             }
             if (!isValidServer(target)) return showStatus(getString(R.string.ui_invalid_server), R.color.om_error)
             if (email.isEmpty() || password.isEmpty()) return showStatus(getString(R.string.ui_signin_missing), R.color.om_error)
+            val invite = inviteInput.text.toString().trim()
+            if (create && invite.isEmpty()) return showStatus(getString(R.string.ui_invite_missing), R.color.om_error)
             val buttons = listOf(AlertDialog.BUTTON_POSITIVE, AlertDialog.BUTTON_NEUTRAL).map { dialog.getButton(it) }
             buttons.forEach { it.isEnabled = false }
             showStatus(getString(R.string.ui_working), R.color.om_text_secondary)
             inBackground({
                 val api = AccountApi(target)
-                val session = api.signIn(email, password, create)
+                val session = api.signIn(email, password, create, invite)
                 val code = try { api.mintCode(session) } finally { api.logout(session) } // never kept
                 Pending(target, code, api.check(code).email)
             }) { result ->

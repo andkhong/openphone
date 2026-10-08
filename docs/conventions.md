@@ -12,7 +12,7 @@ The rules that hold across the whole API.
   fields you don't know rather than failing on them. The same goes for new webhook event types and
   new `reason` values.
 - **Sizes** are limited per field rather than per request: an instruction is 1–2000 characters, an
-  answer up to 500, a memory note up to 300, a webhook URL up to 500, an `Idempotency-Key` up to
+  answer up to 500, a webhook URL up to 500, an `Idempotency-Key` up to
   255, and an orchestration up to 10 steps. API key names are trimmed to 60 characters.
 
 ## Ids
@@ -23,7 +23,6 @@ Treat ids as opaque strings; these formats are for recognising them, not parsing
 |---|---|---|
 | Task | 12 hex characters | `bce01b5f5406` |
 | Orchestration | `orc_` + 16 hex | `orc_c33d8d6dd6d642db` |
-| Memory note | 12 hex | `799fd944c960` |
 | API key id | 8 hex; the key itself is `om_live_<id>_<secret>` | `2a6e6485` |
 | Phone | `app-` + the id the phone registered with | `app-3f2a9c` |
 | Webhook delivery | `dlv_` + 24 hex | `dlv_bb641c8f1e9f03e95c279497` |
@@ -68,12 +67,10 @@ a second task (see [Idempotent retries](api.md#idempotent-retries)).
 | `429 too_many_tasks` | Yes, once one of the key's tasks has finished (there's no `Retry-After`) |
 | `429 too_many_orchestrations` | Yes, once one of the runs has ended |
 | `429 daily_quota`, `429 credits_exhausted` | Not before `resets_at` (midnight UTC) |
-| `501` | No: the feature isn't enabled on this server |
 | `503`, and other `5xx` | Yes, with backoff |
 
 `GET` requests and cancels are always safe to repeat. Repeating an answer is harmless: once the task
-has its answer, another gets `409`. Adding a memory note with the same text returns the existing
-note. The [code examples](examples.md) implement this table.
+has its answer, another gets `409`. The [code examples](examples.md) implement this table.
 
 ## Task lifecycle
 

@@ -38,12 +38,14 @@ Create the first account and sign in from the server's command line:
 ```sh
 openmob account add you@example.com --password-file ~/.openmob-password   # generates one if the file is missing
 openmob account link you@example.com     # prints a one-time sign-in link
+openmob account invite                   # prints a one-time invite (link and code) for someone else
 openmob account admin you@example.com    # optional: the /admin page (kill switches, audit log)
 openmob key create you@example.com --name my-agent   # an API key, without the web console
 ```
 
-People can also create an account from the OpenMob app when they pair a phone. Anyone who can
-reach the server can do that, so don't expose a server you don't want others to sign up on.
+Nobody can create an account without an invite. Someone you invite opens the invite link (or enters
+the code at Log in → "Have an invite code?", or in the OpenMob app's Create account), then picks
+their own email and password. Each code works once and expires after 7 days; only its hash is stored.
 
 Admin rights can only be granted from the server's command line. An admin can switch off any API
 key or a whole account's API access from `/admin`.
@@ -78,6 +80,38 @@ The server's operator chooses which AI model providers run tasks, and which mode
 
 Map the tiers to models with `api_tiers` in `config.yaml` (see `config.example.yaml`). API
 callers only ever see the tier names, never which model or provider runs them.
+
+The dashboard's model picker includes Claude, GPT-6.1 Sol, GPT-6 Astra, GPT-6 Luna, Gemini 3.8 Flash,
+Qwen 3.8 Flash, and Grok 4.7 by default, grouped by provider. OpenAI's models use `OPENAI_API_KEY`;
+Gemini uses `GEMINI_API_KEY` (or `GOOGLE_API_KEY`); Qwen uses `QWEN_API_KEY` (or `DASHSCOPE_API_KEY`);
+Grok uses `XAI_API_KEY`. Qwen and Grok use the OpenAI SDK. Install the SDKs with
+`pip install -e '.[openai,gemini]'`, set the keys
+in the server's environment, and restart the server. The Docker image includes both SDKs.
+Models without a configured provider key stay visible but disabled. ChatGPT/Codex, Gemini, Qwen and Grok app
+subscriptions do not configure these API connections.
+
+An explicit `models:` list replaces the defaults; add the desired entries from `config.example.yaml`
+if you maintain a custom allowlist. GPT-6 and Codex model IDs use OpenAI's Responses API, retaining
+encrypted reasoning between tool calls with response storage disabled. Other OpenAI models and
+OpenAI-compatible endpoints keep the existing Chat Completions path. The default Gemini model
+uses low thinking; the new reasoning models have an 8192-token budget for thinking and tool output,
+overriding the usual 512-token vision-step cap. These settings can be changed per model.
+
+Qwen uses Model Studio's OpenAI-compatible Chat Completions API with thinking disabled for the
+synchronous phone loop. Its default endpoint is Singapore:
+`https://dashscope-intl.aliyuncs.com/compatible-mode/v1`. Set `QWEN_BASE_URL` (or `qwen_base_url`
+in YAML) to the [endpoint for your API key's region/workspace](https://www.alibabacloud.com/help/en/model-studio/base-url).
+Grok uses xAI's Responses API at `https://api.x.ai/v1`, with low reasoning and encrypted reasoning
+preserved between steps; override it with `XAI_BASE_URL` or `xai_base_url`. Each model can also
+override its `base_url` and `api_key_env`. Local Qwen deployments still use `provider: openai_compatible`
+with their own endpoint and capabilities, as shown in `config.example.yaml`.
+
+Model/API references: [GPT-6.1 Sol](https://developers.openai.com/api/docs/models/gpt-6.1-sol),
+[GPT-6 Astra](https://developers.openai.com/api/docs/models/gpt-6-astra),
+[GPT-6 Luna](https://developers.openai.com/api/docs/models/gpt-6-luna), and
+[Gemini 3.8 Flash](https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash),
+[Qwen vision and tools](https://www.alibabacloud.com/help/en/model-studio/vision-model), and
+[Grok 4.7](https://docs.x.ai/developers/grok-4-7).
 
 ## Configuration
 
@@ -123,7 +157,6 @@ Everything lives in one data directory: `~/.config/openmob`, or `OPENMOB_DATA_DI
 | `accounts.json` | Accounts, paired phones, API key hashes, webhook URLs and signing secrets, settings |
 | `ledger.sqlite` | API tasks, credits, the audit log, the webhook outbox, idempotency keys, orchestrations |
 | `history.sqlite` | Chat history: the text of tasks and their outcomes |
-| `memory.sqlite` | Memory notes |
 
 Back up the whole directory, with the server stopped or using SQLite's online backup
 (`sqlite3 ledger.sqlite ".backup ledger.bak"`). `accounts.json` contains secrets (webhook signing

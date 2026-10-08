@@ -52,14 +52,8 @@ class TaskIn(BaseModel):
     instruction: NonBlank = Field(min_length=1, max_length=MAX_INSTRUCTION)
     tier: str | None = None
     max_steps: int | None = Field(default=None, ge=1)
-    memory: Literal["on", "read_only", "off"] = "on"  # use and/or add to the owner's pinned notes
     # When the phone asks its owner; ≤ the key's max_mode and the phone's ceiling. None: the phone's default.
     permission_mode: PermissionMode | None = None
-
-
-class NoteIn(BaseModel):
-    text: str = Field(min_length=1, max_length=300)
-    app: str | None = None  # a package name: a note about that app
 
 
 class AnswerIn(BaseModel):
@@ -147,7 +141,7 @@ class DeveloperApi:
                         idempotency_key: str | None = Header(default=None)) -> dict:
             request = {"device_id": device_id, **body.model_dump()}
             task, replayed = s.idempotent(p, idempotency_key, request, lambda: s.create_task(
-                p, device_id, body.instruction, body.tier, body.max_steps, body.memory,
+                p, device_id, body.instruction, body.tier, body.max_steps,
                 permission_mode=body.permission_mode))
             if replayed:  # a retry with the same Idempotency-Key and body: the original response, as 200
                 response.status_code = 200
@@ -226,18 +220,6 @@ class DeveloperApi:
         def screenshot(device_id: str, p: Principal = Depends(self.need("screen:read"))) -> Response:
             # Never stored, never cached: it goes straight from the phone to the caller.
             return Response(s.screenshot(p, device_id), media_type="image/jpeg", headers={"Cache-Control": "no-store"})
-
-        @r.get("/memory")
-        def list_memory(p: Principal = Depends(self.need("memory:read"))) -> dict:
-            return s.list_memory(p)
-
-        @r.post("/memory", status_code=201)
-        def add_memory(body: NoteIn, p: Principal = Depends(self.need("memory:write"))) -> dict:
-            return s.add_memory(p, body.text, body.app)
-
-        @r.delete("/memory/{note_id}")
-        def delete_memory(note_id: str, p: Principal = Depends(self.need("memory:write"))) -> dict:
-            return s.delete_memory(p, note_id)
 
         @r.get("/history")
         def history(limit: int = 50, cursor: str | None = None, p: Principal = Depends(self.need("history:read"))) -> dict:

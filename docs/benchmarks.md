@@ -306,7 +306,7 @@ None of this is in the public API's events: per-step token counts stay internal.
 
 `openmob bench` drives an adb phone from its own process. `openmob bench-api` measures what an API
 caller gets instead: every run is a developer-API task on a running server and a real phone. Tiers
-switch per task (`fast` = Haiku 4.5, `balanced` = Sonnet 5.5, `best`), so no server restart is
+switch per task (`fast` = Haiku 5.5, `balanced` = Sonnet 5.5, `best`), so no server restart is
 needed. Permission modes are passed through as `permission_mode` on the task (for servers that support
 them).
 
@@ -319,7 +319,7 @@ openmob bench-api bench/vision_tasks.yaml --url http://localhost:8765 \
 ```
 
 How a run works:
-- `POST /v1/devices/{id}/tasks` with the instruction, the tier (and permission mode), `memory: off`
+- `POST /v1/devices/{id}/tasks` with the instruction, the tier (and permission mode),
   and the task's `max_steps`. Then **one** `GET /v1/tasks/{id}/events` request (SSE) follows it to
   the `done` event. Nothing polls, so a run costs 2 requests (4 with its reset), and the client keeps
   itself under 55 requests a minute (the server allows 60 per key) and honors `Retry-After`.

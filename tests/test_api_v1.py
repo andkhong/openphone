@@ -17,7 +17,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 from conftest import FakeDriver, text_block, tool_use
-from test_hosted import _up, pair, signup
+from test_hosted import STORES, _up, pair, signup
 from test_remote import FakePhone, free_port, new_signer, wait_for
 
 from openmob.accounts import AccountStore
@@ -83,6 +83,7 @@ def api(tmp_path):
     serve_in_background(create_app(manager, store=store, ledger=ledger, webhook_allow_private=True), "127.0.0.1", port)
     base = f"http://127.0.0.1:{port}"
     assert wait_for(lambda: _up(base))
+    STORES[base] = store
     ws = base.replace("http", "ws")
 
     users = {}

@@ -16,7 +16,6 @@ from urllib.parse import quote
 
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
-from ..memory import REMEMBER_INTENT, NoteError, render_app_notes, render_user_notes
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError, GateRefused, OwnerDialog, PhoneLocked
 from ..phone.apps import NOT_LAUNCHABLE, AppResolver
@@ -158,9 +157,6 @@ class _TaskState:
     approved: bool = False  # the user just said yes to an ask_user question
     max_steps: int = 0
     blocked: Callable[[str], bool] | None = None  # packages this task may not touch (API safety)
-    memory: str = "on"  # on | read_only (use notes, save none) | off (incognito)
-    notes_package: str | None = None  # the app whose notes were last shown
-    used_notes: list[str] = field(default_factory=list)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
     settle_idle: bool | None = None  # the last adaptive settle: the screen went quiet (False: hit the cap)
     settle_wait: dict | None = None  # the last settle's own wait (auto loading_done), for the step it delayed
@@ -222,8 +218,6 @@ class Agent:
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
         self.usage = Usage()  # tokens for the task in progress (or the last one)
         self.platform = "android"  # set by the DeviceManager from the phone's hello (android | ios)
-        self.memory = None  # Memory store (pinned notes), set by the DeviceManager; None: no memory
-        self.account_id: str | None = None  # whose notes to use (the phone's owner)
         self.model = config.model  # chosen per phone from the dashboard
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         self.timer = StepTimer()  # where each step's time goes (measurement only)
@@ -255,13 +249,12 @@ class Agent:
         model: str | None = None,
         max_steps: int | None = None,
         blocked: Callable[[str], bool] | None = None,
-        memory: str = "on",
         isolated: bool = False,
         permissions: TaskPermissions | None = None,
     ) -> AgentResult:
         """`model` and `max_steps` override this phone's settings for one task; `blocked` names
         packages the task must not open or operate (the task stops if one comes to the front).
-        `memory`: on | read_only | off. `isolated`: a caller other than the phone's chat (e.g. an
+        `isolated`: a caller other than the phone's chat (e.g. an
         API key) that must neither see nor add to the chat's recent requests. `permissions`: the
         task's permission mode against the phone's live settings (default: config's mode, ceiling auto)."""
         self.usage = Usage()
@@ -273,7 +266,7 @@ class Agent:
             blocked = self._with_sensitive(blocked)
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
-                           memory=memory if self.memory is not None else "off", perms=perms)
+                           perms=perms)
         state.fast = self._fast_enabled()
         self._task_variant = self._variant(state.fast)
         self._gate_setup(state)
@@ -292,8 +285,6 @@ class Agent:
         result.fast_steps = state.fast_steps
         result.prompts = state.prompts
         result.mode = perms.mode()
-        if state.used_notes:
-            self.memory.mark_used(state.used_notes)
         if not isolated:
             self.recent.append((task, result.summary))
         return result
@@ -315,8 +306,7 @@ class Agent:
         nudged = False
 
         mode = state.perms.mode()
-        system = (system_prompt(self.platform) + mode_notes(mode) + (BRIEF_REPLIES if self.config.vision_brief else "")
-                  + self._user_notes(state))
+        system = system_prompt(self.platform) + mode_notes(mode) + (BRIEF_REPLIES if self.config.vision_brief else "")
         self._tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
@@ -447,7 +437,7 @@ class Agent:
         With vision_stream (and a provider that streams), `act` runs each tool call as soon as its
         block is complete, before the reply ends."""
         full = route.spec.max_tokens
-        cap = self.config.vision_max_tokens
+        cap = int(route.spec.options.get("vision_max_tokens", self.config.vision_max_tokens))
         limit = min(cap, full) if cap > 0 else full
         response = None
         if act is not None and self.config.vision_stream and hasattr(route.adapter, "stream"):
@@ -652,23 +642,7 @@ class Agent:
         words = [el.text for el in obs.elements if el.cls == "OCRText"]
         return describe_screen(obs.package, labels, words)
 
-    # --- memory (plain text, so it works the same with any model) --------------
-
-    def _user_notes(self, state: _TaskState) -> str:
-        if state.memory == "off":
-            return ""
-        notes = self.memory.user_notes(self.account_id)
-        state.used_notes.extend(n["id"] for n in notes)
-        return render_user_notes(notes)
-
-    def _app_notes(self, state: _TaskState, obs: Observation) -> str:
-        """The user's notes about the app in front, once each time that app comes to the front."""
-        if state.memory == "off" or not obs.package or obs.package == state.notes_package:
-            return ""
-        state.notes_package = obs.package
-        notes = self.memory.app_notes(self.account_id, obs.package)
-        state.used_notes.extend(n["id"] for n in notes)
-        return render_app_notes(obs.package, notes)
+    # --- events and screen context ------------------------------------------
 
     def _event(self, kind: str, message: str, data: dict) -> None:
         """An event with structured details for IOs that take them (the dashboard's Coordinator)."""
@@ -676,24 +650,6 @@ class Agent:
             self.io.event(kind, message, data=data)
         except TypeError:  # a plain UserIO (terminal, tests): kind and message only
             self.io.event(kind, message)
-
-    def _remember(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
-        if state.memory != "on":
-            return Outcome("Memory is off for this task, so nothing was saved.", settle=0)
-        package = obs.package if args.get("about_app") else None
-        # The user's own words asked for it: save now. Otherwise (the agent inferred it, possibly from
-        # screen text) it's only a proposal the user approves, so nothing on screen can plant a note.
-        status = "active" if REMEMBER_INTENT.search(state.task) else "proposed"
-        try:
-            note = self.memory.add(self.account_id, args["text"], package=package, status=status, source="agent" if status == "proposed" else "user")
-        except NoteError as exc:
-            return Outcome(f"Not saved: {exc}", is_error=True, settle=0)
-        where = f" (about {package})" if package else ""
-        if note["status"] == "active":
-            self._event("memory", f"Remembered{where}: {note['text']}", {"note_id": note["id"], "status": "active"})
-            return Outcome(f"Saved to memory{where}: {note['text']}", settle=0)
-        self._event("memory", f"Remember this{where}? {note['text']}", {"note_id": note["id"], "status": "proposed"})
-        return Outcome(f"Suggested for memory{where}; the user will confirm it: {note['text']}", settle=0)
 
     def _rich_labels(self, obs: Observation) -> bool:
         """A screen the element list describes well: enough labeled accessibility elements, and no
@@ -716,12 +672,12 @@ class Agent:
         except (OSError, ValueError) as exc:  # an undecodable frame: keep the full one
             self.io.event("error", f"Screenshot not resized: {exc}")
 
-    def _obs_blocks(self, obs: Observation, notes: str = "") -> list[dict]:
+    def _obs_blocks(self, obs: Observation) -> list[dict]:
         self._right_size(obs)
         header = (
             f"{OBS_PREFIX} foreground app {obs.package or 'unknown'}; "
             f"screenshot is {obs.shot.width}x{obs.shot.height} px."
-        ) + notes
+        )
         if obs.elements:
             body = "UI elements (OCRText = words read from the screenshot; centers are screenshot pixels):\n" + format_elements(obs.elements, obs.shot)
         else:
@@ -751,14 +707,13 @@ class Agent:
         last = messages[-1]
         if isinstance(last["content"], str):
             last["content"] = [{"type": "text", "text": last["content"]}]
-        last["content"].extend(self._obs_blocks(obs, self._app_notes(state, obs)))
+        last["content"].extend(self._obs_blocks(obs))
 
     # --- mid-task corrections ("steer") ----------------------------------------
 
     def _apply_corrections(self, state: _TaskState, messages: list[dict]) -> None:
         """What the user said while the task ran (Coordinator.steer) joins the next user message.
-        It's the user's own words, so it also counts as part of the request (the risky-tap and
-        "remember" checks read it)."""
+        It's the user's own words, so it also counts as part of the request for risky-tap checks."""
         take = getattr(self.io, "take_corrections", None)
         for text in take() if take else []:
             line = f"User correction: {text}"
@@ -1073,9 +1028,6 @@ class Agent:
 
         if name == "wait_until":
             return self._wait_until(args, obs, state)
-
-        if name == "remember":
-            return self._remember(args, obs, state)
 
         if name == "ask_user":
             answer = self.timer.timed("wait", self.io.ask, args["question"]).strip()

@@ -210,8 +210,11 @@ step that needs one.
   the dashboard click.
 - **Unpairing** works from the dashboard (Remove), from the phone (with its device key, no session),
   or from the API's admin tools; each closes the phone's connections at once.
-- **Sign-up doesn't reveal accounts.** `POST /api/auth/signup` gives the same reply whether or not
-  the email already had an account, and never signs in. With no email sending yet, the remaining
+- **Sign-up needs an invite.** `POST /api/auth/signup` requires a one-time code from
+  `openmob account invite` (stored hashed, 7-day expiry). A missing, used or expired code is refused
+  before any account is touched.
+- **Sign-up doesn't reveal accounts.** With a valid invite, `POST /api/auth/signup` gives the same
+  reply whether or not the email already had an account (the invite is used up either way), and never signs in. With no email sending yet, the remaining
   signal is whether signing in with that password works afterwards, which is the rate-limited
   sign-in (10 failures per address or email in 10 minutes).
 
@@ -499,7 +502,7 @@ developer console still show every key's work. Rotating a key keeps it the same 
 
 ## Audit log
 
-Every key change, task, answer, approval, cancel, screenshot, memory change, webhook delivery,
+Every key change, task, answer, approval, cancel, screenshot, webhook delivery,
 setting change and phone connection replaced from a new address is written to an append-only audit log. Your account's entries are under **Logs** in
 the developer console, with the key that did each one. The log stores a hash of each instruction,
 never its text.
@@ -518,7 +521,6 @@ everything forever; one job deletes all of it every 6 hours):
 | Live task records | Server memory | Until they age out (200 per phone) or the server restarts |
 | Billing totals: task id, key, phone, tier, steps, credits, status, an instruction **hash** | `api_tasks` in the ledger | Kept (no text) |
 | Audit log (actions, with instruction **hashes**) | The ledger | Kept (no text) |
-| Memory notes | `memory.sqlite` | Until you delete them (they're your saved knowledge, not task logs) |
 
 - Screenshots are never stored.
 - To carry out a task, the phone's screen content is processed by the AI providers that power

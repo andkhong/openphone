@@ -7,7 +7,7 @@ the phone-side gatekeeper and the build with it can be tested separately and swi
 |---|---|---|
 | Code | `~/Desktop/openmob` on `main` | `~/Desktop/openmob-gatekeeper`, a git worktree detached at `origin/gatekeeper-p1` |
 | Python | its own `.venv` | its own `.venv` (an editable install of that folder, so it imports only its own code) |
-| Data (accounts, history, memory, ledger) | `~/.config/openmob` | `~/.config/openmob-gatekeeper` |
+| Data (accounts, history, ledger) | `~/.config/openmob` | `~/.config/openmob-gatekeeper` |
 | Phone app | the standard build | the gatekeeper build (same app id: a phone holds one or the other) |
 
 The server and the app must match: the gatekeeper app speaks a newer protocol (phone-worded approvals,

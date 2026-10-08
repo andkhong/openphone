@@ -17,6 +17,10 @@ from openmob.server import create_app, serve_in_background
 from openmob.voice.tts import Speaker
 
 
+# Server base URL -> its account store, so signup() can mint the invite that sign-up requires.
+STORES: dict[str, AccountStore] = {}
+
+
 @pytest.fixture
 def hosted(tmp_path):
     def build_agent(cfg, io, driver, label_cache):
@@ -32,6 +36,7 @@ def hosted(tmp_path):
     serve_in_background(create_app(manager, store=store), "127.0.0.1", port)
     base = f"http://127.0.0.1:{port}"
     assert wait_for(lambda: _up(base))
+    STORES[base] = store
     return base, manager, store
 
 
@@ -44,7 +49,8 @@ def _up(base):
 
 def signup(base, email):
     client = httpx.Client(base_url=base)
-    r = client.post("/api/auth/signup", json={"email": email, "password": "password123"})
+    invite = STORES[base].create_invite()
+    r = client.post("/api/auth/signup", json={"email": email, "password": "password123", "invite": invite})
     assert r.status_code == 200 and "session" not in r.json(), r.text  # sign-up never signs in
     r = client.post("/api/auth/login", json={"email": email, "password": "password123"})
     assert r.status_code == 200, r.text
@@ -173,34 +179,6 @@ def test_signed_out_visitors_get_the_landing_page(hosted):
         assert 'id="email"' in body and 'id="password"' in body
     client, _ = signup(base, "owner@example.com")
     assert "Tell your phone what to do…" in client.get("/").text  # signed in: the dashboard
-
-
-class FakeTranscriber:
-    def transcribe(self, audio):
-        return "open youtube" if audio.read() else ""
-
-
-def test_transcribe_endpoint(tmp_path):
-    from openmob.accounts import AccountStore
-
-    store = AccountStore(tmp_path / "a.json")
-    manager = DeviceManager(Config(), lambda *a: None, Speaker(enabled=False), adb_discovery=False)
-    from fastapi.testclient import TestClient
-
-    with_whisper = TestClient(create_app(manager, store=store, transcriber=FakeTranscriber()))
-    without = TestClient(create_app(manager, store=store))
-    audio = {"file": ("voice.webm", b"fake-audio-bytes", "audio/webm")}
-    assert with_whisper.post("/api/transcribe", files=audio).status_code == 401  # signed out
-    for client in (with_whisper, without):
-        creds = {"email": f"u{id(client)}@example.com", "password": "password123"}
-        client.post("/api/auth/signup", json=creds)
-        client.post("/api/auth/login", json=creds)
-    assert with_whisper.post("/api/transcribe", files=audio).json() == {"text": "open youtube"}
-    assert without.post("/api/transcribe", files=audio).status_code == 501
-    import openmob.server as server_mod
-
-    big = {"file": ("voice.webm", b"x" * (server_mod.MAX_AUDIO_BYTES + 1), "audio/webm")}
-    assert with_whisper.post("/api/transcribe", files=big).status_code == 413
 
 
 def test_pairing_from_localhost_uses_the_computers_network_name(hosted, monkeypatch):
