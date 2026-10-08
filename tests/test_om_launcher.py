@@ -77,5 +77,6 @@ def test_run_loads_saved_provider_settings_only_from_a_private_file(tmp_path, mo
     run = subprocess.run(["bash", str(launcher), "run", "standard"], env=env, capture_output=True, text=True)
     if mode == 0o600:
         assert run.returncode == 0 and json.loads(report.read_text()) == settings
+        assert "ANTHROPIC_API_KEY is set neither" in run.stderr  # no Claude key among these settings
     else:
         assert run.returncode != 0 and "chmod 600" in run.stderr and not report.exists()

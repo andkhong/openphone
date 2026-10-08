@@ -417,3 +417,22 @@ def test_done_via_is_stored_and_reported(tmp_path):
     groups = summarize(h.step_timings())
     assert [g["variant"] for g in groups] == [variant] and groups[0]["done_via"] == {"classifier": 1, "vision": 0}
     assert "finished by: 1 jev (no vision confirmation), 0 vision" in format_report(groups)
+
+
+def test_an_unavailable_model_falls_back_only_to_claude(monkeypatch, tmp_path, capsys):
+    from openmob.main import build_agent
+
+    monkeypatch.chdir(tmp_path)
+    for name in ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "GOOGLE_API_KEY", "TYPESAFE_API_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    # Only OpenAI is set up: the Claude default stays, with a warning, instead of becoming a GPT model.
+    cfg = Config()
+    cfg.openai_api_key = "o"
+    agent = build_agent(cfg, RecordingIO(), driver=FakeDriver())
+    assert agent is not None and cfg.model == "claude-sonnet-5-5"
+    assert "won't switch to another provider" in capsys.readouterr().out
+    # A non-Claude default without its key falls back to Claude when Claude is set up.
+    cfg = Config(model="gpt-6.1-sol")
+    cfg.api_key = "a"
+    build_agent(cfg, RecordingIO(), driver=FakeDriver())
+    assert cfg.model.startswith("claude-") and "using claude-" in capsys.readouterr().out

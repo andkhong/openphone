@@ -30,12 +30,16 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
 
     router = ModelRouter(cfg)
     if not router.available(cfg.model):
-        usable = [m["id"] for m in cfg.models if router.available(m["id"])]
-        if not usable:
-            sys.exit("No model provider is set up. Set ANTHROPIC_API_KEY, OPENAI_API_KEY or GEMINI_API_KEY "
-                     "(or a base_url for an OpenAI-compatible endpoint).")
-        print(f"⚠️  {cfg.model} isn't available here (no key for its provider); using {usable[0]}.", flush=True)
-        cfg.model = usable[0]
+        # Fall back only to Claude. Never switch to another provider on our own: the phone's screenshots
+        # would go to a company the owner didn't choose. Without Claude, tasks fail with a clear reason.
+        claude = [m["id"] for m in cfg.models if m.get("provider") == "anthropic" and router.available(m["id"])]
+        if claude:
+            print(f"⚠️  {cfg.model} isn't available here (no key for its provider); using {claude[0]}.", flush=True)
+            cfg.model = claude[0]
+        else:
+            print(f"⚠️  {cfg.model} isn't available here and no Claude model is set up: tasks will fail until you set "
+                  "ANTHROPIC_API_KEY (and ANTHROPIC_WORKSPACE_ID if your key needs one). OpenMob won't switch "
+                  "to another provider by itself.", flush=True)
     # App names are picked by a small model: the resolver model if its provider is set up, else the default.
     picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
@@ -77,6 +81,9 @@ def cmd_run(cfg: Config, args) -> None:
     from .history import History
 
     history = History()  # saved chats: the data agents will learn from
+    if not cfg.api_key:
+        print("⚠️  ANTHROPIC_API_KEY isn't set: Claude models are unavailable, and OpenMob doesn't fall back to other "
+              "providers. Set it (and ANTHROPIC_WORKSPACE_ID if your key needs one), then restart.", flush=True)
     manager = DeviceManager(cfg, build_agent, speaker, adb_discovery=not args.no_adb, history=history)
     sessions = manager.refresh()
     for s in sessions:

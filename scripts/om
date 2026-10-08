@@ -76,6 +76,9 @@ if keys_file.is_file():
         if value:
             saved[name] = value
     os.environ.update(saved)
+if not os.environ.get('ANTHROPIC_API_KEY'):
+    print('om: warning: ANTHROPIC_API_KEY is set neither in this terminal nor in provider-keys.env; Claude models '
+          'will be unavailable.', file=sys.stderr)
 from openmob.config import load_config
 import openmob.main as m
 cfg_load = m.load_config
