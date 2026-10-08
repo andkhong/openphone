@@ -1,4 +1,4 @@
-"""OpenMob web dashboard: live phone screens, voice/text commands, agent activity.
+"""OpenMob web dashboard: live phone screens, text commands, agent activity.
 
 Serve it on the LAN, or publicly over HTTPS with `openmob run --public`.
 """
@@ -6,7 +6,6 @@ Serve it on the LAN, or publicly over HTTPS with `openmob run --public`.
 from __future__ import annotations
 
 import asyncio
-import io
 import os
 import socket
 import subprocess
@@ -17,7 +16,7 @@ import weakref
 from pathlib import Path
 from typing import Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
@@ -35,7 +34,7 @@ STATIC = Path(__file__).parent / "static"
 # from docs/ (architecture notes and research stay out). Found next to the package (a source checkout)
 # or in the working directory (the Docker image copies docs/ to /app/docs).
 PUBLIC_DOCS = {"quickstart": "quickstart.md", "concepts": "concepts.md", "phone-setup": "phone-setup.md",
-               "api": "api.md", "mcp": "mcp.md", "examples": "examples.md", "memory": "memory.md",
+               "api": "api.md", "mcp": "mcp.md", "examples": "examples.md",
                "webhooks": "webhooks.md", "safety": "safety.md", "conventions": "conventions.md",
                "errors": "errors.md", "testing": "testing.md", "self-hosting": "self-hosting.md"}
 DOCS_DIRS = [Path(os.environ["OPENMOB_DOCS_DIR"])] if os.environ.get("OPENMOB_DOCS_DIR") else []
@@ -99,16 +98,6 @@ class FeedbackIn(BaseModel):
     note: str = ""
 
 
-class NoteIn(BaseModel):
-    text: str
-    package: str | None = None  # set: a note about that app; else about the user
-
-
-class NotePatch(BaseModel):
-    text: str | None = None
-    status: str | None = None  # "active" approves a proposal
-
-
 class RedeemIn(BaseModel):
     code: str
     device_id: str
@@ -164,10 +153,7 @@ def client_ip(request) -> str:
     return request.client.host if request.client else "?"
 
 
-MAX_AUDIO_BYTES = 10 * 1024 * 1024  # about 10 minutes of browser-recorded speech
-
-
-def create_app(manager: DeviceManager, token: str | None = None, store=None, transcriber=None,
+def create_app(manager: DeviceManager, token: str | None = None, store=None,
                ledger=None, webhook_allow_private: bool = False) -> FastAPI:
     """Two modes. Without `store`: one shared token guards everything (local/demo).
     With an AccountStore: users sign in, phones carry their own key, and everyone sees only
@@ -691,20 +677,6 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         owned_session(device_id, request).coordinator.stop()
         return {"result": "stopped"}
 
-    @app.post("/api/transcribe", dependencies=[Depends(require_auth)])
-    async def transcribe(file: UploadFile) -> dict:
-        """The composer's mic: speech in, text out (text goes into the message box, not sent)."""
-        if transcriber is None:
-            raise HTTPException(status_code=501, detail="Speech-to-text isn't installed on this server: pip install -e '.[voice]'")
-        data = await file.read(MAX_AUDIO_BYTES + 1)
-        if len(data) > MAX_AUDIO_BYTES:
-            raise HTTPException(status_code=413, detail="Recording is too long. Keep it under a few minutes.")
-        try:
-            text = await run_in_threadpool(transcriber.transcribe, io.BytesIO(data))
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=f"Couldn't read that recording: {type(exc).__name__}") from None
-        return {"text": text}
-
     @app.get("/api/models", dependencies=[Depends(require_auth)])
     def models() -> dict:
         return model_listing(manager.cfg)
@@ -797,57 +769,6 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None, tra
         if not ok:
             raise HTTPException(status_code=404, detail="Unknown turn.")
         return {"ok": True}
-
-    # --- memory: pinned notes (what the agent remembers about its user) ---------------
-
-    memory = getattr(manager, "memory", None)  # optional: no store, no memory
-
-    def need_memory():
-        if memory is None:
-            raise HTTPException(status_code=501, detail="Memory isn't enabled on this server.")
-        return memory
-
-    @app.get("/memory", response_class=HTMLResponse)
-    def memory_page() -> str:
-        return (STATIC / "memory.html").read_text()  # all data comes from /api/memory
-
-    @app.get("/api/memory", dependencies=[Depends(require_auth)])
-    def list_notes(request: Request) -> dict:
-        return {"notes": need_memory().list(account(request))}
-
-    @app.post("/api/memory", dependencies=[Depends(require_auth)])
-    def add_note(body: NoteIn, request: Request) -> dict:
-        from .memory import NoteError
-
-        try:  # typed by the user themselves: active right away
-            return need_memory().add(account(request), body.text, package=body.package, source="user")
-        except NoteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
-
-    @app.patch("/api/memory/{note_id}", dependencies=[Depends(require_auth)])
-    def edit_note(note_id: str, body: NotePatch, request: Request) -> dict:
-        from .memory import NoteError
-
-        try:
-            note = need_memory().update(account(request), note_id, text=body.text, status=body.status)
-        except NoteError as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from None
-        if note is None:
-            raise HTTPException(status_code=404, detail="Unknown note.")
-        return note
-
-    @app.delete("/api/memory/{note_id}", dependencies=[Depends(require_auth)])
-    def delete_note(note_id: str, request: Request) -> dict:
-        """Delete a note, or dismiss a proposal."""
-        if not need_memory().delete(account(request), note_id):
-            raise HTTPException(status_code=404, detail="Unknown note.")
-        return {"ok": True}
-
-    @app.delete("/api/memory", dependencies=[Depends(require_auth)])
-    def forget_everything(request: Request, confirm: bool = False) -> dict:
-        if not confirm:
-            raise HTTPException(status_code=400, detail="Add ?confirm=true to delete every note.")
-        return {"deleted": need_memory().delete_all(account(request))}
 
     @app.get("/api/devices/{device_id}/status")
     def status(device_id: str, request: Request) -> dict:

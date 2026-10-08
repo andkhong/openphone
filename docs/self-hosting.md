@@ -123,7 +123,6 @@ Everything lives in one data directory: `~/.config/openmob`, or `OPENMOB_DATA_DI
 | `accounts.json` | Accounts, paired phones, API key hashes, webhook URLs and signing secrets, settings |
 | `ledger.sqlite` | API tasks, credits, the audit log, the webhook outbox, idempotency keys, orchestrations |
 | `history.sqlite` | Chat history: the text of tasks and their outcomes |
-| `memory.sqlite` | Memory notes |
 
 Back up the whole directory, with the server stopped or using SQLite's online backup
 (`sqlite3 ledger.sqlite ".backup ledger.bak"`). `accounts.json` contains secrets (webhook signing

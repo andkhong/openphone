@@ -19,8 +19,6 @@ Click the account button (bottom left of the dashboard) → **Developer API & AI
 | `tasks:run` | `cancel_task` |
 | `tasks:read` | `get_task` |
 | `screen:read` | `get_screenshot`. Off by default: the agent sees your screen |
-| `memory:read` | `list_memory` |
-| `memory:write` | `remember` |
 
 The default scopes cover `list_devices`, `run_task`, `get_task`, `answer_question` and
 `cancel_task`. Keep the key in an environment variable, `OPENMOB_API_KEY` below. The console's
@@ -152,8 +150,6 @@ same data for clients that only read text.
 | [`answer_question`](#answer_question) | Answer a question, or decline a risky action | `tasks:run`, `tasks:read` | destructive |
 | [`cancel_task`](#cancel_task) | Stop a task | `tasks:run` | destructive, idempotent |
 | [`get_screenshot`](#get_screenshot) | The phone's screen as an image | `screen:read` | read-only |
-| [`list_memory`](#list_memory) | Your memory notes | `memory:read` | read-only |
-| [`remember`](#remember) | Save a memory note | `memory:write` | |
 | [`start_orchestration`](#several-phones-at-once-orchestrations) | Run steps across several phones | `tasks:run`, `tasks:read` | destructive, open-world |
 | [`get_orchestration`](#several-phones-at-once-orchestrations) | Check a run, optionally waiting | `tasks:read` | read-only |
 | [`cancel_orchestration`](#several-phones-at-once-orchestrations) | Stop a run | `tasks:run` | destructive, idempotent |
@@ -179,7 +175,6 @@ pass.
 | `device_id` | string | the only online phone | Which phone. Needed when several are online |
 | `tier` | string | `balanced` | `fast`, `balanced` or `best` |
 | `max_steps` | integer ≥ 1 | 40 | Stop after this many steps |
-| `memory` | string | `on` | `on`, `read_only` or `off`. See [Memory](memory.md) |
 | `wait_seconds` | integer 0–45 | 45 | How long to wait before returning |
 | `idempotency_key` | string, up to 255 characters | none | Retrying with the same key and arguments returns the first task instead of starting another. See [Idempotent retries](api.md#idempotent-retries) |
 | `permission_mode` | string | the phone's default | `auto`, `ask`, `plan`, `trusted` or `never`: when the phone asks its owner. Looser than your key's `max_mode` or the phone's ceiling: tool error `mode_not_allowed`. See [Permission modes and approvals for agents](#permission-modes-and-approvals-for-agents) |
@@ -254,23 +249,6 @@ your key's `max_mode`. `change_permissions(device_id?, default_mode?, ceiling?, 
 `{"status": "applied", "settings": …}` for a tightening, `{"status": "needs_phone_approval",
 "approval_id": …}` for a loosening. See [Permission modes and approvals for
 agents](#permission-modes-and-approvals-for-agents).
-
-### list_memory
-
-No arguments. Returns the same object as [`GET /v1/memory`](api.md#get-v1memory).
-
-### remember
-
-| Argument | Type | Meaning |
-|---|---|---|
-| `text` | string, 1–300 characters | The note, in the user's words |
-| `app` | string | An Android package name, for a note about one app |
-
-```json
-{"id": "4730f4b2feed", "text": "My work email is on the Gmail app", "app": null, "status": "active"}
-```
-
-Only save things the user asked you to remember. See [Memory](memory.md).
 
 ## Long-running tasks
 

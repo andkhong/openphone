@@ -14,14 +14,13 @@ errors. See [MCP errors](mcp.md#errors).
 
 | Status | Meaning | What to do |
 |---|---|---|
-| `400` | The request can't be carried out as asked: an unknown tier, an answer the task can't take (`answer` for a confirmation, or `approve` missing), too many memory notes, or a bad pagination cursor | Fix the request |
+| `400` | The request can't be carried out as asked: an unknown tier, an answer the task can't take (`answer` for a confirmation, or `approve` missing), or a bad pagination cursor | Fix the request |
 | `401` | Missing, malformed, wrong or revoked API key. Comes with `WWW-Authenticate: Bearer` | Send `Authorization: Bearer om_live_…` with a live key |
 | `403` | See the `code` below. Without a `code`: an admin switched off API access for this key or account | Ask the server's admin |
-| `404` | No such phone, task or note **on your account**. Other accounts' phones and tasks look exactly the same | Check the id |
+| `404` | No such phone or task **on your account**. Other accounts' phones and tasks look exactly the same | Check the id |
 | `409` | The phone isn't usable (`phone_offline`, `phone_locked`, `phone_unresponsive`), an `Idempotency-Key` clash, or the task isn't in a state for that action (for example, answering a task that isn't waiting) | See the `code` below, or check the task's `status` |
-| `422` | The body failed validation: an empty or too long `instruction`, `max_steps` below 1, an unknown `memory` mode, a note over 300 characters | Fix the field named in `detail` |
+| `422` | The body failed validation: an empty or too long `instruction`, `max_steps` below 1 | Fix the field named in `detail` |
 | `429` | Rate limit, unfinished-task cap, or a daily quota (the key's or the account's) reached | Wait. See `Retry-After` and [Limits](#limits) |
-| `501` | Memory isn't enabled on this server | Use the other endpoints |
 | `503` | The phone couldn't capture a screenshot right now | Try again |
 
 `422` responses list each problem in `detail`:
@@ -90,7 +89,6 @@ quota. `GET /v1/limits` shows them all with today's use:
 | Steps per orchestration | 10 | `400` |
 | Steps per task | 40 | Larger `max_steps` values are capped. A task that runs out of steps fails |
 | API keys per account | 20 | `400` when creating another. Revoke one first |
-| Memory notes per account | 500 | `400` when adding another |
 
 - Every authenticated request counts towards the per-minute limit, including polls of
   `GET /v1/tasks/{task_id}` and each MCP request (however long it waits). Prefer the event stream,

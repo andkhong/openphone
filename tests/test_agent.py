@@ -18,6 +18,18 @@ def make_agent(responses, driver=None, io=None, judge=None, tmp_path=None, **cfg
     return agent, client, driver
 
 
+def test_isolated_callers_neither_see_nor_extend_chat_requests(tmp_path):
+    agent, client, _ = make_agent([
+        [tool_use("done", summary="ok", success=True)] for _ in range(3)
+    ], tmp_path=tmp_path)
+    agent.run("text mom I'm late")
+    agent.run("open maps", isolated=True)
+    assert "text mom" not in str(client.requests[1]["messages"][0])
+    agent.run("what next")
+    assert "open maps" not in str(client.requests[2]["messages"][0])
+    assert "text mom" in str(client.requests[2]["messages"][0])
+
+
 def test_open_game_and_menu_flow(tmp_path):
     agent, client, driver = make_agent([
         [text_block("Opening the game."), tool_use("launch_app", "a", app="Where Winds Meet")],

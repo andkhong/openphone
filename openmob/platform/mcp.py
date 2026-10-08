@@ -109,19 +109,6 @@ class Cancelled(BaseModel):
     task: Task
 
 
-class Note(BaseModel):
-    id: str
-    text: str
-    app: str | None = None
-    status: str
-    created: float | None = None
-    uses: int | None = None
-
-
-class Notes(BaseModel):
-    notes: list[Note]
-
-
 class Permissions(BaseModel):
     device_id: str
     default_mode: str
@@ -259,7 +246,6 @@ def build_server(service: V1Service) -> MCPServer:
         device_id: Annotated[str | None, Field(description="Which phone; optional when exactly one is online.")] = None,
         tier: Annotated[str | None, Field(description="fast, balanced or best (default: the server's default).")] = None,
         max_steps: Annotated[int | None, Field(ge=1, description="Stop after this many steps.")] = None,
-        memory: Literal["on", "read_only", "off"] = "on",
         wait_seconds: Annotated[int, Field(ge=0, le=MAX_WAIT, description="How long to wait for it to finish.")] = MAX_WAIT,
         idempotency_key: Annotated[str | None, Field(max_length=255, description=(
             "Retrying with the same key and arguments returns the first task instead of starting another."))] = None,
@@ -277,11 +263,11 @@ def build_server(service: V1Service) -> MCPServer:
         p = _principal(ctx)
         await _require(s, p, "tasks:run", "tasks:read")  # every scope it needs, before the phone moves
         device = device_id or await _call(s.only_device, p)
-        request = {"device_id": device, "instruction": instruction, "tier": tier, "max_steps": max_steps, "memory": memory}
+        request = {"device_id": device, "instruction": instruction, "tier": tier, "max_steps": max_steps}
         if permission_mode:
             request["permission_mode"] = permission_mode
         task, _ = await _call(s.idempotent, p, idempotency_key, request,
-                              lambda: s.create_task(p, device, instruction, tier, max_steps, memory,
+                              lambda: s.create_task(p, device, instruction, tier, max_steps,
                                                     permission_mode=permission_mode))
         task = await _wait(s, p, task["id"], wait_seconds, ctx)
         return _task_result(task, p)
@@ -385,26 +371,6 @@ def build_server(service: V1Service) -> MCPServer:
         line = ("Applied." if data["status"] == "applied"
                 else "needs_phone_approval: " + ERROR_HINTS["needs_phone_approval"])
         return _json_result(data, line)
-
-    @mcp.tool(annotations=READ)
-    async def list_memory(ctx: Context) -> Annotated[CallToolResult, Notes]:
-        """What OpenMob remembers about the user and their apps (pinned notes). Needs memory:read."""
-        p = _principal(ctx)
-        notes = await _call(s.list_memory, p)
-        return _json_result(notes, f"{len(notes['notes'])} note(s).")
-
-    @mcp.tool(annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False,
-                                          openWorldHint=False))
-    async def remember(
-        ctx: Context,
-        text: Annotated[str, Field(min_length=1, max_length=300, description="The note, in the user's words.")],
-        app: Annotated[str | None, Field(description="A package name, for a note about one app.")] = None,
-    ) -> Annotated[CallToolResult, Note]:
-        """Save a note OpenMob's agent will use in later tasks. Only for things the user asked you to
-        remember. Needs memory:write."""
-        p = _principal(ctx)
-        note = await _call(s.add_memory, p, text, app)
-        return _json_result(note, "Saved.")
 
     if orchestrator := getattr(service, "orchestrator", None):  # multi-phone runs (orchestrator.py)
         from .orchestrator import register_mcp_tools

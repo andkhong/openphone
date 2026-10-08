@@ -37,7 +37,7 @@ LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works onc
 KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 # What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
 # devices:add (enroll phones with `openmob phone add`) is sensitive too, so it's never a default either.
-SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read", "memory:read", "memory:write",
+SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read",
           "devices:add")
 DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
 KEY_MODES = ("ask", "plan", "auto", "trusted", "never")  # an API key's max_mode (permissions.MODES)

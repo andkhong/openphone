@@ -319,7 +319,7 @@ openmob bench-api bench/vision_tasks.yaml --url http://localhost:8765 \
 ```
 
 How a run works:
-- `POST /v1/devices/{id}/tasks` with the instruction, the tier (and permission mode), `memory: off`
+- `POST /v1/devices/{id}/tasks` with the instruction, the tier (and permission mode),
   and the task's `max_steps`. Then **one** `GET /v1/tasks/{id}/events` request (SSE) follows it to
   the `done` event. Nothing polls, so a run costs 2 requests (4 with its reset), and the client keeps
   itself under 55 requests a minute (the server allows 60 per key) and honors `Retry-After`.

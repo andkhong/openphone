@@ -78,7 +78,7 @@ DEFAULT_SENSITIVE_APPS = [
 
 FAST_PATH_MODES = ("off", "fast_tier", "on")
 
-REMOVED_KEYS = {"hotkey"}
+REMOVED_KEYS = {"hotkey", "whisper_model"}
 SECRET_FIELDS = {"api_key", "openai_api_key", "google_api_key", "compatible_api_key", "workspace_id", "jev_api_key", "source"}  # Mac push-to-talk was removed
 
 CONFIG_LOCATIONS = [
@@ -225,8 +225,6 @@ class Config:
 
     # Spoken replies on the Mac (macOS `say`)
     speak: bool = True
-    # Whisper model for the dashboard's mic button: tiny.en | base.en | small.en | medium.en
-    whisper_model: str = "base.en"
     voice: str | None = None
 
     # Phone-side web page
