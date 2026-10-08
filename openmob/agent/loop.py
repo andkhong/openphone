@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import contextlib
 import inspect
 import json
@@ -306,7 +307,8 @@ class Agent:
         nudged = False
 
         mode = state.perms.mode()
-        system = system_prompt(self.platform) + mode_notes(mode) + (BRIEF_REPLIES if self.config.vision_brief else "")
+        batch = max(1, int(self.config.max_actions_per_turn or 1))
+        system = system_prompt(self.platform, batch) + mode_notes(mode) + (BRIEF_REPLIES if self.config.vision_brief else "")
         self._tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
@@ -357,7 +359,8 @@ class Agent:
                     return  # the loop below marks it skipped
                 early[call.id] = self._act(call, obs, state)
 
-            response, streamed = self._vision_call(route, system, messages, act_early)
+            # Streaming actions run each call as it arrives, with no look in between: one-per-turn only.
+            response, streamed = self._vision_call(route, system, messages, act_early if batch == 1 else None)
             messages.append({"role": "assistant", "content": response.content})
 
             for text in [] if streamed else response.text:  # streamed thoughts went out as they came
@@ -382,13 +385,33 @@ class Agent:
             launched: str | None = None
             quiet_ms: int | None = None
             until: str | None = None
-            for tool_use in tool_uses:
+            seen = obs  # the screen the model decided on: its indices and coordinates refer to it
+            ran: Outcome | None = None  # the previous action in this turn (batch > 1)
+            stop: str | None = None  # why the rest of this turn is skipped
+            for n, tool_use in enumerate(tool_uses):
+                if batch > 1 and ran is not None and not stop:
+                    stop = self._batch_stop(tool_use, n, batch)
+                    if not stop:  # look before the next action, without asking the model
+                        self._settle(self.config.settle_delay if ran.settle is None else ran.settle, state,
+                                     ran.launched, ran.quiet_ms, ran.until)
+                        fresh = self._observe_after_action(state, obs)
+                        stop = self._batch_unexpected(seen, obs, fresh, state)
+                        obs = fresh
                 if tool_use.id in early and not finished:
                     outcome = early[tool_use.id]
+                elif stop:
+                    outcome = Outcome(f"Not run: {stop} Look at the new screen and decide again.", is_error=True)
                 elif finished or state.cancel.is_set():
                     outcome = Outcome("Skipped.", is_error=True)
                 else:
-                    outcome = self._act(tool_use, obs, state)
+                    prompts = state.prompts
+                    outcome = self._act(tool_use, seen, state)
+                    if batch > 1:
+                        ran = outcome
+                        if outcome.is_error:
+                            stop = "the previous action failed."
+                        elif state.prompts != prompts:
+                            stop = "the previous action asked the owner."
                 if outcome.timings is not None:  # it ran
                     if outcome.settle is not None:
                         settle = outcome.settle
@@ -417,6 +440,33 @@ class Agent:
             self._show_later(state, messages, obs)
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
+
+    # --- several actions from one reply (max_actions_per_turn) ----------------------
+
+    @staticmethod
+    def _batch_stop(call, n: int, batch: int) -> str | None:
+        """Why the n-th call of a reply mustn't run, before looking at the screen."""
+        if n >= batch:
+            return f"at most {batch} actions run per turn."
+        if call.name == "done":
+            return "call done alone, after you've seen the result of your actions."
+        return None
+
+    @staticmethod
+    def _batch_unexpected(seen: Observation, before: Observation, after: Observation, state: _TaskState) -> str | None:
+        """Why the screen after an action doesn't fit carrying on with the model's plan: another app,
+        a labeled screen that didn't change (the action did nothing visible), or one mostly replaced (a
+        new page: the model's next target may not be there). Screens without labels (games, canvases)
+        can't be judged, so they carry on; every tap is still judged by the real element first."""
+        if after.package != seen.package:
+            return "the previous action opened another app."
+        labels = lambda o: {el.label for el in o.elements if fast.labeled(el)}
+        then, now = labels(before), labels(after)
+        if then and state.actions and state.actions[-1].get("screen_changed") is False:
+            return "the previous action didn't change the screen."
+        if then and now and len(then & now) < 0.5 * min(len(then), len(now)):
+            return "the screen changed more than expected."
+        return None
 
     # --- the vision step's model call ---------------------------------------------
 
@@ -516,6 +566,13 @@ class Agent:
         with self.timer.phase("observe"):
             return self._observe_untimed(state, before, pending)
 
+    def _observe_pool(self):
+        """One worker for screenshots taken alongside the other reads (parallel_observe)."""
+        pool = getattr(self, "_shot_pool", None)
+        if pool is None:
+            pool = self._shot_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="observe")
+        return pool
+
     def _lazy_shots(self, state: _TaskState) -> bool:
         return state.fast and self.config.fast_path_lazy_screenshot
 
@@ -534,9 +591,13 @@ class Agent:
             return self._frame
 
     def _observe_untimed(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
-        package = self.driver.current_app()
         # The fast path decides from the element list; its screenshot waits until a vision step needs it.
-        shot = None if self._lazy_shots(state) else self._screenshot()
+        # parallel_observe: the screenshot is taken while the app and the elements are read.
+        pending_shot = None
+        if not self._lazy_shots(state) and self.config.parallel_observe:
+            pending_shot = self._observe_pool().submit(self.driver.screenshot)
+        package = self.driver.current_app()
+        shot = None if self._lazy_shots(state) or pending_shot else self._screenshot()
         elements: list[UIElement] = []
         mode = self.config.ui_tree
         # Games make uiautomator slow and useless; stop asking after two empty dumps.
@@ -545,6 +606,8 @@ class Agent:
             useful = any(el.text or el.desc for el in elements)
             key = package or ""
             state.treeless_misses[key] = 0 if useful else state.treeless_misses.get(key, 0) + 1
+        if pending_shot is not None:
+            shot = self._frame = pending_shot.result()  # its error, if any, surfaces here as before
         if self.use_ocr and not any(el.text or el.desc for el in elements):
             shot = shot or self._screenshot()  # OCR reads the screenshot (no element list: a vision step anyway)
             elements = elements + self._ocr_elements(shot, start=len(elements))
