@@ -24,10 +24,11 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate, permission_dialogs, waiting
+from . import fast, gate, permission_dialogs, plan, replay, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
+from .tools import (PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes,
+                    system_prompt)
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -90,6 +91,8 @@ class AgentResult:
     usage: Usage = field(default_factory=Usage)
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
     fast_steps: int = 0  # tool calls the fast path made (no main model)
+    replayed: int = 0  # of those, tool calls replayed from a stored path (replay_paths)
+    planned: int = 0  # of those, tool calls the classifier took toward the model's plan (plan_execute)
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
     prompts: int = 0  # approval prompts the owner saw (permission telemetry)
     mode: str | None = None  # the permission mode the task ran in
@@ -189,6 +192,16 @@ class _TaskState:
     tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
     unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
     dialogs_given_up: set = field(default_factory=set)  # permission dialogs BACK didn't close: (package, message)
+    # Replaying a stored path (config.replay_paths, agent/replay.py):
+    replay: list[dict] | None = None  # the stored path for this request, if any
+    replay_cursor: int = 0  # stored steps before this one have run or been passed over
+    replay_tries: dict[int, int] = field(default_factory=dict)  # stored step -> attempts this task
+    replay_retry: bool = False  # the last replayed tap was refused before it ran: once more at the next look
+    replayed: int = 0  # replayed tool calls
+    path: list[dict] = field(default_factory=list)  # this task's own replayable steps, stored if it succeeds
+    # Plan with the model, execute with the classifier (config.plan_execute, agent/plan.py):
+    plan_exec: plan.Plan | None = None  # the model's sub-goals, while the helper carries them out
+    planned: int = 0  # tool calls the helper took toward the plan
 
 
 def is_yes(answer: str) -> bool:
@@ -208,6 +221,7 @@ class Agent:
         io: UserIO,
         judge: JevJudge | None = None,
         use_ocr: bool | None = None,
+        paths: replay.PathStore | None = None,
     ):
         self.client = client
         self.driver = driver
@@ -216,6 +230,8 @@ class Agent:
         self.io = io
         self.judge = judge
         self.use_ocr = (config.ocr and ocr.available()) if use_ocr is None else use_ocr
+        # Stored UI paths (replay_paths): the given store, else memory only for the life of this agent.
+        self.paths = paths if paths is not None else (replay.PathStore() if config.replay_paths else None)
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
         self.usage = Usage()  # tokens for the task in progress (or the last one)
         self.platform = "android"  # set by the DeviceManager from the phone's hello (android | ios)
@@ -269,6 +285,8 @@ class Agent:
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
                            perms=perms)
         state.fast = self._fast_enabled()
+        if self._replay_on() and replay.eligible(task, self.config.confirm_keywords):
+            state.replay = self.paths.get(replay.goal_key(task)) or None
         self._task_variant = self._variant(state.fast)
         self._gate_setup(state)
         try:
@@ -284,8 +302,17 @@ class Agent:
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
+        result.replayed = state.replayed
+        result.planned = state.planned
         result.prompts = state.prompts
         result.mode = perms.mode()
+        # A path worth replaying: the task succeeded, only navigated (the request as it stands, corrections
+        # included), typed nothing, asked nothing and tapped nothing risky, and came from the phone's own chat
+        # (not an isolated caller such as an API key: the owner's call; replay_store_api opts in, for benchmarks).
+        if (self._replay_on() and result.success and state.path and state.prompts == 0 and not state.typed
+                and not state.risky and (not isolated or self.config.replay_store_api)
+                and replay.eligible(state.task, self.config.confirm_keywords)):
+            self.paths.put(replay.goal_key(task), state.path)
         if not isolated:
             self.recent.append((task, result.summary))
         return result
@@ -304,12 +331,19 @@ class Agent:
         obs = self._observe_settled(state)
         messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
         self._show_later(state, messages, obs)
+        if (self._plan_enabled() and not state.replay and not state.cancel.is_set()
+                and not self._is_blocked(state, obs.package)):
+            self._plan_request(route, obs, state, isolated)  # a cold run: the model plans before the step loop
         nudged = False
 
         mode = state.perms.mode()
         batch = max(1, int(self.config.max_actions_per_turn or 1))
-        system = system_prompt(self.platform, batch) + mode_notes(mode) + (BRIEF_REPLIES if self.config.vision_brief else "")
+        planning = self._plan_enabled()
+        system = (system_prompt(self.platform, batch) + mode_notes(mode) + (PLAN_STEPS_NOTE if planning else "")
+                  + (BRIEF_REPLIES if self.config.vision_brief else ""))
         self._tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
+        if planning:
+            self._tools = self._tools + [PLAN_STEPS_TOOL_SPEC]
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
@@ -340,6 +374,19 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
 
             self._apply_corrections(state, messages)
+            if state.replay and not state.vision_next and not self._needs_plan(state):
+                taken = self._replay_step(state, obs)
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages, retry=state.replay_retry)
+                    continue
+            if state.plan_exec is not None and not state.vision_next and not self._needs_plan(state):
+                taken = self._plan_step(state, obs)
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages, retry=state.plan_exec.retry)
+                    if state.vision_next and state.plan_exec is not None:  # it failed or changed nothing
+                        self._plan_suspend(state, "the last step failed" if taken[-1][2].is_error
+                                           else "the last step changed nothing")
+                    continue
             if state.fast and not state.vision_next and not self._needs_plan(state):
                 taken = self._fast_step(state, obs)
                 if taken is not None:
@@ -349,7 +396,9 @@ class Agent:
                     obs = self._after_fast_step(state, obs, taken, messages)
                     continue
             state.vision_next = False
+            was_escalated = state.escalated
             state.escalated = True
+            self._plan_tell(state, messages)
             self._show(state, messages)
             self._trim_history(messages)
             early: dict[str, Outcome] = {}  # tool calls already run while the reply streamed (vision_stream)
@@ -427,6 +476,12 @@ class Agent:
                     **({"is_error": True} if outcome.is_error else {}),
                 })
 
+            if state.plan_exec is not None and state.plan_exec.fresh:
+                # A reply that only planned decided nothing on the phone: not an escalation, so the classifier
+                # may still finish a plain navigation task the helper carried out (fast_path_done).
+                state.plan_exec.fresh = False
+                if len(tool_uses) == 1:
+                    state.escalated = was_escalated
             if finished:
                 return AgentResult(finished.success, finished.text, step, done_via=finished.done_via)
             if state.cancel.is_set():
@@ -476,7 +531,7 @@ class Agent:
 
     def _act(self, call, obs: Observation, state: _TaskState) -> Outcome:
         """Run one of the main model's tool calls and report it."""
-        outcome = self._execute(call.name, call.input, obs, state)
+        outcome = self._execute(call.name, call.input, obs, state, source=plan.SOURCE if call.name == plan.TOOL else None)
         self._event("error" if outcome.is_error else "action", f"{call.name}: {outcome.shown or outcome.text}",
                     {"timings": outcome.timings, "jev": self.judge is not None})
         return outcome
@@ -617,6 +672,8 @@ class Agent:
             changed = fast.signature(obs.package, obs.elements) != fast.signature(before.package, before.elements)
             for action in pending:
                 action["screen_changed"] = changed
+        if state.plan_exec is not None:  # sub-goals whose cue is on screen are reached, before the classifier is asked
+            self._plan_advance(state, obs)
         if self.judge:
             try:
                 if self._one_request(state, obs):
@@ -633,8 +690,8 @@ class Agent:
     def _one_request(self, state: _TaskState, obs: Observation) -> bool:
         """Ask the screen classifier everything for this step at once: on fast-path tasks, on screens the
         fast path can use (jev_one_request)."""
-        return (state.fast and self.config.jev_one_request and hasattr(self.judge, "observe_step")
-                and fast.eligible(obs.elements, self.config.fast_path_min_elements))
+        return ((state.fast or state.plan_exec is not None) and self.config.jev_one_request
+                and hasattr(self.judge, "observe_step") and fast.eligible(obs.elements, self.config.fast_path_min_elements))
 
     def _classify_step(self, state: _TaskState, obs: Observation) -> None:
         """One classifier request: the screen's state and "looks done", the fast path's operation and
@@ -647,7 +704,7 @@ class Agent:
                             key=lambda el: not el.clickable)
         risk = {str(el.index): el.label for el in candidates[: max(self.config.jev_risk_heads, 0)]}
         requested = {k: label for k, label in risk.items() if self._keyword_hits(label)}
-        verdict = self.timer.timed("jev", self.judge.observe_step, state.task,
+        verdict = self.timer.timed("jev", self.judge.observe_step, self._jev_request(state),
                                    fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads,
                                    risk, requested)
         obs.assessment, obs.choice = verdict.assessment, verdict.choice
@@ -857,8 +914,13 @@ class Agent:
         state.step_index += 1
         if name in MOVES_SCREEN and not outcome.is_error:
             state.acted_on = obs
-        state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
+        if name != plan.TOOL:  # a plan isn't an action on the phone
+            state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
         self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, handled_by, source)
+        if self._replay_on() and not outcome.is_error and source in (None, replay.SOURCE, plan.SOURCE):
+            step = replay.recordable(name, args, obs.package, obs.elements, outcome.launched)
+            if step is not None:
+                state.path.append(step)
         return outcome
 
     def _note_tokens(self, tokens, image_side: int | None = None) -> None:
@@ -945,6 +1007,8 @@ class Agent:
                 state.typing_approved = False
         if name == "propose_plan":
             return self._propose_plan(args, state)
+        if name == plan.TOOL:
+            return self._plan_steps(args, state)
         if name == "launch_app":
             return self._launch_app(args, obs, state)
 
@@ -2133,6 +2197,233 @@ class Agent:
     def _sleep(seconds: float, cancel: threading.Event) -> None:
         cancel.wait(seconds)
 
+    # --- plan with the model, execute with the classifier (see plan.py) ----------------------
+
+    def _plan_enabled(self) -> bool:
+        return bool(self.config.plan_execute and self.judge is not None and hasattr(self.judge, "next_step"))
+
+    def _jev_request(self, state: _TaskState) -> str:
+        """What the classifier is asked to make progress on: the plan's current sub-goal while the helper
+        carries it out, else the request."""
+        p = state.plan_exec
+        return p.request() if p is not None and not p.suspended and not p.complete() else state.task
+
+    def _plan_advance(self, state: _TaskState, obs: Observation) -> None:
+        """At each look: sub-goals whose cue is on screen are reached. Progress while the model had the next
+        step hands it back to the helper; once the last sub-goal is reached the plan is done and the usual
+        path (the classifier's DONE with its checks, else the model) finishes the task."""
+        p = state.plan_exec
+        moved = False
+        while not p.complete() and plan.cue_visible(obs.elements, p.current().cue):
+            p.advance()
+            moved = True
+        if moved and p.suspended:
+            p.suspended = None
+            p.told = False
+        if p.complete():
+            self.io.event("status", "Plan carried out; checking the result.")
+            state.plan_exec = None
+
+    def _plan_suspend(self, state: _TaskState, why: str) -> None:
+        """The model takes the next step, told why with the plan and progress (_plan_tell)."""
+        p = state.plan_exec
+        p.suspended = why
+        p.told = False
+        state.vision_next = True
+        self.io.event("status", f"Plan paused: {why}.")
+
+    def _plan_tell(self, state: _TaskState, messages: list[dict]) -> None:
+        p = state.plan_exec
+        if p is not None and p.suspended and not p.told:
+            self._note_for_model(messages, p.note())
+            p.told = True
+
+    def _plan_steps(self, args: dict, state: _TaskState) -> Outcome:
+        """The plan_steps tool: the model's sub-goals and cues, validated as data, arm the helper (or re-arm it
+        with a new plan after it stopped). Never run as anything but a list of texts to match."""
+        if not self._plan_enabled():
+            return Outcome(f"Unknown tool {plan.TOOL}.", is_error=True)
+        if not isinstance(args, dict) or args.get("steps") is None:  # the planning request's reply held no plan
+            return Outcome(plan.NO_PLAN, is_error=True, settle=0)
+        try:
+            goals = plan.parse(args)
+        except ValueError as exc:
+            return Outcome(f"Error: {exc}", is_error=True, settle=0)
+        state.plan_exec = plan.Plan(goals)
+        self.io.event("status", f"Plan: {len(goals)} sub-goal{'s' if len(goals) != 1 else ''}; a quick helper carries them out.")
+        return Outcome("Plan noted. A quick helper carries it out from the element list; you'll hear back, with the "
+                       "progress so far, if a screen doesn't fit.", settle=0)
+
+    def _plan_request(self, route, obs: Observation, state: _TaskState, isolated: bool) -> None:
+        """plan_execute on a cold run: one dedicated model call before the step loop, offering only plan_steps,
+        with the request and the screen as the first vision step would see them. A reply with a valid plan
+        arms the helper, and the classifier is asked once more about this screen, for its first sub-goal;
+        any other reply (the model saying there is nothing to plan, or acting) is dropped and the task
+        carries on as usual. No forced tool choice: not every provider or model takes one. Recorded as a plan
+        step with the call's model time. The main conversation doesn't carry the exchange: the helper's
+        notes, and the plan on a handover, do."""
+        messages = [{"role": "user", "content": [{"type": "text", "text": self._request_text(state.task, isolated)},
+                                                  *self._obs_blocks(obs)]}]
+        request = ModelRequest(model=self.task_model, system=PLAN_REQUEST_PROMPT, tools=[PLAN_STEPS_TOOL_SPEC],
+                               messages=messages, max_tokens=route.spec.max_tokens, cache_history=False)
+        call = None
+        try:
+            with self.timer.phase("model"):
+                response = route.adapter.complete(request)
+        except ModelError as exc:
+            self.io.event("error", f"No plan: {exc}")
+        else:
+            self._count_vision(response)
+            for text in response.text:
+                if text.strip():
+                    self.io.event("thought", text.strip())
+            call = next((c for c in response.tool_calls if c.name == plan.TOOL), None)
+        outcome = self._execute(plan.TOOL, call.input if call is not None else {}, obs, state, source=plan.SOURCE)
+        if outcome.is_error:
+            self.io.event("status", f"No plan; carrying on as usual ({outcome.text}).")
+            return
+        state.plan_exec.fresh = False  # not a vision step's reply: the escalation rule for those doesn't apply
+        # The screen was looked at before the plan existed: reach any sub-goal it already shows, and ask the
+        # classifier about it once more, for the first sub-goal still to do.
+        self._plan_advance(state, obs)
+        if state.plan_exec is not None and self.judge is not None and self._one_request(state, obs):
+            try:
+                self._classify_step(state, obs)
+            except (JevError, KeyError, TypeError, ValueError) as exc:
+                self.io.event("error", f"Fast step skipped: {exc}")
+
+    def _plan_choice(self, state: _TaskState, obs: Observation, again: bool = False):
+        """The classifier's choice for the current sub-goal: the step's one request already holds it (asked
+        with the sub-goal as the request, _jev_request); `again`, or without that request, one next_step
+        call. (choice, the sub-goal's "looks done" probability or None, the target heads)."""
+        heads = obs.heads if obs.heads is not None else fast.targets(obs.elements)
+        if not again and obs.heads is not None:
+            return obs.choice, (obs.assessment.task_done if obs.assessment is not None else None), heads
+        try:
+            choice = self.timer.timed("jev", self.judge.next_step, state.plan_exec.request(),
+                                      fast.screen_table(obs.package, obs.elements), state.actions[-5:], heads)
+        except (JevError, KeyError, TypeError, ValueError) as exc:
+            self.io.event("error", f"Plan step skipped: {exc}")
+            return None, None, heads
+        return choice, None, heads
+
+    def _plan_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """One step toward the plan's current sub-goal, without the main model, or None: the model's turn
+        (_plan_suspend says why; the model is told the plan and progress) or nothing left to do. The
+        classifier's answer for the sub-goal becomes a tap by element, a scroll, Back or an app launch,
+        run through _execute like any other action, so every check and approval applies. Its DONE (or a
+        confident "looks done") reaches the sub-goal. Anything else it proposes, an unsure answer, a cue
+        that hasn't appeared after plan_max_steps_per_goal steps, a repeat, a popup / login / lock /
+        loading screen, a screen without a usable element list, or a correction hands over to the model.
+        A tap refused before it ran (its element moved) gets one more look per sub-goal."""
+        c, p = self.config, state.plan_exec
+        if p.suspended or p.complete():
+            return None
+        if fast.CORRECTION_PREFIX in state.task:
+            return self._plan_suspend(state, "the user corrected the request")
+        a = obs.assessment
+        if a is not None and a.state in replay.BLOCKING_STATES and a.confidence >= c.jev_min_confidence:
+            return self._plan_suspend(state, f"a {a.state.replace('_', ' ')} screen came up")
+        if not fast.eligible(obs.elements, c.fast_path_min_elements):
+            return self._plan_suspend(state, "this screen has no usable element list")
+        p.retry = False
+        goal = p.current()
+        choice, looks_done, heads = self._plan_choice(state, obs)
+        if choice is None:
+            return self._plan_suspend(state, "the classifier didn't answer")
+
+        def sure(prob: float, conf: float) -> bool:
+            return prob >= c.fast_path_min_probability and conf >= c.fast_path_min_confidence
+
+        # The classifier says the sub-goal is reached (its cue may read differently on this phone): move on,
+        # and ask once more for the next one.
+        if (choice.operation == "DONE" and sure(choice.probability, choice.confidence)) or (
+                looks_done is not None and a is not None and looks_done >= c.fast_path_done_min_probability
+                and a.confidence >= c.fast_path_min_confidence):
+            p.advance()
+            if p.complete():
+                self.io.event("status", "Plan carried out; checking the result.")
+                state.plan_exec = None
+                return None
+            goal = p.current()
+            choice, _, heads = self._plan_choice(state, obs, again=True)
+            if choice is None or choice.operation == "DONE":
+                return self._plan_suspend(state, "two sub-goals looked done on one screen; check the plan")
+        if choice.operation == "ESCALATE" or not sure(choice.probability, choice.confidence):
+            return self._plan_suspend(state, "the helper wasn't sure what to do on this screen")
+        if choice.operation not in plan.RUNNABLE:
+            return self._plan_suspend(state, "the next step is typing" if choice.operation == "TYPE_TEXT"
+                                      else "the next step isn't one the helper may take")
+        if choice.operation == "TAP":
+            picked = choice.targets.get("TAP")
+            if not picked or picked[0] not in heads["TAP"] or not sure(picked[1], picked[2]):
+                return self._plan_suspend(state, "the helper wasn't sure what to tap")
+            element = obs.elements[int(picked[0])]
+            name, args = "tap_element", {"index": element.index, "target": element.label}
+        elif choice.operation == "LAUNCH_APP":
+            app = self._direct_app(state, obs)
+            if app is None:
+                return self._plan_suspend(state, "the app to open isn't named in the request")
+            name, args = "launch_app", {"app": app}
+        else:
+            name, args = fast.SIMPLE_OPERATIONS[choice.operation]
+            args = dict(args)
+        if p.steps_on_goal >= c.plan_max_steps_per_goal:
+            return self._plan_suspend(state, f"the cue {goal.cue!r} didn't appear after {p.steps_on_goal} steps")
+        first = self._action_text(name, args, obs)
+        recent = [x["action"] for x in state.actions[-4:]]
+        if recent[-1:] == [first] or recent.count(first) >= 2:
+            return self._plan_suspend(state, "the helper would repeat itself")
+        p.steps_on_goal += 1
+        outcome = self._execute(name, args, obs, state, fast_step=True, source=plan.SOURCE)
+        state.fast_steps += 1
+        state.planned += 1
+        self._event("error" if outcome.is_error else "action",
+                    f"{name}: {outcome.shown or outcome.text} (plan: {goal.text})",
+                    {"timings": outcome.timings, "jev": True, "fast": True, "plan": True})
+        if outcome.is_error and replay.NOT_RUN in outcome.text and not p.retried:
+            p.retried = p.retry = True  # its element moved before the tap: one more look, no model
+        return [(name, args, outcome)]
+
+    # --- replaying a stored path (see replay.py) ----------------------------------------
+
+    def _replay_on(self) -> bool:
+        return bool(self.config.replay_paths and self.paths is not None)
+
+    def _replay_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """One step from the stored path, without the main model, or None: no remaining stored step fits
+        this screen (the next decision is the fast path's or the vision model's; the path stays, so replay
+        resumes on a later screen that fits). A step fits when the app and enough of the screen's labels
+        match and its target is on screen exactly once (replay.match); the call then runs through
+        _execute like any other, so every check and approval applies. A tap refused before it ran (its
+        element moved) is tried once more at the next look; anything else moves on. A correction from
+        the user drops the path, and no step runs on a screen the classifier confidently calls a popup,
+        login, lock or loading screen."""
+        c = self.config
+        if fast.CORRECTION_PREFIX in state.task or state.replayed >= replay.MAX_TRIES * len(state.replay):
+            state.replay = None
+            return None
+        state.replay_retry = False
+        a = obs.assessment
+        if a is not None and a.state in replay.BLOCKING_STATES and a.confidence >= c.jev_min_confidence:
+            return None
+        found = replay.match(state.replay, state.replay_cursor, obs.package, obs.elements, c.replay_min_overlap)
+        if found is None:
+            return None
+        at, name, args = found
+        tries = state.replay_tries.get(at, 0) + 1
+        state.replay_tries[at] = tries
+        outcome = self._execute(name, args, obs, state, fast_step=True, source=replay.SOURCE)
+        state.fast_steps += 1
+        state.replayed += 1
+        self._event("error" if outcome.is_error else "action", f"{name}: {outcome.shown or outcome.text} (replayed)",
+                    {"timings": outcome.timings, "jev": self.judge is not None, "fast": True, "replay": True})
+        if outcome.is_error and replay.NOT_RUN in outcome.text and tries < replay.MAX_TRIES:
+            state.replay_retry = True  # the same stored step again at the next look
+        else:
+            state.replay_cursor = at + 1
+        return [(name, args, outcome)]
+
     # --- the fast path (see fast.py) -------------------------------------------------
 
     def _fast_enabled(self) -> bool:
@@ -2297,14 +2588,16 @@ class Agent:
         return fast.parse_value("".join(response.text), key)
 
     def _after_fast_step(self, state: _TaskState, obs: Observation, taken: list[tuple[str, dict, Outcome]],
-                         messages: list[dict]) -> Observation:
+                         messages: list[dict], retry: bool = False) -> Observation:
         """Settle, look again, and tell the main model what happened (as text in the conversation, so
-        any provider takes it). The new screen follows when the main model next decides (_show_later)."""
+        any provider takes it). The new screen follows when the main model next decides (_show_later).
+        `retry`: a replayed tap was refused before it ran and gets one more look (_replay_step), so its
+        lack of progress doesn't send the next step to the vision model."""
         last = taken[-1][2]
         settle = self.config.settle_delay if last.settle is None else last.settle
         self._settle(settle, state, last.launched, last.quiet_ms, last.until)
         new = self._observe_after_action(state, obs)
-        if any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False:
+        if not retry and (any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False):
             state.vision_next = True  # no visible progress: the vision model takes the next step
         lines = []
         for name, args, outcome in taken:
@@ -2333,7 +2626,8 @@ class Agent:
         """Which latency features a task runs with, for comparing them in `openmob timings`:
         fixed | adaptive settle (+q<ms> for a quiet time other than 300 ms), then with the fast path
         +fast and its extras: +noshot (lazy screenshots), +1req (one classifier request per step),
-        +launch (exact app names launch directly), +fastdone (the classifier may finish)."""
+        +launch (exact app names launch directly), +fastdone (the classifier may finish); +replay when
+        stored paths may be replayed (replay_paths)."""
         c = self.config
         out = "adaptive" if c.adaptive_settle else "fixed"
         if c.adaptive_settle and c.settle_quiet_ms != DEFAULT_QUIET_MS:
@@ -2343,6 +2637,10 @@ class Agent:
             for on, tag in ((c.fast_path_lazy_screenshot, "noshot"), (c.jev_one_request, "1req"),
                             (c.fast_path_direct_launch, "launch"), (c.fast_path_done, "fastdone")):
                 out += f"+{tag}" if on else ""
+        if c.replay_paths:
+            out += "+replay"
+        if c.plan_execute:
+            out += "+plan"
         return out
 
     def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None,

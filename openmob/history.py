@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS steps (
     outcome TEXT,
     is_error INTEGER NOT NULL,
     latency_ms INTEGER,               -- the tool call itself: risk check, approval/answer waits, phone action (no settle, no model)
-    source TEXT NOT NULL DEFAULT 'agent',  -- agent | user_demo | macro | routine
+    source TEXT NOT NULL DEFAULT 'agent',  -- agent | replay (a stored path, no main model) | user_demo | macro | routine
     -- Where the step's time went, in ms (see agent/timing.py; NULL on rows from before timings).
     -- A step runs from the end of the previous step's action to the end of its own.
     observe_ms INTEGER,
@@ -357,7 +357,7 @@ class History:
     def step_timings(self, since: float = 0.0, chat_id: str | None = None, model: str | None = None) -> list[dict]:
         """Every account's agent steps that have timings (for `openmob timings`): the timing
         columns plus turn_id, jev and model (the step's, else its turn's)."""
-        where, args = ["s.total_ms IS NOT NULL", "s.t >= ?", "s.source = 'agent'"], [since]
+        where, args = ["s.total_ms IS NOT NULL", "s.t >= ?", "s.source IN ('agent', 'replay')"], [since]
         if chat_id:
             where.append("s.chat_id = ?")
             args.append(chat_id)

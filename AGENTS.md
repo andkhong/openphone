@@ -58,8 +58,11 @@ with the owner's OK, before calling a phone-side fix done.
    in `<data>/history.sqlite` (columns observe_ms, model_ms, settle_ms, total_ms, wait_cond, source).
 2. **Phase 5:** the test checklist on both builds (`docs/testing.md`), plus the "hacked server" suite on the
    emulator.
-3. **Phase 6:** the 20-task benchmark (`bench/`; `openmob bench`). Targets: ≥95% success, median ≤5 s on labeled
-   apps, ≤1 prompt per typical task.
+3. **Phase 6:** the 20-task benchmark (`bench/`; `openmob bench`). Targets (owner, 2026-10-08; see
+   `docs/benchmarks.md`, "MVP latency targets"): ≥95% success and ≤1 prompt per typical task; first action on screen
+   ≤2 s; ≤1.5 s per step; labeled-app navigation, first run: median ≤12 s, p90 ≤20 s; repeated navigation: median
+   ≤6 s. Canvas apps (games, chess): reliability first, no latency target. Measure cold and warm runs separately,
+   on at least two phones. Latency and navigation are the primary focus.
 4. **Phase 7:** merge `gatekeeper-p1` into `main`, then deploy to Fly (`openmob.fly.dev`; the Dockerfile needs
    `deploy/OpenMob.apk`, which is gitignored: build it first).
    - **A batch security review comes first.** The owner wants reviews batched, not one per fix. Unreviewed since
