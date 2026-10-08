@@ -444,7 +444,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         runCatching { GateHost.ocrDialogPackage(service) }.getOrNull()?.let { return it }
         val ignored = setOf("com.android.systemui", service.packageName)
         val fromWindow = runCatching { service.rootInActiveWindow?.packageName?.toString() }.getOrNull()
-        return listOfNotNull(fromWindow, service.currentPackage).firstOrNull { it !in ignored }
+        return ForegroundApp.pick(fromWindow, service.currentPackage, service.currentPackageAt, service.windowChangeAt, ignored)
     }
 
     @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+

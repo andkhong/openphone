@@ -59,6 +59,12 @@ class OpenMobAccessibilityService : AccessibilityService() {
             keepAwake = null
         }
     }
+    /** Uptime when [currentPackage] was noted, and of the last window change: a remembered app older than the
+     *  last window change may be the previous one (ForegroundApp). */
+    @Volatile var currentPackageAt: Long = 0L
+        private set
+    @Volatile var windowChangeAt: Long = 0L
+        private set
 
     /** Uptime (ms) of the last window or content change on screen: wait_idle returns once this is
      *  old enough (PhoneActions.waitIdle). */
@@ -103,11 +109,15 @@ class OpenMobAccessibilityService : AccessibilityService() {
             dev.openmob.companion.gate.GateHost.refreshProtected(this)
             dev.openmob.companion.gate.GateHost.refreshOwnerDialog(this) // a hidden system dialog came or went
         }
+        if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) && event.packageName?.toString() != packageName) {
+            windowChangeAt = SystemClock.uptimeMillis()
+        }
         if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val cls = event.className?.toString() ?: return
         // Activities only: IME and dialog windows would otherwise look like "the current app".
         if (cls.endsWith("Activity") || cls.contains(".activities.")) {
-            event.packageName?.toString()?.let { currentPackage = it }
+            event.packageName?.toString()?.let { currentPackage = it; currentPackageAt = SystemClock.uptimeMillis() }
             currentActivity = cls // the gatekeeper recognizes Settings pages by their activity too
         }
     }
