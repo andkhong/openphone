@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import concurrent.futures
 import contextlib
 import inspect
 import json
@@ -487,6 +488,13 @@ class Agent:
         with self.timer.phase("observe"):
             return self._observe_untimed(state, before, pending)
 
+    def _observe_pool(self):
+        """One worker for screenshots taken alongside the other reads (parallel_observe)."""
+        pool = getattr(self, "_shot_pool", None)
+        if pool is None:
+            pool = self._shot_pool = concurrent.futures.ThreadPoolExecutor(1, thread_name_prefix="observe")
+        return pool
+
     def _lazy_shots(self, state: _TaskState) -> bool:
         return state.fast and self.config.fast_path_lazy_screenshot
 
@@ -505,9 +513,13 @@ class Agent:
             return self._frame
 
     def _observe_untimed(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
-        package = self.driver.current_app()
         # The fast path decides from the element list; its screenshot waits until a vision step needs it.
-        shot = None if self._lazy_shots(state) else self._screenshot()
+        # parallel_observe: the screenshot is taken while the app and the elements are read.
+        pending_shot = None
+        if not self._lazy_shots(state) and self.config.parallel_observe:
+            pending_shot = self._observe_pool().submit(self.driver.screenshot)
+        package = self.driver.current_app()
+        shot = None if self._lazy_shots(state) or pending_shot else self._screenshot()
         elements: list[UIElement] = []
         mode = self.config.ui_tree
         # Games make uiautomator slow and useless; stop asking after two empty dumps.
@@ -516,6 +528,8 @@ class Agent:
             useful = any(el.text or el.desc for el in elements)
             key = package or ""
             state.treeless_misses[key] = 0 if useful else state.treeless_misses.get(key, 0) + 1
+        if pending_shot is not None:
+            shot = self._frame = pending_shot.result()  # its error, if any, surfaces here as before
         if self.use_ocr and not any(el.text or el.desc for el in elements):
             shot = shot or self._screenshot()  # OCR reads the screenshot (no element list: a vision step anyway)
             elements = elements + self._ocr_elements(shot, start=len(elements))

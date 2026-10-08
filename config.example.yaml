@@ -46,6 +46,9 @@ resolver_model: claude-haiku-5-5
 # qwen_base_url: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 # xai_base_url: https://api.x.ai/v1
 max_steps: 40
+# Take the screenshot while the app and element list are read, not after (saves a few hundred ms
+# per look). Off until measured on real phones.
+parallel_observe: false             # OPENMOB_PARALLEL_OBSERVE=on to try it
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
 aliases: {}

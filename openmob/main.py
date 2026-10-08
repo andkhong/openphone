@@ -81,6 +81,8 @@ def cmd_run(cfg: Config, args) -> None:
     from .history import History
 
     history = History()  # saved chats: the data agents will learn from
+    if not cfg.jev_api_key:
+        print("⚠️  TYPESAFE_API_KEY isn't set: Jev is off (no fast path, no classifier risk check on taps).", flush=True)
     if not cfg.api_key:
         print("⚠️  ANTHROPIC_API_KEY isn't set: Claude models are unavailable, and OpenMob doesn't fall back to other "
               "providers. Set it (and ANTHROPIC_WORKSPACE_ID if your key needs one), then restart.", flush=True)

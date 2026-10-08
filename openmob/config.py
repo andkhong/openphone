@@ -148,6 +148,9 @@ class Config:
     # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
     # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
     vision_stream: bool = False
+    # Take the screenshot while the app and element reads run, instead of after them (phones answer
+    # calls concurrently). Off until measured on real phones. OPENMOB_PARALLEL_OBSERVE=on overrides.
+    parallel_observe: bool = False
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -298,6 +301,8 @@ def load_config(path: str | Path | None = None) -> Config:
     cfg.aliases = {str(k): str(v) for k, v in (cfg.aliases or {}).items()}
     cfg.api_key = os.environ.get("ANTHROPIC_API_KEY")
     # Needed only for API keys that aren't scoped to a workspace.
+    if os.environ.get("OPENMOB_PARALLEL_OBSERVE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
