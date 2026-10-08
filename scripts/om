@@ -34,7 +34,13 @@ cmd_run() {
   if lsof -nP -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
     die "port $port is already in use (another OpenMob server?). Stop it (Control + C in its terminal) or pick another port: om run $env 8766"
   fi
-  [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "om: warning: ANTHROPIC_API_KEY isn't set in this terminal; the agent won't be able to think." >&2
+  # om build stores the matching phone app here, including builds made in scratch worktrees.
+  if [ -z "${OPENMOB_APK:-}" ] && [ -f "$APKS/$env.apk" ]; then
+    export OPENMOB_APK="$APKS/$env.apk"
+  fi
+  if [ ! -r "$data/provider-keys.env" ] && [ -z "${ANTHROPIC_API_KEY:-}${OPENAI_API_KEY:-}${GEMINI_API_KEY:-}${GOOGLE_API_KEY:-}${QWEN_API_KEY:-}${DASHSCOPE_API_KEY:-}${XAI_API_KEY:-}${OPENAI_COMPATIBLE_BASE_URL:-}" ]; then
+    echo "om: warning: no model-provider key or compatible endpoint is set in this terminal." >&2
+  fi
   local phone_env; phone_env="$(cut -d' ' -f1 "$STATE" 2>/dev/null || true)"
   if [ -n "$phone_env" ] && [ "$phone_env" != "$env" ]; then
     echo "om: warning: the phone has the $phone_env app, not the $env one. Run 'om phone $env' (or 'om run $phone_env') so they match." >&2
@@ -42,7 +48,34 @@ cmd_run() {
   echo "▶ OpenMob $env  ·  $(git -C "$dir" log --oneline -1)  ·  data $data  ·  port $port"
   cd "$dir"
   OPENMOB_DATA_DIR="$data" OPENMOB_PORT="$port" exec .venv/bin/python -c "
-import sys, os
+import sys, os, shlex
+from pathlib import Path
+# Load private key assignments as data, never execute them as shell commands.
+keys_file = Path(os.environ['OPENMOB_DATA_DIR']) / 'provider-keys.env'
+if keys_file.is_file():
+    if keys_file.stat().st_mode & 0o077:
+        sys.exit(f'provider-keys.env can be read by other users; keys were not loaded. Run: chmod 600 {keys_file}')
+    allowed = {'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY',
+               'QWEN_API_KEY', 'DASHSCOPE_API_KEY', 'XAI_API_KEY', 'QWEN_BASE_URL', 'XAI_BASE_URL',
+               'OPENAI_COMPATIBLE_API_KEY', 'TYPESAFE_API_KEY', 'ANTHROPIC_WORKSPACE_ID'}
+    saved = {}
+    for line in keys_file.read_text().splitlines():
+        try:
+            parts = shlex.split(line, comments=True)
+        except ValueError:
+            sys.exit('provider-keys.env has invalid quoting; keys were not loaded.')
+        if parts and parts[0] == 'export':
+            parts = parts[1:]
+        if not parts:
+            continue
+        if len(parts) != 1 or '=' not in parts[0]:
+            sys.exit('provider-keys.env: expected NAME=value or export NAME=value.')
+        name, value = parts[0].split('=', 1)
+        if name not in allowed:
+            sys.exit('provider-keys.env contains an unsupported variable; keys were not loaded.')
+        if value:
+            saved[name] = value
+    os.environ.update(saved)
 from openmob.config import load_config
 import openmob.main as m
 cfg_load = m.load_config
