@@ -167,9 +167,9 @@ class Config:
     # warm the cache in API-driven benchmarks. OPENMOB_REPLAY_STORE_API=on overrides.
     replay_store_api: bool = False
     # Plan with the main model, execute with the classifier (agent/plan.py, docs/design/fewer-model-calls.md): on a
-    # cold run the model's first reply lays the request out as sub-goals with a screen cue each (plan_steps); then
-    # each step asks the classifier about the current sub-goal and runs its tap, scroll, Back or app launch through
-    # every check. The model takes over, told the plan and progress, when the classifier isn't sure, a step changes
+    # cold run one dedicated model call before the step loop (its only tool: plan_steps) lays the request out as
+    # sub-goals with a screen cue each; a reply without a plan changes nothing. Then each step asks the classifier
+    # about the current sub-goal and runs its tap, scroll, Back or app launch through every check. The model takes over, told the plan and progress, when the classifier isn't sure, a step changes
     # nothing, a cue doesn't appear within plan_max_steps_per_goal steps, a popup / login / loading screen comes up,
     # the next step would type, or the user corrects. Needs Jev. Off until measured. OPENMOB_PLAN_EXECUTE=on overrides.
     plan_execute: bool = False

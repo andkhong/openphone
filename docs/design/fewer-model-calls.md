@@ -65,11 +65,20 @@ square. Nothing in this document helps there; see §6.
 "Plan with Claude → collect data from the screen → send questions to Jev with input states → run
 Jev's output with an executable script." Concretely:
 
-- **Plan.** On a cold run the model's first reply is a `plan_steps` call: 1-8 sub-goals, each with a
-  **cue**, a label that is on screen only once that sub-goal is reached (the destination's title or
-  something on that page, never the item tapped to get there). The tool's schema and `plan.parse`
-  make it validated JSON (`openmob/agent/plan.py`); nothing in it is ever run as code. The model may
-  call it again to re-plan.
+- **Plan.** On a cold run (no replay path for the request) one dedicated model call before the step
+  loop (`_plan_request`) offers **only** the `plan_steps` tool, with a short instruction, the request
+  and the current screen as the first vision step would see them. The reply's plan is 1-8 sub-goals,
+  each with a **cue**, a label that is on screen only once that sub-goal is reached (the destination's
+  title or something on that page, never the item tapped to get there). The tool's schema and
+  `plan.parse` make it validated JSON (`openmob/agent/plan.py`); nothing in it is ever run as code.
+  No forced tool choice (the adapters are provider-neutral and some Claude models reject one): a reply
+  without a valid plan is recorded as a plan step with `No plan given…` and the task carries on
+  exactly as today, the model acting step by step. The call is recorded as `source = plan` with its
+  own model time; the main conversation doesn't carry the exchange. The first vision step offers
+  `plan_steps` among the usual tools so the model can re-plan after a handover, but never makes a
+  second planning request. **Measured (2026-10-08):** when the tool was merely offered at the first
+  vision step, Haiku 5.5 never called it (0 of 6 chances), which is why planning is a dedicated
+  request now.
 - **Execute.** Each step observes as today, but the one Jev request (`_classify_step`) takes the
   **current sub-goal and its cue as the request** instead of the whole task (`_jev_request`). Jev's
   operation and target become the next action: a tap by element, a scroll, Back or an app launch.
@@ -215,9 +224,19 @@ request, as the request itself does today.
   halves can only shorten the way there.
 - **Ask mode**: every step still asks.
 
-## 7. Expected gains (estimates, not measured)
+## 7. Gains: measured so far, and estimates
 
-On the two Settings tasks of §2 (4-6 vision steps, 5-6.5 s of model time per run today):
+**Measured (2026-10-08, the owner's Samsung, bench copy = gatekeeper `eb20f18` + this branch, Haiku 5.5
+high, Jev on):**
+- **Replay works.** Settings › Display repeat runs took 7.4, 7.6 and 7.4 s with **0 model calls**
+  (6 replayed steps plus the classifier's done), against 14.5 s with 3 model calls with the switch off.
+- **Chrome notifications was never stored:** "… and tell me whether notifications are allowed" isn't
+  navigation-only, by design (§5).
+- **The plan was never used by invitation:** with `plan_execute` on, the model never called
+  `plan_steps` from the first vision step (0 of 6). Planning is now a dedicated request (§3.1); its
+  effect is not measured yet.
+
+**Estimates** for the two Settings tasks of §2 (4-6 vision steps, 5-6.5 s of model time per run today):
 - **Cold run, plan-and-execute on:** 1 model call (the plan) when Jev takes every step and
   `_classifier_done`'s title check passes on this phone; otherwise 2 (plus one per handover: a
   cue that doesn't appear, an unsure Jev answer, a start screen the plan didn't foresee, which §2
@@ -236,14 +255,17 @@ Whether `_classifier_done` fires on Samsung's Settings titles is unknown: `done_
 - `openmob/agent/plan.py`: the `plan_steps` tool's validation, the `Plan` state (sub-goals, cursor,
   step budget, suspension reason, the progress note), the cue check.
 - `openmob/agent/replay.py`: the pure parts of the cache and `PathStore` (JSON file or memory).
-- `openmob/agent/loop.py`: `_replay_step`, then `_plan_step`, before the fast step; `_plan_advance` at
-  each look; `_jev_request` (the sub-goal as Jev's request); `_plan_suspend` / `_plan_tell`
-  (the handover and its note); the `plan_steps` handler; recording in `_execute` and storing in
-  `Agent.run`; `_after_fast_step` learns one keyword argument (`retry`); the variant tags.
-- `openmob/agent/tools.py`: the `plan_steps` tool and the system-prompt note, offered only when on.
+- `openmob/agent/loop.py`: `_plan_request` (the dedicated planning call before the step loop on a cold
+  run); `_replay_step`, then `_plan_step`, before the fast step; `_plan_advance` at each look;
+  `_jev_request` (the sub-goal as Jev's request); `_plan_suspend` / `_plan_tell` (the handover and its
+  note); the `plan_steps` handler; recording in `_execute` and storing in `Agent.run`;
+  `_after_fast_step` learns one keyword argument (`retry`); the variant tags.
+- `openmob/agent/tools.py`: the `plan_steps` tool, the planning request's instruction and the
+  system-prompt note, offered only when on.
 - `openmob/config.py`: `replay_paths` (false), `replay_min_overlap` (0.7), `replay_max_goals` (100),
-  `plan_execute` (false), `plan_max_steps_per_goal` (4); `OPENMOB_REPLAY` and `OPENMOB_PLAN_EXECUTE`
-  (`on|off`) override.
+  `replay_store_api` (false; benchmarks may opt in to storing from isolated tasks), `plan_execute`
+  (false), `plan_max_steps_per_goal` (4); `OPENMOB_REPLAY`, `OPENMOB_REPLAY_STORE_API` and
+  `OPENMOB_PLAN_EXECUTE` (`on|off`) override.
 - `openmob/main.py`: `build_agent` gives the agent a per-phone store when `replay_paths` is on.
 - `openmob/history.py`: `step_timings` includes `source = replay` rows.
 - `tests/test_replay.py`, `tests/test_plan_execute.py`: fake phones, a fake classifier and scripted

@@ -1,8 +1,9 @@
 """Plan with the main model, execute with the classifier (config.plan_execute, off by default;
 docs/design/fewer-model-calls.md).
 
-On a cold run the main model's first reply lays the request out as sub-goals, each with a cue: a label
-that is on screen once that sub-goal is reached (the plan_steps tool). From then on each step asks the
+On a cold run one dedicated model call before the step loop (plan_steps is its only tool) lays the request
+out as sub-goals, each with a cue: a label that is on screen once that sub-goal is reached. A reply without a
+valid plan changes nothing: the model then acts step by step as usual. From then on each step asks the
 classifier about the current sub-goal instead of the whole request, and its answer (a tap by element, a
 scroll, Back, an app launch) runs through loop._execute like any other action, so every check and
 approval applies. A sub-goal is reached when its cue is on screen, or when the classifier says so with
@@ -25,6 +26,7 @@ from . import fast
 
 TOOL = "plan_steps"
 SOURCE = "plan"  # the steps table's source for the plan call and the steps carried out from it
+NO_PLAN = "No plan given, so the request is carried out step by step as usual."
 MAX_GOALS = 8
 MAX_CHARS = 100
 # Classifier operations the helper runs itself. Anything else (typing, waiting, escalate) goes to the model.

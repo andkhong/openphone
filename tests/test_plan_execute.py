@@ -3,7 +3,9 @@ sub-goals with cues, the classifier takes each step toward the current sub-goal,
 and the model takes over (told the plan and progress) whenever a screen doesn't fit. Fake phones, a fake
 classifier and scripted clients only."""
 
-from conftest import RecordingIO, ScriptedClient, system_text, tool_use
+import time
+
+from conftest import RecordingIO, ScriptedClient, system_text, text_block, tool_use
 from test_fast_path import DISPLAY, DONE, SETTINGS, Phone, el
 from test_latency_round_d import FakeJev
 from test_replay import Settling
@@ -61,6 +63,70 @@ def asked(jev):
 def told(client, n):
     """What the model saw at its n-th call."""
     return str(client.requests[n]["messages"])
+
+
+# --- the planning request ---------------------------------------------------------------------
+
+
+class SlowClient(ScriptedClient):
+    def create(self, **kwargs):
+        time.sleep(0.02)
+        return super().create(**kwargs)
+
+
+def test_the_planning_request_is_one_dedicated_call_before_the_step_loop(tmp_path):
+    driver = Phone(MAIN, SCREENS)
+    jev = FakeJev([ESCALATE, ("TAP", 1, 0.95), ("TAP", 2, 0.95), ("DONE", None, 0.95)], done=[0.1, 0.1, 0.1, 0.95])
+    config = Config(settle_delay=0, launch_settle_delay=0, fast_path="on", plan_execute=True)
+    client, io, steps = SlowClient([PLAN2]), RecordingIO(), []
+    io.record_step = steps.append
+    agent = Agent(client, driver, AppResolver(driver, label_cache=tmp_path / "l.json"), config, io,
+                  judge=JevJudge(jev), use_ocr=False)
+    result = agent.run(TASK2)
+    assert result.success and result.planned == 2 and len(client.requests) == 1
+    request = client.requests[0]
+    assert [t["name"] for t in request["tools"]] == ["plan_steps"]  # its only tool; no forced choice
+    assert "call plan_steps" in system_text(request) and "cue" in system_text(request)
+    content = request["messages"][0]["content"]
+    assert content[0]["text"] == f"Request: {TASK2}"
+    assert any("SCREEN:" in b.get("text", "") for b in content) and any(b.get("type") == "image" for b in content)
+    planned = steps[0]
+    assert planned["tool"] == "plan_steps" and planned["source"] == "plan" and not planned["is_error"]
+    assert planned["fast"] is False and planned["model_ms"] >= 15  # the call's own model time
+    assert ("status", "Plan: 2 sub-goals; a quick helper carries them out.") in io.events
+
+
+def test_a_reply_without_a_plan_carries_on_as_usual(tmp_path):
+    driver = Phone(MAIN, SCREENS)
+    agent, client, steps = make([[text_block("Nothing to plan here.")],
+                                 [tool_use("tap_element", "a", index=1, target="Display")], DONE],
+                                driver, FakeJev([ESCALATE]), tmp_path)
+    result = agent.run(TASK1)
+    assert result.success and result.planned == 0 and len(client.requests) == 3
+    assert steps[0]["tool"] == "plan_steps" and steps[0]["source"] == "plan" and steps[0]["is_error"]
+    assert steps[0]["outcome"] == plan.NO_PLAN and ("thought", "Nothing to plan here.") in agent.io.events
+    assert len(client.requests[1]["tools"]) > 1  # the first vision step: every tool, and not a second planning call
+    assert "source" not in steps[1] and steps[1]["tool"] == "tap_element"
+
+
+def test_a_failed_planning_call_carries_on_as_usual(tmp_path):
+    class FailingFirst(ScriptedClient):
+        def create(self, **kwargs):
+            if not self.requests:
+                self.requests.append(kwargs)
+                raise RuntimeError("provider down")
+            return super().create(**kwargs)
+
+    driver = Phone(MAIN, SCREENS)
+    config = Config(settle_delay=0, launch_settle_delay=0, fast_path="on", plan_execute=True)
+    client, io, steps = FailingFirst([[tool_use("tap_element", "a", index=1, target="Display")], DONE]), RecordingIO(), []
+    io.record_step = steps.append
+    agent = Agent(client, driver, AppResolver(driver, label_cache=tmp_path / "l.json"), config, io,
+                  judge=JevJudge(FakeJev([ESCALATE])), use_ocr=False)
+    result = agent.run(TASK1)
+    assert result.success and result.planned == 0 and len(client.requests) == 3
+    assert steps[0]["tool"] == "plan_steps" and steps[0]["is_error"] and steps[0]["outcome"] == plan.NO_PLAN
+    assert any(kind == "error" and "No plan" in message for kind, message in io.events)
 
 
 # --- the plan runs ----------------------------------------------------------------------------
@@ -138,7 +204,8 @@ def test_a_refused_tap_gets_one_more_look_without_the_model(tmp_path):
     moved = [el(0, "Promo"), el(1, "Network & internet"), el(2, "Display"), el(3, "Sound"), el(4, "Battery")]
     settled = [el(i, text, bounds=(0, 100 * i + 100, 1000, 100 * i + 180))
                for i, text in enumerate(["Promo", "Network & internet", "Display", "Sound", "Battery"])]
-    driver = Settling(SETTINGS, SETTINGS, moved, settled, settled, settled)
+    # Reads: the screen decided on, the re-check (moved), the quiet check (moved again: refused), the next looks.
+    driver = Settling(SETTINGS, moved, settled, settled, settled)
     jev = FakeJev([ESCALATE, ("TAP", 1, 0.95), ("TAP", 2, 0.95), ("DONE", None, 0.95)], done=[0.1, 0.1, 0.1, 0.95])
     agent, client, steps = make([PLAN1, DONE], driver, jev, tmp_path)
     result = agent.run(TASK1)

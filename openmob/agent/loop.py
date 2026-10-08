@@ -27,7 +27,8 @@ from ..phone.approval_keys import action_digest
 from . import fast, gate, permission_dialogs, plan, replay, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
+from .tools import (PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes,
+                    system_prompt)
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -314,6 +315,9 @@ class Agent:
         obs = self._observe_settled(state)
         messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
         self._show_later(state, messages, obs)
+        if (self._plan_enabled() and not state.replay and not state.cancel.is_set()
+                and not self._is_blocked(state, obs.package)):
+            self._plan_request(route, obs, state, isolated)  # a cold run: the model plans before the step loop
         nudged = False
 
         mode = state.perms.mode()
@@ -2023,6 +2027,8 @@ class Agent:
         with a new plan after it stopped). Never run as anything but a list of texts to match."""
         if not self._plan_enabled():
             return Outcome(f"Unknown tool {plan.TOOL}.", is_error=True)
+        if not isinstance(args, dict) or args.get("steps") is None:  # the planning request's reply held no plan
+            return Outcome(plan.NO_PLAN, is_error=True, settle=0)
         try:
             goals = plan.parse(args)
         except ValueError as exc:
@@ -2031,6 +2037,44 @@ class Agent:
         self.io.event("status", f"Plan: {len(goals)} sub-goal{'s' if len(goals) != 1 else ''}; a quick helper carries them out.")
         return Outcome("Plan noted. A quick helper carries it out from the element list; you'll hear back, with the "
                        "progress so far, if a screen doesn't fit.", settle=0)
+
+    def _plan_request(self, route, obs: Observation, state: _TaskState, isolated: bool) -> None:
+        """plan_execute on a cold run: one dedicated model call before the step loop, offering only plan_steps,
+        with the request and the screen as the first vision step would see them. A reply with a valid plan
+        arms the helper, and the classifier is asked once more about this screen, for its first sub-goal;
+        any other reply (the model saying there is nothing to plan, or acting) is dropped and the task
+        carries on as usual. No forced tool choice: not every provider or model takes one. Recorded as a plan
+        step with the call's model time. The main conversation doesn't carry the exchange: the helper's
+        notes, and the plan on a handover, do."""
+        messages = [{"role": "user", "content": [{"type": "text", "text": self._request_text(state.task, isolated)},
+                                                  *self._obs_blocks(obs)]}]
+        request = ModelRequest(model=self.task_model, system=PLAN_REQUEST_PROMPT, tools=[PLAN_STEPS_TOOL_SPEC],
+                               messages=messages, max_tokens=route.spec.max_tokens, cache_history=False)
+        call = None
+        try:
+            with self.timer.phase("model"):
+                response = route.adapter.complete(request)
+        except ModelError as exc:
+            self.io.event("error", f"No plan: {exc}")
+        else:
+            self._count_vision(response)
+            for text in response.text:
+                if text.strip():
+                    self.io.event("thought", text.strip())
+            call = next((c for c in response.tool_calls if c.name == plan.TOOL), None)
+        outcome = self._execute(plan.TOOL, call.input if call is not None else {}, obs, state, source=plan.SOURCE)
+        if outcome.is_error:
+            self.io.event("status", f"No plan; carrying on as usual ({outcome.text}).")
+            return
+        state.plan_exec.fresh = False  # not a vision step's reply: the escalation rule for those doesn't apply
+        # The screen was looked at before the plan existed: reach any sub-goal it already shows, and ask the
+        # classifier about it once more, for the first sub-goal still to do.
+        self._plan_advance(state, obs)
+        if state.plan_exec is not None and self.judge is not None and self._one_request(state, obs):
+            try:
+                self._classify_step(state, obs)
+            except (JevError, KeyError, TypeError, ValueError) as exc:
+                self.io.event("error", f"Fast step skipped: {exc}")
 
     def _plan_choice(self, state: _TaskState, obs: Observation, again: bool = False):
         """The classifier's choice for the current sub-goal: the step's one request already holds it (asked

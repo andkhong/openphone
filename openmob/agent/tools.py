@@ -315,6 +315,16 @@ PLAN_STEPS_TOOL = {
 }
 PLAN_STEPS_TOOL_SPEC = {"name": PLAN_STEPS_TOOL["name"], "description": PLAN_STEPS_TOOL["description"],
                         "parameters": PLAN_STEPS_TOOL["input_schema"]}
+# The dedicated planning request on a cold run (loop.Agent._plan_request): plan_steps is its only tool.
+PLAN_REQUEST_PROMPT = (
+    "You are OpenMob, an agent that operates the user's Android phone. Before acting on the request, lay out its "
+    "navigation as sub-goals for a quick helper that works from the element list without you: call plan_steps with "
+    "1-8 steps, each a goal (one short imperative: 'Open the Apps list') and a cue, a label that is on screen only "
+    "once that sub-goal is reached (the destination's title, or something on that page), never the item tapped to "
+    "get there. You see the current screen; the first sub-goal starts from it. Leave out typing, links and anything "
+    "that spends, sends or deletes: the helper hands those to you. If there is no navigation to plan, say so in one "
+    "short sentence."
+)
 PLAN_STEPS_NOTE = (
     "\nA quick helper can do the navigation for you: for a request that only opens or shows things in an app with "
     "a readable element list, call plan_steps first (sub-goals with a cue each). You'll be asked again only when a "

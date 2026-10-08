@@ -56,9 +56,9 @@ parallel_observe: false             # OPENMOB_PARALLEL_OBSERVE=on to try it
 # launches without the main model while each screen matches (every check still applies). Only successful
 # navigation-only tasks that typed nothing and asked nothing are stored (docs/design/fewer-model-calls.md).
 replay_paths: false                 # OPENMOB_REPLAY=on to try it
-# Plan with the model, execute with the classifier: on a cold run the model lays the request out as sub-goals with
-# a screen cue each, then the classifier picks each tap, scroll, Back or app launch toward the current sub-goal (every
-# check still applies). The model takes over when a screen doesn't fit. Needs Jev (docs/design/fewer-model-calls.md).
+# Plan with the model, execute with the classifier: on a cold run one planning call lays the request out as sub-goals
+# with a screen cue each, then the classifier picks each tap, scroll, Back or app launch toward the current sub-goal
+# (every check still applies). The model takes over when a screen doesn't fit. Needs Jev (docs/design/fewer-model-calls.md).
 plan_execute: false                 # OPENMOB_PLAN_EXECUTE=on to try it
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
