@@ -6,7 +6,7 @@
 <title>OpenMob</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
 <script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
 <link rel="stylesheet" href="/static/ds.css">
 <style>
@@ -38,7 +38,7 @@
   /* No box around the top of the chat: the top bar floats on the chat's own background. */
   .main > .topbar { background: transparent; border-bottom: 0; }
   .tip.tip-right:hover::after, .tip.tip-right:focus-visible::after { left: auto; right: 0; }
-  .panel-head { min-height: 40px; margin-top: -2px; }
+  .panel-head { min-height: 40px; }
   .side-head { display: flex; align-items: center; gap: 2px; min-height: 40px; margin: -2px 0 4px 6px; }
   .side-head .brand { font-size: 22px; }
   /* Tooltips (dark chip with the shortcut), like Claude's "Show sidebar ⌘B". */
@@ -46,10 +46,11 @@
   .tip:hover::after, .tip:focus-visible::after { content: attr(data-tip) "   " attr(data-kbd); white-space: pre; position: absolute; top: calc(100% + 6px); left: 0; z-index: 70; padding: 5px 9px; border-radius: 8px; background: var(--fg); color: var(--bg); font-size: 12.5px; font-weight: 500; line-height: 1.3; pointer-events: none; box-shadow: var(--shadow); }
   .side-head .tip:last-child:hover::after, .side-head .tip:last-child:focus-visible::after { left: auto; right: 0; }
 
-  /* Sidebar: saved chats, plus the way to memory and the developer API */
-  .sidebar { width: 272px; flex: none; border-right: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; padding: 12px 10px; gap: 8px; min-height: 0; }
+  /* Sidebar: saved chats and the developer API */
+  .sidebar { width: 272px; flex: none; border-right: 1px solid var(--line); background: var(--sidebar); display: flex; flex-direction: column; padding: 12px 10px; gap: 8px; min-height: 0; }
   .sidebar.hidden { display: none; }
   .new-chat { justify-content: flex-start; font-weight: 600; }
+  .developer-link { flex: none; justify-content: flex-start; }
   .side-label { color: var(--faint); font-size: 12px; font-weight: 600; margin: 8px 8px 0; }
   .chat-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; min-height: 0; margin: 0 -2px; padding: 0 2px; }
   .chat-item { display: flex; align-items: center; gap: 2px; border-radius: 10px; min-width: 0; }
@@ -173,12 +174,6 @@
   .chips { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .chips button { border: 1px solid var(--line); background: var(--surface); border-radius: var(--r-pill); padding: 8px 14px; cursor: pointer; color: var(--muted); font-size: 14px; text-align: left; }
   .chips button:hover { color: var(--fg); border-color: var(--line-strong); }
-  .discover { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 28px; text-align: left; }
-  .discover a { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: var(--r); border: 1px solid var(--line); background: var(--surface); color: var(--fg); text-decoration: none; font-size: 14px; }
-  .discover a:hover { border-color: var(--line-strong); box-shadow: var(--shadow); }
-  .discover svg { width: 20px; height: 20px; color: var(--accent); flex: none; margin-top: 1px; }
-  .discover b { display: block; font-weight: 600; }
-  .discover span { color: var(--muted); font-size: 13px; }
   .onboard { text-align: left; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: 22px; box-shadow: var(--shadow); margin-top: 6px; }
   .onboard ol { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 14px; counter-reset: step; }
   .onboard li { display: grid; grid-template-columns: 30px 1fr; gap: 12px; counter-increment: step; }
@@ -229,8 +224,8 @@
   .mode-chip:hover, .mode-chip[aria-expanded="true"] { background: var(--surface-2); color: var(--fg); }
   .mode-chip svg { width: 14px; height: 14px; flex: none; }
   .mode-chip.never { background: var(--warn-soft); color: var(--warn); font-weight: 600; }
-  .mode-menu { position: absolute; bottom: calc(100% + 8px); right: 0; width: 340px; max-width: calc(100vw - 2 * var(--gutter)); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 6px; z-index: 40; }
-  .mode-menu .mm-head { display: flex; align-items: baseline; gap: 8px; padding: 6px 10px 6px; }
+  .mode-menu { position: fixed; width: min(360px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow-y: auto; overscroll-behavior: contain; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow-lg); padding: 6px; z-index: 40; }
+  .mode-menu .mm-head { position: sticky; top: -6px; z-index: 1; display: flex; align-items: baseline; gap: 8px; padding: 6px 10px; background: var(--surface); border-bottom: 1px solid var(--line); }
   .mode-menu .mm-head b { font-size: 13px; }
   .mode-menu .mm-head span { color: var(--faint); font-size: 12px; margin-left: auto; }
   .mode-item { display: grid; grid-template-columns: 1fr auto 18px; column-gap: 10px; row-gap: 1px; align-items: center; width: 100%; text-align: left; padding: 8px 10px; border: 0; background: transparent; border-radius: 8px; cursor: pointer; color: var(--fg); font: inherit; }
@@ -256,7 +251,7 @@
   .mode-never .spans button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent-line); color: var(--accent); }
   .mode-status { margin: 6px 4px 2px; font-size: 13px; }
   .mode-status:empty { display: none; }
-  .mode-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px 4px; color: var(--faint); font-size: 12px; }
+  .mode-foot { position: sticky; bottom: -6px; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 10px 6px; color: var(--faint); font-size: 12px; background: var(--surface); border-top: 1px solid var(--line); }
   .mode-foot button { border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; padding: 0; }
   .text.ask { white-space: pre-line; }
   #neverChip { border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; order: 9; width: 100%; justify-content: center; min-height: 26px; }
@@ -276,34 +271,61 @@
   .trusted-add { display: grid; gap: 8px; }
   .trusted-add .kinds { display: flex; gap: 12px; flex-wrap: wrap; }
   @media (max-width: 560px) {
-    .mode-menu { position: fixed; left: var(--gutter); right: var(--gutter); bottom: 96px; width: auto; max-height: 70vh; overflow-y: auto; }
     .taskbar { flex-wrap: wrap; }
     .taskbar .task-now { order: 9; flex-basis: 100%; }
     .taskbar .task-meta { margin-left: auto; }
   }
 
   /* Live screen panel */
-  .panel { width: 340px; flex: none; border-left: 1px solid var(--line); background: var(--surface); padding: 14px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .panel { width: 380px; flex: none; border-left: 1px solid var(--line); background: var(--surface); padding: 24px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px; }
+  .panel { transition: width 200ms ease-out; }
   .panel.hidden { display: none; }
-  .panel-head { display: flex; align-items: center; gap: 8px; }
-  .panel-head h2 { font-size: 14px; font-weight: 600; margin: 0; flex: 1; }
-  /* The frame hugs the picture: its width follows the screen's shape, so a tall phone shown in a
-     short window gets a narrower frame instead of black bars on both sides. */
-  .phone { background: #0a0b0d; border-radius: 30px; padding: 8px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.08); width: fit-content; max-width: 100%; margin: 0 auto; }
-  .phone-screen { position: relative; border-radius: 23px; overflow: hidden; background: #14161b; }
-  .phone-screen.blank { aspect-ratio: 9 / 19; width: min(284px, calc((100vh - 170px) * 9 / 19)); }
-  .phone img, .phone canvas { width: auto; height: auto; max-width: min(284px, 100%); display: block; max-height: calc(100vh - 170px); background: #14161b; }
+  .panel.landscape-expanded { width: min(58vw, 860px); max-width: calc(100vw - 320px); }
+  .app:has(> .sidebar:not(.hidden)) .panel.landscape-expanded { max-width: max(380px, calc(100vw - 592px)); }
+  .panel > :not(.screen-stage) { flex-shrink: 0; }
+  .panel-head { display: flex; align-items: center; gap: 10px; }
+  .panel-head h2 { font-size: 16px; font-weight: 600; margin: 0; flex: 1; }
+  .panel-head .pill { font-size: 12px; }
+  .device-slot { position: relative; }
+  .device-slot::after { content: ""; position: absolute; right: 15px; top: 18px; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg); pointer-events: none; }
+  .device-slot:has(.select[hidden])::after { display: none; }
+  .device-slot .select { min-height: 44px; padding-right: 84px; font-size: 13px; text-overflow: ellipsis; appearance: none; }
+  .device-slot .icon-btn { position: absolute; right: 42px; top: 5px; width: 30px; height: 34px; min-height: 34px; color: var(--muted); }
+  .phone-name-form { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; }
+  .phone-name-form small { grid-column: 1 / -1; }
+  .phone-name-form .input { min-height: 34px; font-size: 13px; }
+  /* Size the entire phone to the space between the picker and controls, including landscape frames. */
+  .screen-stage { flex: 1; min-height: 180px; display: grid; place-items: center; padding: 8px 8px 16px; }
+  .phone { background: #0a0b0d; border-radius: 28px; padding: 6px; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.12); width: 260px; max-width: 100%; }
+  .phone-screen { position: relative; aspect-ratio: var(--screen-aspect, 9 / 19); border-radius: 22px; overflow: hidden; background: #14161b; }
+  .phone img, .phone canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; background: #14161b; }
   .phone-screen.blank img, .phone-screen.blank canvas { display: none; }
-  /* What the live view is showing (video or snapshots, its size and rate) and the quality choice. */
-  .screen-meta { display: flex; align-items: center; gap: 8px; width: 100%; max-width: 300px; margin: -4px auto 0; min-height: 28px; }
-  .screen-info { flex: 1; min-width: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  /* Stream measurements and quality live together, outside the phone's screen. */
+  .screen-meta { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+  .screen-info { min-width: 0; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; line-height: 1.6; overflow-wrap: anywhere; }
+  .stream-status { display: flex; align-items: center; gap: 7px; }
+  .stream-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--faint); flex: none; }
+  .screen-info[data-state="active"] .stream-status::before { background: var(--ok); }
+  .screen-info[data-state="paused"] .stream-status::before { background: var(--warn); }
+  .stream-detail { display: block; margin-left: 13px; white-space: nowrap; }
   .screen-info b { font-weight: 600; color: var(--fg); }
-  .screen-info.jpeg b { color: var(--warn); }
-  .screen-meta .select { width: auto; min-height: 28px; padding: 2px 8px; font-size: 12px; border-radius: 8px; flex: none; }
+  .screen-quality { min-width: 0; }
+  .screen-meta .select { width: 196px; max-width: 100%; min-height: 34px; padding: 4px 8px; font-size: 11px; border-radius: 8px; }
+  .landscape-layout { grid-column: 1 / -1; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 10px; border-top: 1px solid var(--line); }
+  .landscape-layout > span { flex: 1; color: var(--muted); font-size: 12px; }
+  .layout-toggle { display: flex; gap: 2px; padding: 3px; border: 1px solid var(--line); border-radius: 9px; }
+  .layout-toggle button { border: 0; border-radius: 6px; padding: 5px 9px; background: transparent; font-size: 12px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+  .layout-toggle button[aria-pressed="true"] { background: var(--surface); color: var(--fg); box-shadow: var(--shadow-sm); font-weight: 600; }
+  .screen-notice { border-radius: 10px; padding: 10px 12px; color: var(--warn); background: var(--warn-soft); font-size: 12px; overflow-wrap: anywhere; }
+  .phone-notices { display: grid; gap: 8px; }
+  .phone-notices:not(:has(> :not([hidden]))) { display: none; }
+  .phone-notices .pill { justify-self: start; max-width: 100%; white-space: normal; text-align: left; }
+  @media (max-width: 360px) {
+    .screen-meta { grid-template-columns: minmax(0, 1fr); }
+    .screen-meta .select { width: 100%; }
+  }
   .screen-overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 20px; text-align: center; color: #c9ced8; font-size: 13px; }
   .screen-overlay svg { width: 30px; height: 30px; opacity: .6; }
-  .screen-overlay.banner { inset: auto 8px 8px 8px; padding: 8px 10px; border-radius: 12px; background: rgba(10, 11, 13, .82); flex-direction: row; justify-content: flex-start; gap: 8px; text-align: left; }
-  .screen-overlay.banner svg { width: 16px; height: 16px; flex: none; }
   .status { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 14px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--faint); flex: none; }
   .dot.idle { background: var(--ok); }
@@ -311,13 +333,15 @@
   .dot.asking { background: var(--warn); }
   .dot.offline { background: var(--bad); }
   .panel-info { display: grid; gap: 2px; }
+  .panel-info:not(:has(small:not(:empty))) { display: none; }
   .panel small { display: block; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
   .panel small:empty { display: none; }
 
   .scrim { position: fixed; inset: 0; background: var(--overlay); z-index: 45; }
   @media (max-width: 900px) {
     .sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(300px, 86vw); }
-    .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(340px, 92vw); }
+    .panel { position: fixed; right: 0; top: 0; bottom: 0; z-index: 50; box-shadow: var(--shadow-lg); width: min(400px, 100vw); }
+    .panel.landscape-expanded, .app:has(> .sidebar:not(.hidden)) .panel.landscape-expanded { width: 100vw; max-width: 100vw; }
     .nav-label { display: none; }
   }
   @media (max-width: 560px) {
@@ -360,6 +384,7 @@
     <input class="input chat-search" id="chatSearch" type="search" placeholder="Search chats" aria-label="Search chats" hidden>
     <div class="side-label" id="chatsLabel">Chats</div>
     <div class="chat-list" id="chatList" aria-labelledby="chatsLabel"></div>
+    <a class="btn btn-ghost developer-link" id="developerLink" title="Connect your own agent or app to control your phone." href="/developer" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>Developer API</a>
     <div class="side-foot">
       <details class="menu account" id="menu">
         <summary class="account-btn" aria-label="Account and settings" title="Account and settings">
@@ -373,7 +398,6 @@
           <a id="memoryLink" href="/memory"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.4 6.8 19.1l1-5.8L3.5 9.2l5.9-.9z"/></svg>What I've learned</a>
           <a id="connectPhone" href="/connect"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>Connect a phone</a>
           <a id="phonesLink" href="/phones" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>Your phones</a>
-          <a id="developerLink" href="/developer" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 8l-4 4 4 4M16 8l4 4-4 4"/></svg>Developer API &amp; AI agents</a>
           <a id="adminLink" href="/admin" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z"/></svg>Admin</a>
           <hr>
           <div class="menu-label">Preferences</div>
@@ -488,25 +512,51 @@
 </div>
 </div>
   <aside class="panel" id="panel" aria-label="Phone screen">
-    <div class="panel-head"><h2>Live screen</h2><button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button><span class="pill" id="liveBadge">Off</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
-    <div class="device-slot"><select class="select" id="device" aria-label="Phone"></select></div>
-    <div class="phone">
-      <div class="phone-screen blank" id="phoneScreen">
-        <img id="screen" alt="Live view of your phone's screen">
-        <canvas id="screenVideo" hidden aria-label="Live video of your phone's screen"></canvas>
-        <div class="screen-overlay" id="screenOverlay">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>
-          <span id="screenMsg">Connecting…</span>
+    <div class="panel-head"><h2>Live screen</h2><span class="pill" id="liveBadge">Connecting</span><button class="btn btn-ghost icon-btn tip tip-right" id="panelHide" type="button" data-tip="Hide screen" data-kbd="⌘\" aria-label="Hide phone screen" aria-controls="panel" aria-expanded="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M14.5 4.5v15"/></svg></button></div>
+    <div class="device-slot">
+      <select class="select" id="device" aria-label="Phone"></select>
+      <button class="btn btn-ghost icon-btn" id="renamePhone" type="button" aria-label="Name this phone" title="Set a friendly name in this browser" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L20 8l-4-4L4 16zM13 7l4 4"/></svg></button>
+    </div>
+    <form class="phone-name-form" id="phoneNameForm" hidden>
+      <label class="sr-only" for="phoneName">Friendly phone name</label>
+      <input class="input" id="phoneName" maxlength="60" placeholder="e.g. My Galaxy" autocomplete="off">
+      <button class="btn btn-sm" type="submit">Save</button>
+      <button class="btn btn-ghost icon-btn" id="phoneNameCancel" type="button" aria-label="Cancel phone rename">×</button>
+      <small>Saved in this browser. Leave blank to use the reported name.</small>
+    </form>
+    <div class="screen-stage" id="screenStage">
+      <div class="phone">
+        <div class="phone-screen blank" id="phoneScreen">
+          <img id="screen" alt="Live view of your phone's screen">
+          <canvas id="screenVideo" hidden aria-label="Live video of your phone's screen"></canvas>
+          <div class="screen-overlay" id="screenOverlay">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="6.5" y="2.5" width="11" height="19" rx="3"/><path d="M10.5 18h3"/></svg>
+            <span id="screenMsg">Connecting…</span>
+          </div>
         </div>
       </div>
     </div>
+    <div class="phone-notices">
+      <button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button>
+      <div class="screen-notice" id="screenNotice" role="status" hidden></div>
+    </div>
     <div class="screen-meta">
       <span class="screen-info" id="screenInfo" role="note"></span>
-      <select class="select" id="screenQuality" aria-label="Live screen quality" title="Live screen quality">
-        <option value="sharp">Sharp</option>
-        <option value="balanced">Balanced</option>
-        <option value="saver">Data saver</option>
-      </select>
+      <div class="screen-quality">
+        <label class="sr-only" for="screenQuality">Quality</label>
+        <select class="select" id="screenQuality" aria-label="Live screen quality" title="Live screen quality">
+          <option value="sharp">Sharp</option>
+          <option value="balanced">Balanced</option>
+          <option value="saver">Data saver</option>
+        </select>
+      </div>
+      <div class="landscape-layout" id="landscapeLayout" hidden>
+        <span>Landscape</span>
+        <div class="layout-toggle" role="group" aria-label="Landscape screen layout">
+          <button id="landscapeExpand" type="button" aria-pressed="false" title="Widen the phone pane for a larger landscape view">Expand pane</button>
+          <button id="landscapeFit" type="button" aria-pressed="true" title="Keep the phone pane compact and fit the whole screen inside">Fit pane</button>
+        </div>
+      </div>
     </div>
     <span class="sr-only" id="state" role="status" aria-live="polite">Connecting…</span>
     <div class="panel-info">
@@ -551,14 +601,16 @@ const icon = (name, cls) => {
 };
 const EXAMPLES = [
   "Open YouTube and search for lofi music",
-  "Open Settings and turn on dark mode",
-  "Open Chrome and go to wikipedia.org",
+  "Turn on dark mode in Settings",
   "Set a timer for 10 minutes",
+  "Find an Italian restaurant rated 4+ stars nearby on Maps",
 ];
 
 let accounts = false;
 let deviceId = null;
+let modelChanging = false;
 let deviceCount = 0;
+let phoneChoices = [];
 let last = null;            // latest status snapshot
 let lastSignature = "";     // re-render only when something changed
 let pendingNotes = new Set();  // ids of memory suggestions still waiting for Keep/Dismiss
@@ -664,25 +716,69 @@ async function loadModels() {
   } catch {}
 }
 
+function phoneNickname(id) {
+  try { return id ? localStorage.getItem(`openmob.phoneName.${id}`) || "" : ""; } catch { return ""; }
+}
+function reportedPhoneName(value) {
+  // Tidy lower-case reported words while preserving mixed-case names and model codes.
+  const brands = { samsung: "Samsung", google: "Google", motorola: "Motorola", oneplus: "OnePlus", xiaomi: "Xiaomi", oppo: "OPPO", vivo: "vivo", huawei: "Huawei", nokia: "Nokia", sony: "Sony" };
+  return (value || "").trim().split(/\s+/).map(word => Object.hasOwn(brands, word.toLowerCase()) ? brands[word.toLowerCase()]
+    : /^[a-z]+$/.test(word) ? word[0].toUpperCase() + word.slice(1) : word).join(" ");
+}
+function deviceLabel(d) {
+  const model = reportedPhoneName(d.model);
+  const name = phoneNickname(d.id) || reportedPhoneName(d.name);
+  if (name && name !== model) return model ? `${name} (${model})` : name;
+  // Model codes aren't marketing names. Keep the code and make its purpose clear.
+  const code = model.match(/^(.+?)\s+((?:SM-|GT-|CPH|XT)\S+)$/i);
+  return code ? `${code[1]} phone (${code[2]})` : model || "Android phone";
+}
+
 async function loadDevices(rescan = false) {
   try {
     const devices = await api(`/api/devices${rescan ? "?rescan=true" : ""}`);
+    phoneChoices = devices;
     deviceCount = devices.length;
     // Every paired phone is listed; one that hasn't connected since the server started can't be picked yet.
     const usable = devices.filter((d) => d.session !== false);
     $("device").replaceChildren(...devices.map((d) => {
-      const o = el("option", "", `${d.model}${d.online ? "" : " · offline"}`);
+      const o = el("option", "", `${deviceLabel(d)}${d.online ? "" : " · offline"}`);
       o.value = d.id;
       o.disabled = d.session === false;
       return o;
     }));
     $("device").hidden = !devices.length;
+    $("renamePhone").disabled = !usable.length;
     showNewPhone(devices);
     if (!usable.length) { deviceId = null; render(null); return; }
     if (!usable.some((d) => d.id === deviceId)) { deviceId = (usable.find((d) => d.online) || usable[0]).id; resetScreen(); }
     $("device").value = deviceId;
+    $("device").title = deviceLabel(usable.find((d) => d.id === deviceId));
   } catch (e) { $("state").textContent = e.message; }
 }
+
+$("renamePhone").onclick = () => {
+  const phone = phoneChoices.find((d) => d.id === deviceId);
+  if (!phone) return;
+  $("phoneNameForm").dataset.device = phone.id;
+  $("phoneNameForm").hidden = false;
+  $("phoneName").value = phoneNickname(phone.id) || (phone.name !== phone.model ? phone.name : "") || "";
+  $("phoneName").focus();
+  $("phoneName").select();
+};
+const closePhoneName = () => { $("phoneNameForm").hidden = true; $("renamePhone").focus(); };
+$("phoneNameCancel").onclick = closePhoneName;
+$("phoneNameForm").onkeydown = (e) => { if (e.key === "Escape") { e.preventDefault(); closePhoneName(); } };
+$("phoneNameForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const id = $("phoneNameForm").dataset.device;
+  try {
+    const key = `openmob.phoneName.${id}`, value = $("phoneName").value.trim().slice(0, 60);
+    value ? localStorage.setItem(key, value) : localStorage.removeItem(key);
+  } catch { alert("The name couldn't be saved in this browser."); return; }
+  closePhoneName();
+  await loadDevices();
+};
 
 // "New phone added: SM-S948U1" for a pairing in the last 15 minutes that this browser hasn't
 // acknowledged, with one-click Remove (each pairing is also in the account's audit log).
@@ -1015,21 +1111,6 @@ function modelTokens(u, onlyModel) {
   return entries.map(([m, c]) => `${fmt(c.input + c.output)} tokens · ${modelName(m)}`).join("  ·  ");
 }
 
-function discoverLinks() {
-  const box = el("div", "discover");
-  const link = (href, name, title, text) => {
-    const a = el("a");
-    a.href = href;
-    const txt = el("div");
-    txt.append(el("b", "", title), el("span", "", text));
-    a.append(icon(name), txt);
-    return a;
-  };
-  box.append(link(withToken("/memory"), "star", "What I've learned", "Notes about you and your apps that make every task smarter."));
-  if (accounts) box.append(link("/developer", "code", "Connect an AI agent", "Let Claude, Cursor or your own code use your phone."));
-  return box;
-}
-
 function renderFirstRun() {
   const box = el("div", "empty");
   box.append(el("h1", "", "Connect your phone to get started"));
@@ -1071,8 +1152,8 @@ function renderEmpty() {
     call.append(icon("alert"), txt);
     box.append(call);
   }
-  box.append(el("h1", "", "What should your phone do?"));
-  box.append(el("p", "", "Ask in plain words. The agent works on your phone step by step, and you can watch it live."));
+  box.append(el("h1", "", "What can your phone do for you?"));
+  box.append(el("p", "", "Just describe a task. The agent handles the taps, swipes, and apps for you in real time."));
   const chips = el("div", "chips");
   for (const t of EXAMPLES) {
     const b = el("button", "", t);
@@ -1080,7 +1161,7 @@ function renderEmpty() {
     b.onclick = () => send(t);
     chips.append(b);
   }
-  box.append(chips, discoverLinks());
+  box.append(chips);
   return box;
 }
 
@@ -1124,7 +1205,7 @@ function render(s) {
   const selected = (s && s.model) || $("model").value;
   const sessionText = modelTokens(sess, selected);
   $("sessionTokens").textContent = sessionText ? `This session: ${sessionText}` : "";
-  if (s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
+  if (!modelChanging && s && s.model && document.activeElement !== $("model") && $("model").value !== s.model) { $("model").value = s.model; syncModelLabel(); }
   syncPerms(s);
   renderTaskBar(s);
   renderScreenState();
@@ -1179,7 +1260,7 @@ function updateComposer() {
   const sendLabel = queueNext && taskOn ? "Queue as a new task" : running ? "Send correction" : asking ? "Send answer" : "Send";
   btn.setAttribute("aria-label", busy ? "Stop" : sendLabel);
   btn.title = busy ? "Stop the task" : sendLabel;
-  btn.disabled = !deviceId || (!busy && !hasText);
+  btn.disabled = !deviceId || (!busy && (modelChanging || !hasText));
   if (!taskOn && queueNext) queueNext = false;
   $("queueToggle").hidden = !taskOn;
   $("queueToggle").setAttribute("aria-pressed", String(queueNext));
@@ -1211,6 +1292,7 @@ $("text").addEventListener("keydown", (e) => {
 $("composer").addEventListener("submit", (e) => {
   e.preventDefault();
   if ($("send").classList.contains("stop")) { stopTask(); return; }
+  if (modelChanging) return;
   const text = $("text").value;
   const mode = queueNext && last && last.task_id ? "queue" : "auto";
   $("text").value = "";
@@ -1224,14 +1306,31 @@ $("stopTask").onclick = () => stopTask();
 $("model").onchange = async (e) => {
   syncModelLabel();
   if (!deviceId) return;
+  const target = deviceId;
+  const previous = last && last.model;
+  modelChanging = true;
+  $("model").disabled = true;
+  updateComposer();
   try {
-    const r = await api(`/api/devices/${deviceId}/model`, {
+    const r = await api(`/api/devices/${target}/model`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: e.target.value }),
     });
+    if (deviceId !== target) return;
+    if (last) last.model = r.model;
+    $("model").value = r.model;
     const name = shortModel(modelLabels[r.model] || r.model);
     $("hint").dataset.note = r.applies === "now" ? `Using ${name}.` : `${name} applies from the next task.`;
+  } catch (err) {
+    if (deviceId === target) {
+      if (previous) $("model").value = previous;
+      setHint(err.message);
+    }
+  } finally {
+    modelChanging = false;
+    $("model").disabled = false;
+    syncModelLabel();
     updateComposer();
-  } catch (err) { setHint(err.message); }
+  }
 };
 
 // ---------- permission modes: when the phone asks you before acting ----------
@@ -1322,6 +1421,7 @@ function modeRow(m, n) {
 
 function renderModeMenu() {
   const menu = $("modeMenu");
+  const scrollTop = menu.scrollTop;
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.mode : null;
   const head = el("div", "mm-head");
   head.append(el("b", "", "When should your phone ask you?"), el("span", "", "1–5"));
@@ -1382,10 +1482,36 @@ function renderModeMenu() {
   settings.onclick = () => { closeModeMenu(); openPerms(); };
   foot.append(settings);
   menu.replaceChildren(head, ...rows, el("hr"), box, el("hr"), legend, status, foot);
+  menu.scrollTop = scrollTop;
   if (focused) {
     const again = menu.querySelector(`[data-mode="${focused}"]`);
-    if (again) again.focus();
+    if (again) again.focus({ preventScroll: true });
   }
+  positionModeMenu();
+}
+
+function positionModeMenu() {
+  const menu = $("modeMenu");
+  if (menu.hidden) return;
+  const viewport = window.visualViewport;
+  const x = viewport ? viewport.offsetLeft : 0;
+  const y = viewport ? viewport.offsetTop : 0;
+  const width = viewport ? viewport.width : window.innerWidth;
+  const height = viewport ? viewport.height : window.innerHeight;
+  const anchor = $("modeChip").getBoundingClientRect();
+  const margin = 12, gap = 8;
+  const above = Math.max(0, anchor.top - gap - y - margin);
+  const below = Math.max(0, y + height - margin - anchor.bottom - gap);
+  const upward = above >= below;
+  menu.style.maxWidth = `${Math.max(0, width - 2 * margin)}px`;
+  menu.style.maxHeight = `${Math.min(560, upward ? above : below)}px`;
+  menu.style.left = `${Math.max(x + margin, Math.min(anchor.right - menu.offsetWidth, x + width - margin - menu.offsetWidth))}px`;
+  menu.style.top = `${upward ? anchor.top - gap - menu.offsetHeight : anchor.bottom + gap}px`;
+}
+window.addEventListener("resize", positionModeMenu);
+if (window.visualViewport) {
+  window.visualViewport.addEventListener("resize", positionModeMenu);
+  window.visualViewport.addEventListener("scroll", positionModeMenu);
 }
 
 function openModeMenu() {
@@ -1812,7 +1938,7 @@ document.addEventListener("keydown", (e) => {
 
 // ---------- header ----------
 
-$("device").onchange = (e) => { deviceId = e.target.value; lastSignature = ""; openSteps.clear(); perms = null; modeStatus = ""; resetScreen(); pollNow(); };
+$("device").onchange = (e) => { $("phoneNameForm").hidden = true; deviceId = e.target.value; lastSignature = ""; openSteps.clear(); perms = null; modeStatus = ""; resetScreen(); pollNow(); };
 $("newChat").onclick = async () => {
   if (!deviceId) return;
   try {
@@ -1905,14 +2031,13 @@ const screenReason = (message) => (message || "screen unavailable").replace(/^\w
 let frameTime = 0;          // X-Frame-Time of the polled frame on screen; the server sends a newer one
 let screenSocketAfter = 0;  // after a failed socket, poll until this time, then try the socket again
 
-// What the panel says around the picture: a full cover before the first frame, a banner over a
-// stale frame when the phone reports a problem, and a badge for the stream's kind.
 // "Kalshi is asking for location: choose on your phone, then the task continues." -> the live view's card text.
 function ownerDialogText(message) {
   const m = /^(.+?) is asking for (.+?):/.exec(message || "");
   return m ? `${m[1]} is asking for ${m[2]}: answer on your phone.` : "A system dialog needs your answer: answer on your phone.";
 }
 
+// Show notices beside the view, never on top of a received frame. The approval screen is hidden.
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
   const reconnecting = !!(last && last.device && last.device.reconnecting);
@@ -1921,24 +2046,31 @@ function renderScreenState() {
   // The phone's approval screen keeps itself out of screenshots and video on purpose (so neither the
   // agent nor a server can see or work it), which shows here as a black picture: say what's going on.
   const approving = !!deviceId && confirming && !offline && !reconnecting;
-  // A system dialog (a permission request) waits for the owner's answer on the phone: say so over the picture.
+  // A system dialog (a permission request) waits for the owner's answer on the phone: say so beside the picture.
   const dialogText = last && last.owner_dialog ? ownerDialogText(last.owner_dialog) : "";
   const cover = !deviceId || !hasFrame || approving;
   const message = !deviceId ? "No phone connected yet." : reconnecting ? "Reconnecting to your phone…" : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
     : approving ? "Waiting for your approval on the phone. The approval screen is hidden from the live view for your security."
     : dialogText ? dialogText : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
-  $("screenOverlay").hidden = !cover && !screenError && !reconnecting && !dialogText;
-  $("screenOverlay").classList.toggle("banner", !cover);
+  $("screenOverlay").hidden = !cover;
   $("screenMsg").textContent = message;
+  const notice = $("screenNotice");
+  notice.hidden = cover || (!dialogText && !screenError && !reconnecting && !offline);
+  notice.textContent = reconnecting ? "Reconnecting… Showing the last received frame."
+    : offline ? "Phone offline. Showing the last received frame."
+    : dialogText ? dialogText
+    : screenError ? `${screenError} Showing the last received frame.` : "";
   const badge = $("liveBadge");
   const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"]
     : confirming ? ["Approve on phone", "warn dotted live"] : phone === "asking" ? ["Needs you", "warn dotted live"]
     : phone === "running" ? ["Working", "info dotted live"] : screenError ? ["Unavailable", "warn dotted"]
-    : hasFrame ? ["Ready", "ok dotted"] : ["Connecting", "dotted"];
+    : hasFrame ? ["Connected", "ok dotted"] : ["Connecting", "dotted"];
   badge.textContent = text;
   badge.className = `pill ${cls}`;
   badge.title = screenMode === "video" ? "Smooth H.264 video from the phone" : hasFrame ? "Snapshots from the phone, refreshed continuously" : "";
+  fitScreen();
+  renderScreenInfo();
 }
 
 function resetScreen() {
@@ -1947,6 +2079,7 @@ function resetScreen() {
   screenError = "";
   frameTime = 0;
   Object.assign(liveStats, { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0 });
+  fitScreen();
   renderScreenState();
   renderScreenInfo();
 }
@@ -1966,9 +2099,11 @@ async function showFrame(blob) {
   img.src = URL.createObjectURL(blob);
   try { await img.decode(); } catch {}
   if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+  const resized = liveStats.width !== img.naturalWidth || liveStats.height !== img.naturalHeight;
   liveStats.width = img.naturalWidth;
   liveStats.height = img.naturalHeight;
   liveStats.frames++;
+  if (resized) fitScreen();
 }
 
 // Quality of the live view, and the size it is shown at. The server sizes the stream (or the
@@ -1987,6 +2122,35 @@ function screenView() {
 // What's on screen and how well it's arriving, for the line under the phone (and for debugging:
 // window.openmobLive in the console).
 const liveStats = window.openmobLive = { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0, decodeMs: 0, lastPts: 0, lastPaint: 0 };
+let landscapeLayout = "fit";
+try { if (localStorage.getItem("openmob.landscapeLayout") === "expand") landscapeLayout = "expand"; } catch {}
+
+function applyLandscapeLayout() {
+  const landscape = hasFrame && liveStats.width > liveStats.height;
+  $("landscapeLayout").hidden = !landscape;
+  $("panel").classList.toggle("landscape-expanded", landscape && landscapeLayout === "expand");
+  $("landscapeExpand").setAttribute("aria-pressed", String(landscapeLayout === "expand"));
+  $("landscapeFit").setAttribute("aria-pressed", String(landscapeLayout === "fit"));
+}
+for (const [id, layout] of [["landscapeExpand", "expand"], ["landscapeFit", "fit"]]) {
+  $(id).onclick = () => {
+    landscapeLayout = layout;
+    try { localStorage.setItem("openmob.landscapeLayout", layout); } catch {}
+    fitScreen();
+  };
+}
+
+function fitScreen() {
+  applyLandscapeLayout();
+  const stage = $("screenStage");
+  if (!stage.clientWidth || !stage.clientHeight) return;
+  const aspect = !$("phoneScreen").classList.contains("blank") && liveStats.width && liveStats.height
+    ? liveStats.width / liveStats.height : 9 / 19;
+  // Keep breathing room around the bezel while using the available height for the complete frame.
+  const width = Math.min(stage.clientWidth - 16, (stage.clientHeight - 36) * aspect + 12);
+  $("phoneScreen").style.setProperty("--screen-aspect", aspect);
+  $("phoneScreen").parentElement.style.width = `${Math.max(36, width)}px`;
+}
 let statsAt = performance.now();
 setInterval(() => {
   const now = performance.now(), secs = (now - statsAt) / 1000;
@@ -2002,25 +2166,43 @@ function renderScreenInfo() {
   const video = screenMode === "video";
   info.className = `screen-info ${screenMode}`;
   info.replaceChildren();
-  if (!hasFrame || !screenMode) { info.title = ""; return; }
+  const connected = deviceId && last && last.device && last.device.online !== false && !last.device.reconnecting;
+  const approval = last && last.state === "asking" && last.question_kind === "confirm";
+  const active = hasFrame && connected && !screenError && !approval;
+  const resolution = hasFrame && liveStats.width && !approval ? `${Math.max(liveStats.width, liveStats.height)}p` : "";
+  for (const option of $("screenQuality").options) {
+    const label = `Quality: ${SCREEN_QUALITIES[option.value]}${option.value === screenQuality && resolution ? ` (${resolution})` : ""}`;
+    if (option.textContent !== label) option.textContent = label;
+  }
+  info.dataset.state = active ? "active" : hasFrame ? "paused" : "waiting";
+  const status = el("span", "stream-status");
+  const label = !deviceId ? "No stream" : approval ? "Screen hidden for approval"
+    : !hasFrame ? "Waiting for screen" : active ? "Active stream" : "Stream paused";
+  status.append(el("b", "", label));
+  info.append(status);
+  if (!hasFrame || !screenMode || approval) { info.title = ""; return; }
   const parts = [];
   if (liveStats.width) parts.push(`${Math.max(liveStats.width, liveStats.height)}p`);  // long side, like "1280p"
-  parts.push(`${liveStats.fps < 3 ? liveStats.fps.toFixed(1) : Math.round(liveStats.fps)} fps`);
-  if (video && liveStats.kbps) parts.push(liveStats.kbps >= 1000 ? `${(liveStats.kbps / 1000).toFixed(1)} Mbps` : `${liveStats.kbps} kbps`);
-  info.append(el("b", "", video ? "Video" : "Screenshots"), ` · ${parts.join(" · ")}`);
+  if (active) parts.push(`${liveStats.fps < 3 ? liveStats.fps.toFixed(1) : Math.round(liveStats.fps)} fps`);
+  info.append(el("span", "stream-detail", parts.join(" · ")));
   info.title = video
-    ? `Live H.264 video from the phone, ${liveStats.width}×${liveStats.height}, sized for this panel.`
+    ? `Live H.264 video from the phone, ${liveStats.width}×${liveStats.height}, sized for this panel.${active && liveStats.kbps ? ` ${liveStats.kbps} kbps received.` : ""}`
     : "Snapshots, a few a second. For smooth, sharp video, allow screen sharing when you connect the OpenMob app (update the app if it doesn't ask).";
 }
 
 $("screenQuality").onchange = (e) => {
   screenQuality = e.target.value;
   try { localStorage.setItem("openmob.screenQuality", screenQuality); } catch {}
+  renderScreenInfo();
   sendView();
 };
 let sendView = () => {};  // set while a screen socket is open
 let viewTimer = 0;
-new ResizeObserver(() => { clearTimeout(viewTimer); viewTimer = setTimeout(() => sendView(), 400); }).observe($("phoneScreen"));
+new ResizeObserver(fitScreen).observe($("screenStage"));
+new ResizeObserver(() => {
+  clearTimeout(viewTimer);
+  viewTimer = setTimeout(() => sendView(), 400);
+}).observe($("phoneScreen"));
 matchMedia("(min-resolution: 2dppx)").addEventListener("change", () => sendView());  // moved to another display
 
 // Smooth live view: H.264 from the phone, decoded with WebCodecs onto the canvas. Phones whose owner
@@ -2052,6 +2234,7 @@ function videoPlayer(askKeyframe) {
   // into it with high-quality smoothing: sharper text than letting CSS shrink a large canvas.
   const paint = (frame) => {
     const vw = frame.displayWidth, vh = frame.displayHeight;
+    const resized = vw !== liveStats.width || vh !== liveStats.height;
     const shown = (canvas.clientWidth || vw) * (window.devicePixelRatio || 1);
     const fit = Math.min(1, shown / vw);
     const w = Math.round(vw * fit), h = Math.round(vh * fit);
@@ -2063,6 +2246,7 @@ function videoPlayer(askKeyframe) {
     if (at !== undefined) { liveStats.decodeMs = Math.round(performance.now() - at); sent.delete(frame.timestamp); }
     if (sent.size > 64) sent.clear();
     Object.assign(liveStats, { width: vw, height: vh, lastPts: frame.timestamp, lastPaint: performance.timeOrigin + performance.now() });
+    if (resized) fitScreen();
     liveStats.frames++;
     frame.close();
     showSurface("screenVideo");

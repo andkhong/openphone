@@ -35,6 +35,10 @@ cmd_run() {
     die "port $port is already in use (another OpenMob server?). Stop it (Control + C in its terminal) or pick another port: om run $env 8766"
   fi
   [ -n "${ANTHROPIC_API_KEY:-}" ] || echo "om: warning: ANTHROPIC_API_KEY isn't set in this terminal; the agent won't be able to think." >&2
+  local phone_env; phone_env="$(cut -d' ' -f1 "$STATE" 2>/dev/null || true)"
+  if [ -n "$phone_env" ] && [ "$phone_env" != "$env" ]; then
+    echo "om: warning: the phone has the $phone_env app, not the $env one. Run 'om phone $env' (or 'om run $phone_env') so they match." >&2
+  fi
   echo "▶ OpenMob $env  ·  $(git -C "$dir" log --oneline -1)  ·  data $data  ·  port $port"
   cd "$dir"
   OPENMOB_DATA_DIR="$data" OPENMOB_PORT="$port" exec .venv/bin/python -c "

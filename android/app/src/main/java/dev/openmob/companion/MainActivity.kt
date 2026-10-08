@@ -9,11 +9,11 @@ import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.ComponentName
 import android.content.Intent
-import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -93,11 +93,10 @@ class MainActivity : Activity() {
     private var setupExpanded = false // once everything is done the steps fold away
     private lateinit var pairStep: Step
     private lateinit var a11yStep: Step
+    private lateinit var a11yAppInfo: TextView
     private lateinit var restrictedHelp: LinearLayout
     private lateinit var restrictedToggle: TextView
     private var restrictedHelpOpen = false
-    private var restrictedHelpAutoOpened = false
-    private var sentToA11ySettings = false
     private lateinit var notifStep: Step
     private lateinit var batteryStep: Step
     private lateinit var batteryWhy: TextView
@@ -159,10 +158,6 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         unsubscribe = AppState.listen { render() }
-        // Back from Accessibility settings and still off: most likely Android's "Restricted
-        // setting" block for apps installed outside the Play Store, so show how to lift it.
-        if (sentToA11ySettings && !isAccessibilityOn && restrictedHelpSupported) restrictedHelpOpen = true
-        sentToA11ySettings = false
         render() // also re-checks accessibility, e.g. on return from Settings
     }
 
@@ -236,22 +231,15 @@ class MainActivity : Activity() {
     private val batteryUnrestricted: Boolean
         get() = getSystemService(PowerManager::class.java).isIgnoringBatteryOptimizations(packageName)
 
-    /**
-     * Best guess whether Android 13+ "restricted settings" blocks the Accessibility switch: the app
-     * op Android sets for apps installed from a file, which "Allow restricted settings" clears.
-     * If the op can't be read, guess from how the app was installed.
-     */
-    private val restrictedSettingsBlocked: Boolean
+    /** First attempt and acknowledged denial need different next steps. Unknown is not allowed. */
+    private val accessibilityRestriction: AccessibilitySetup.Restriction
         get() {
-            if (!restrictedHelpSupported) return false
+            if (!restrictedHelpSupported) return AccessibilitySetup.Restriction.NONE
             val mode = runCatching {
                 getSystemService(AppOpsManager::class.java)
                     .unsafeCheckOpNoThrow("android:access_restricted_settings", applicationInfo.uid, packageName)
             }.getOrNull()
-            if (mode != null) return mode != AppOpsManager.MODE_ALLOWED && mode != AppOpsManager.MODE_DEFAULT
-            val source = runCatching { packageManager.getInstallSourceInfo(packageName).packageSource }.getOrNull()
-            return source == PackageInstaller.PACKAGE_SOURCE_DOWNLOADED_FILE ||
-                source == PackageInstaller.PACKAGE_SOURCE_LOCAL_FILE
+            return AccessibilitySetup.restriction(Build.VERSION.SDK_INT, mode)
         }
 
     /** https:// anywhere; http:// only on this phone or the local network (see [ServerPolicy]). */
@@ -304,20 +292,22 @@ class MainActivity : Activity() {
         unpairButton.visibility = if (hasCredentials) View.VISIBLE else View.GONE
 
         renderStep(a11yStep, a11y)
-        // Blocked by "restricted settings": say so up front and open the steps to lift it.
-        val restricted = !a11y && restrictedSettingsBlocked
-        a11yStep.body.text = getString(
-            when {
-                a11y -> R.string.ui_step_a11y_done
+        // Put the required action in the main button; keep troubleshooting collapsed.
+        val restriction = accessibilityRestriction
+        val restricted = !a11y && restriction == AccessibilitySetup.Restriction.NEEDS_APPROVAL
+        a11yStep.body.text = if (a11y) getString(R.string.ui_step_a11y_done) else {
+            val next = when {
                 restricted -> R.string.ui_step_a11y_restricted
-                else -> R.string.ui_step_a11y_body
+                Build.MANUFACTURER.equals("samsung", ignoreCase = true) -> R.string.ui_step_a11y_next_samsung
+                else -> R.string.ui_step_a11y_next
             }
-        )
-        restrictedToggle.visibility = if (!a11y && restrictedHelpSupported) View.VISIBLE else View.GONE
-        if (restricted && !restrictedHelpAutoOpened) {
-            restrictedHelpOpen = true // once; the toggle can still close it
-            restrictedHelpAutoOpened = true
+            val firstAttempt = if (restriction == AccessibilitySetup.Restriction.FIRST_ATTEMPT)
+                "\n" + getString(R.string.ui_restricted_first_attempt) else ""
+            getString(R.string.ui_step_a11y_body) + "\n\n" + getString(next) + firstAttempt
         }
+        a11yStep.button.text = getString(if (restricted) R.string.ui_restricted_button else R.string.ui_step_a11y_button)
+        a11yAppInfo.visibility = if (!a11y && restrictedHelpSupported && !restricted) View.VISIBLE else View.GONE
+        restrictedToggle.visibility = if (!a11y && restrictedHelpSupported) View.VISIBLE else View.GONE
         restrictedHelp.visibility = if (!a11y && restrictedHelpOpen) View.VISIBLE else View.GONE
 
         renderStep(notifStep, notifs)
@@ -885,11 +875,19 @@ class MainActivity : Activity() {
     }
 
     private fun onAccessibilityClicked() {
-        // Prominent disclosure before sending the user to grant the permission.
+        // App info only offers approval after Android has shown its initial denial.
+        afterDisclosure {
+            if (accessibilityRestriction == AccessibilitySetup.Restriction.NEEDS_APPROVAL)
+                openAppInfo() else openAccessibilitySettings()
+        }
+    }
+
+    /** Prominent disclosure and an explicit Agree before any route to the Accessibility switch. */
+    private fun afterDisclosure(then: () -> Unit) {
         AlertDialog.Builder(this)
             .setTitle(R.string.ui_disclosure_title)
             .setMessage(R.string.ui_disclosure_body)
-            .setPositiveButton(R.string.ui_disclosure_agree) { _, _ -> openAccessibilitySettings() }
+            .setPositiveButton(R.string.ui_disclosure_agree) { _, _ -> then() }
             .setNegativeButton(R.string.ui_disclosure_decline, null)
             .show()
     }
@@ -913,17 +911,10 @@ class MainActivity : Activity() {
             setPadding(dp(14), dp(12), dp(14), dp(14))
         }
         restrictedHelp.addView(text(getString(R.string.ui_restricted_why), 14f, color(R.color.om_text_secondary)))
-        listOf(
-            R.string.ui_restricted_step1, R.string.ui_restricted_step2,
-            R.string.ui_restricted_step3, R.string.ui_restricted_step4,
-        ).forEachIndexed { i, step ->
-            restrictedHelp.addView(
-                text("${i + 1}.  ${getString(step)}", 14f, color(R.color.om_text)),
-                margins(top = if (i == 0) 10 else 6),
-            )
-        }
+        restrictedHelp.addView(text(getString(R.string.ui_restricted_steps), 14f, color(R.color.om_text)), margins(top = 8))
         restrictedHelp.addView(text(getString(R.string.ui_restricted_missing), 13f, color(R.color.om_text_tertiary)), margins(top = 8))
         restrictedHelp.addView(button(getString(R.string.ui_restricted_button), Style.SECONDARY) { openAppInfo() }, margins(top = 12))
+        restrictedHelp.addView(button(getString(R.string.ui_step_a11y_button), Style.SECONDARY) { afterDisclosure { openAccessibilitySettings() } }, margins(top = 8))
         column.addView(restrictedHelp, margins(top = 6, width = match))
     }
 
@@ -934,21 +925,16 @@ class MainActivity : Activity() {
     }
 
     /**
-     * Straight to OpenMob's own switch where Android allows it (13+), else the Accessibility list
-     * scrolled to and highlighting OpenMob, else Settings. Once the switch is on, the service brings
-     * the app back by itself (AppState.returnAfterAccessibility).
+     * Open Android's supported Accessibility screen and highlight OpenMob where supported.
+     * ACCESSIBILITY_DETAILS_SETTINGS requires a system/installer-only permission, so ordinary
+     * apps cannot rely on it. Never try to enter a protected fragment by another route.
+     * Once enabled, the service returns to OpenMob (AppState.returnAfterAccessibility).
      */
     private fun openAccessibilitySettings() {
-        sentToA11ySettings = true
         AppState.returnAfterAccessibility = true
         val service = ComponentName(this, OpenMobAccessibilityService::class.java)
         val key = service.flattenToString()
         val attempts = buildList {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Not in the public SDK constants, but Settings answers it on Android 13+.
-                add(Intent("android.settings.ACCESSIBILITY_DETAILS_SETTINGS")
-                    .putExtra(Intent.EXTRA_COMPONENT_NAME, service))
-            }
             add(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS)
                 .putExtra(":settings:fragment_args_key", key)
                 .putExtra(":settings:show_fragment_args", Bundle().apply { putString(":settings:fragment_args_key", key) }))
@@ -1017,8 +1003,15 @@ class MainActivity : Activity() {
 
     private fun runShortcut(action: String) {
         when (action) {
-            // Same path as the in-app button: explanation first, then Android's Accessibility settings.
-            Shortcuts.OPEN_ACCESSIBILITY -> if (isAccessibilityOn) toast(getString(R.string.ui_step_a11y_done)) else onAccessibilityClicked()
+            // Scroll to the setup step; its button shows the disclosure before anything is granted.
+            Shortcuts.OPEN_ACCESSIBILITY -> if (isAccessibilityOn) {
+                toast(getString(R.string.ui_step_a11y_done))
+            } else {
+                setupExpanded = true
+                a11yStep.row.post {
+                    a11yStep.row.requestRectangleOnScreen(Rect(0, 0, a11yStep.row.width, a11yStep.row.height), true)
+                }
+            }
             Shortcuts.CONNECT -> when {
                 !isPaired -> toast(getString(R.string.shortcut_need_pairing))
                 ConnectionService.isRunning -> toast(AppState.connection)
@@ -1154,6 +1147,8 @@ class MainActivity : Activity() {
 
         a11yStep = step(getString(R.string.ui_step_a11y_title)) { onAccessibilityClicked() }
         a11yStep.button.text = getString(R.string.ui_step_a11y_button)
+        a11yAppInfo = link(getString(R.string.ui_restricted_app_info)) { openAppInfo() }
+        (a11yStep.button.parent as LinearLayout).addView(a11yAppInfo)
         buildRestrictedHelp(a11yStep.button.parent as LinearLayout)
         setupSteps.addView(a11yStep.row)
 

@@ -95,17 +95,25 @@ highlighted and a progress count:
 
 | Step | Why |
 |---|---|
-| **Turn on OpenMob in Accessibility** | Lets the agent see the screen and tap, type and swipe. The app explains what this allows before opening Settings: tap OpenMob (under "Downloaded apps" or "Installed apps") and turn it on. Android brings you back to the app once it's on |
+| **Enable Accessibility** | Tap **Open Accessibility**. On Samsung: **Installed apps → OpenMob → On → Allow**. On other phones, look under **Downloaded apps** (sometimes called Installed apps). The access explanation is beside the button; there is no extra OpenMob confirmation dialog. Once enabled, OpenMob tries to return to its setup screen automatically |
 | **Allow notifications** | For the always-visible "agent active" notification, with its Stop and Disconnect buttons, and for approval requests. One tap on Android's prompt |
 | **Let OpenMob run in the background** | One tap: Android's own "Let app always run in background?" prompt (**Why?** explains it). Without it, Android may cut the connection when the screen is off. On **Samsung** phones, the step then offers **Never sleeping apps** (Battery › Background usage limits) as well; on **Pixel** the standard prompt is all it takes |
 | **Share the screen for the live view** | Only appears once someone opens this phone's live view on the dashboard (the phone also gets a notification). It's never asked for at setup or when connecting |
 
-**"Restricted setting" or a greyed-out switch?** Android blocks the accessibility switch for apps
-installed outside Google Play until you allow it once: open the app's **App info**, tap the ⋮ menu
+**"App was denied access", "Restricted setting", or a greyed-out switch?** Android blocks the
+accessibility switch for downloaded APKs until you allow it once. Dismiss the denial, return to
+OpenMob and tap **Open App info** (or **Android denied access? Open App info**): tap the ⋮ menu
 (top right), tap **Allow restricted settings** and confirm. Then turn OpenMob on in Accessibility.
 If the menu doesn't have that option, try turning OpenMob on in Accessibility once first: Android
-adds the option after that. (`openmob phone add` avoids this: apps installed over adb aren't
+only offers the approval after showing the initial denial. The app keeps a direct App info shortcut
+visible even when the phone cannot report its restriction status. (`openmob phone add` avoids this:
+apps installed over adb aren't
 restricted.)
+
+Android's per-service Accessibility details shortcut requires a system/installer-only permission;
+ordinary apps cannot reliably open the switch itself. OpenMob uses the supported Accessibility
+screen, requesting that Settings highlight OpenMob where supported. It does not bypass Android's
+restricted-settings approval or enable the service on the user's behalf.
 
 ## 4. Connect
 

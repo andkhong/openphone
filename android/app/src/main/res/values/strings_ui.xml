@@ -22,16 +22,17 @@
     <string name="ui_paired_with">Paired with %1$s</string>
     <string name="ui_bad_link">That pairing link is not valid. Scan the QR code again.</string>
 
-    <string name="ui_step_a11y_title">Turn on OpenMob in Accessibility</string>
-    <string name="ui_step_a11y_body">Lets the agent see the screen and tap, type and swipe for you.</string>
+    <string name="ui_step_a11y_title">Enable Accessibility</string>
+    <string name="ui_step_a11y_body">OpenMob uses Accessibility to read your screen and tap, type and swipe for your paired agent. Screen contents go to your paired server while connected. Disconnect any time.</string>
+    <string name="ui_step_a11y_next_samsung">Next: Installed apps → OpenMob → On → Allow.</string>
+    <string name="ui_step_a11y_next">Next: OpenMob → Use OpenMob → Allow.\nIf OpenMob is not listed, open Downloaded apps or Installed apps first.</string>
     <string name="ui_step_a11y_done">OpenMob accessibility is on.</string>
-    <string name="ui_step_a11y_button">Open Accessibility settings</string>
-    <string name="ui_restricted_toggle">Switch greyed out or says \"Restricted setting\"?</string>
-    <string name="ui_restricted_why">Android blocks this switch for apps installed outside the Play Store until you allow it once:</string>
-    <string name="ui_restricted_step1">Tap \"Open App info\" below.</string>
-    <string name="ui_restricted_step2">Tap the ⋮ menu in the top-right corner.</string>
-    <string name="ui_restricted_step3">Tap \"Allow restricted settings\" and confirm with your PIN or fingerprint.</string>
-    <string name="ui_restricted_step4">Come back here, tap \"Open Accessibility settings\", then Installed apps › OpenMob › On.</string>
+    <string name="ui_step_a11y_button">Open Accessibility</string>
+    <string name="ui_restricted_toggle">Can\'t turn it on?</string>
+    <string name="ui_restricted_app_info">Android denied access? Open App info</string>
+    <string name="ui_restricted_first_attempt">If Android denies access, dismiss its message, return here and tap Open App info.</string>
+    <string name="ui_restricted_why">One-time approval for an APK installed outside the Play Store:</string>
+    <string name="ui_restricted_steps">Open App info → ⋮ → Allow restricted settings → confirm.\n\nReturn to OpenMob, then tap Open Accessibility → Installed apps (or Downloaded apps) → OpenMob → On → Allow.</string>
     <string name="ui_restricted_button">Open App info</string>
 
     <string name="ui_step_notif_title">Allow notifications</string>
@@ -41,8 +42,8 @@
 
     <!-- Prominent disclosure -->
     <string name="ui_disclosure_title">Allow OpenMob to control this phone?</string>
-    <string name="ui_disclosure_body">OpenMob uses Android\'s Accessibility service so the AI agent on the server you paired with can:\n\n• See what is on your screen (screenshots and on-screen text)\n• Tap, type, swipe and open apps on your behalf\n\nThis only happens while you are connected, and a notification is shown the whole time. Screen contents go only to your own server. OpenMob never types passwords or PINs.\n\nYou can disconnect any time from the notification, and turn this off again in Settings › Accessibility.\n\nOn the next screen, tap OpenMob (it may be under \"Downloaded apps\" or \"Installed apps\") and turn it on.</string>
-    <string name="ui_disclosure_agree">Agree &amp; open Settings</string>
+    <string name="ui_disclosure_body">OpenMob uses Android\'s Accessibility service so the AI agent on the server you paired with can:\n\n• See what is on your screen (screenshots and on-screen text)\n• Tap, type, swipe and open apps on your behalf\n\nThis only happens while you are connected, and a notification is shown the whole time. Screen contents go only to your own server. OpenMob never types passwords or PINs.\n\nYou can disconnect any time from the notification, and turn this off again in Settings › Accessibility.</string>
+    <string name="ui_disclosure_agree">Agree &amp; continue</string>
     <string name="ui_disclosure_decline">Not now</string>
 
     <!-- Connection -->
@@ -158,8 +159,8 @@
     <string name="ui_step_battery_done">OpenMob can run in the background.</string>
     <string name="ui_step_battery_button">Allow</string>
     <string name="ui_battery_body">Android pauses apps in the background to save battery, which would cut your agent off mid-task when the screen is off. OpenMob only keeps a small connection open while you\'re connected, and does nothing once you disconnect.</string>
-    <string name="ui_step_a11y_restricted">Android blocks this for apps installed outside the Play Store. Allow restricted settings first (steps below).</string>
-    <string name="ui_restricted_missing">No \"Allow restricted settings\" in the menu? Try turning OpenMob on in Accessibility once first; Android adds the option after that.</string>
+    <string name="ui_step_a11y_restricted">First, allow this APK: tap below → ⋮ → Allow restricted settings → confirm. Return here for the Accessibility switch.</string>
+    <string name="ui_restricted_missing">No \"Allow restricted settings\" option? Tap Open Accessibility below, select OpenMob and try its switch once. Then return to Open App info.</string>
     <string name="ui_setup_all_done">All set</string>
     <string name="ui_setup_show">Show</string>
     <string name="ui_setup_hide">Hide</string>

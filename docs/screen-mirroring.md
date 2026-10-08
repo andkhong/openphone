@@ -27,7 +27,25 @@ The live view is sized for the panel it is shown in, measured in **device pixels
 
 The dashboard panel (about 284 x 615 CSS px) on a 2x display therefore gets 1280p video at about 2.3 Mbps, or 1280p q72 screenshots instead of the old 720p q55 ones that were blown up 1.7x. A size change restarts the phone's encoder in place (`stream_start` again, no `stream_stop`); viewers get a new `mode` message and a keyframe.
 
-The canvas holds as many pixels as it shows (CSS width x DPR) and the decoder's frames are scaled into it with `imageSmoothingQuality = "high"` the moment they're decoded. The line under the phone says what's on screen: "Video · 1280p · 30 fps · 2.1 Mbps", or "Screenshots · 1280p · 2.9 fps" when the phone has no video (the owner didn't allow screen sharing, or an app build without it). `window.openmobLive` in the console has the same numbers plus decode time.
+The canvas holds as many pixels as it shows (CSS width x DPR) and the decoder's frames are scaled into it with `imageSmoothingQuality = "high"` the moment they're decoded. The compact strip under the phone shows stream status, received resolution and frame rate. Its tooltip distinguishes video from snapshots and includes video bandwidth. `window.openmobLive` in the console has the same numbers plus decode time.
+
+The live-screen panel fits the complete phone frame between the device picker and the stream
+controls. Connection status stays in the header; stream status, received resolution, frame rate and
+quality are grouped below the picture. Offline and stream-error notices sit outside the received
+frame. Phone approvals continue to hide the screen entirely.
+
+The quality picker includes the received frame's long-side resolution, such as **Quality: Sharp
+(1280p)**; this is a measurement, not a fixed resolution promised by the preset. The pencil inside
+the device picker sets a friendly phone name in this browser while retaining the reported model
+number. Reported names use readable casing; custom names retain the owner's spelling. Clear the
+name to restore the reported label. The header has extra top spacing, and a shared footer container
+aligns stream measurements with the quality selector below the unobstructed phone frame.
+
+When incoming frames are landscape, **Expand pane** (the default) widens the right pane and leaves
+room for the chat. **Fit pane** keeps the compact pane and scales the whole screen to fit. The
+landscape toggle appears below the quality control; its choice is saved in this browser. Portrait
+frames automatically restore the compact pane. On narrow displays, the expanded pane uses the
+available screen width.
 
 On the phone (`ScreenStreamer.kt`): H.264 High profile when the encoder offers it (Baseline otherwise); VBR so a change of text can take the bits it needs while a still screen costs almost nothing; a keyframe every 4 s as a safety net (viewers ask for one when they need it); no B-frames; realtime priority and `KEY_LATENCY` 1. The upload queue starts dropping frames at about 350 ms of video (at least 128 KB, room for one keyframe) instead of a fixed 256 KB (about 0.8 s at 2.5 Mbps), and a weak upload lowers the bitrate to no less than 40% of the target: frame rate goes before sharpness.
 
