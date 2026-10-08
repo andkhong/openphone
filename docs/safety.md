@@ -96,8 +96,11 @@ phone's screen-lock yes is accepted as before, and a phone over USB is approved 
   the dashboard click.
 - **Unpairing** works from the dashboard (Remove), from the phone (with its device key, no session),
   or from the API's admin tools; each closes the phone's connections at once.
-- **Sign-up doesn't reveal accounts.** `POST /api/auth/signup` gives the same reply whether or not
-  the email already had an account, and never signs in. With no email sending yet, the remaining
+- **Sign-up needs an invite.** `POST /api/auth/signup` requires a one-time code from
+  `openmob account invite` (stored hashed, 7-day expiry). A missing, used or expired code is refused
+  before any account is touched.
+- **Sign-up doesn't reveal accounts.** With a valid invite, `POST /api/auth/signup` gives the same
+  reply whether or not the email already had an account (the invite is used up either way), and never signs in. With no email sending yet, the remaining
   signal is whether signing in with that password works afterwards, which is the rate-limited
   sign-in (10 failures per address or email in 10 minutes).
 

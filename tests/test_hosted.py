@@ -17,6 +17,10 @@ from openmob.server import create_app, serve_in_background
 from openmob.voice.tts import Speaker
 
 
+# Server base URL -> its account store, so signup() can mint the invite that sign-up requires.
+STORES: dict[str, AccountStore] = {}
+
+
 @pytest.fixture
 def hosted(tmp_path):
     def build_agent(cfg, io, driver, label_cache):
@@ -32,6 +36,7 @@ def hosted(tmp_path):
     serve_in_background(create_app(manager, store=store), "127.0.0.1", port)
     base = f"http://127.0.0.1:{port}"
     assert wait_for(lambda: _up(base))
+    STORES[base] = store
     return base, manager, store
 
 
@@ -44,7 +49,8 @@ def _up(base):
 
 def signup(base, email):
     client = httpx.Client(base_url=base)
-    r = client.post("/api/auth/signup", json={"email": email, "password": "password123"})
+    invite = STORES[base].create_invite()
+    r = client.post("/api/auth/signup", json={"email": email, "password": "password123", "invite": invite})
     assert r.status_code == 200 and "session" not in r.json(), r.text  # sign-up never signs in
     r = client.post("/api/auth/login", json={"email": email, "password": "password123"})
     assert r.status_code == 200, r.text

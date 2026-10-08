@@ -81,6 +81,10 @@ class Credentials(BaseModel):
     password: str
 
 
+class SignupIn(Credentials):
+    invite: str = ""  # one-time code from `openmob account invite`
+
+
 class ModelIn(BaseModel):
     model: str
 
@@ -252,11 +256,12 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
     signups = FailureWindow()
 
     @app.post("/api/auth/signup")
-    def signup(body: Credentials, request: Request) -> dict:
-        """Create an account. The reply is the same whether or not the email already had one (there's
-        no email sending yet to tell the owner instead), and it never signs in: the client signs in
-        next with /api/auth/login, whose failures are rate-limited. Only a malformed email or a short
-        password gets a 400, which says nothing about other accounts."""
+    def signup(body: SignupIn, request: Request) -> dict:
+        """Create an account with a one-time invite code. The reply is the same whether or not the
+        email already had one (there's no email sending yet to tell the owner instead), and it never
+        signs in: the client signs in next with /api/auth/login, whose failures are rate-limited.
+        A 400 judges only the request itself (the email, the password, the invite), never other
+        accounts; a valid invite is used up either way."""
         if store is None:
             raise HTTPException(status_code=404, detail="Accounts are not enabled.")
         from .accounts import AccountExists, AuthError
@@ -267,7 +272,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                                 headers={"Retry-After": str(LOGIN_WINDOW)})
         signups.add(ip)
         try:
-            store.create_account(body.email, body.password)
+            store.create_account_with_invite(body.email, body.password, body.invite)
         except AccountExists:
             pass  # same reply as a new account
         except AuthError as exc:

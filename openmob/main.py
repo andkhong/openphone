@@ -307,7 +307,7 @@ def _read_password(password_file: str | None, prompt: str) -> str:
 
 
 def cmd_account(cfg: Config, args) -> None:
-    """Manage accounts on this server (there's no web sign-up page yet)."""
+    """Manage accounts on this server. Web sign-up needs an invite code from `openmob account invite`."""
     import os
     import secrets as _secrets
 
@@ -317,6 +317,13 @@ def cmd_account(cfg: Config, args) -> None:
     if args.action == "list":
         accounts = store.admin_list_accounts()
         print("\n".join(a["email"] + ("  (admin)" if a["is_admin"] else "") for a in accounts) or "No accounts yet.")
+        return
+    if args.action == "invite":
+        code = store.create_invite()
+        base = args.server or _public_url(cfg.server_port) or f"http://localhost:{cfg.server_port}"
+        print("One-time invite (works once, for 7 days). Send the link, or the code to enter at Log in:")
+        print(f"{base.rstrip('/')}/login?invite={code}")
+        print(f"Code: {code}")
         return
     if not args.email:
         sys.exit(f"openmob account {args.action} needs an EMAIL.")
@@ -508,11 +515,11 @@ def main(argv: list[str] | None = None) -> None:
     p_bridge.add_argument("--email", help="account mode: pair this phone to your account (prompts for the password)")
     p_bridge.add_argument("--password-file", help="read the account password from this file instead of prompting")
 
-    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, sign-in link, admin)")
-    p_account.add_argument("action", choices=["add", "list", "link", "admin", "unadmin"])
+    p_account = sub.add_parser("account", help="manage accounts on this server (add, list, invite, sign-in link, admin)")
+    p_account.add_argument("action", choices=["add", "list", "invite", "link", "admin", "unadmin"])
     p_account.add_argument("email", nargs="?")
     p_account.add_argument("--password-file", help="add: read (or, if missing, generate) the password in this file")
-    p_account.add_argument("--server", help="link: the server's public URL (default: the running tunnel)")
+    p_account.add_argument("--server", help="link, invite: the server's public URL (default: the running tunnel)")
 
     p_key = sub.add_parser("key", help="developer API keys for an account (create, list, revoke)")
     p_key.add_argument("action", choices=["create", "list", "revoke"])

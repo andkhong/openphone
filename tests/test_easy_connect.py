@@ -47,7 +47,7 @@ def srv(tmp_path):
 
     def user(email):
         c = httpx.Client(base_url=base)
-        c.post("/api/auth/signup", json={"email": email, "password": "password123"})
+        c.post("/api/auth/signup", json={"email": email, "password": "password123", "invite": store.create_invite()})
         assert c.post("/api/auth/login", json={"email": email, "password": "password123"}).status_code == 200
         return c
 
@@ -136,7 +136,7 @@ def test_guesses_are_rate_limited_per_account_across_addresses(tmp_path):
     store = AccountStore(tmp_path / "a.json")
     app = create_app(_manager(tmp_path), store=store, ledger=Ledger(tmp_path / "l.sqlite"))
     owner = TestClient(app, client=("10.0.0.1", 1))
-    owner.post("/api/auth/signup", json={"email": "o@example.com", "password": "password123"})
+    owner.post("/api/auth/signup", json={"email": "o@example.com", "password": "password123", "invite": store.create_invite()})
     owner.post("/api/auth/login", json={"email": "o@example.com", "password": "password123"})
     code = owner.post("/api/pairing").json()["code"]
     for i in range(12):  # many addresses, a few wrong guesses each, all at Alice's code id
@@ -226,15 +226,39 @@ def test_v1_devices_lists_offline_phones_with_details(srv):
 
 def test_signup_does_not_reveal_existing_emails(srv):
     srv.user("alice@example.com")
-    new = httpx.post(f"{srv.base}/api/auth/signup", json={"email": "new@example.com", "password": "password123"})
-    taken = httpx.post(f"{srv.base}/api/auth/signup", json={"email": "alice@example.com", "password": "different99"})
+    new = httpx.post(f"{srv.base}/api/auth/signup",
+                     json={"email": "new@example.com", "password": "password123", "invite": srv.store.create_invite()})
+    taken = httpx.post(f"{srv.base}/api/auth/signup",
+                       json={"email": "alice@example.com", "password": "different99", "invite": srv.store.create_invite()})
     assert new.status_code == taken.status_code == 200
     assert new.json() == taken.json() and "session" not in new.json()
     assert "set-cookie" not in new.headers and "set-cookie" not in taken.headers
     # Alice's account is untouched: her password still works, the other doesn't.
     assert httpx.post(f"{srv.base}/api/auth/login", json={"email": "alice@example.com", "password": "different99"}).status_code == 401
-    bad = httpx.post(f"{srv.base}/api/auth/signup", json={"email": "x@example.com", "password": "short"})
+    bad = httpx.post(f"{srv.base}/api/auth/signup",
+                     json={"email": "x@example.com", "password": "short", "invite": srv.store.create_invite()})
     assert bad.status_code == 400  # only the input itself is judged
+
+
+def test_signup_needs_a_one_time_unexpired_invite(srv):
+    creds = {"email": "new@example.com", "password": "password123"}
+    for invite in (None, "", "made-up-code"):
+        body = creds if invite is None else {**creds, "invite": invite}
+        r = httpx.post(f"{srv.base}/api/auth/signup", json=body)
+        assert r.status_code == 400 and "invite" in r.json()["detail"].lower()
+    assert srv.store.account_id_for("new@example.com") is None
+    code = srv.store.create_invite()
+    assert httpx.post(f"{srv.base}/api/auth/signup", json={**creds, "invite": code}).status_code == 200
+    assert srv.store.account_id_for("new@example.com")
+    reuse = httpx.post(f"{srv.base}/api/auth/signup", json={"email": "two@example.com", "password": "password123", "invite": code})
+    assert reuse.status_code == 400 and srv.store.account_id_for("two@example.com") is None  # used up
+    stale = srv.store.create_invite(ttl=-1)
+    late = httpx.post(f"{srv.base}/api/auth/signup", json={"email": "late@example.com", "password": "password123", "invite": stale})
+    assert late.status_code == 400 and srv.store.account_id_for("late@example.com") is None
+    # A malformed email or password is judged before the invite is touched, so the code survives.
+    keep = srv.store.create_invite()
+    assert httpx.post(f"{srv.base}/api/auth/signup", json={"email": "x@example.com", "password": "short", "invite": keep}).status_code == 400
+    assert httpx.post(f"{srv.base}/api/auth/signup", json={"email": "x@example.com", "password": "password123", "invite": keep}).status_code == 200
 
 
 # --- enrollments (openmob phone add) --------------------------------------------------------------

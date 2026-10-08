@@ -34,6 +34,7 @@ PAIRING_ID_LEN = 8  # a code is <8 hex id><secret>: the id finds the record, the
 PAIRING_MAX_FAILURES = 5  # wrong secrets for one code before it's voided
 PAIRING_MINTS_PER_HOUR = 30  # codes one account may make in an hour
 LOGIN_LINK_TTL = 10 * 60  # a sign-in link from `openmob account link` works once, for 10 minutes
+INVITE_TTL = 7 * 24 * 3600  # an invite code from `openmob account invite` works once, for 7 days
 KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 # What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
 # devices:add (enroll phones with `openmob phone add`) is sensitive too, so it's never a default either.
@@ -54,6 +55,10 @@ class AuthError(RuntimeError):
 
 class AccessDisabled(AuthError):
     """A valid API key whose key or account has been switched off by an admin."""
+
+
+class InviteInvalid(AuthError):
+    """The invite code is missing, unknown, already used or expired."""
 
 
 class AccountExists(AuthError):
@@ -110,7 +115,7 @@ class AccountStore:
             data = json.loads(self.path.read_text())
         except (OSError, ValueError):
             data = {}
-        for section in ("accounts", "devices", "sessions", "pairings", "logins", "api_keys"):
+        for section in ("accounts", "devices", "sessions", "pairings", "logins", "api_keys", "invites"):
             data.setdefault(section, {})
         return data
 
@@ -174,6 +179,34 @@ class AccountStore:
         with self._lock:
             self._refresh()
             return sorted(a["email"] for a in self._data["accounts"].values())
+
+    # --- invite codes: sign-up needs one ------------------------------------
+
+    def create_invite(self, ttl: float = INVITE_TTL) -> str:
+        """A one-time invite code. Only its hash is stored, like sign-in links."""
+        code = secrets.token_urlsafe(12)
+        with self._lock:
+            self._refresh()
+            now = time.time()
+            self._data["invites"] = {h: i for h, i in self._data["invites"].items() if i["expires"] > now}
+            self._data["invites"][_hash_token(code)] = {"created": now, "expires": now + ttl}
+            self._save()
+        return code
+
+    def create_account_with_invite(self, email: str, password: str, invite: str) -> str:
+        """Sign-up: the invite is checked first and used up whether or not the email already has an
+        account, so a valid code can't be replayed to test which emails exist."""
+        if "@" not in normalize_email(email) or len(password) < 8:
+            raise AuthError("Enter a valid email and a password of at least 8 characters.")
+        with self._lock:
+            self._refresh()
+            found = self._data["invites"].pop(_hash_token((invite or "").strip()), None)
+            if not found or found["expires"] < time.time():
+                if found:
+                    self._save()  # forget the expired code
+                raise InviteInvalid("This invite code is invalid, already used or expired. Ask for a new one.")
+            self._save()
+            return self.create_account(email, password)
 
     # --- one-time sign-in links (for the server operator; there's no web sign-up page yet) -------
 

@@ -41,9 +41,10 @@ class AccountApi(server: String) {
     }
 
     /** Fallback without a laptop: sign in, returning a session that the caller keeps in memory only. */
-    fun signIn(email: String, password: String, create: Boolean): String {
+    fun signIn(email: String, password: String, create: Boolean, invite: String = ""): String {
         val creds = JSONObject().put("email", email).put("password", password)
-        if (create) call(post("/api/auth/signup", creds)) // same reply whether or not the email was new
+        // Sign-up needs a one-time invite code; the reply is the same whether or not the email was new.
+        if (create) call(post("/api/auth/signup", JSONObject(creds.toString()).put("invite", invite)))
         val body = call(post("/api/auth/login", creds))
         return body.optString("session").ifBlank { throw ApiError("The server did not return a session.") }
     }
