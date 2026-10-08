@@ -550,8 +550,8 @@
       <div class="landscape-layout" id="landscapeLayout" hidden>
         <span>Landscape</span>
         <div class="layout-toggle" role="group" aria-label="Landscape screen layout">
-          <button id="landscapeExpand" type="button" aria-pressed="true" title="Widen the phone pane for a larger landscape view">Expand pane</button>
-          <button id="landscapeFit" type="button" aria-pressed="false" title="Keep the phone pane compact and fit the whole screen inside">Fit pane</button>
+          <button id="landscapeExpand" type="button" aria-pressed="false" title="Widen the phone pane for a larger landscape view">Expand pane</button>
+          <button id="landscapeFit" type="button" aria-pressed="true" title="Keep the phone pane compact and fit the whole screen inside">Fit pane</button>
         </div>
       </div>
     </div>
@@ -597,9 +597,9 @@ const icon = (name, cls) => {
   return svg;
 };
 const EXAMPLES = [
-  "Send the latest screenshot to Mom on WhatsApp",
-  "Order an iced latte on DoorDash",
-  "Turn on dark mode and enable power saving",
+  "Open YouTube and search for lofi music",
+  "Turn on dark mode in Settings",
+  "Set a timer for 10 minutes",
   "Find an Italian restaurant rated 4+ stars nearby on Maps",
 ];
 
@@ -2037,8 +2037,8 @@ function renderScreenState() {
   const badge = $("liveBadge");
   const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"]
     : confirming ? ["Approve on phone", "warn dotted live"] : phone === "asking" ? ["Needs you", "warn dotted live"]
-    : screenError ? ["Unavailable", "warn dotted"]
-    : !offline ? ["Connected", "ok dotted"] : ["Connecting", "dotted"];
+    : phone === "running" ? ["Working", "info dotted live"] : screenError ? ["Unavailable", "warn dotted"]
+    : hasFrame ? ["Connected", "ok dotted"] : ["Connecting", "dotted"];
   badge.textContent = text;
   badge.className = `pill ${cls}`;
   badge.title = screenMode === "video" ? "Smooth H.264 video from the phone" : hasFrame ? "Snapshots from the phone, refreshed continuously" : "";
@@ -2095,8 +2095,8 @@ function screenView() {
 // What's on screen and how well it's arriving, for the line under the phone (and for debugging:
 // window.openmobLive in the console).
 const liveStats = window.openmobLive = { width: 0, height: 0, frames: 0, bytes: 0, fps: 0, kbps: 0, decodeMs: 0, lastPts: 0, lastPaint: 0 };
-let landscapeLayout = "expand";
-try { if (localStorage.getItem("openmob.landscapeLayout") === "fit") landscapeLayout = "fit"; } catch {}
+let landscapeLayout = "fit";
+try { if (localStorage.getItem("openmob.landscapeLayout") === "expand") landscapeLayout = "expand"; } catch {}
 
 function applyLandscapeLayout() {
   const landscape = hasFrame && liveStats.width > liveStats.height;
