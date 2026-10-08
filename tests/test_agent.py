@@ -366,3 +366,25 @@ def test_iphone_gets_ios_instructions(tmp_path):
     agent.run("open settings")
     ios_prompt = system_text(client.requests[1])
     assert "no BACK key" in ios_prompt and "Spotlight" in ios_prompt and "Android phone" not in ios_prompt
+
+
+def test_a_scroll_waits_for_the_fling_to_stop_and_a_tap_doesnt(tmp_path):
+    class Recording(FakeDriver):
+        def __init__(self, *a, **k):
+            super().__init__(*a, **k)
+            self.idle_caps = []
+
+        def wait_idle(self, quiet_ms, max_ms):
+            self.idle_caps.append(max_ms)
+            return {"idle": True, "waited_ms": 1}
+
+    driver = Recording(packages=["com.android.settings"])
+    agent, _, _ = make_agent([
+        [tool_use("scroll", "a", direction="down")],
+        [tool_use("tap", "b", x=10, y=10)],
+        [tool_use("done", "c", summary="ok", success=True)],
+    ], driver=driver, tmp_path=tmp_path)
+    assert agent.run("find Display").success
+    # The tests' settle delay is 0, so only the scroll waits: with a cap long enough for a fling (the
+    # phone still returns as soon as the list stops).
+    assert driver.idle_caps == [1200]
