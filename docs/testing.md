@@ -34,6 +34,28 @@ An old Android 11+ phone, paired to a separate test account, is the most realist
 long screen timeout and turn off battery optimisation for OpenMob (see
 [Troubleshooting](phone-setup.md#troubleshooting)).
 
+## Accessibility onboarding checks
+
+Test a fresh APK install and an update on each target phone; emulator results don't establish
+Samsung, Xiaomi or other OEM support.
+
+| State | Expected behavior |
+|---|---|
+| Accessibility off, unrestricted | **Open Accessibility** shows OpenMob's disclosure (what the agent can see and do, the notification, no passwords). **Not now** changes nothing; **Agree & continue** opens Android Accessibility. Select OpenMob, turn it on and approve Android's confirmation |
+| Initial restriction, denial not yet shown | After the disclosure, **Open Accessibility** goes to Android first so it can show its initial denial before App info offers approval |
+| Denial acknowledged by Android | After the disclosure, the main button opens OpenMob's **App info**. Once the user allows restricted settings and returns, it changes back to **Open Accessibility** |
+| Default or unreadable restriction state | Keep **Open Accessibility** and the visible **Android denied access? Open App info** shortcut; never treat the default app op as proof the app is unrestricted |
+| Restricted option initially absent | **Can't turn it on?** offers both shortcuts; its **Open Accessibility** also shows the disclosure first |
+| Accessibility enabled | OpenMob returns to setup where Android allows it, marks the step done and hides its button. Returning by hand also refreshes the step |
+| Launcher shortcut or Quick Settings tile | Opens the app at the setup step; nothing reaches Settings until the user taps the button and agrees |
+
+No route to the Accessibility switch may skip the disclosure. On 2026-10-06 the unrestricted path
+was checked on an Android 15 emulator (before the disclosure was restored); restricted installs
+and real OEM phones are still to be checked.
+
+Check the finished step with a screenshot: `uiautomator dump` briefly suspends other Accessibility
+services and can make OpenMob look turned off.
+
 ## Keep tests cheap and harmless
 
 - Use a separate API key for tests, with only the scopes they need, so you can revoke it alone.
