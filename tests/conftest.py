@@ -54,6 +54,14 @@ class FakeDriver:
     def open_url(self, url):
         self.actions.append(("url", url))
 
+    # Settings deep links: off by default (an older app); a test turns it on to be offered open_settings_page.
+    can_open_settings = False
+
+    def open_settings(self, page, package=None):
+        self.actions.append(("open_settings", page, package))
+        self.package = "com.android.settings"
+        return {"package": "com.android.settings"}
+
     def tap(self, x, y):
         self.actions.append(("tap", x, y))
 
