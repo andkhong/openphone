@@ -24,7 +24,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import app_links, fast, gate, permission_dialogs, plan, replay, waiting
+from . import app_links, fast, gate, permission_dialogs, plan, replay, timing, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import (OPEN_LINK_TOOL_SPEC, OPEN_SETTINGS_TOOL_SPEC, PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE,
@@ -2934,6 +2934,9 @@ class Agent:
                         result = None  # sleep out the rest; the next observation reports a lost phone
                     if result is not None:
                         state.settle_idle = bool(result.get("idle"))
+                        timing.trace(f"wait_idle quiet={int(quiet_ms or self.config.settle_quiet_ms)} cap={int(seconds * 1000)}: "
+                                     f"phone waited {result.get('waited_ms')} ms, idle={result.get('idle')}, "
+                                     f"round trip {int((time.monotonic() - started) * 1000)} ms")
                         return
                     seconds -= time.monotonic() - started
                 wait_foreground = getattr(self.driver, "wait_foreground", None)
