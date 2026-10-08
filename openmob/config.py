@@ -163,6 +163,14 @@ class Config:
     replay_paths: bool = False
     replay_min_overlap: float = 0.7  # the share of a stored screen's labels that must be on screen to replay its step
     replay_max_goals: int = 100  # requests whose paths are kept (the oldest go first)
+    # Plan with the main model, execute with the classifier (agent/plan.py, docs/design/fewer-model-calls.md): on a
+    # cold run the model's first reply lays the request out as sub-goals with a screen cue each (plan_steps); then
+    # each step asks the classifier about the current sub-goal and runs its tap, scroll, Back or app launch through
+    # every check. The model takes over, told the plan and progress, when the classifier isn't sure, a step changes
+    # nothing, a cue doesn't appear within plan_max_steps_per_goal steps, a popup / login / loading screen comes up,
+    # the next step would type, or the user corrects. Needs Jev. Off until measured. OPENMOB_PLAN_EXECUTE=on overrides.
+    plan_execute: bool = False
+    plan_max_steps_per_goal: int = 4
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -319,6 +327,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_REPLAY", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.replay_paths = os.environ["OPENMOB_REPLAY"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_PLAN_EXECUTE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:

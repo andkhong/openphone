@@ -111,6 +111,15 @@ def test_only_successful_navigation_tasks_without_typing_prompts_or_risk_are_sto
     assert io.questions and len(store) == 0, "asked"
 
 
+def test_isolated_tasks_replay_but_do_not_store(tmp_path):
+    store = replay.PathStore()
+    agent, _, _ = make([TAP_DISPLAY, DONE], Phone(SETTINGS, {"Display": DISPLAY}), tmp_path, paths=store)
+    assert agent.run(TASK, isolated=True).success and len(store) == 0  # an API key's task: not stored (owner's call)
+    learned(tmp_path, store)
+    agent, client, _ = make([DONE], Phone(SETTINGS, {"Display": DISPLAY}), tmp_path, paths=store)
+    assert agent.run(TASK, isolated=True).replayed == 1 and len(client.requests) == 1
+
+
 # --- replaying -------------------------------------------------------------------------------
 
 
