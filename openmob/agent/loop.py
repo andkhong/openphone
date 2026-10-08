@@ -1000,7 +1000,10 @@ class Agent:
             if blocked := self._guard_swipe("scroll", *move, 400, "", state, obs):
                 return blocked
             self.driver.swipe(*move, 400)
-            return Outcome(f"Scrolled {args['direction']}.")
+            # A scroll flings the list, which keeps moving well past the usual cap: wait it out (adaptive
+            # settle still returns as soon as the list stops), or the next look reads moving positions and
+            # its tap is refused as "moved", costing another look and a model call.
+            return Outcome(f"Scrolled {args['direction']}.", settle=max(self.config.settle_delay, self.config.scroll_settle_delay))
 
         if name == "swipe":
             x1, y1 = obs.shot.to_device(args["x1"], args["y1"])
