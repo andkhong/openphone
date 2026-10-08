@@ -156,6 +156,13 @@ class Config:
     # Take the screenshot while the app and element reads run, instead of after them (phones answer
     # calls concurrently). Off until measured on real phones. OPENMOB_PARALLEL_OBSERVE=on overrides.
     parallel_observe: bool = False
+    # Replay UI paths that worked before (agent/replay.py, docs/design/fewer-model-calls.md): on a request seen
+    # before, the stored path's taps, scrolls, Backs and app launches run without the main model while each
+    # screen matches, through every check an action gets. Only successful navigation-only tasks that typed
+    # nothing, asked nothing and tapped nothing risky are stored. Off until measured. OPENMOB_REPLAY=on overrides.
+    replay_paths: bool = False
+    replay_min_overlap: float = 0.7  # the share of a stored screen's labels that must be on screen to replay its step
+    replay_max_goals: int = 100  # requests whose paths are kept (the oldest go first)
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -310,6 +317,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.max_actions_per_turn = int(os.environ["OPENMOB_MAX_ACTIONS"])
     if os.environ.get("OPENMOB_PARALLEL_OBSERVE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_REPLAY", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.replay_paths = os.environ["OPENMOB_REPLAY"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:

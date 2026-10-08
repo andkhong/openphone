@@ -52,7 +52,12 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
     )
     extra = {"label_cache": label_cache} if label_cache else {}
     resolver = AppResolver(driver, cfg.aliases, llm_picker=picker, **extra)
-    return Agent(router, driver, resolver, cfg, io, judge=judge)
+    paths = None
+    if cfg.replay_paths:  # stored UI paths, one file per phone next to its label cache (agent/replay.py)
+        from .agent.replay import PathStore, store_path
+
+        paths = PathStore(store_path(label_cache), cfg.replay_max_goals, cfg.history_retention_days)
+    return Agent(router, driver, resolver, cfg, io, judge=judge, paths=paths)
 
 
 def cmd_do(cfg: Config, args) -> None:

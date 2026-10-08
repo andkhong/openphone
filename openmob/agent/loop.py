@@ -24,7 +24,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate, permission_dialogs, waiting
+from . import fast, gate, permission_dialogs, replay, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt
@@ -88,6 +88,7 @@ class AgentResult:
     usage: Usage = field(default_factory=Usage)
     timings: dict = field(default_factory=dict)  # the task's time per phase in ms (see timing.py)
     fast_steps: int = 0  # tool calls the fast path made (no main model)
+    replayed: int = 0  # of those, tool calls replayed from a stored path (replay_paths)
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
     prompts: int = 0  # approval prompts the owner saw (permission telemetry)
     mode: str | None = None  # the permission mode the task ran in
@@ -183,6 +184,13 @@ class _TaskState:
     app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
     dialogs_given_up: set = field(default_factory=set)  # permission dialogs BACK didn't close: (package, message)
+    # Replaying a stored path (config.replay_paths, agent/replay.py):
+    replay: list[dict] | None = None  # the stored path for this request, if any
+    replay_cursor: int = 0  # stored steps before this one have run or been passed over
+    replay_tries: dict[int, int] = field(default_factory=dict)  # stored step -> attempts this task
+    replay_retry: bool = False  # the last replayed tap was refused before it ran: once more at the next look
+    replayed: int = 0  # replayed tool calls
+    path: list[dict] = field(default_factory=list)  # this task's own replayable steps, stored if it succeeds
 
 
 def is_yes(answer: str) -> bool:
@@ -202,6 +210,7 @@ class Agent:
         io: UserIO,
         judge: JevJudge | None = None,
         use_ocr: bool | None = None,
+        paths: replay.PathStore | None = None,
     ):
         self.client = client
         self.driver = driver
@@ -210,6 +219,8 @@ class Agent:
         self.io = io
         self.judge = judge
         self.use_ocr = (config.ocr and ocr.available()) if use_ocr is None else use_ocr
+        # Stored UI paths (replay_paths): the given store, else memory only for the life of this agent.
+        self.paths = paths if paths is not None else (replay.PathStore() if config.replay_paths else None)
         self.recent: deque[tuple[str, str]] = deque(maxlen=RECENT_REQUESTS)
         self.usage = Usage()  # tokens for the task in progress (or the last one)
         self.platform = "android"  # set by the DeviceManager from the phone's hello (android | ios)
@@ -263,13 +274,21 @@ class Agent:
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
                            perms=perms)
         state.fast = self._fast_enabled()
+        if self._replay_on() and replay.eligible(task, self.config.confirm_keywords):
+            state.replay = self.paths.get(replay.goal_key(task)) or None
         self._task_variant = self._variant(state.fast)
         result = self._run(state, go_home, isolated)
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
+        result.replayed = state.replayed
         result.prompts = state.prompts
         result.mode = perms.mode()
+        # A path worth replaying: the task succeeded, only navigated (the request as it stands, corrections
+        # included), typed nothing, asked nothing and tapped nothing risky.
+        if (self._replay_on() and result.success and state.path and state.prompts == 0 and not state.typed
+                and not state.risky and replay.eligible(state.task, self.config.confirm_keywords)):
+            self.paths.put(replay.goal_key(task), state.path)
         if not isolated:
             self.recent.append((task, result.summary))
         return result
@@ -311,6 +330,11 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
 
             self._apply_corrections(state, messages)
+            if state.replay and not state.vision_next and not self._needs_plan(state):
+                taken = self._replay_step(state, obs)
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages, retry=state.replay_retry)
+                    continue
             if state.fast and not state.vision_next and not self._needs_plan(state):
                 taken = self._fast_step(state, obs)
                 if taken is not None:
@@ -815,6 +839,10 @@ class Agent:
             state.acted_on = obs
         state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
         self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, source)
+        if self._replay_on() and not outcome.is_error and source in (None, replay.SOURCE):
+            step = replay.recordable(name, args, obs.package, obs.elements, outcome.launched)
+            if step is not None:
+                state.path.append(step)
         return outcome
 
     def _note_tokens(self, tokens, image_side: int | None = None) -> None:
@@ -1914,6 +1942,45 @@ class Agent:
     def _sleep(seconds: float, cancel: threading.Event) -> None:
         cancel.wait(seconds)
 
+    # --- replaying a stored path (see replay.py) ----------------------------------------
+
+    def _replay_on(self) -> bool:
+        return bool(self.config.replay_paths and self.paths is not None)
+
+    def _replay_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """One step from the stored path, without the main model, or None: no remaining stored step fits
+        this screen (the next decision is the fast path's or the vision model's; the path stays, so replay
+        resumes on a later screen that fits). A step fits when the app and enough of the screen's labels
+        match and its target is on screen exactly once (replay.match); the call then runs through
+        _execute like any other, so every check and approval applies. A tap refused before it ran (its
+        element moved) is tried once more at the next look; anything else moves on. A correction from
+        the user drops the path, and no step runs on a screen the classifier confidently calls a popup,
+        login, lock or loading screen."""
+        c = self.config
+        if fast.CORRECTION_PREFIX in state.task or state.replayed >= replay.MAX_TRIES * len(state.replay):
+            state.replay = None
+            return None
+        state.replay_retry = False
+        a = obs.assessment
+        if a is not None and a.state in replay.BLOCKING_STATES and a.confidence >= c.jev_min_confidence:
+            return None
+        found = replay.match(state.replay, state.replay_cursor, obs.package, obs.elements, c.replay_min_overlap)
+        if found is None:
+            return None
+        at, name, args = found
+        tries = state.replay_tries.get(at, 0) + 1
+        state.replay_tries[at] = tries
+        outcome = self._execute(name, args, obs, state, fast_step=True, source=replay.SOURCE)
+        state.fast_steps += 1
+        state.replayed += 1
+        self._event("error" if outcome.is_error else "action", f"{name}: {outcome.shown or outcome.text} (replayed)",
+                    {"timings": outcome.timings, "jev": self.judge is not None, "fast": True, "replay": True})
+        if outcome.is_error and replay.NOT_RUN in outcome.text and tries < replay.MAX_TRIES:
+            state.replay_retry = True  # the same stored step again at the next look
+        else:
+            state.replay_cursor = at + 1
+        return [(name, args, outcome)]
+
     # --- the fast path (see fast.py) -------------------------------------------------
 
     def _fast_enabled(self) -> bool:
@@ -2078,14 +2145,16 @@ class Agent:
         return fast.parse_value("".join(response.text), key)
 
     def _after_fast_step(self, state: _TaskState, obs: Observation, taken: list[tuple[str, dict, Outcome]],
-                         messages: list[dict]) -> Observation:
+                         messages: list[dict], retry: bool = False) -> Observation:
         """Settle, look again, and tell the main model what happened (as text in the conversation, so
-        any provider takes it). The new screen follows when the main model next decides (_show_later)."""
+        any provider takes it). The new screen follows when the main model next decides (_show_later).
+        `retry`: a replayed tap was refused before it ran and gets one more look (_replay_step), so its
+        lack of progress doesn't send the next step to the vision model."""
         last = taken[-1][2]
         settle = self.config.settle_delay if last.settle is None else last.settle
         self._settle(settle, state, last.launched, last.quiet_ms, last.until)
         new = self._observe_after_action(state, obs)
-        if any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False:
+        if not retry and (any(o.is_error for _, _, o in taken) or state.actions[-1]["screen_changed"] is False):
             state.vision_next = True  # no visible progress: the vision model takes the next step
         lines = []
         for name, args, outcome in taken:
@@ -2114,7 +2183,8 @@ class Agent:
         """Which latency features a task runs with, for comparing them in `openmob timings`:
         fixed | adaptive settle (+q<ms> for a quiet time other than 300 ms), then with the fast path
         +fast and its extras: +noshot (lazy screenshots), +1req (one classifier request per step),
-        +launch (exact app names launch directly), +fastdone (the classifier may finish)."""
+        +launch (exact app names launch directly), +fastdone (the classifier may finish); +replay when
+        stored paths may be replayed (replay_paths)."""
         c = self.config
         out = "adaptive" if c.adaptive_settle else "fixed"
         if c.adaptive_settle and c.settle_quiet_ms != DEFAULT_QUIET_MS:
@@ -2124,6 +2194,8 @@ class Agent:
             for on, tag in ((c.fast_path_lazy_screenshot, "noshot"), (c.jev_one_request, "1req"),
                             (c.fast_path_direct_launch, "launch"), (c.fast_path_done, "fastdone")):
                 out += f"+{tag}" if on else ""
+        if c.replay_paths:
+            out += "+replay"
         return out
 
     def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None,
