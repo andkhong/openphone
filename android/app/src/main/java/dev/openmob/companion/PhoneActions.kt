@@ -110,6 +110,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         "type_text" -> typeText(params.reqString("text"))
         "key" -> key(params.reqString("name"))
         "open_url" -> openUrl(params.reqString("url"))
+        "open_settings" -> openSettings(params.reqString("page"), params.optString("package").takeIf { it.isNotEmpty() })
         "resolve_url" -> resolveUrl(params.reqString("url"))
         "wake_unlock" -> wakeUnlock()
         "wait_idle" -> waitIdle(
@@ -502,6 +503,36 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             throw IllegalStateException("No app can open $url")
         }
         return null
+    }
+
+    /** Open one Settings page directly (docs/phone-protocol.md §4.17). [page] is a key of [SettingsPages]: the
+     *  phone, never the server, picks the intent action, so only the pages in that table can be reached. An
+     *  app's own pages take [pkg], which must be an installed app. Returns {package: the Settings app that
+     *  answered}. Throws with a plain message when this phone has no such page (an OEM without it), so the
+     *  agent navigates there instead. */
+    private fun openSettings(page: String, pkg: String?): JSONObject {
+        val req = SettingsPages.request(page, pkg)
+        val intent = Intent(req.page.action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        if (req.pkg != null) {
+            try {
+                pm.getApplicationInfo(req.pkg, 0)
+            } catch (_: PackageManager.NameNotFoundException) {
+                throw IllegalArgumentException("${req.pkg} isn't installed")
+            }
+            when (req.page.key) {
+                "app_details" -> intent.data = Uri.parse("package:${req.pkg}")
+                else -> intent.putExtra(SettingsPages.EXTRA_APP_PACKAGE, req.pkg)
+            }
+        }
+        @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
+        val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+            ?: throw IllegalStateException("This phone has no ${req.page.title} Settings page. Navigate there instead.")
+        try {
+            service.startActivity(intent)
+        } catch (_: ActivityNotFoundException) {
+            throw IllegalStateException("This phone has no ${req.page.title} Settings page. Navigate there instead.")
+        }
+        return JSONObject().put("package", handler)
     }
 
     /** Which app would open [url], without opening it: {package (null for the chooser or nothing),

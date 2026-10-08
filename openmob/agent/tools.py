@@ -4,6 +4,7 @@ All coordinates are pixels on the screenshot the model was shown.
 """
 
 from ..phone.adb import KEYCODES
+from ..phone.settings_pages import PAGE_KEYS
 
 _POINT = {
     "x": {"type": "integer", "description": "X pixel on the screenshot"},
@@ -178,6 +179,30 @@ TOOLS = [
 # The same tools in the provider-neutral shape the model adapters take: {name, description, parameters}.
 TOOL_SPECS = [{"name": t["name"], "description": t["description"], "parameters": t["input_schema"]} for t in TOOLS]
 
+# Settings deep links (docs/design/deep-links.md): offered only when the phone's app can open Settings pages
+# directly (hello capability "open_settings"; adb phones too), so older apps keep the usual tool list.
+OPEN_SETTINGS_TOOL = {
+    "name": "open_settings_page",
+    "description": (
+        "Open a Settings page directly, without navigating through Settings: display, wifi, bluetooth, sound, "
+        "battery, location, notifications, apps, storage, airplane_mode or date_time; or an app's own page "
+        "(app_details for its App info page, app_notifications for its notification settings) with the app's "
+        "name or package. Use it whenever the request wants a Settings page; if it errors, open Settings and "
+        "navigate there instead."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "page": {"type": "string", "enum": PAGE_KEYS},
+            "package": {"type": "string", "description": "For app_details and app_notifications: the app's name "
+                                                         "or package (e.g. 'Chrome', 'com.android.chrome')"},
+        },
+        "required": ["page"],
+    },
+}
+OPEN_SETTINGS_TOOL_SPEC = {"name": OPEN_SETTINGS_TOOL["name"], "description": OPEN_SETTINGS_TOOL["description"],
+                           "parameters": OPEN_SETTINGS_TOOL["input_schema"]}
+
 SYSTEM_PROMPT = """\
 You are OpenMob, an agent that operates the user's Android phone to carry out their spoken request. \
 It can be any Android phone and any app the user has installed.
@@ -243,6 +268,11 @@ search, type the app's name, and tap the result.
 
 
 ONE_CALL_RULE = "Make exactly ONE tool call per turn, then check the next screenshot to confirm it worked before moving on."
+OPEN_URL_LINE = "- For a web page (https:// link), open_url can be faster than navigating.\n"
+# Added right after OPEN_URL_LINE when the phone can open Settings pages directly (tools.OPEN_SETTINGS_TOOL).
+SETTINGS_PAGE_LINE = ("- To reach a Settings page (Wi-Fi, Display, Battery, an app's notifications…), prefer "
+                      "open_settings_page: it opens the page directly in one step. If it errors, open Settings "
+                      "with launch_app and navigate there instead.\n")
 MULTI_CALL_RULE = (
     "Usually make one tool call per turn and check the next screenshot. When you can predict the screen after "
     "each action, you may make up to {n} calls in one turn (for example: tap a chess piece, then its target "
@@ -252,11 +282,14 @@ MULTI_CALL_RULE = (
 )
 
 
-def system_prompt(platform: str = "android", max_actions: int = 1) -> str:
-    """The agent's instructions, with notes for the phone's platform and how many actions a turn may take."""
+def system_prompt(platform: str = "android", max_actions: int = 1, settings_pages: bool = False) -> str:
+    """The agent's instructions, with notes for the phone's platform and how many actions a turn may take.
+    `settings_pages`: the phone can open Settings pages directly, so say to prefer open_settings_page."""
     prompt = SYSTEM_PROMPT
     if max_actions > 1:
         prompt = prompt.replace(ONE_CALL_RULE, MULTI_CALL_RULE.format(n=max_actions))
+    if settings_pages:
+        prompt = prompt.replace(OPEN_URL_LINE, OPEN_URL_LINE + SETTINGS_PAGE_LINE)
     if platform == "ios":
         return (
             prompt.replace("the user's Android phone", "the user's iPhone")

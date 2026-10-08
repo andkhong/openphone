@@ -377,6 +377,25 @@ class RemoteDriver(CachedScreenshots):
     def wake_unlock(self) -> None:
         self._call("wake_unlock")
 
+    @property
+    def can_open_settings(self) -> bool:
+        """This phone's app opens Settings pages directly (hello capability "open_settings")."""
+        return "open_settings" in self.capabilities
+
+    def open_settings(self, page: str, package: str | None = None) -> dict:
+        """Open one Settings page by its key (settings_pages.PAGES): {"package": the Settings app that opened,
+        or None}. The phone holds the key-to-intent table and refuses unknown keys; an older app without the
+        capability isn't asked (DeviceError)."""
+        if not self.can_open_settings:
+            raise DeviceError("This phone's app can't open Settings pages directly (update the OpenMob app). "
+                              "Navigate there from the Settings app instead.")
+        params = {"page": page}
+        if package:
+            params["package"] = package
+        result = self._call("open_settings", **params) or {}
+        opened = result.get("package") if isinstance(result, dict) else None
+        return {"package": str(opened) if opened else None}
+
     # Asking the phone for its accessibility tree is quick (no uiautomator dump), so the agent can
     # re-check a tap target just before tapping it.
     fast_ui_tree = True

@@ -307,6 +307,17 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   (an app the phone can't name asks and isn't covered by a task approval or "everyday"). A task approval whose
   request says uninstall/remove/delete covers it, as does "Don't confirm everyday actions". Anything on a
   blocked app's or OpenMob's info page is refused.
+- **Settings deep links** (`open_settings_page`, [design](design/deep-links.md)): a phone whose app can
+  open Settings pages directly does so only from its own fixed table of pages (Display, Wi-Fi, Bluetooth,
+  Sound, Battery, Location, Notifications, Apps, Storage, Airplane mode, Date & time, and an app's App info
+  and notification pages); the server sends a key, never an intent, and no key exists for a
+  security-critical page. Everyday pages open without asking. Date & time is judged by the same word lists
+  as a tap (refused by default, since "date & time" is on the refuse list; if the owner takes it off, it
+  asks, and is refused under Don't ask). An app's own pages are refused for blocked apps and for OpenMob
+  itself. Ask every step asks before each deep link; Plan first needs the plan. A phone without the page
+  says so and the agent navigates instead. On a gatekeeper phone the call is judged again on the phone
+  (everyday pages open, Date & time asks with the screen lock, a blocked app's pages and unknown keys are
+  refused).
 - **Autofill and saved credentials** ("Use saved password", passkeys, saved cards) ask, and are
   refused under Don't ask.
 - The screen classifier can still only add caution: it can make a tap risky, never make it requested.
@@ -409,6 +420,7 @@ model's own description of it. The model's words can only add caution.
 | ENTER (`press_key ENTER`, `type_text` with `submit`) | In messaging, email and social apps it's a **send**. In a browser or web form, and on a payment screen, it's a **submit** that asks (as a payment when money words are on screen). Search boxes never ask. In a browser's address bar, the link checks below run on the URL |
 | `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
 | `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar |
+| `open_settings_page` | Only a page key from the phone's fixed table (the phone picks the intent; unknown keys are refused there). The page's tier is judged like a tap on it (the stricter of the table and the Settings word lists), an app's own pages are refused for blocked apps, and the phone's gatekeeper judges the call again |
 
 Typed text that goes through the clipboard (some fields only accept a paste) doesn't stay there: the
 app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's

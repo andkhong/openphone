@@ -330,7 +330,8 @@ class ConnectionService : Service() {
                 .put("app_version", packageManager.getPackageInfo(packageName, 0).versionName)
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
-                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("wait_for").put("approval_digest").put("gatekeeper").put("device_lock").put("task_grant"))
+                .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("wait_for").put("open_settings")
+                    .put("approval_digest").put("gatekeeper").put("device_lock").put("task_grant"))
                 // Which built-in rules and owner policy this phone enforces (the dashboard shows "Phone protection: on").
                 .put("policy_hash", GateHost.policyHash())
                 .put("gatekeeper_rules", GateHost.rulesVersion)

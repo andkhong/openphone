@@ -77,6 +77,11 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     # Newer apps (hello device.capabilities has "resolve_url"): which app would open this URL, before
     # opening it, so the server can refuse a link into a blocked app. package is null for a chooser.
     "resolve_url": ({"url": "str"}, "{package: str or null, candidates: list[str]}", 10),
+    # Newer apps (hello device.capabilities has "open_settings"): open one Settings page directly, by a key from
+    # the phone's own fixed table (phone/settings_pages.py mirrors it); the server never names an intent. An app's
+    # pages (app_details, app_notifications) take a package. Error if the phone has no such page.
+    "open_settings": ({"page": "str (a key of settings_pages.PAGES)", "package": "str, for app pages"},
+                      "{package: str or null}: the Settings app that opened", 15),
     "wake_unlock": ({}, "null (wake the screen; dismiss a non-secure keyguard)", 10),
     # Newer apps: is the phone usable right now? Older apps answer "Unknown method" (the check is skipped).
     "device_state": ({}, "{interactive, locked, secure: bool}: screen on, keyguard showing, PIN-type lock", 5),
