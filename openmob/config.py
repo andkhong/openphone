@@ -153,6 +153,9 @@ class Config:
     # every check, and the rest of the turn is skipped at any error, owner prompt or unexpected screen.
     # Streaming actions (vision_stream) is off while this is above 1. OPENMOB_MAX_ACTIONS overrides.
     max_actions_per_turn: int = 1
+    # Take the screenshot while the app and element reads run, instead of after them (phones answer
+    # calls concurrently). Off until measured on real phones. OPENMOB_PARALLEL_OBSERVE=on overrides.
+    parallel_observe: bool = False
     settle_delay: float = 0.8
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
@@ -305,6 +308,8 @@ def load_config(path: str | Path | None = None) -> Config:
     # Needed only for API keys that aren't scoped to a workspace.
     if os.environ.get("OPENMOB_MAX_ACTIONS", "").strip().isdigit():
         cfg.max_actions_per_turn = int(os.environ["OPENMOB_MAX_ACTIONS"])
+    if os.environ.get("OPENMOB_PARALLEL_OBSERVE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.parallel_observe = os.environ["OPENMOB_PARALLEL_OBSERVE"].strip().lower() in ("on", "1", "true")
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
