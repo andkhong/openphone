@@ -387,4 +387,4 @@ def test_a_scroll_waits_for_the_fling_to_stop_and_a_tap_doesnt(tmp_path):
     assert agent.run("find Display").success
     # The tests' settle delay is 0, so only the scroll waits: with a cap long enough for a fling (the
     # phone still returns as soon as the list stops).
-    assert driver.idle_caps == [1600]
+    assert driver.idle_caps == [1200]

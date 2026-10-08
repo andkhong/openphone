@@ -159,8 +159,10 @@ class Config:
     settle_delay: float = 0.8
     # The most to wait after a scroll: a fling keeps the list moving past settle_delay (measured on a
     # Samsung: 0.8 s never sufficed), so the next look read moving positions and its tap was refused.
-    # Adaptive settle still returns as soon as the list stops. OPENMOB_SCROLL_SETTLE_S overrides.
-    scroll_settle_delay: float = 1.6
+    # Adaptive settle still returns as soon as the list stops. 1.2 s (measured 2026-10-08, 3 runs per
+    # value): no refused taps and 1-2 fewer model calls at the same task time as 0.8 s; 1.6 s was no
+    # better and slower on long lists. OPENMOB_SCROLL_SETTLE_S overrides.
+    scroll_settle_delay: float = 1.2
     launch_settle_delay: float = 3.0
     # Adaptive settle: after an action, wait only until the screen stops changing (no window or content
     # change for settle_quiet_ms), capped at the delays above. Needs a phone whose app offers wait_idle;
