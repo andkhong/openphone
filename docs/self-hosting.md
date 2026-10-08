@@ -38,12 +38,14 @@ Create the first account and sign in from the server's command line:
 ```sh
 openmob account add you@example.com --password-file ~/.openmob-password   # generates one if the file is missing
 openmob account link you@example.com     # prints a one-time sign-in link
+openmob account invite                   # prints a one-time invite (link and code) for someone else
 openmob account admin you@example.com    # optional: the /admin page (kill switches, audit log)
 openmob key create you@example.com --name my-agent   # an API key, without the web console
 ```
 
-People can also create an account from the OpenMob app when they pair a phone. Anyone who can
-reach the server can do that, so don't expose a server you don't want others to sign up on.
+Nobody can create an account without an invite. Someone you invite opens the invite link (or enters
+the code at Log in → "Have an invite code?", or in the OpenMob app's Create account), then picks
+their own email and password. Each code works once and expires after 7 days; only its hash is stored.
 
 Admin rights can only be granted from the server's command line. An admin can switch off any API
 key or a whole account's API access from `/admin`.

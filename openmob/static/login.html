@@ -74,13 +74,15 @@ footer a { color: var(--muted); }
     <div id="auth-panel">
       <h1 id="title">Welcome back.</h1><p class="sub" id="subtitle">Sign in to see your phones and chats.</p>
       <form id="form">
+        <div class="field" id="inviteField" hidden><label for="invite">Invite code</label><input class="input" id="invite" name="invite" placeholder="From the person who invited you" autocomplete="off" spellcheck="false"></div>
         <div class="field"><label for="email">Email address</label><input class="input" id="email" name="email" type="email" placeholder="you@example.com" autocomplete="username" required></div>
         <div class="field"><label for="password">Password</label><div class="password-wrap"><input class="input" id="password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required><button class="show-password" id="showPassword" type="button" aria-label="Show password" aria-pressed="false">Show</button></div></div>
         <div class="form-meta" id="recovery"><button class="forgot" id="forgot" type="button">Forgot password?</button></div>
         <button class="submit" id="submit" type="submit"><span id="submitLabel">Sign in</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg></button>
       </form>
       <p class="status" id="status" role="status" aria-live="polite"></p>
-      <p class="foot">New to OpenMob? It’s invite-only for now.<a class="switch" href="/#access">How to get access</a></p>
+      <p class="foot" id="signinFoot">New to OpenMob? It’s invite-only for now.<button class="switch" id="toInvite" type="button">Have an invite code?</button></p>
+      <p class="foot" id="inviteFoot" hidden>Already have an account?<button class="switch" id="toSignin" type="button">Sign in</button></p>
     </div>
   </div></section>
 </main>
@@ -93,21 +95,55 @@ const next = (() => {
   catch { return "/"; }
 })();
 let busy = false;
+let joining = false;  // creating an account with an invite code
 function message(text, error = false) { $("status").textContent = text; $("status").classList.toggle("error", error); }
+function setJoining(on) {
+  if (busy) return;
+  joining = on;
+  $("inviteField").hidden = !on; $("invite").required = on;
+  $("recovery").hidden = on; $("signinFoot").hidden = on; $("inviteFoot").hidden = !on;
+  $("title").textContent = on ? "Create your account." : "Welcome back.";
+  $("subtitle").textContent = on ? "Enter your invite code, then choose the email and password you'll sign in with." : "Sign in to see your phones and chats.";
+  $("submitLabel").textContent = on ? "Create account" : "Sign in";
+  $("password").autocomplete = on ? "new-password" : "current-password";
+  $("password").placeholder = on ? "At least 8 characters" : "Enter your password";
+  document.title = (on ? "Create account" : "Sign in") + " · OpenMob";
+  message("");
+  (on && !$("invite").value ? $("invite") : $("email")).focus();
+}
+$("toInvite").addEventListener("click", () => setJoining(true));
+$("toSignin").addEventListener("click", () => setJoining(false));
+const post = (path, body) => fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+const failure = (r, body, fallback) => r.status === 429 ? "Too many attempts. Wait a few minutes and try again." : typeof body.detail === "string" ? body.detail : fallback;
 $("forgot").addEventListener("click", () => message("Ask the person running your OpenMob server for a new sign-in link."));
 $("showPassword").addEventListener("click", () => { const show = $("password").type === "password"; $("password").type = show ? "text" : "password"; $("showPassword").textContent = show ? "Hide" : "Show"; $("showPassword").setAttribute("aria-label", show ? "Hide password" : "Show password"); $("showPassword").setAttribute("aria-pressed", String(show)); });
 $("form").addEventListener("submit", async (e) => {
   e.preventDefault();
   if (busy) return;
-  busy = true; $("submit").disabled = true; $("submitLabel").textContent = "Signing in…"; message("");
+  const label = joining ? "Create account" : "Sign in";
+  busy = true; $("submit").disabled = true; $("submitLabel").textContent = joining ? "Creating your account…" : "Signing in…"; message("");
+  const creds = { email: $("email").value.trim(), password: $("password").value };
   try {
-    const r = await fetch("/api/auth/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: $("email").value.trim(), password: $("password").value }) });
+    if (joining) {
+      const r = await post("/api/auth/signup", { ...creds, invite: $("invite").value.trim() });
+      if (!r.ok) throw { shown: failure(r, await r.json().catch(() => ({})), "Couldn’t create the account. Check the invite code and try again.") };
+    }
+    const r = await post("/api/auth/login", creds);
     if (r.ok) { location.replace(next); return; }
-    const body = await r.json().catch(() => ({}));
-    message(r.status === 429 ? "Too many attempts. Wait a few minutes and try again." : typeof body.detail === "string" ? body.detail : "Check your email and password and try again.", true);
-  } catch { message("Couldn’t reach the server. Check your connection and try again.", true); }
-  busy = false; $("submit").disabled = false; $("submitLabel").textContent = "Sign in";
+    message(failure(r, await r.json().catch(() => ({})), joining
+      ? "If this email already has an account, sign in with its password instead."
+      : "Check your email and password and try again."), true);
+  } catch (err) { message(err && err.shown ? err.shown : "Couldn’t reach the server. Check your connection and try again.", true); }
+  busy = false; $("submit").disabled = false; $("submitLabel").textContent = label;
 });
+// An invite link (/login?invite=CODE) opens account creation with the code filled in; the code then
+// leaves the address bar so it doesn't linger in history.
+if (params.get("invite")) {
+  $("invite").value = params.get("invite");
+  params.delete("invite");
+  history.replaceState(null, "", location.pathname + (params.toString() ? `?${params}` : ""));
+  setJoining(true);
+}
 fetch("/api/auth/me").then((r) => r.json()).then((me) => { if (me && me.email) location.replace(next); }).catch(() => {});
 </script>
 </body>
