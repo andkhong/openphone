@@ -239,15 +239,28 @@ search, type the app's name, and tap the result.
 """
 
 
-def system_prompt(platform: str = "android") -> str:
-    """The agent's instructions, with notes for the phone's platform."""
+ONE_CALL_RULE = "Make exactly ONE tool call per turn, then check the next screenshot to confirm it worked before moving on."
+MULTI_CALL_RULE = (
+    "Usually make one tool call per turn and check the next screenshot. When you can predict the screen after "
+    "each action, you may make up to {n} calls in one turn (for example: tap a chess piece, then its target "
+    "square; type text, then press Enter). They run in order on the screen you see now. If one fails, asks the "
+    "user, or the screen changes unexpectedly, the rest are skipped and you see the new screen. Never combine "
+    "done with other actions: call done alone, after you've seen the result."
+)
+
+
+def system_prompt(platform: str = "android", max_actions: int = 1) -> str:
+    """The agent's instructions, with notes for the phone's platform and how many actions a turn may take."""
+    prompt = SYSTEM_PROMPT
+    if max_actions > 1:
+        prompt = prompt.replace(ONE_CALL_RULE, MULTI_CALL_RULE.format(n=max_actions))
     if platform == "ios":
         return (
-            SYSTEM_PROMPT.replace("the user's Android phone", "the user's iPhone")
+            prompt.replace("the user's Android phone", "the user's iPhone")
             .replace("It can be any Android phone and any app", "It can be any app")
             + IOS_NOTES
         )
-    return SYSTEM_PROMPT
+    return prompt
 
 
 # Plan first (permission mode "plan"): offered only in that mode, so other tasks' tool lists don't change.
