@@ -1,7 +1,27 @@
 # Step timings and the Jev comparison (internal)
 
 Internal notes for measuring where an agent step's time goes, and what the Jev classifier costs
-or saves. This page isn't public documentation: it names Jev (TypeSafe), which public output never
+or saves.
+
+## MVP latency targets (owner, 2026-10-08)
+
+A task is a chain of steps, so targets cover responsiveness, cadence and whole tasks, with first
+runs and repeats apart. Measured on the owner's Samsung that day: a step is ~2–3 s (observe ~0.3 s,
+Jev ~0.15 s, action ~0.2 s, settle 0.5–1.5 s, the main model ~1.1–1.5 s median when it decides);
+Settings tasks took 14–21 s on a first run, and 7.4 s replayed with no model call.
+
+| Metric | Target |
+|---|---|
+| First action on screen after the request | median ≤ 2 s |
+| Time per step | median ≤ 1.5 s |
+| Labeled-app navigation, first run (5–10 screens) | median ≤ 12 s, p90 ≤ 20 s |
+| Repeated navigation (a stored path applies) | median ≤ 6 s |
+| Success / prompts | ≥ 95% / ≤ 1 per typical task |
+| Canvas apps (games, chess) | reliability first; no latency target |
+
+How to measure: a fixed task set (~10 labeled-app tasks plus a canvas control), medians and p90
+rather than single runs, cold and warm reported apart, on at least two phones (the Samsung plus an
+emulator or another phone), and a clean-state check that stops a run on a stuck screen. This page isn't public documentation: it names Jev (TypeSafe), which public output never
 does.
 
 ## What each step records
