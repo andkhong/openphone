@@ -451,7 +451,12 @@ class PhoneDriver(CachedScreenshots):
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         self.shell(f"input swipe {int(x1)} {int(y1)} {int(x2)} {int(y2)} {int(duration_ms)}")
 
-    def type_text(self, text: str) -> None:
+    def type_text(self, text: str, replace: bool = False) -> None:
+        if replace:  # select the field's text first (Ctrl+A, Android 13+), so typing replaces it; older phones insert
+            try:
+                self.shell("input keycombination 113 29")
+            except AdbError:
+                pass
         if not text.isascii():
             raise AdbError(
                 "adb `input text` only supports ASCII. Install ADBKeyboard on the phone for other characters."

@@ -398,7 +398,7 @@ def test_typing_needs_vision(tmp_path):
 
     agent, client, _ = make([[text_block('{"text": "display"}')], [tool_use("done", "v", summary="ok")]],
                             driver, jev, tmp_path, fast_path_done=True)
-    driver.type_text = lambda text: (driver.actions.append(("type", text)), setattr(driver, "elements", DISPLAY_PAGE))
+    driver.type_text = lambda text, replace=False: (driver.actions.append(("type", text)), setattr(driver, "elements", DISPLAY_PAGE))
     result = agent.run("Open Display")
     assert ("type", "display") in driver.actions
     assert result.done_via == "vision" and len(client.requests) == 2  # the text model, then vision

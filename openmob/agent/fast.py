@@ -60,6 +60,14 @@ def is_search_field(el: UIElement) -> bool:
     return is_text_field(el) and bool(SEARCH_WORDS.search(f"{el.text} {el.desc} {el.resource_id} {el.cls}"))
 
 
+QUERY_ID = re.compile(r"search|query|url_bar|omnibox|address|location_bar", re.I)
+
+
+def is_query_field(el: UIElement) -> bool:
+    """A search or address box: what's typed is the whole query, so it replaces the field's text."""
+    return is_search_field(el) or (is_text_field(el) and bool(QUERY_ID.search(el.resource_id or "")))
+
+
 def describe(el: UIElement) -> str:
     """One element as the classifier sees it: [index] class 'text' plus its state."""
     parts = [f"[{el.index}] {el.cls or 'View'}"]

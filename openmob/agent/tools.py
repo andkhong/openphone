@@ -112,6 +112,8 @@ TOOLS = [
             "properties": {
                 "text": {"type": "string"},
                 "submit": {"type": "boolean", "description": "Press Enter afterwards", "default": False},
+                "replace": {"type": "boolean", "description": "Replace the field's whole text instead of inserting "
+                            "at the cursor. Always done for search and address fields."},
             },
             "required": ["text"],
         },
