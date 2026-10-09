@@ -71,8 +71,9 @@ class FakeDriver:
     def swipe(self, x1, y1, x2, y2, duration_ms=300):
         self.actions.append(("swipe", x1, y1, x2, y2, duration_ms))
 
-    def type_text(self, text):
+    def type_text(self, text, replace=False):
         self.actions.append(("type", text))
+        self.replaced = getattr(self, "replaced", []) + [replace]
 
     def key(self, name):
         self.actions.append(("key", name))

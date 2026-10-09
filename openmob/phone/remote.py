@@ -217,8 +217,9 @@ class RemoteDriver(CachedScreenshots):
     def swipe(self, x1: int, y1: int, x2: int, y2: int, duration_ms: int = 300) -> None:
         self._call("swipe", x1=int(x1), y1=int(y1), x2=int(x2), y2=int(y2), duration_ms=int(duration_ms))
 
-    def type_text(self, text: str) -> None:
-        self._call("type_text", text=text)
+    def type_text(self, text: str, replace: bool = False) -> None:
+        # Older apps ignore `replace` and insert at the cursor, as before.
+        self._call("type_text", text=text, **({"replace": True} if replace else {}))
 
     def key(self, name: str) -> None:
         self._call("key", name=name.upper())

@@ -1133,7 +1133,11 @@ class Agent:
             if args.get("submit") and (blocked := self._guard_enter(state, obs, field, typed=text)):
                 return blocked
             state.typed = True
-            self.driver.type_text(text)
+            # A search or address box keeps the last query (seen on a Samsung: typing "chess games" into a Play
+            # Store search still holding "Spotify" gave "Spotifychess games"), so its text is replaced; elsewhere
+            # typing inserts at the cursor (a draft the owner started stays) unless the model asks to replace.
+            replace = bool(args.get("replace")) or (field is not None and fast.is_query_field(field))
+            self.driver.type_text(text, replace=replace)
             if args.get("submit"):
                 self.driver.key("ENTER")
             # A search box: give its suggestions a moment longer to arrive before the next look.

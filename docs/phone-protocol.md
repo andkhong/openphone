@@ -252,7 +252,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `tap` | `x, y: int` | `null` | 10 s |
 | `long_press` | `x, y: int`, `duration_ms: int` | `null` | 15 s |
 | `swipe` | `x1, y1, x2, y2: int`, `duration_ms: int` | `null` | 15 s |
-| `type_text` | `text: string` | `null` | 15 s |
+| `type_text` | `text: string`, `replace?: bool` | `null` | 15 s |
 | `key` | `name: string` | `null` | 10 s |
 | `open_url` | `url: string` | `null` | 15 s |
 | `wake_unlock` | none | `null` | 10 s |
@@ -356,7 +356,7 @@ Params: `{"x": 540, "y": 1210, "duration_ms": 800}`. Press and hold at one point
 Params: `{"x1": 540, "y1": 1755, "x2": 540, "y2": 585, "duration_ms": 400}`. One straight-line drag from (x1,y1) to (x2,y2) over `duration_ms` (the server's default is 300; scrolls use 400). The finger lifts at the end, with no fling compensation. The agent's "scroll down" is a swipe from 75 % to 25 % of the screen height at the horizontal centre.
 
 ### 4.10 `type_text`
-Params: `{"text": "lofi hip hop"}`. Insert `text` into the **currently focused editable field** at the cursor, replacing any selected text. Do not wipe the field: adb `input text` types at the cursor, and the agent relies on that. When the field shows only its hint (`isShowingHintText`, API 26+), treat it as empty. Any Unicode text must work. Do not press Enter: the server sends `key ENTER` separately when it wants to submit. Error if no editable node has focus: `"No focused text field. Tap the field first."`
+Params: `{"text": "lofi hip hop", "replace"?: bool}`. Insert `text` into the **currently focused editable field** at the cursor, replacing any selected text. Do not wipe the field: adb `input text` types at the cursor, and the agent relies on that. With `"replace": true`, the field's whole text becomes `text` instead (select all, then paste, when `ACTION_SET_TEXT` is refused): the server asks for it in search and address boxes, which otherwise keep the last query. Older apps ignore `replace` and insert. When the field shows only its hint (`isShowingHintText`, API 26+), treat it as empty. Any Unicode text must work. Do not press Enter: the server sends `key ENTER` separately when it wants to submit. Error if no editable node has focus: `"No focused text field. Tap the field first."`
 Error if the focused field is a password field (`isPassword`), whatever the server asked: `"I don't type passwords. Please type it yourself."`
 
 ### 4.11 `key`
