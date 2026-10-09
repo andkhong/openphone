@@ -338,3 +338,22 @@ def test_old_apps_keep_server_side_approvals(api):
     assert wait_for(lambda: api.alice.phone.approval_requests)
     tap_params = [p for m, p in api.alice.phone.calls if m == "tap"]
     assert tap_params == []  # nothing sent before the approval, and no gate params ever
+
+
+def test_a_drive_session_sends_its_mode_to_the_gatekeeper_and_asks_no_task_grant(api):
+    # Security review 2026-10-09, H1: a drive session's acts reached the phone with no mode, so a gatekeeper phone
+    # judged them at its own ceiling (Don't ask during an owner's window). Now the session's mode goes with each
+    # act, and no whole-task grant is asked: an outside agent, not this request, decides the steps.
+    from test_mcp import call, new_key, ok
+    from test_mcp_drive import button
+
+    phone, driver = gatekeeper(api, owner="approve")
+    driver.elements = [button(0, "Search", rid="search")]
+    key = new_key(api, api.alice, ["devices:drive", "tasks:read", "tasks:run"], max_mode="trusted")
+    session = ok(call(api, key, "start_session", goal="look around", permission_mode="ask"))
+    call(api, key, "tap", session_id=session["session_id"], x=10, y=10, target="search")
+    assert wait_for(lambda: taps(phone))
+    first = taps(phone)[0]
+    assert first.get("mode") == "ask" and not first.get("task_text")
+    assert not phone.task_requests
+    ok(call(api, key, "end_session", session_id=session["session_id"], summary="x"))

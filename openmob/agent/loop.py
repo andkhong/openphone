@@ -171,7 +171,6 @@ class _TaskState:
     cancel: threading.Event
     auto_waited: float = 0.0
     treeless_misses: dict[str, int] = field(default_factory=dict)
-    approved: bool = False  # the user just said yes to an ask_user question
     max_steps: int = 0
     blocked: Callable[[str], bool] | None = None  # packages this task may not touch (API safety)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
@@ -313,7 +312,14 @@ class Agent:
         if drive is not None:  # no model, no fast path, no replay: the outside agent is all of those
             state.fast = False
             self._task_variant = "drive"
-            result = self._drive(state, drive, go_home)
+            # The phone judges each act at this session's mode (capped at trusted), and its own prompts wait here
+            # and reach the outside agent as needs_approval. Without this a gatekeeper phone saw no mode and judged
+            # at its own ceiling (Don't ask during an owner's window): security review 2026-10-09, H1.
+            self._gate_setup(state, task_grant=False)
+            try:
+                result = self._drive(state, drive, go_home)
+            finally:
+                self._gate_setup(None)
             result.usage = self.usage
             result.timings = self.timer.task_totals()
             result.prompts = state.prompts
@@ -1390,8 +1396,9 @@ class Agent:
             return self._wait_until(args, obs, state)
 
         if name == "ask_user":
+            # An answer is information, never approval: the API caller can answer ask_user in plain text, and only
+            # the owner's own approval prompt approves an action (security review 2026-10-09).
             answer = self.timer.timed("wait", self.io.ask, args["question"]).strip()
-            state.approved = is_yes(answer)
             return Outcome(f"User answered: {answer or '(no answer)'}", settle=0)
 
         if name == "done":
@@ -1502,17 +1509,15 @@ class Agent:
                 return self._refuse(shown, "this Settings page asks the owner first, and nobody can be asked "
                                            "while agents act without asking.")
             state.risky = True
-            if not state.approved:
-                action = self._action("open_settings", obs.package, typed=f"{key} {package or ''}".strip())
-                answer = self._ask_owner(state, f"I'm about to open {shown}. Should I go ahead?",
-                                         {"kind": "action", "action_kind": "settings", "package": obs.package,
-                                          "action": action, "digest": action_digest(action)})
-                if not is_yes(answer):
-                    return Outcome(f"The user did not approve opening {shown} (they said {answer!r}). Don't do "
-                                   "it. Pick another approach or call done.", is_error=True, settle=0)
-                if refused := self._approval_mismatch(action_digest(action), None, f"open {shown}"):
-                    return refused
-            state.approved = False
+            action = self._action("open_settings", obs.package, typed=f"{key} {package or ''}".strip())
+            answer = self._ask_owner(state, f"I'm about to open {shown}. Should I go ahead?",
+                                     {"kind": "action", "action_kind": "settings", "package": obs.package,
+                                      "action": action, "digest": action_digest(action)})
+            if not is_yes(answer):
+                return Outcome(f"The user did not approve opening {shown} (they said {answer!r}). Don't do "
+                               "it. Pick another approach or call done.", is_error=True, settle=0)
+            if refused := self._approval_mismatch(action_digest(action), None, f"open {shown}"):
+                return refused
         state.money_followup = None  # leaving the app ends a payment's follow-up
         try:
             opened = self.driver.open_settings(key, package) or {}
@@ -1659,18 +1664,16 @@ class Agent:
                 return self._refuse(link.label, "this link acts as soon as it opens, so it asks the owner first, and "
                                                 "nobody can be asked while agents act without asking.")
             state.risky = True
-            if not state.approved:
-                action = self._action("open_url", obs.package, typed=url)
-                answer = self._ask_owner(state, f"I'm about to open {link.label}, which acts as soon as it opens. "
-                                                "Should I go ahead?",
-                                         {"kind": "action", "action_kind": "link", "package": obs.package,
-                                          "action": action, "digest": action_digest(action)})
-                if not is_yes(answer):
-                    return Outcome(f"The user did not approve opening {link.label} (they said {answer!r}). Don't do "
-                                   "it. Pick another approach or call done.", is_error=True, settle=0)
-                if refused := self._approval_mismatch(action_digest(action), None, f"open {link.label}"):
-                    return refused
-            state.approved = False
+            action = self._action("open_url", obs.package, typed=url)
+            answer = self._ask_owner(state, f"I'm about to open {link.label}, which acts as soon as it opens. "
+                                            "Should I go ahead?",
+                                     {"kind": "action", "action_kind": "link", "package": obs.package,
+                                      "action": action, "digest": action_digest(action)})
+            if not is_yes(answer):
+                return Outcome(f"The user did not approve opening {link.label} (they said {answer!r}). Don't do "
+                               "it. Pick another approach or call done.", is_error=True, settle=0)
+            if refused := self._approval_mismatch(action_digest(action), None, f"open {link.label}"):
+                return refused
         return self._open_destination(url, obs, state, app_links.APPS[link.app], label=link.label, shown=link.label)
 
     def _open_destination(self, url: str, obs: Observation, state: _TaskState, app: app_links.App | None, *,
@@ -2112,9 +2115,6 @@ class Agent:
             return None
         if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None
-        if state.approved:
-            state.approved = False
-            return None
         context = gate.money_context(obs.elements) if money else ""
         where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
         what = label if label is not None else (repr(desc) if desc else shown)
@@ -2409,9 +2409,11 @@ class Agent:
     def _gatekeeper(self) -> bool:
         return bool(getattr(self.driver, "gatekeeper", False))
 
-    def _gate_setup(self, state: _TaskState | None) -> None:
+    def _gate_setup(self, state: _TaskState | None, task_grant: bool = True) -> None:
         """Wire the driver to this task: its mode goes with each act call (the phone takes the tighter of it and
-        its owner's ceiling), the phone's own prompts wait here, and a secure lock pauses the task."""
+        its owner's ceiling), the phone's own prompts wait here, and a secure lock pauses the task.
+        `task_grant=False` (a drive session): no whole-task approval; the phone judges every act on its own, since
+        an outside agent, not this request, decides the steps."""
         self._gate_state = state
         if not hasattr(self.driver, "gate_approver"):
             return
@@ -2419,7 +2421,7 @@ class Agent:
         self.driver.gate_task = str(getattr(self.io, "current_task", "") or "") if state else ""
         # Task approval, just in time: the phone asks for the whole task at the first step that needs a tap, worded
         # from this request (and not at all when no step does). Not in Ask every step.
-        task_ok = state is not None and state.perms.mode() in ("auto", "trusted", "plan")
+        task_ok = task_grant and state is not None and state.perms.mode() in ("auto", "trusted", "plan")
         try:
             if task_ok and (state.perms.current_settings() or {}).get("task_approval") is False:
                 task_ok = False
