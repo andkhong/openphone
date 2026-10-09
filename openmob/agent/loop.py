@@ -241,6 +241,7 @@ class Agent:
         self.task_model = config.model  # locked in when a task starts, so a mid-task switch waits
         self.timer = StepTimer()  # where each step's time goes (measurement only)
         self._frame: Screenshot | None = None  # the last screenshot the agent took (for sizes)
+        self._decision_effort: str | None = None  # this vision call's effort (canvas screens; _effort_for)
         self._step_tokens: dict | None = None  # model tokens since the last recorded step (measurement only)
         self._shown_side: int | None = None  # long side of the newest screenshot in the conversation
         self._last_record: dict | None = None  # the newest step record (vision_stream amends its tokens)
@@ -414,6 +415,7 @@ class Agent:
                 early[call.id] = self._act(call, obs, state)
 
             # Streaming actions run each call as it arrives, with no look in between: one-per-turn only.
+            self._decision_effort = self._effort_for(route, obs)
             response, streamed = self._vision_call(route, system, messages, act_early if batch == 1 else None)
             messages.append({"role": "assistant", "content": response.content})
 
@@ -532,7 +534,16 @@ class Agent:
 
     def _vision_request(self, route, system: str, messages: list[dict], max_tokens: int) -> ModelRequest:
         return ModelRequest(model=self.task_model, system=system, tools=self._tools, messages=messages,
-                            max_tokens=max_tokens, cache_history=self.config.history_cache)
+                            max_tokens=max_tokens, cache_history=self.config.history_cache,
+                            effort=self._decision_effort)
+
+    def _effort_for(self, route, obs: Observation) -> str | None:
+        """canvas_effort for a Claude decision on a screen with no readable labels (a game, a chess board): there,
+        reading the picture is the hard part. Labeled screens keep the model's own effort (low for Haiku 5.5).
+        A switch resets the provider's cache for the conversation, so a task pays it about once (entering the game)."""
+        if not self.config.canvas_effort or route.spec.provider != "anthropic":
+            return None
+        return None if any(fast.labeled(el) for el in obs.elements) else self.config.canvas_effort
 
     def _act(self, call, obs: Observation, state: _TaskState) -> Outcome:
         """Run one of the main model's tool calls and report it."""

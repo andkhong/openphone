@@ -23,10 +23,11 @@ DEFAULT_MODELS = [
     {"id": "claude-sonnet-5-5", "label": "Sonnet 5.5 (balanced, recommended)", "provider": "anthropic"},
     {"id": "claude-opus-5-5", "label": "Opus 5.5 (smartest, slower, pricier)", "provider": "anthropic"},
     {"id": "claude-fable-5-1", "label": "Fable 5.1", "provider": "anthropic"},
-    # High effort (owner's choice, 2026-10-08). Its thinking counts toward max_tokens, so the vision
-    # step gets the same room instead of the 512-token cap, which would cut it off and ask again.
+    # Low effort on labeled screens, canvas_effort on canvas ones (owner's choice, 2026-10-08: measured,
+    # low was 15-35% faster per decision on Settings-style steps). Thinking counts toward max_tokens, so
+    # the vision step gets the same room instead of the 512-token cap, which would cut it off.
     {"id": "claude-haiku-5-5", "label": "Haiku 5.5 (fastest, cheapest)", "provider": "anthropic",
-     "effort": "high", "max_tokens": 8192, "vision_max_tokens": 8192},
+     "effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
     {"id": "gpt-6.1-sol", "label": "GPT-6.1 Sol", "provider": "openai", "context": 1_050_000,
      "reasoning_effort": "low", "max_tokens": 8192, "vision_max_tokens": 8192},
     {"id": "gpt-6-astra", "label": "GPT-6 Astra", "provider": "openai", "context": 1_050_000,
@@ -148,6 +149,10 @@ class Config:
     # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
     # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
     vision_stream: bool = False
+    # Claude models: the effort for a decision on a canvas screen (no readable labels: games, chess, a
+    # drawing app), where reading the picture is the hard part; labeled screens keep the model's own effort.
+    # Empty: the model's effort everywhere. OPENMOB_CANVAS_EFFORT overrides.
+    canvas_effort: str = "high"
     # Settings deep links (open_settings_page) on phones that offer them. Off only for comparisons:
     # OPENMOB_DEEP_LINKS=off.
     deep_links: bool = True
@@ -353,6 +358,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.deep_links = os.environ["OPENMOB_DEEP_LINKS"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_SCROLL_SETTLE_S", "").strip():
         cfg.scroll_settle_delay = float(os.environ["OPENMOB_SCROLL_SETTLE_S"])
+    if os.environ.get("OPENMOB_CANVAS_EFFORT") is not None:
+        cfg.canvas_effort = os.environ["OPENMOB_CANVAS_EFFORT"].strip()
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
     cfg.jev_api_key = os.environ.get("TYPESAFE_API_KEY")
     if os.environ.get("OPENMOB_JEV", "").strip().lower() in {"0", "off", "false", "no"}:
