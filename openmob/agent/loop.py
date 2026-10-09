@@ -1301,8 +1301,10 @@ class Agent:
         launched = opened.get("package") if isinstance(opened, dict) else None
         if state.task_app is None and launched:
             state.task_app = launched
-        return Outcome(f"Opened {shown}.", settle=self.config.launch_settle_delay, launched=launched,
-                       until="loading_done")
+        # Settle until the page is quiet and done loading, without waiting for a given app in front: an OEM may
+        # hand a page to another app (on a Samsung, Battery opens Device care, not Settings), and waiting for
+        # Settings there sat out the whole launch wait (measured ~9 s per task).
+        return Outcome(f"Opened {shown}.", settle=self.config.launch_settle_delay, until="loading_done")
 
     def _direct_settings_page(self, state: _TaskState) -> str | None:
         """The fast path's deep link: the key of the Settings page a plain navigation request names exactly
