@@ -499,3 +499,12 @@ def test_the_docs_describe_the_catalog_and_the_classes():
     safety = (ROOT / "docs/safety.md").read_text()
     assert "open_link" in safety and "`view`" in safety and "`draft`" in safety and "`action`" in safety
     assert "app_links" in (ROOT / "config.example.yaml").read_text()
+
+
+def test_a_google_search_may_land_in_the_browser():
+    from openmob.agent import app_links
+
+    google = app_links.APPS["google"]
+    assert google.browser_ok and not app_links.APPS["youtube"].browser_ok
+    m = app_links.match("Search Google for the weather tomorrow")
+    assert m and m.link.id == "google.search" and m.params == {"q": "the weather tomorrow"}
