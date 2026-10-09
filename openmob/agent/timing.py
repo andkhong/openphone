@@ -22,11 +22,29 @@ When a model response holds several tool calls, the shared observe/model time is
 
 from __future__ import annotations
 
+import os
+import sys
 import time
+import traceback
 from contextlib import contextmanager
 
 PHASES = ("observe", "jev", "wait", "model", "action", "settle")
 COLUMNS = tuple(f"{p}_ms" for p in PHASES) + ("total_ms",)
+# OPENMOB_SETTLE_TRACE=1: print each settle wait with the code that waited (measurement only).
+SETTLE_TRACE = os.environ.get("OPENMOB_SETTLE_TRACE", "").strip().lower() in ("1", "on", "true")
+
+
+def trace(message: str) -> None:
+    if SETTLE_TRACE:
+        print(f"⏱  {message}", file=sys.stderr, flush=True)
+
+
+def _waiter() -> str:
+    """The function that opened the phase (outside this module and contextlib)."""
+    for frame in reversed(traceback.extract_stack(limit=8)[:-1]):
+        if not frame.filename.endswith(("timing.py", "contextlib.py")):
+            return f"{frame.name}:{frame.lineno}"
+    return "?"
 
 
 class StepTimer:
@@ -54,6 +72,8 @@ class StepTimer:
         finally:
             _, nested = self._stack.pop()
             elapsed = time.perf_counter() - started
+            if SETTLE_TRACE and name == "settle":
+                trace(f"settle {int(elapsed * 1000)} ms in {_waiter()}")
             self._seconds[name] += max(elapsed - nested, 0.0)
             if self._stack:
                 self._stack[-1][1] += elapsed

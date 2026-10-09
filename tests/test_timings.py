@@ -436,3 +436,19 @@ def test_an_unavailable_model_falls_back_only_to_claude(monkeypatch, tmp_path, c
     cfg.api_key = "a"
     build_agent(cfg, RecordingIO(), driver=FakeDriver())
     assert cfg.model.startswith("claude-") and "using claude-" in capsys.readouterr().out
+
+
+def test_the_settle_trace_prints_each_settle_only_when_switched_on(monkeypatch, capsys):
+    from openmob.agent import timing
+
+    def settle_once():
+        timer = StepTimer()
+        with timer.phase("settle"):
+            pass
+        return capsys.readouterr().err
+
+    monkeypatch.setattr(timing, "SETTLE_TRACE", False)
+    assert settle_once() == ""
+    monkeypatch.setattr(timing, "SETTLE_TRACE", True)
+    printed = settle_once()
+    assert printed.startswith("⏱  settle ") and "settle_once" in printed  # names the code that waited
