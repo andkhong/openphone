@@ -77,7 +77,7 @@ class WaitCondition(val until: String, pattern: String, val pkg: String, val qui
         private val LOADING_CLASS = Regex("progress|spinner|loading|shimmer", RegexOption.IGNORE_CASE)
         private val LOADING_ID = Regex("progress|spinner|loading|shimmer|skeleton", RegexOption.IGNORE_CASE)
         private val LOADING_TEXT = Regex("^\\s*(loading|please wait|connecting|starting|signing in|downloading|installing|" +
-            "pending|preparing|updating)\\b|\\bloading\\b\\W*$|^\\s*\\d{1,3}\\s?%\\s*$", RegexOption.IGNORE_CASE)
+            "pending|preparing|updating)\\b|\\bloading\\b\\W*$", RegexOption.IGNORE_CASE) // no bare "83%": see waiting.py
         private val DIGITS = Regex("\\d+")
 
         fun from(json: JSONObject) = WaitCondition(
