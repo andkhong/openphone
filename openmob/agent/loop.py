@@ -1229,8 +1229,9 @@ class Agent:
     # --- Settings deep links (docs/design/deep-links.md) ---------------------------------------------
 
     def _can_open_settings(self) -> bool:
-        """The phone opens Settings pages directly: the app advertised "open_settings", or it's an adb phone."""
-        return bool(getattr(self.driver, "can_open_settings", False))
+        """The phone opens Settings pages directly: the app advertised "open_settings", or it's an adb phone,
+        and deep_links is on."""
+        return self.config.deep_links and bool(getattr(self.driver, "can_open_settings", False))
 
     def _settings_page_tier(self, page: settings_pages.SettingsPage) -> str:
         """"refuse", "ask" or "allow" for opening `page` directly: the stricter of the table's tier and this
