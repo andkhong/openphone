@@ -70,6 +70,11 @@ The public API passes them through as `timings`, with `jev_ms` renamed `classifi
 renamed `classifier`. A whole task's totals, including any time after the last step, are on
 `AgentResult.timings`.
 
+`settle_ms` keeps only the total. To see each wait inside it, start the server with
+`OPENMOB_SETTLE_TRACE=1`: every settle phase is printed to stderr with the function that waited, and every
+phone `wait_idle` with the phone's own `waited_ms`, whether it found the screen idle, and the round trip.
+Measurement only, off by default; nothing is stored.
+
 ## The report
 
 ```sh
