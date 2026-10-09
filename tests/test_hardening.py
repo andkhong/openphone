@@ -241,6 +241,7 @@ def test_orchestrated_steps_start_from_home_standalone_tasks_dont(orc):
     r = new_task(orc.alice, B, "open maps")
     wait_task(orc.alice, r.json()["id"], "succeeded")
     assert ("key", "HOME") not in driver.actions
+    driver.package = "com.android.chrome"  # an app in front (on the launcher, HOME would change nothing and is skipped)
     o = start(orc.alice, [{"id": "b", "device_id": B, "instruction": "open maps"}])
     wait_status(orc.alice, o["id"], "succeeded")
     assert ("key", "HOME") in driver.actions

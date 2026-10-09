@@ -10,7 +10,8 @@ approval wait during a tap) counts there and not in the enclosing one.
            and classifier app picking
 - wait:    human or loading time: loading-screen waits, risky-tap approvals, ask_user answers
 - model:   the main model call(s), including a nudge call that produced no tool call
-- action:  the phone action and the tool's own work (app resolution included)
+- action:  the phone action and the tool's own work (app resolution included); on a task's first step also
+           the wake (wake_unlock) and the HOME press before it, when one is asked for
 - settle:  the post-action settle before the next observation (and the loop's own waits after a launch or a
            Play Store install), the `wait` tool's sleep, and `wait_until` (agent/waiting.py).
            It is counted on the step it delayed: the step after the action that caused it.

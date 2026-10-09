@@ -31,9 +31,15 @@ apps, the gatekeeper judging the URL on the phone). With `app_links` on it is no
 - **The handler is resolved before opening** (`resolve_url`, newer apps and adb), as before, and a blocked
   handler or chooser candidate refuses the link. The server never sends an explicit package or component: Android
   picks the handler, so a link can only reach what the owner's phone would open for anyone.
-- **It settles inside the step**, until the page is quiet and done loading (`launch_settle_delay`,
-  `loading_done`), **never waiting for a particular package in front**: an OEM may hand a link to another app
-  (the Settings deep links hit this on the Samsung, where Battery opens Device care).
+- **It waits inside the step until the destination's window is up** (the screen left the one the link was
+  opened from, `_await_new_screen`, up to 2.5 s) and reads the app in front. When that is the entry's app (or a
+  browser, for entries a browser serves as well), the step ends there and the settle until the page is quiet and
+  done loading (`launch_settle_delay`, `loading_done`) is the next step's, as after `launch_app` (since
+  2026-10-08; before, the whole settle was inside the step, which made the first-step metric read the page load:
+  docs/design/deep-links.md §6). When the quick look can't place the landing (the home screen, or neither the app
+  nor a browser), the step settles fully and looks again, as before. It **never waits for a particular package
+  in front**: an OEM may hand a link to another app (the Settings deep links hit this on the Samsung, where
+  Battery opens Device care).
 - **The result says where it landed**: "Opened … in YouTube."; or, when the catalog knows the link's app from its
   host (`app_links.app_for_url`: youtube.com, google.com/maps, play.google.com, open.spotify.com, wa.me, amazon.com,
   mail.google.com, calendar.google.com…) and a browser took it, "in Chrome, not the YouTube app: this phone sends
@@ -143,8 +149,10 @@ request, and "search"/"play" aren't): expect one model call to confirm done afte
 ### 2.5 Recording
 
 Every link step is a normal step in the steps table: `tool` `open_link`, `fast` true and `source` `"link"` for a
-fast step (a model-decided `open_link` has no source, like any tool call); timings as usual, with the settle inside
-the step counted as settle time. The `variant` label gains `+links` when the fast path is on, so `openmob timings`
+fast step (a model-decided `open_link` has no source, like any tool call); timings as usual: the wait until the
+destination's window is up is the step's settle time, and the loading settle after it is the next step's (§2.1).
+A fast link step is the task's first look's reason not to ask the classifier about the screen it leaves (the
+classifier is asked if the step steps aside after all; docs/design/deep-links.md §6). The `variant` label gains `+links` when the fast path is on, so `openmob timings`
 can group runs. A link's parameters (a search, a number) are **redacted in the record and never shown in the feed**,
 exactly like typed text: the feed shows "open_link: Opened a YouTube search in YouTube."; the model's own
 conversation holds the values (it needs them).

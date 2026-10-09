@@ -62,7 +62,7 @@ class Phone(FakeDriver):
 
 def make(responses, task, driver=None, io=None, tmp_path=None, mode=None, settings=None, blocked=None,
          platform="android", **cfg):
-    config = Config(settle_delay=0, launch_settle_delay=0, **cfg)
+    config = Config(**{"settle_delay": 0, "launch_settle_delay": 0, **cfg})
     driver = driver if driver is not None else Phone()
     resolver = AppResolver(driver, label_cache=tmp_path / "l.json")
     resolver.ensure_labels()
@@ -405,7 +405,7 @@ def test_a_plain_link_request_opens_first_without_any_model(tmp_path):
     step = steps[0]
     assert step["tool"] == "open_link" and step["fast"] is True and step["source"] == "link" and step["model_ms"] == 0
     assert step["args"]["params"] == {"q": REDACTED} and step["outcome"] == "Opened a YouTube search in YouTube."
-    assert step["variant"].endswith("+links")
+    assert "+links" in step["variant"]
     assert ("action", "open_link: Opened a YouTube search in YouTube.") in io.events and "lofi" not in str(io.events)
     told = first_user_text(agent.client)
     assert "quick helper" in told and "open_link" in told and "Opened a YouTube search in YouTube." in told
@@ -434,6 +434,18 @@ def test_the_fast_path_steps_aside_when_the_link_wouldnt_open_in_its_app(tmp_pat
     # An older app can't say beforehand: the link opens, and where it landed is reported after.
     agent, driver, _, steps, _ = make([DONE], "search YouTube for lofi", driver=Phone(resolves=False), tmp_path=tmp_path)
     assert opened(driver) == [YT_SEARCH] and steps[0]["outcome"] == "Opened a YouTube search in YouTube."
+
+
+def test_a_links_loading_settle_is_the_next_steps_like_a_launch(tmp_path):
+    """The link step ends once its app is in front; the settle until the page is quiet and done loading is counted
+    on the step it delays (the next one), as after launch_app. A landing the quick look can't place (a browser took
+    the link) still settles inside the step and is reported as before."""
+    _, _, _, steps, _ = make([DONE], "search YouTube for lofi", tmp_path=tmp_path, launch_settle_delay=0.2)
+    link, done = steps
+    assert link["settle_ms"] < 100 and done["settle_ms"] >= 150 and link["outcome"] == "Opened a YouTube search in YouTube."
+    _, _, _, steps, _ = make([DONE], "search YouTube for lofi", driver=Phone(opens={}, resolves=False), tmp_path=tmp_path,
+                             launch_settle_delay=0.2)
+    assert steps[0]["settle_ms"] >= 150 and steps[0]["outcome"].startswith("Opened a YouTube search in Chrome, not the YouTube app")
 
 
 def test_a_misrouted_fast_link_hands_to_the_model_with_what_happened(tmp_path):

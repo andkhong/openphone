@@ -87,7 +87,7 @@ def test_a_confident_tap_runs_without_the_main_model(tmp_path):
     tap, done = steps
     assert tap["tool"] == "tap_element" and tap["fast"] is True and done["fast"] is False
     assert tap["jev_ms"] >= 20 and tap["model_ms"] == 0  # a fast tap uses no model at all
-    assert tap["variant"] == "adaptive+fast+noshot+1req+launch+fastdone+links"
+    assert tap["variant"] == "adaptive+fast+noshot+1req+launch+fastdone+links+pages"
     # The classifier saw an indexed table and only compatible targets per operation.
     screen, _, targets = judge.asked[0]
     assert screen["elements"][1].startswith("[1] TextView 'Display'")

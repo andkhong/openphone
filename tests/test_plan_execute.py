@@ -142,7 +142,7 @@ def test_the_plan_runs_with_one_model_call_on_a_multi_screen_flow(tmp_path):
     assert taps(driver) == [("tap", 500, 140), ("tap", 500, 240)]  # the elements' own centers
     assert [s["tool"] for s in steps] == ["plan_steps", "tap_element", "tap_element", "done"]
     assert [s.get("source") for s in steps] == ["plan", "plan", "plan", None]
-    assert steps[1]["fast"] is True and steps[1]["model_ms"] == 0 and steps[1]["variant"].endswith("+plan+links")
+    assert steps[1]["fast"] is True and steps[1]["model_ms"] == 0 and steps[1]["variant"].endswith("+plan+links+pages")
     # The classifier was asked about the sub-goal in hand, not the whole request, while the helper worked.
     requests = asked(jev)
     assert requests[0] == TASK2  # the first look, before any plan
@@ -377,4 +377,4 @@ def test_a_cold_run_plans_and_stores_a_path_and_a_warm_run_replays_it(tmp_path):
     assert warm.success and warm.done_via == "classifier" and len(client.requests) == 0
     assert warm.replayed == 2 and warm.planned == 0 and taps(driver) == [("tap", 500, 140), ("tap", 500, 240)]
     assert [s.get("source") for s in steps] == ["replay", "replay", None]
-    assert steps[0]["variant"].endswith("+replay+plan+links")
+    assert steps[0]["variant"].endswith("+replay+plan+links+pages")
