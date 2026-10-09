@@ -396,6 +396,31 @@ class PhoneDriver(CachedScreenshots):
         if "Error" in out:
             raise AdbError(out.strip())
 
+    # adb can start any Settings page's intent action from the same fixed table the app uses.
+    can_open_settings = True
+
+    def open_settings(self, page: str, package: str | None = None) -> dict:
+        """Open one Settings page by its key (settings_pages.PAGES) with `am start -a <action>`; app pages
+        carry the package as the intent data (`package:<pkg>`) or the APP_PACKAGE extra. {"package": None}:
+        adb doesn't say which Settings app answered."""
+        from .settings_pages import PAGES, valid_package
+
+        spec = PAGES.get(page)
+        if spec is None:
+            raise AdbError(f"Unknown Settings page {page!r}. Known pages: {', '.join(PAGES)}.")
+        command = f"am start -a {shlex.quote(spec.action)}"
+        if spec.needs_package:
+            if not valid_package(package):
+                raise AdbError(f"The {spec.title} page needs an app's package name.")
+            if page == "app_details":
+                command += f" -d {shlex.quote('package:' + package)}"
+            else:
+                command += f" --es android.provider.extra.APP_PACKAGE {shlex.quote(package)}"
+        out = self.shell(command)
+        if "Error" in out:
+            raise AdbError(f"This phone has no {spec.title} Settings page ({out.strip()[:120]}). Navigate there instead.")
+        return {"package": None}
+
     def resolve_url(self, url: str) -> dict | None:
         """Which app would open `url`, before opening it: {"package": the handler or None (a chooser
         or nothing), "candidates": every app that could}. None when this phone can't say."""

@@ -192,6 +192,26 @@ def key_target(task: str) -> str | None:
     return re.split(r"\s+(?:in|on)\s+", rest, maxsplit=1, flags=re.I)[0].strip() or None
 
 
+def settings_page(task: str) -> str | None:
+    """The key of the Settings page a plain navigation request asks for ("Open Settings and go to Display",
+    "open the Wi-Fi settings"), or None: the request must be navigation only, its final object must name a
+    page exactly (phone/settings_pages.py aliases), and any app it names must be Settings itself.
+    The caller checks the phone can open pages directly (loop.Agent._direct_settings_page)."""
+    from ..phone.settings_pages import page_for
+
+    target = key_target(task)
+    page = page_for(target) if target else None
+    if page is None:
+        return None
+    for phrase in app_phrases(task):
+        # "Display in Settings" comes through whole and as its parts: the head names the page, the tail the app.
+        head = re.split(r"\s+(?:in|on)\s+", phrase, maxsplit=1, flags=re.I)[0]
+        if any(page_for(p) is not None or _names_match(p, "settings") for p in (phrase, head)):
+            continue
+        return None  # another app is named ("open Chrome and ..."): not a plain Settings-page request
+    return page.key
+
+
 def _norm(text: str) -> str:
     from ..phone.apps import normalize
 

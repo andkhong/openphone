@@ -115,7 +115,7 @@ Errors: `400` for a wrong, used, expired or voided code (with `detail`), `429` a
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
-| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url", "wait_for"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url", "wait_for", "open_settings"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -259,6 +259,7 @@ Every method replies `{"ok": true, "result": <value>}` on success. A method whos
 | `device_state` | none | `{"interactive": bool, "locked": bool, "secure": bool}` | 5 s |
 | `wait_idle` (optional) | `quiet_ms, max_ms: int` | `{"waited_ms": int, "idle": bool}` | 10 s |
 | `wait_for` (optional) | `condition: object, timeout_ms: int` | `{"met": bool, "waited_ms": int, "seen": string, "package": string\|null}` | 15 s |
+| `open_settings` (optional) | `page: string`, `package: string` (app pages only) | `{"package": string\|null}` | 15 s |
 
 ### 4.1 `screenshot`
 Capture the current screen. Downscale it so the **long side ≤ 1280 px**, keeping the aspect ratio (scale = `min(1, 1280 / max(w, h))`, rounded). Never upscale. Encode as **JPEG at quality ~80**, then base64 (standard alphabet, no line breaks).
@@ -414,6 +415,13 @@ It's optional: list `"wait_for"` in the hello's `device.capabilities` only if yo
 
 Elements may also carry `"enabled": false` (only when greyed out): `element_enabled` needs it, and the model sees "(disabled)" next to the element.
 
+### 4.17 `open_settings` (optional)
+Params: `{"page": "display"}` or `{"page": "app_notifications", "package": "com.android.chrome"}`. Open one Settings page directly, so the agent needn't navigate there (docs/design/deep-links.md). `page` is a **key** from the app's own fixed table (`SettingsPages.kt`; the server's copy is `openmob/phone/settings_pages.py`): `display`, `wifi`, `bluetooth`, `sound`, `battery`, `location`, `notifications`, `apps`, `storage`, `airplane_mode`, `date_time`, and the app pages `app_details` and `app_notifications`, which need `package`. The phone maps the key to the intent action itself (`android.settings.DISPLAY_SETTINGS`, `android.intent.action.POWER_USAGE_SUMMARY`, …): **the server never sends an action, component, extra or URI**, and a key not in the table is refused (`"Unknown Settings page 'developer_options'. Known pages: …"`), so whatever a server sends, only these pages can be reached. Security-critical pages (accessibility, language, security, developer options, special app access…) have no key.
+
+For the app pages, validate `package` (an application id, installed, never OpenMob's own) and pass it as the intent data `package:<pkg>` (`app_details`) or the `android.provider.extra.APP_PACKAGE` extra (`app_notifications`). Resolve the intent before starting it; if nothing handles it on this phone (an OEM without that page), reply with an error naming the page (`"This phone has no Display Settings page. Navigate there instead."`), and the agent navigates. Reply `{"package": "com.android.settings"}`: the Settings app that answered (`null` if unknown). The agent then settles as after `launch_app`.
+
+It's optional: list `"open_settings"` in the hello's `device.capabilities` only if you implement it; the server offers the model its `open_settings_page` tool only then. A gatekeeper build judges the call as an act: everyday pages open, `date_time` asks, an app page for a blocked app is refused (§9).
+
 ---
 
 ## 5. Android implementation guide
@@ -434,6 +442,7 @@ The core is an **`AccessibilityService`** (which handles screen, tree, gestures 
 | `type_text` | Find the node with `findFocus(AccessibilityNodeInfo.FOCUS_INPUT)` and check `isEditable`. Build the new string from `text` and `textSelectionStart/End`, then `performAction(ACTION_SET_TEXT, bundleOf(ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE to newText))`. Optionally move the cursor with `ACTION_SET_SELECTION`. | Any language or emoji works, unlike adb `input text` (ASCII only). Some custom views (games, Flutter, WebView forms) may ignore `ACTION_SET_TEXT`. If so, return the error. |
 | `key` | See the key table below. | |
 | `open_url` | `startActivity(Intent(ACTION_VIEW, Uri.parse(url)).addFlags(FLAG_ACTIVITY_NEW_TASK))` | `ActivityNotFoundException` means an error. |
+| `open_settings` | `Intent(<action from the fixed table>)` plus `FLAG_ACTIVITY_NEW_TASK`; app pages add `data = Uri.parse("package:" + pkg)` or `putExtra(Settings.EXTRA_APP_PACKAGE, pkg)`; `pm.resolveActivity` first, then `startActivity` | Never build the action from the call's params. A null resolution or `ActivityNotFoundException` means an error naming the page. |
 | `wake_unlock` | Wake: `PowerManager.newWakeLock(SCREEN_BRIGHT_WAKE_LOCK or ACQUIRE_CAUSES_WAKEUP, tag)`, `acquire(3000)` (deprecated flags that still work, **verify**). Alternatively, start a transparent activity with `setTurnScreenOn(true)` / `setShowWhenLocked(true)` (API 27). Dismiss: `KeyguardManager.requestDismissKeyguard(activity, callback)` (API 26, needs an Activity). Check `isKeyguardSecure` first and skip the dismiss if it is secure. | Only non-secure keyguards are dismissed without user input. That is intended. |
 
 **Keys**

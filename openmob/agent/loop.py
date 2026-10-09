@@ -27,8 +27,9 @@ from ..phone.approval_keys import action_digest
 from . import fast, gate, permission_dialogs, plan, replay, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import (PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes,
-                    system_prompt)
+from .tools import (OPEN_SETTINGS_TOOL_SPEC, PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC,
+                    TOOL_SPECS, mode_notes, system_prompt)
+from ..phone import settings_pages
 
 OBS_PREFIX = "SCREEN:"
 OMITTED = "(earlier screen omitted)"
@@ -49,7 +50,8 @@ INSTALL_TAP_GRACE_S = 5.0  # an enabled Install button still there after this lo
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
 REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
 # Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
-CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key"}
+CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key",
+            "open_settings_page"}
 # Tools after which the element list of the screen they acted on may be out of date.
 MOVES_SCREEN = CHANGING | {"scroll"}
 # ENTER in these apps sends what was typed.
@@ -323,9 +325,12 @@ class Agent:
         mode = state.perms.mode()
         batch = max(1, int(self.config.max_actions_per_turn or 1))
         planning = self._plan_enabled()
-        system = (system_prompt(self.platform, batch) + mode_notes(mode) + (PLAN_STEPS_NOTE if planning else "")
-                  + (BRIEF_REPLIES if self.config.vision_brief else ""))
+        deep_links = self._can_open_settings()
+        system = (system_prompt(self.platform, batch, settings_pages=deep_links) + mode_notes(mode)
+                  + (PLAN_STEPS_NOTE if planning else "") + (BRIEF_REPLIES if self.config.vision_brief else ""))
         self._tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
+        if deep_links:  # only a phone that can open Settings pages directly is offered the tool
+            self._tools = self._tools + [OPEN_SETTINGS_TOOL_SPEC]
         if planning:
             self._tools = self._tools + [PLAN_STEPS_TOOL_SPEC]
         for step in range(1, state.max_steps + 1):
@@ -963,6 +968,8 @@ class Agent:
             return self._plan_steps(args, state)
         if name == "launch_app":
             return self._launch_app(args, obs, state)
+        if name == "open_settings_page":
+            return self._open_settings(args, obs, state)
 
         if name == "list_apps":
             # Fresh from the phone: an app installed or removed since the last look shows as it is now.
@@ -1170,6 +1177,101 @@ class Agent:
             launched=package,
             until="loading_done",
         )
+
+    # --- Settings deep links (docs/design/deep-links.md) ---------------------------------------------
+
+    def _can_open_settings(self) -> bool:
+        """The phone opens Settings pages directly: the app advertised "open_settings", or it's an adb phone,
+        and deep_links is on."""
+        return self.config.deep_links and bool(getattr(self.driver, "can_open_settings", False))
+
+    def _settings_page_tier(self, page: settings_pages.SettingsPage) -> str:
+        """"refuse", "ask" or "allow" for opening `page` directly: the stricter of the table's tier and this
+        server's own Settings word lists (the ones that judge taps on Settings pages), so a deep link never
+        reaches a page a tap couldn't, and never loosens an existing rule."""
+        cfg = self.config
+        title = page.title.lower()
+        if gate.words(title, cfg.settings_refuse_terms):
+            return "refuse"
+        if page.tier == settings_pages.ASK or gate.words(title, cfg.settings_ask_terms):
+            return "ask"
+        return "allow"
+
+    def _open_settings(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        """open_settings_page: the phone opens one Settings page from its fixed key table. The page's tier is
+        judged here before the phone is asked (its gatekeeper judges it again on gatekeeper builds): everyday
+        pages open, ask pages ask the owner (refused under Don't ask), and an app's own pages are refused for
+        an app this task may not touch. A phone without the page says so, and the agent navigates instead."""
+        key = str(args.get("page", "")).strip()
+        page = settings_pages.PAGES.get(key)
+        if page is None:
+            return Outcome(f"No Settings page {key!r}. Pages: {', '.join(settings_pages.PAGE_KEYS)}. For any other "
+                           "page, open Settings with launch_app and navigate there.", is_error=True, settle=0)
+        if not self._can_open_settings():
+            return Outcome("This phone's app can't open Settings pages directly (an older OpenMob app). Open "
+                           "Settings with launch_app and navigate there instead.", is_error=True, settle=0)
+        package = None
+        if page.needs_package:
+            wanted = str(args.get("package", "")).strip()
+            resolution = self.resolver.resolve(wanted) if wanted else None
+            if resolution is None:
+                return Outcome(f"The {page.title} page needs an installed app: pass its name or package "
+                               f"(got {wanted!r}). Use list_apps to find it.", is_error=True, settle=0)
+            package = resolution.package
+            if package == settings_pages.OWN_PACKAGE or self._is_blocked(state, package):
+                return Outcome(f"{BLOCKED_APP_MESSAGE} Its Settings pages are off-limits too. Don't try another "
+                               "way; call done.", is_error=True, settle=0)
+        shown = f"the {page.title} Settings page" + (f" of {self._app_label(package)}" if package else "")
+        tier = self._settings_page_tier(page)
+        if tier == "refuse":
+            return self._refuse(shown, "this Settings page is security-critical, so agents can't open it.")
+        if tier == "ask" and not state.step_approved:
+            mode = state.perms.mode()
+            if mode == "never" or self.config.confirm_actions == "never":
+                return self._refuse(shown, "this Settings page asks the owner first, and nobody can be asked "
+                                           "while agents act without asking.")
+            state.risky = True
+            if not state.approved:
+                action = self._action("open_settings", obs.package, typed=f"{key} {package or ''}".strip())
+                answer = self._ask_owner(state, f"I'm about to open {shown}. Should I go ahead?",
+                                         {"kind": "action", "action_kind": "settings", "package": obs.package,
+                                          "action": action, "digest": action_digest(action)})
+                if not is_yes(answer):
+                    return Outcome(f"The user did not approve opening {shown} (they said {answer!r}). Don't do "
+                                   "it. Pick another approach or call done.", is_error=True, settle=0)
+                if refused := self._approval_mismatch(action_digest(action), None, f"open {shown}"):
+                    return refused
+            state.approved = False
+        state.money_followup = None  # leaving the app ends a payment's follow-up
+        try:
+            opened = self.driver.open_settings(key, package) or {}
+        except DeviceError as exc:
+            if getattr(exc, "code", None):  # a gatekeeper refusal: reported with its code by _execute
+                raise
+            return Outcome(f"Couldn't open {shown} directly ({exc}). Open Settings with launch_app and navigate "
+                           "there instead.", is_error=True, settle=0)
+        launched = opened.get("package") if isinstance(opened, dict) else None
+        if state.task_app is None and launched:
+            state.task_app = launched
+        # Settle until the page is quiet and done loading, without waiting for a given app in front: an OEM may
+        # hand a page to another app (on a Samsung, Battery opens Device care, not Settings), and waiting for
+        # Settings there sat out the whole launch wait (measured ~9 s per task).
+        # Some phones show a page in their own app (a Samsung opens Battery in Device care, "Battery activity"):
+        # measured, the model then distrusted the page and navigated by hand (29 s instead of ~3 s).
+        return Outcome(f"Opened {shown}. Some phones show this page in their own app (a Samsung shows Battery "
+                       f"in Device care): if the screen is about {page.title.lower()}, you're on it.",
+                       shown=f"Opened {shown}.", settle=self.config.launch_settle_delay, until="loading_done")
+
+    def _direct_settings_page(self, state: _TaskState) -> str | None:
+        """The fast path's deep link: the key of the Settings page a plain navigation request names exactly
+        ("Open Settings and go to Display"), when this phone can open it directly and the request names no
+        other app; else None (the usual launch)."""
+        if not self._can_open_settings() or not fast.navigation_only(state.task, self.config.confirm_keywords):
+            return None
+        key = fast.settings_page(state.task)
+        if key is None or self._settings_page_tier(settings_pages.PAGES[key]) != "allow":
+            return None  # a page that asks or is refused is the main model's call
+        return key
 
     def _open_store(self, url: str, obs: Observation, state: _TaskState, text: str) -> Outcome:
         """launch_app's install_if_missing: the app's Play Store page, through open_url's checks. In Ask every step
@@ -1864,6 +1966,13 @@ class Agent:
         elif name == "open_url":
             what = f"open {args.get('url')!r}"
             action = self._action("open_url", obs.package, typed=str(args.get("url")))
+        elif name == "open_settings_page":
+            page = settings_pages.PAGES.get(str(args.get("page", "")))
+            if page is None:
+                return None  # an unknown key errors without touching the phone
+            what = f"open the {page.title} Settings page" + (f" of {args.get('package')!r}" if args.get("package") else "")
+            action = self._action("open_settings", obs.package,
+                                  typed=f"{args.get('page')} {args.get('package') or ''}".strip())
         if what is None:
             return None
         digest = action_digest(action) if action is not None else None
@@ -2229,6 +2338,8 @@ class Agent:
                 return f"tap [{i}] {obs.elements[i].label[:60]!r}"
         if name in ("scroll", "press_key", "launch_app"):
             return f"{name} {args.get('direction') or args.get('key') or args.get('app')}"
+        if name == "open_settings_page":
+            return f"{name} {args.get('page')}"
         if name == "type_text":
             return "type text"
         return name
@@ -2276,12 +2387,16 @@ class Agent:
                 return None
             calls = [("tap_element", {"index": element.index, "target": element.label}), ("type_text", {"text": text})]
         elif op == "LAUNCH_APP":
-            app = self._direct_app(state, obs) if c.fast_path_direct_launch else None
-            if app is None:
-                app = self._fast_value(state, "app", {"foreground_app": obs.package or "unknown"})
-            if app is None:
-                return None
-            calls = [("launch_app", {"app": app})]
+            # A request for one Settings page goes straight there (a deep link) instead of opening Settings.
+            if page := self._direct_settings_page(state):
+                calls = [("open_settings_page", {"page": page})]
+            else:
+                app = self._direct_app(state, obs) if c.fast_path_direct_launch else None
+                if app is None:
+                    app = self._fast_value(state, "app", {"foreground_app": obs.package or "unknown"})
+                if app is None:
+                    return None
+                calls = [("launch_app", {"app": app})]
         elif op in fast.SIMPLE_OPERATIONS:
             name, args = fast.SIMPLE_OPERATIONS[op]
             calls = [(name, dict(args))]

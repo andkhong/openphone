@@ -148,6 +148,9 @@ class Config:
     # Anthropic: stream the reply and run each tool call as soon as its block is complete. Off: the
     # gain is only the tail of the reply (tens of ms), and it holds the stream open during approvals.
     vision_stream: bool = False
+    # Settings deep links (open_settings_page) on phones that offer them. Off only for comparisons:
+    # OPENMOB_DEEP_LINKS=off.
+    deep_links: bool = True
     # Actions the main model may take from one reply (1: one per turn). Above 1 it may chain a few whose
     # next screen it can predict (a chess piece then its square, type then Enter): each still passes
     # every check, and the rest of the turn is skipped at any error, owner prompt or unexpected screen.
@@ -340,6 +343,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.replay_store_api = os.environ["OPENMOB_REPLAY_STORE_API"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_PLAN_EXECUTE", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_DEEP_LINKS", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.deep_links = os.environ["OPENMOB_DEEP_LINKS"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_SCROLL_SETTLE_S", "").strip():
         cfg.scroll_settle_delay = float(os.environ["OPENMOB_SCROLL_SETTLE_S"])
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
