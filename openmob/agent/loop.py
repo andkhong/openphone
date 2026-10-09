@@ -25,6 +25,8 @@ from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
 from . import app_links, fast, gate, permission_dialogs, plan, replay, waiting
+from .drive import DriveChannel, screen_view
+from .drive import ESCAPE_KEYS as DRIVE_ESCAPE_KEYS, SOURCE as DRIVE_SOURCE
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
 from .tools import (OPEN_LINK_TOOL_SPEC, OPEN_SETTINGS_TOOL_SPEC, PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE,
@@ -212,6 +214,9 @@ class _TaskState:
     direct_tried: bool = False
     link_cue: app_links.Link | None = None  # the entry just opened, when its cue must show on the next look
     url_targets: dict[str, dict | None] = field(default_factory=dict)  # a link's handler, resolved once before opening
+    # A drive session (docs/design/mcp-drive.md): never type into a one-time-code field (the loop may, under the
+    # owner's instruction; an outside agent that read the code off the screen is the account-takeover shape).
+    refuse_otp: bool = False
 
 
 def is_yes(answer: str) -> bool:
@@ -255,6 +260,7 @@ class Agent:
         self._last_record: dict | None = None  # the newest step record (vision_stream amends its tokens)
         self._acted_early = False  # a streamed reply's tool call already ran
         self._task_variant = self._variant()  # the latency features of the task in progress (steps record it)
+        self._drive_seq = 0  # drive sessions: the number of the latest screen handed to the outside agent
         if judge is not None and hasattr(judge, "client"):
             judge.client.on_usage = lambda tokens: self.usage.add_jev(tokens)
         if judge is not None:
@@ -279,12 +285,15 @@ class Agent:
         blocked: Callable[[str], bool] | None = None,
         isolated: bool = False,
         permissions: TaskPermissions | None = None,
+        drive: DriveChannel | None = None,
     ) -> AgentResult:
         """`model` and `max_steps` override this phone's settings for one task; `blocked` names
         packages the task must not open or operate (the task stops if one comes to the front).
         `isolated`: a caller other than the phone's chat (e.g. an
         API key) that must neither see nor add to the chat's recent requests. `permissions`: the
-        task's permission mode against the phone's live settings (default: config's mode, ceiling auto)."""
+        task's permission mode against the phone's live settings (default: config's mode, ceiling auto).
+        `drive`: a drive session (docs/design/mcp-drive.md): an outside agent decides each step through this
+        channel instead of the model; every act still runs through _execute and its checks."""
         self.usage = Usage()
         self.timer.reset()
         self._step_tokens = self._shown_side = None
@@ -295,6 +304,15 @@ class Agent:
         state = _TaskState(task=task, cancel=cancel or threading.Event(),
                            max_steps=max_steps or self.config.max_steps, blocked=blocked,
                            perms=perms)
+        if drive is not None:  # no model, no fast path, no replay: the outside agent is all of those
+            state.fast = False
+            self._task_variant = "drive"
+            result = self._drive(state, drive, go_home)
+            result.usage = self.usage
+            result.timings = self.timer.task_totals()
+            result.prompts = state.prompts
+            result.mode = perms.mode()
+            return result
         state.fast = self._fast_enabled()
         if self._replay_on() and replay.eligible(task, self.config.confirm_keywords):
             state.replay = self.paths.get(replay.goal_key(task)) or None
@@ -318,8 +336,8 @@ class Agent:
             self.recent.append((task, result.summary))
         return result
 
-    def _run(self, state: _TaskState, go_home: bool, isolated: bool = False) -> AgentResult:
-        task = state.task
+    def _prepare(self, state: _TaskState, go_home: bool) -> None:
+        """Before a task's first look: wake the screen, and HOME when asked (shared by _run and _drive)."""
         with self.timer.phase("action"):  # phone actions before the first step: the wake, and HOME when asked
             self.driver.wake_unlock()
             # HOME when the launcher is already in front changes nothing: one read spares the press and its settle.
@@ -328,6 +346,25 @@ class Agent:
                 self.driver.key("HOME")
         if go_home:
             self._settle(self.config.settle_delay, state)
+
+    def _dismiss_dialogs(self, state: _TaskState, obs: Observation, messages: list[dict], show: bool = True) -> Observation:
+        """Between steps (shared by _run and _drive): note the app in front, and answer Android's permission
+        dialogs by rule (up to three in a row, no model), looking again after each. `show`: the looks go into
+        the model's conversation (the loop); a drive session hands them to the outside agent instead."""
+        if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
+            state.app_in_front = obs.package
+        for _ in range(3):  # Android's permission dialogs: answered by rule, before any model sees them
+            if not self._permission_dialog(state, obs, messages):
+                break
+            self._settle(self.config.settle_delay, state)
+            obs = self._observe_settled(state)
+            if show:
+                self._show_later(state, messages, obs)
+        return obs
+
+    def _run(self, state: _TaskState, go_home: bool, isolated: bool = False) -> AgentResult:
+        task = state.task
+        self._prepare(state, go_home)
 
         try:
             route = router_for(self.client, self.config).route(self.task_model)
@@ -362,14 +399,7 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
-            if obs.package and not permission_dialogs.PACKAGES.search(obs.package):
-                state.app_in_front = obs.package
-            for _ in range(3):  # Android's permission dialogs: answered by rule, before any model sees them
-                if not self._permission_dialog(state, obs, messages):
-                    break
-                self._settle(self.config.settle_delay, state)
-                obs = self._observe_settled(state)
-                self._show_later(state, messages, obs)
+            obs = self._dismiss_dialogs(state, obs, messages)
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
 
@@ -511,6 +541,113 @@ class Agent:
             self._show_later(state, messages, obs)
 
         return AgentResult(False, f"I gave up after {state.max_steps} steps.", state.max_steps)
+
+    # --- the drive level: an outside agent decides each step (docs/design/mcp-drive.md) ------------------
+
+    def _drive(self, state: _TaskState, channel: DriveChannel, go_home: bool) -> AgentResult:
+        """The loop with the model's decision replaced by a command from the outside agent. Every act runs
+        through _execute (the same checks as the model's calls: blocked apps, password fields, dangerous links,
+        the permission mode, risky-tap approvals on the owner's phone, the gatekeeper); the look after it goes
+        back with the result. In between, only what the loop does on its own: Android's permission dialogs
+        dismissed by rule, the owner's mid-session words, loading screens waited out."""
+        state.refuse_otp = True
+        self._prepare(state, go_home)
+        messages: list[dict] = [{"role": "user", "content": []}]  # the loop's notes between steps, for the agent
+        reason, success, summary = "stopped", False, "Stopped."
+        command = None  # the command whose reply waits for the screen after it
+        outcome: dict | None = None
+        try:
+            obs = self._observe_settled(state)
+            self.io.event("status", f"Driven step by step by {channel.requester} (a drive session): each action is "
+                                    "checked like the agent's own.")
+            channel.opened()
+            while True:
+                if state.cancel.is_set():
+                    return AgentResult(False, "Stopped.", channel.steps)
+                obs = self._dismiss_dialogs(state, obs, messages, show=False)
+                self._apply_corrections(state, messages)
+                view, text = self._drive_view(state, obs, messages)
+                channel.publish(view, text)
+                if command is not None:
+                    self._drive_reply(channel, command, outcome, obs, view, text)
+                    command, outcome = None, None
+                if state.cancel.is_set():
+                    return AgentResult(False, "Stopped.", channel.steps)
+                with self.timer.phase("wait"):  # the outside agent's thinking is not agent time
+                    command = channel.next(state.cancel)
+                if command is None:
+                    if state.cancel.is_set():
+                        return AgentResult(False, "Stopped.", channel.steps)
+                    reason = channel.reason or "idle_timeout"
+                    summary = (f"Ended: no command for {channel.idle_seconds:g} s." if reason == "idle_timeout"
+                               else f"Ended: the session reached its {channel.max_seconds:g} s limit.")
+                    return AgentResult(False, summary, channel.steps)
+                if command.op == "observe":
+                    obs = self._observe_settled(state)
+                    continue  # the top of the loop publishes the new screen and replies
+                # An act (or the end): the loop's tool, through the loop's one path.
+                name, args = command.name, dict(command.args)
+                result = self._execute(name, args, obs, state, source=DRIVE_SOURCE, done_via="drive")
+                self._event("error" if result.is_error else "action", f"{name}: {result.shown or result.text}",
+                            {"timings": result.timings, "jev": self.judge is not None})
+                channel.steps += 1
+                refused = result.is_error and (result.text.startswith("Not allowed on this phone")
+                                               or result.text.startswith(BLOCKED_APP_MESSAGE))
+                outcome = {"text": result.text, "is_error": result.is_error, "refused": refused}
+                command.outcome = outcome  # known now, whatever happens next (close() keeps it)
+                if result.done:
+                    reason, success, summary = "ended", result.success, result.text
+                    self._drive_reply(channel, command, outcome, obs, view, text)  # the screen as it was
+                    command = None
+                    return AgentResult(result.success, result.text, channel.steps, done_via="drive")
+                if state.cancel.is_set():
+                    return AgentResult(False, "Stopped.", channel.steps)  # close() answers the command
+                self._settle(self.config.settle_delay if result.settle is None else result.settle, state,
+                             result.launched, result.quiet_ms, result.until)
+                obs = self._observe_after_action(state, obs)
+                if channel.steps >= state.max_steps:
+                    reason, summary = "step_cap", f"Reached the step cap ({state.max_steps} steps)."
+                    view, text = self._drive_view(state, obs, messages)
+                    channel.publish(view, text)
+                    self._drive_reply(channel, command, outcome, obs, view, text)
+                    command = None
+                    return AgentResult(False, summary, channel.steps)
+        except Exception as exc:
+            reason, summary = "phone_error", f"{type(exc).__name__}: {exc}"
+            raise
+        finally:
+            channel.close(reason, success, summary)
+
+    def _drive_reply(self, channel: DriveChannel, command, outcome: dict | None, obs: Observation, view: dict,
+                     text: str) -> None:
+        """Answer a command with the screen after it; the pixels too when asked (the service only asks when the
+        key may see them), scaled like get_screenshot's."""
+        jpeg = None
+        if command.screenshot and not view.get("blocked_app"):
+            try:
+                with self.timer.phase("observe"):
+                    jpeg = downscale(obs.shot, command.max_side).jpeg
+            except (DeviceError, OSError, ValueError):
+                jpeg = None  # the result says no pixels came; the element list is still there
+        channel.reply(command, outcome, view, text, jpeg)
+
+    def _drive_view(self, state: _TaskState, obs: Observation, messages: list[dict]) -> tuple[dict, str]:
+        """The screen for the outside agent (drive.screen_view), with the loop's notes since the last one and
+        the owner's words (both left in the scratch message by _permission_dialog and _apply_corrections)."""
+        notes, owner = [], []
+        last = messages[-1] if messages and messages[-1]["role"] == "user" else None
+        for block in (last["content"] if last and isinstance(last["content"], list) else []):
+            text = block.get("text", "") if block.get("type") == "text" else ""
+            if text.startswith(fast.CORRECTION_PREFIX):
+                owner.append(text[len(fast.CORRECTION_PREFIX):].strip())
+            elif text:
+                notes.append(text)
+        messages[:] = [{"role": "user", "content": []}]
+        blocked = self._is_blocked(state, obs.package)
+        summary = obs.assessment.summary() if obs.assessment and not blocked else None
+        app = self._app_label(obs.package) if obs.package else None
+        self._drive_seq += 1
+        return screen_view(obs, self._drive_seq, blocked, app, notes, owner, summary)
 
     # --- several actions from one reply (max_actions_per_turn) ----------------------
 
@@ -1014,12 +1151,18 @@ class Agent:
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         state.step_approved = False
+        # Nothing is done inside an app this task may not touch (the loop ends a task that finds one in front;
+        # a drive session goes dark instead): only BACK and HOME, the loop's own way out of one, are accepted.
+        if name in MOVES_SCREEN and self._is_blocked(state, obs.package) and not (
+                name == "press_key" and str(args.get("key", "")).upper() in DRIVE_ESCAPE_KEYS):
+            return Outcome(f"{BLOCKED_APP_MESSAGE} It is in front, so nothing is done in it; press BACK or HOME to "
+                           "leave it.", is_error=True, settle=0)
         # Refused in every mode, before anything asks: links outside the scheme allowlist, typing into
         # a password field, and dangerous URLs typed into an address bar.
         if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
             return self._refuse(str(args.get("url", ""))[:80], why)
         if name == "type_text" and (refused := self._typing_refusal(str(args.get("text", "")),
-                                                                    self._field(state, obs), obs)):
+                                                                    self._field(state, obs), obs, state)):
             return refused
         if name in CHANGING:
             if self._needs_plan(state) and not (name == "press_key" and args.get("key") != "ENTER"):
@@ -1162,7 +1305,7 @@ class Agent:
         if name == "type_text":
             text = str(args["text"])
             field = self._field(state, obs)
-            if refused := self._typing_refusal(text, field, obs):
+            if refused := self._typing_refusal(text, field, obs, state):
                 return refused
             if args.get("submit") and (blocked := self._guard_enter(state, obs, field, typed=text)):
                 return blocked
@@ -2045,11 +2188,16 @@ class Agent:
             return state.tapped_field
         return gate.focused_field(obs.elements) or state.tapped_field
 
-    def _typing_refusal(self, text: str, field: UIElement | None, obs: Observation) -> Outcome | None:
+    def _typing_refusal(self, text: str, field: UIElement | None, obs: Observation,
+                        state: _TaskState | None = None) -> Outcome | None:
         """Never typed, in any mode: into a password field, or a javascript:/intent:/file:/content:/data:
-        URL into an address bar (or anywhere in a browser, when the field isn't known)."""
+        URL into an address bar (or anywhere in a browser, when the field isn't known). A drive session
+        (state.refuse_otp) also never types into a one-time-code field."""
         if field is not None and field.password:
             return self._refuse("a password field", "agents never type passwords; the owner types them.")
+        if field is not None and state is not None and state.refuse_otp and gate.is_otp_field(field):
+            return self._refuse("a one-time-code field", "an outside agent never types verification codes; the "
+                                                         "owner types them.")
         scheme = gate.dangerous_text(text)
         if scheme and (gate.is_url_bar(field, obs.package) or (
                 field is None and gate.is_browser(obs.package, obs.elements))):

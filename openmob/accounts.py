@@ -38,8 +38,10 @@ INVITE_TTL = 7 * 24 * 3600  # an invite code from `openmob account invite` works
 KEY_PREFIX = "om_live_"  # easy to grep for in leaked code and logs
 # What an API key may do. screen:read (see the phone's screen) is sensitive, so it's never a default.
 # devices:add (enroll phones with `openmob phone add`) is sensitive too, so it's never a default either.
+# devices:drive (an outside agent operates the phone step by step over MCP, reading each screen's text) is
+# sensitive too: never a default (docs/design/mcp-drive.md).
 SCOPES = ("devices:read", "tasks:run", "tasks:read", "screen:read", "history:read",
-          "devices:add")
+          "devices:add", "devices:drive")
 DEFAULT_SCOPES = ("devices:read", "tasks:run", "tasks:read")
 KEY_MODES = ("ask", "plan", "auto", "trusted", "never")  # an API key's max_mode (permissions.MODES)
 LAST_USED_EVERY = 60  # seconds between saves of a key's last-used time

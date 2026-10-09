@@ -73,6 +73,7 @@ new key.
 | `screen:read` | Take screenshots. **Sensitive:** it sees everything on screen | No |
 | `history:read` | Read this key's past tasks with their instructions and outcomes (`GET /v1/history`) | No |
 | `devices:add` | Start pairings for your account (`openmob phone add`). **Sensitive:** the phone still has to confirm with its screen lock | No |
+| `devices:drive` | Let an outside agent operate a phone step by step over MCP ([the drive level](mcp.md#the-drive-level-your-own-agent-at-the-controls)). **Sensitive:** the agent reads every screen's text; it is still refused and asked exactly like OpenMob's own agent. Screenshots need `screen:read` too | No |
 
 ## Idempotent retries
 

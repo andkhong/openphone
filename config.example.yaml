@@ -163,6 +163,10 @@ server_port: 8765
 # api_account_daily_tasks: 1000   # all of an account's keys together
 # api_account_daily_credits: 0    # 0 = unlimited
 # api_max_steps: 40
+# MCP drive sessions (an outside agent driving step by step, docs/design/mcp-drive.md): a session with no
+# command for this long ends, and so does one older than api_drive_max_seconds.
+# api_drive_idle_seconds: 120
+# api_drive_max_seconds: 1800
 # Package-name patterns API tasks may not open unless the phone's owner allows it (see config.py for the defaults).
 # sensitive_apps: [bank, wallet, paypal, 1password]
 
