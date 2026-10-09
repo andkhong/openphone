@@ -1304,7 +1304,11 @@ class Agent:
         # Settle until the page is quiet and done loading, without waiting for a given app in front: an OEM may
         # hand a page to another app (on a Samsung, Battery opens Device care, not Settings), and waiting for
         # Settings there sat out the whole launch wait (measured ~9 s per task).
-        return Outcome(f"Opened {shown}.", settle=self.config.launch_settle_delay, until="loading_done")
+        # Some phones show a page in their own app (a Samsung opens Battery in Device care, "Battery activity"):
+        # measured, the model then distrusted the page and navigated by hand (29 s instead of ~3 s).
+        return Outcome(f"Opened {shown}. Some phones show this page in their own app (a Samsung shows Battery "
+                       f"in Device care): if the screen is about {page.title.lower()}, you're on it.",
+                       shown=f"Opened {shown}.", settle=self.config.launch_settle_delay, until="loading_done")
 
     def _direct_settings_page(self, state: _TaskState) -> str | None:
         """The fast path's deep link: the key of the Settings page a plain navigation request names exactly
