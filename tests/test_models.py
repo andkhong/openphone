@@ -6,7 +6,7 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from conftest import FakeDriver, RecordingIO, tool_use
+from conftest import FakeDriver, RecordingIO, ScriptedClient, tool_use
 
 from openmob.agent.loop import Agent
 from openmob.agent.models import (
@@ -589,7 +589,7 @@ def test_anthropic_effort_and_thinking_come_from_the_model_options(tmp_path):
         load_config(path)
 
 
-def test_haiku_5_5_runs_at_high_effort_with_room_for_its_thinking(tmp_path):
+def test_haiku_5_5_runs_at_low_effort_with_room_for_its_thinking(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("max_steps: 10\n")
     cfg = load_config(path)
@@ -597,7 +597,33 @@ def test_haiku_5_5_runs_at_high_effort_with_room_for_its_thinking(tmp_path):
                                       model="claude-haiku-5-5", usage=None))
     router = ModelRouter(cfg, clients={"anthropic": SimpleNamespace(messages=SimpleNamespace(create=create))})
     route = router.route("claude-haiku-5-5")
-    assert (route.adapter.effort, route.spec.max_tokens, route.spec.options["vision_max_tokens"]) == ("high", 8192, 8192)
+    assert (route.adapter.effort, route.spec.max_tokens, route.spec.options["vision_max_tokens"]) == ("low", 8192, 8192)
     assert router.complete_text("claude-haiku-5-5", "Which package is Chess?", max_tokens=100) == "com.chess"
     sent = create.calls[0]
-    assert sent["output_config"] == {"effort": "high"} and sent["max_tokens"] == 8192  # thinking can't starve the answer
+    assert sent["output_config"] == {"effort": "low"} and sent["max_tokens"] == 8192  # thinking can't starve the answer
+
+
+
+def test_a_canvas_screen_gets_the_canvas_effort_and_a_labeled_one_the_models_own():
+    from openmob.phone.adb import UIElement
+
+    labeled = [UIElement(0, "Display", "", "", "android.widget.TextView", True, None, (0, 0, 100, 50))]
+    agent = Agent(ScriptedClient([]), FakeDriver(), None, Config(canvas_effort="high"), RecordingIO(), use_ocr=False)
+    claude = SimpleNamespace(spec=SimpleNamespace(provider="anthropic"))
+    gpt = SimpleNamespace(spec=SimpleNamespace(provider="openai"))
+    canvas, screen = SimpleNamespace(elements=[]), SimpleNamespace(elements=labeled)
+    assert agent._effort_for(claude, canvas) == "high"
+    assert agent._effort_for(claude, screen) is None  # the model's own (low for Haiku 5.5)
+    assert agent._effort_for(gpt, canvas) is None  # Claude's effort setting only
+    agent.config.canvas_effort = ""
+    assert agent._effort_for(claude, canvas) is None
+
+
+def test_a_calls_effort_overrides_the_models_own():
+    create = Recorder(SimpleNamespace(content=[SimpleNamespace(type="text", text="ok")], stop_reason="end_turn",
+                                      model="claude-haiku-5-5", usage=None))
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    adapter = AnthropicAdapter(client, effort="low")
+    adapter.complete(request())
+    adapter.complete(ModelRequest(**{**request().__dict__, "effort": "high"}))
+    assert [c["output_config"] for c in create.calls] == [{"effort": "low"}, {"effort": "high"}]
