@@ -254,7 +254,7 @@ class IOSDriver(CachedScreenshots):
             {"type": "pointerUp", "button": 0},
         ])
 
-    def type_text(self, text: str) -> None:
+    def type_text(self, text: str, replace: bool = False) -> None:  # replace: not supported, inserts
         active = None
         try:
             active = self._sessioned("GET", "/element/active")

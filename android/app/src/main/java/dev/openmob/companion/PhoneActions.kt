@@ -80,7 +80,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             val (x2, y2) = point(params.reqInt("x2"), params.reqInt("y2"))
             gesture(Path().apply { moveTo(x1, y1); lineTo(x2, y2) }, params.optLong("duration_ms", 300))
         }
-        "type_text" -> typeText(params.reqString("text"))
+        "type_text" -> typeText(params.reqString("text"), params.optBoolean("replace", false))
         "key" -> key(params.reqString("name"))
         "open_url" -> openUrl(params.reqString("url"))
         "open_settings" -> openSettings(params.reqString("page"), params.optString("package").takeIf { it.isNotEmpty() })
@@ -487,15 +487,16 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     // --- text input ------------------------------------------------------------------------------
 
-    private fun typeText(text: String): Any? {
+    private fun typeText(text: String, replace: Boolean = false): Any? {
         val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         // Defense in depth: the server should never ask, but a password is never typed for anyone.
         if (node.isPassword) throw IllegalStateException("I don't type passwords. Please type it yourself.")
         val old = currentText(node)
-        // Insert at the cursor, replacing any selection; unknown selection (-1) means append.
-        val (start, end) = selection(node, old) ?: (old.length to old.length)
-        if (!setText(node, old.substring(0, start) + text + old.substring(end), start + text.length)) {
+        // Insert at the cursor, replacing any selection (unknown selection: append); or replace the whole text.
+        val (value, cursor) = TypedText.result(old, selection(node, old), text, replace)
+        if (!setText(node, value, cursor)) {
             // Custom fields (e.g. Gmail's recipient chips) often reject SET_TEXT but accept a paste.
+            if (replace) selectAll(node, old)
             paste(node, text)
         }
         return null
@@ -557,6 +558,15 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
         node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
         return true
+    }
+
+    /** Select all of the field's text, so a paste replaces it (type_text with replace). Best effort. */
+    private fun selectAll(node: AccessibilityNodeInfo, text: String) {
+        val sel = Bundle().apply {
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
+            putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_END_INT, text.length)
+        }
+        node.performAction(AccessibilityNodeInfo.ACTION_SET_SELECTION, sel)
     }
 
     /** The field's real content: a field showing only its hint counts as empty. */

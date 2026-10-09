@@ -388,3 +388,22 @@ def test_a_scroll_waits_for_the_fling_to_stop_and_a_tap_doesnt(tmp_path):
     # The tests' settle delay is 0, so only the scroll waits: with a cap long enough for a fling (the
     # phone still returns as soon as the list stops).
     assert driver.idle_caps == [1200]
+
+
+
+def test_typing_replaces_a_search_boxs_old_query_but_inserts_elsewhere(tmp_path):
+    from openmob.phone.adb import UIElement
+
+    search = UIElement(0, "Spotify", "", "com.android.vending:id/search_bar_text_input", "android.widget.EditText",
+                       True, None, (0, 0, 500, 80), editable=True)
+    note = UIElement(0, "Dear Sam,", "", "com.example:id/body", "android.widget.EditText", True, None, (0, 0, 500, 80),
+                     editable=True)
+    for field, args, expected in ((search, {}, True), (note, {}, False), (note, {"replace": True}, True)):
+        driver = FakeDriver(packages=["com.android.vending"], elements=[field])
+        agent, _, _ = make_agent([
+            [tool_use("tap_element", "a", index=0)],
+            [tool_use("type_text", "b", text="chess games", **args)],
+            [tool_use("done", "c", summary="ok", success=True)],
+        ], driver=driver, tmp_path=tmp_path)
+        assert agent.run("search the play store for chess games").success
+        assert driver.replaced == [expected], (field.resource_id, args)
