@@ -1192,7 +1192,13 @@ async def g_links(phone: Phone, dev: Device) -> None:
                                 ("geo:0,0?q=coffee", ("maps", "chrome"), "a map")):
         dev.home()
         r = await phone.call("open_url", url=url)
-        await asyncio.sleep(3)
+        f = dev.focus()
+        for _ in range(16):  # a cold Maps or Gmail on the emulator can take more than 3 s to reach the front
+            await asyncio.sleep(0.5)
+            f = dev.focus()
+            if "launcher" not in f.lower():
+                break
+        await asyncio.sleep(1)
         f = dev.focus()
         scheme = url.split(":")[0]
         dev.shot("link-" + scheme)

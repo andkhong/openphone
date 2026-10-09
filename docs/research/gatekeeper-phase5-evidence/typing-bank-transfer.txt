@@ -1,0 +1,5 @@
+com.example.bank/com.example.bank.TransferActivity
+com.example.bank	'Transfer money'	''		[40,400][1040,492]
+com.example.bank	'Amount'	''		[40,492][1040,662]
+com.example.bank	'Confirm transfer'	''		[40,662][1040,832]
+com.example.bank	'Example Bank'	''		[42,166][375,237]

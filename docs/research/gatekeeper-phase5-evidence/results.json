@@ -1,0 +1,908 @@
+[
+ {
+  "group": "basics",
+  "check": "hello announces the gatekeeper",
+  "ok": true,
+  "evidence": "['wait_idle', 'resolve_url', 'wait_for', 'open_settings', 'approval_digest', 'gatekeeper', 'device_lock', 'task_grant']"
+ },
+ {
+  "group": "basics",
+  "check": "unknown methods are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_unknown_method\", \"error\": \"Unknown method run_shell.\", \"gate\": {\"rule\": \"builtin:methods\", \"package\": \"\", \"ms\": 34}}"
+ },
+ {
+  "group": "basics",
+  "check": "OpenMob itself can't be launched",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"OpenMob can't be opened by agents.\", \"gate\": {\"rule\": \"builtin:own_app\", \"package\": \"dev.openmob.companion\", \"ms\": 3}}"
+ },
+ {
+  "group": "basics",
+  "check": "intent: links are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_denied\", \"error\": \"intent: links aren't opened by agents (only https, http, tel, geo, mailto, sms and market).\", \"gate\": {\"rule\": \"builtin:url_scheme\", \"package\": \"\", \"ms\": 5}}"
+ },
+ {
+  "group": "basics",
+  "check": "javascript: is never typed",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_denied\", \"error\": \"javascript: text is never typed by agents.\", \"gate\": {\"rule\": \"builtin:typed_scheme\", \"package\": \"\", \"ms\": 3}}"
+ },
+ {
+  "group": "basics",
+  "check": "launching the bank app is refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"Blocked on the phone: com.example.bank is a sensitive app. Don't open it another way; call done.\", \"gate\": {\"rule\": \"builtin:sensitive_apps\", \"package\": \"com.example.bank\", \"ms\": 3}}"
+ },
+ {
+  "group": "basics",
+  "check": "bank deep link examplebank: refused, or not opened in the bank",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_denied\", \"error\": \"examplebank: links aren't opened by agents (only https, http, tel, geo, mailto, sms and market).\", \"gate\": {\"rule\": \"builtin:url_scheme\", \"package\": \"com.example.bank\", \"ms\": 5}} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "basics",
+  "check": "bank deep link https: refused, or not opened in the bank",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.android.chrome/org.chromium.chrome.browser.ChromeTabbedActivity"
+ },
+ {
+  "group": "basics",
+  "check": "the server's 'permissions: never' message isn't taken (policy hash unchanged)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"interactive\": true, \"locked\": false, \"secure\": true}}"
+ },
+ {
+  "group": "settings",
+  "check": "security (Safety Center): every tap refused",
+  "ok": true,
+  "evidence": "page=com.google.android.permissioncontroller/com.android.permissioncontroller.safetycenter.ui.SafetyCenterActivity 'blind y=900'->gate_screen_unstable; 'blind y=1400'->gate_screen_unstable; 'blind y=1900'->gate_screen_unstable"
+ },
+ {
+  "group": "settings",
+  "check": "accessibility: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$AccessibilitySettingsActivity 'Downloaded apps'->gate_denied_page; 'OpenMob'->gate_denied_page; 'On'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "default apps: every tap refused",
+  "ok": true,
+  "evidence": "page=com.google.android.permissioncontroller/com.android.permissioncontroller.role.ui.DefaultAppListActivity 'blind y=900'->gate_screen_unstable; 'blind y=1400'->gate_screen_unstable; 'blind y=1900'->gate_screen_unstable"
+ },
+ {
+  "group": "settings",
+  "check": "display over other apps: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.spa.SpaActivity 'Android Auto'->gate_denied_page; 'Not allowed'->gate_denied_page; 'Google'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "usage access: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$UsageAccessSettingsActivity 'Digital Wellbeing'->gate_denied_page; 'Allowed'->gate_denied_page; 'Google'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "notification access: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$NotificationAccessSettingsActivity 'Allowed'->gate_denied_page; 'Android System Intelligence'->gate_denied_page; 'Pixel Launcher'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "install unknown apps: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.spa.SpaActivity 'Chrome'->gate_denied_page; 'Not allowed'->gate_denied_page; 'Drive'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "accounts: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$AccountDashboardActivity \"Choose your preferred service to save data for sign-in and autofill suggestions. Turn on additional services if you'd like them to provide suggestions too.\"->gate_denied_page; 'Preferred service'->gate_denied_page; 'Google'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "VPN: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$VpnSettingsActivity 'No VPNs added'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "language: every tap refused",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.Settings$LocalePickerActivity 'Your system, apps, and websites use the first supported language from your preferred languages.'->gate_denied_page; 'Preferred language order'->gate_denied_page; '1'->gate_denied_page"
+ },
+ {
+  "group": "settings",
+  "check": "Settings home (control: everyday, taps allowed): ordinary taps go through",
+  "ok": true,
+  "evidence": "page=com.android.settings/com.android.settings.homepage.SettingsHomepageActivity 'Settings'->ok; 'Search settings'->ok; 'Network & internet'->ok"
+ },
+ {
+  "group": "settings",
+  "check": "tapping Build number asks on the phone",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gkf0b2c4dd23f34ffc9a3ea48d0e1a9799\", \"gate\": {\"rule\": \"risk:settings_page\", \"package\": \"com.android.settings\", \"ms\": 96, \"kind\": \"settings\", \"question\": \"Allow tapping \\u201cBuild  prompt=['(always offered: True)']"
+ },
+ {
+  "group": "settings",
+  "check": "the owner's Deny reaches the gate",
+  "ok": true,
+  "evidence": ""
+ },
+ {
+  "group": "bank",
+  "check": "taps while the bank loads never reach it (B2)",
+  "ok": true,
+  "evidence": "5 launches, touches reached the bank in rounds []; allowed taps after +0.3 s: []; outcomes [{'ok': 1, 'gate_screen_unstable': 1, 'gate_blocked_app': 48}, {'ok': 1, 'gate_screen_unstable': 1, 'gate_blocked_app': 19}, {'gate_screen_unstable': 1, 'gate_blocked_app': 3}, {'gate_screen_unstable': 1, 'gate_blocked_app': 20}, {'gate_screen_unstable': 1, 'gate_blocked_app': 77}]"
+ },
+ {
+  "group": "bank",
+  "check": "reads while the bank loads never show it",
+  "ok": true,
+  "evidence": "leaked=[]"
+ },
+ {
+  "group": "bank",
+  "check": "a screenshot of the bank app is black",
+  "ok": true,
+  "evidence": "mean luminance 0.00, 5078 bytes, meta={\"ok\": true, \"result\": {\"width\": 576, \"height\": 1280, \"device_width\": 1080, \"device_height\": 2400, \"jpeg\": \"/9j/4AAQSkZJ"
+ },
+ {
+  "group": "bank",
+  "check": "the bank app reads as []",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": []}"
+ },
+ {
+  "group": "bank",
+  "check": "taps in the bank app are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"Blocked on the phone: com.example.bank is a sensitive app. Don't open it another way; call done.\", \"gate\": {\"rule\": \"builtin:sensitive_apps\", \"package\": \"com.example.bank\", \"ms\": 3}}"
+ },
+ {
+  "group": "bank",
+  "check": "swipes in the bank app are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"Blocked on the phone: com.example.bank is a sensitive app. Don't open it another way; call done.\", \"gate\": {\"rule\": \"builtin:sensitive_apps\", \"package\": \"com.example.bank\", \"ms\": 3}}"
+ },
+ {
+  "group": "bank",
+  "check": "stream_start over the bank app is refused (B1)",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"A protected app is on screen, so the live view can't start now.\", \"gate\": {\"rule\": \"builtin:sensitive_apps\", \"package\": \"\", \"ms\": 1}}"
+ },
+ {
+  "group": "bank",
+  "check": "current_app still answers (no screen content)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": \"com.example.bank\"}"
+ },
+ {
+  "group": "bank",
+  "check": "no live-view frames of the bank (B1)",
+  "ok": true,
+  "evidence": "8 frames on the home screen before; 6 packets after the launch, the last at 0.57 s (the bank draws at >= 1.5 s); 0 after 1 s"
+ },
+ {
+  "group": "login",
+  "check": "launching an ordinary app is allowed",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "login",
+  "check": "typing an email is allowed (honest control)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "login",
+  "check": "typing into a password field is refused",
+  "ok": true,
+  "evidence": "focus tap={\"ok\": true, \"result\": null} type={\"ok\": false, \"code\": \"gate_password_field\", \"error\": \"That's a password field. Agents never type passwords; ask the owner to type it.\", \"gate\": {\"rule\": \"builtin:password_field\", \"package\": \"com.example.login\", \"ms\": 54}} log=False"
+ },
+ {
+  "group": "login",
+  "check": "a tap in the keyboard/autofill surface over a WebView asks",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gke176a1ca99d74e1892f08cb9247d9131\", \"gate\": {\"rule\": \"risk:autofill\", \"package\": \"com.google.android.inputmethod.latin\", \"ms\": 73, \"kind\": \"fill\", \"question\": \"Fill your saved car prompt=['(always offered: False)']"
+ },
+ {
+  "group": "login",
+  "check": "no 'Always allow' offered for a WebView fill",
+  "ok": true,
+  "evidence": "['(always offered: False)']"
+ },
+ {
+  "group": "permissions",
+  "check": "what the agent can read of the location dialog (Android 15 hides it from non-tool services)",
+  "ok": true,
+  "evidence": "focus=com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity ui_elements texts=[\"Allow Example Login to access this device's location?\", '11:07 o', 'Example Login', 'Use my location', 'Allow Example Login to access', \"this device's location?\", 'Precise', 'Approximate']"
+ },
+ {
+  "group": "permissions",
+  "check": "no foreground location grant without the owner",
+  "ok": true,
+  "evidence": "{'While using the app': 'gate_needs_approval (prompt: Allow Example Login to use your location?)', 'Only this time': 'gate_permission_choice', 'Precise': \"gate_needs_approval (prompt: Allow Example Login's permission request?)\", 'Approximate': \"gate_needs_approval (prompt: Allow Example Login's permission request?)\"}; granted=''"
+ },
+ {
+  "group": "permissions",
+  "check": "'Allow all the time' is refused or asks, and isn't granted",
+  "ok": true,
+  "evidence": "page=com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.ManagePermissionsActivity agent reads=[] tap=gate_screen_unstable {\"ok\": false, \"code\": \"gate_screen_unstable\", \"error\": \"That part of the screen can't be read yet (an app may still be loading). Look again.\", \"gate\": {\"rule\": \"builtin:unknown_window\", \"package\": \"\", prompt=None bg='android.permission.ACCESS_BACKGROUND_LOCATION: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED|USER_SENSITIVE_WHEN_DENIED|RESTRICTION_INSTALLER_EXEMPT]'"
+ },
+ {
+  "group": "permissions",
+  "check": "an unrecognized permission control is refused or asks",
+  "ok": true,
+  "evidence": "tap=gate_screen_unstable {\"ok\": false, \"code\": \"gate_screen_unstable\", \"error\": \"That part of the screen can't be read yet (an app may still be loading). Look again.\", \"gate\": {\"rule\": \"builtin:unknown_window\", \"package\": \"\","
+ },
+ {
+  "group": "shop",
+  "check": "claiming mode 'never' still asks for Buy now",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gkfdf1113ac59e4587b6f1e35f1a024a46\", \"gate\": {\"rule\": \"risk:words:buy\", \"package\": \"com.example.shop\", \"ms\": 70, \"kind\": \"pay\", \"question\": \"Allow tapping \\u201cBuy now\\u201d in Ex prompt={'deny': (316, 1873), 'approve': (763, 1873), 'always': True, 'texts': ['(always offered: True)']}"
+ },
+ {
+  "group": "shop",
+  "check": "a second call while the prompt is open is refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_denied_page\", \"error\": \"That's OpenMob's own screen; agents can't touch it.\", \"gate\": {\"rule\": \"builtin:own_window\", \"package\": \"dev.openmob.companion\", \"ms\": 296}}"
+ },
+ {
+  "group": "shop",
+  "check": "the legacy path can't re-word or answer a gate prompt",
+  "ok": true,
+  "evidence": "['APPROVAL NEEDED', 'Allow tapping \u201cBuy now\u201d in Example Shop?', 'This phone stopped the agent to ask you. The question and the picture come from what this phone sees, not from the server. Approving needs your screen lock and allows this one action only.']"
+ },
+ {
+  "group": "shop",
+  "check": "the owner's Deny reaches the gate",
+  "ok": true,
+  "evidence": ""
+ },
+ {
+  "group": "shop",
+  "check": "the owner's approval (screen-lock PIN) reaches the gate",
+  "ok": true,
+  "evidence": "approved"
+ },
+ {
+  "group": "shop",
+  "check": "an approval dies at any other action: quantity + then Buy now asks again (B4)",
+  "ok": true,
+  "evidence": "plus={\"ok\": true, \"result\": null} resend={\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gk8b11289d91a44092a1baa09db3a0f10a\", \"ga buys=0"
+ },
+ {
+  "group": "shop",
+  "check": "approved, the identical re-sent call runs once (honest path)",
+  "ok": true,
+  "evidence": "approval=approved resend={\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "shop",
+  "check": "Buy now \u2192 cart \u2192 Place your order asks again (B5)",
+  "ok": true,
+  "evidence": "edit={\"ok\": true, \"result\": null} proceed={\"ok\": true, \"result\": null} place={\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gk8ce64355cf3d4d81b16daf3f68d3f99b\", \"gate\": {\"rule\": \"risk:words:place your ord"
+ },
+ {
+  "group": "shop",
+  "check": "a zero-length swipe on Buy now asks",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gka0d9f657d1064a10922d79888bf4b98a\", \"gate\": {\"rule\": \"risk:words:buy\", \"package\": \"com.example.shop\", \"ms\": 69, \"kind\": \"pay\", \"question\": \"Allow tapping \\u201cBuy now\\u201d in Ex"
+ },
+ {
+  "group": "shop",
+  "check": "a 50 ms long press on Buy now asks",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gke937e0cb820545af81ea5cd6758f071f\", \"gate\": {\"rule\": \"risk:words:buy\", \"package\": \"com.example.shop\", \"ms\": 39, \"kind\": \"pay\", \"question\": \"Allow tapping \\u201cBuy now\\u201d in Ex"
+ },
+ {
+  "group": "shop",
+  "check": "nothing was bought by the variants",
+  "ok": true,
+  "evidence": ""
+ },
+ {
+  "group": "webview",
+  "check": "typing into a deep WebView OTP field asks (or is refused unread)",
+  "ok": true,
+  "evidence": "focus tap: gate_needs_approval risk:unlabeled Allow tapping an unlabeled spot in Example Shop? -> resent ok  ; type: gate_needs_approval risk:otp_field Allow typing a code into Example Shop?"
+ },
+ {
+  "group": "webview",
+  "check": "a deep WebView 'Place order' asks (B2)",
+  "ok": true,
+  "evidence": "gate_needs_approval risk:words:place order Allow tapping \u201cPlace order\u201d in Example Shop?"
+ },
+ {
+  "group": "flood",
+  "check": "20 parallel risky calls make exactly one prompt",
+  "ok": true,
+  "evidence": "approval ids=1 {'gate_needs_approval': 6, 'gate_denied_page': 14}"
+ },
+ {
+  "group": "flood",
+  "check": "repeated asks stop: 3 denials suspend (or the prompt limit refuses)",
+  "ok": true,
+  "evidence": "prompts=3 denials=3 last={\"ok\": false, \"code\": \"gate_rate_limited\", \"error\": \"Paused on the phone after repeated denials. The owner can resume.\", \"gate\": {\"rule\": \"builtin:suspended\", \"package\": \"\", \"ms\": 838}}"
+ },
+ {
+  "group": "flood",
+  "check": "while suspended even harmless acts are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_rate_limited\", \"error\": \"Paused on the phone after repeated denials. The owner can resume.\", \"gate\": {\"rule\": \"builtin:suspended\", \"package\": \"\", \"ms\": 28}}"
+ },
+ {
+  "group": "flood",
+  "check": "at most 6 prompts in 10 minutes, then refused without a prompt",
+  "ok": true,
+  "evidence": "asked=6 then {\"ok\": false, \"code\": \"gate_rate_limited\", \"error\": \"Too many approval prompts on the phone: try again in 10 min.\", \"gate\": {\"rule\": \"builtin:prompt_rate\", \"package\": \"com.example.shop\", \"ms\": 6}}"
+ },
+ {
+  "group": "keepawake",
+  "check": "server reads alone don't keep the screen on (B3)",
+  "ok": true,
+  "evidence": "act=True; screen off 35.3 s after the last act, through 174 reads (timeout 15 s, act hold 20 s)"
+ },
+ {
+  "group": "keepawake",
+  "check": "acts while the phone is locked are refused",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"phone_locked\", \"error\": \"The phone is locked. Unlock it to continue.\", \"gate\": {\"rule\": \"builtin:keyguard\", \"package\": \"\", \"ms\": 12}}"
+ },
+ {
+  "group": "friction",
+  "check": "add to cart \u2192 checkout \u2192 Place your order: exactly one prompt",
+  "ok": true,
+  "evidence": "prompts=1 steps=[('Add to cart', True), ('Cart', True), ('Proceed to checkout', True)] final={\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "friction",
+  "check": "Buy now \u2192 Place your order: one prompt for the whole checkout (D4)",
+  "ok": true,
+  "evidence": "prompts=1 buy={\"ok\": true, \"result\": null} place={\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings display (everyday, control) opens Settings",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"package\": \"com.android.settings\"}} focus=com.android.settings/com.android.settings.Settings$DisplaySettingsActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'accessibility': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'security': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'developer_options': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'language': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'default_apps': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'vpn': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings '': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'android.settings.ACCESSIBILITY_SETTINGS': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings '../display': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'display ': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings 'DISPLAY': refused as an unknown page",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "deeplinks",
+  "check": "nothing opened for the unknown keys",
+  "ok": true,
+  "evidence": "focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details for the bank app is refused",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details for OpenMob itself is refused",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:own_app"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_notifications for the bank app is refused",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_notifications for OpenMob itself is refused",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:own_app"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details without a package is refused",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_package"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'com.example.bank;end': refused, nothing opened",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps {\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"Blocked on the phone: com.example.bank;end is a sensitive app, so it focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'package:com.example.bank': refused, nothing opened",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps {\"ok\": false, \"code\": \"gate_blocked_app\", \"error\": \"Blocked on the phone: package:com.example.bank is a sensitive app, s focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'com.example.shop;end': refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package '../../com.example.shop': refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'Com Example Shop': refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'x': refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package 'com.example.shop\\n': refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details with a malformed package \"['com.example.shop']\": refused, nothing opened",
+  "ok": true,
+  "evidence": "error: {\"ok\": false, \"error\": \"IllegalArgumentException: The App info page needs an app's package name.\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details for an app that isn't installed is an error, nothing opened",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"error\": \"IllegalArgumentException: com.example.nothere isn't installed\"}"
+ },
+ {
+  "group": "deeplinks",
+  "check": "app_details for an ordinary app (control) opens App info",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"package\": \"com.android.settings\"}} focus=com.android.settings/com.android.settings.spa.SpaActivity"
+ },
+ {
+  "group": "deeplinks",
+  "check": "open_settings date_time asks on the phone (kind settings)",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"code\": \"gate_needs_approval\", \"error\": \"Waiting for the owner's approval on the phone.\", \"approval_id\": \"gk1a86c67172424dd08519f606abff2d21\", \"gate\": {\"rule\": \"risk:settings_page\", \"package\": \"\", \"ms\": 72, \"kind\": \"settings\", \"question\": \"Allow opening the Date & time Settings page?\"} prompt=['(always offered: False)']"
+ },
+ {
+  "group": "deeplinks",
+  "check": "approved with the screen lock, the re-sent call opens Date & time",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"package\": \"com.android.settings\"}} focus=com.android.settings/com.android.settings.Settings$DateTimeSettingsActivity"
+ },
+ {
+  "group": "typing",
+  "check": "replace: true into an ordinary field replaces its text (honest control)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} {\"ok\": true, \"result\": null} texts=['Sign in to Example', 'second@example.com', 'Password', 'Sign in', 'Verification code', 'Example Login']"
+ },
+ {
+  "group": "typing",
+  "check": "replace: true into a password field is refused, the field untouched",
+  "ok": true,
+  "evidence": "gate_password_field:builtin:password_field log=False"
+ },
+ {
+  "group": "typing",
+  "check": "typing a code into an OTP field asks (risk:otp_field)",
+  "ok": true,
+  "evidence": "gate_needs_approval:risk:otp_field Allow typing a code into Example Login?"
+ },
+ {
+  "group": "typing",
+  "check": "an approved insert's permit can't be spent on a replace: the replace asks again, nothing typed",
+  "ok": true,
+  "evidence": "insert approval=approved; replace: gate_needs_approval:risk:otp_field new id=True typed=False"
+ },
+ {
+  "group": "typing",
+  "check": "approved for the replace, the identical replace runs once (honest path)",
+  "ok": true,
+  "evidence": "approval=approved resend={\"ok\": true, \"result\": null} otp lines=['OTP length=6']"
+ },
+ {
+  "group": "typing",
+  "check": "the earlier insert approval is spent: inserting asks again",
+  "ok": true,
+  "evidence": "gate_needs_approval:risk:otp_field"
+ },
+ {
+  "group": "typing",
+  "check": "insert, replace and ENTER in a field of the bank app are refused, the field untouched",
+  "ok": true,
+  "evidence": "['gate_blocked_app:builtin:sensitive_apps', 'gate_blocked_app:builtin:sensitive_apps', 'ENTER gate_blocked_app:builtin:sensitive_apps'] typed=False"
+ },
+ {
+  "group": "links",
+  "check": "open_url spotify: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url upi: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url whatsapp: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url javascript: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url file: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url content: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url data: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url android-app: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url examplebank: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url intent: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "open_url ftp: is refused by scheme",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "links",
+  "check": "nothing opened for the refused schemes",
+  "ok": true,
+  "evidence": "focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "links",
+  "check": "open_url tel: opens the dialer (or a plain error without a handler), never the installer",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.dialer/com.android.dialer.main.impl.MainActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "open_url sms: opens a message draft (or a plain error without a handler), never the installer",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.apps.messaging/com.google.android.apps.messaging.main.MainActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "open_url mailto: opens an email draft (or a plain error without a handler), never the installer",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.gm/com.google.android.gm.welcome.WelcomeTourActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "open_url market: opens the store page (or a plain error without a handler), never the installer",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"error\": \"IllegalStateException: No app can open market://details?id=com.example.shop\"} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "open_url geo: opens a map (or a plain error without a handler), never the installer",
+  "ok": false,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "tel: opened the dialer without placing a call",
+  "ok": true,
+  "evidence": "focus=com.google.android.dialer/com.android.dialer.main.impl.MainActivity mCallState=0"
+ },
+ {
+  "group": "links",
+  "check": "resolve_url names the bank as the handler of its https link without opening it",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"package\": \"com.example.bank\", \"candidates\": [\"com.example.bank\"]}} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "links",
+  "check": "an https link whose handler is the bank app is refused (gate_blocked_app), bank not opened",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "links",
+  "check": "an ordinary https link opens in the browser (control)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.android.chrome/org.chromium.chrome.browser.ChromeTabbedActivity"
+ },
+ {
+  "group": "hidden",
+  "check": "a screenshot of a window hidden from accessibility is black",
+  "ok": true,
+  "evidence": "mean luminance 0.00, 5078 bytes"
+ },
+ {
+  "group": "hidden",
+  "check": "the hidden window reads as []",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": []}"
+ },
+ {
+  "group": "hidden",
+  "check": "wait_for over the hidden window is redacted",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"met\": false, \"redacted\": true, \"waited_ms\": 0, \"seen\": \"\", \"package\": null}}"
+ },
+ {
+  "group": "hidden",
+  "check": "stream_start over the hidden window is refused",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:unknown_window"
+ },
+ {
+  "group": "hidden",
+  "check": "taps, swipes, long presses and typing on the hidden window are refused and never land",
+  "ok": true,
+  "evidence": "['gate_screen_unstable:builtin:unknown_window', 'gate_screen_unstable:builtin:unknown_window', 'gate_screen_unstable:builtin:unknown_window', 'swipe gate_screen_unstable:builtin:unknown_window', 'long_press gate_screen_unstable:builtin:unknown_window', 'type error: (IllegalStateException: No focused text f)'] landed=False"
+ },
+ {
+  "group": "hidden",
+  "check": "the refusal names the unknown window",
+  "ok": true,
+  "evidence": "['gate_screen_unstable:builtin:unknown_window', 'gate_screen_unstable:builtin:unknown_window', 'gate_screen_unstable:builtin:unknown_window', 'swipe gate_screen_unstable:builtin:unknown_window', 'long_press gate_screen_unstable:builtin:unknown_window', 'type error: (IllegalStateException: No focused text f)']"
+ },
+ {
+  "group": "hidden",
+  "check": "BACK is judged like any key: allowed, and it leaves the hidden screen",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "methods",
+  "check": "wake_unlock is allowed (it never touches a secure lock)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "methods",
+  "check": "launchable_packages answers",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": [\"com.android.camera2\", \"com.android.chrome\", \"com.androi"
+ },
+ {
+  "group": "methods",
+  "check": "app_labels answers (a label is not screen content)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"com.example.bank\": \"Example Bank\", \"com.example.nothere\": null}}"
+ },
+ {
+  "group": "methods",
+  "check": "APP_SWITCH is allowed",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "methods",
+  "check": "HOME is allowed",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "methods",
+  "check": "an unknown key is an error, not a gate refusal",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"error\": \"IllegalArgumentException: Unknown key FOO\"}"
+ },
+ {
+  "group": "methods",
+  "check": "a server's task_grant asks the owner (kind task), never grants itself",
+  "ok": true,
+  "evidence": "gate_needs_approval:risk:task prompt=['(always offered: False)']"
+ },
+ {
+  "group": "methods",
+  "check": "the owner's Deny of the task prompt reaches the gate",
+  "ok": true,
+  "evidence": ""
+ },
+ {
+  "group": "methods",
+  "check": "task_grant without the request text is refused",
+  "ok": true,
+  "evidence": "gate_denied:builtin:task_request"
+ },
+ {
+  "group": "methods",
+  "check": "wait_for while the bank is visible is redacted (met false, redacted true)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"met\": false, \"redacted\": true, \"waited_ms\": 0, \"seen\": \"\", \"package\": null}}"
+ },
+ {
+  "group": "methods",
+  "check": "wait_for screen_changes over the bank is redacted too",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"met\": false, \"redacted\": true, \"waited_ms\": 0, \"seen\": \"\", \"package\": null}}"
+ },
+ {
+  "group": "methods",
+  "check": "stream_keyframe isn't an unknown method",
+  "ok": true,
+  "evidence": "{\"ok\": false, \"error\": \"IllegalStateException: Screen streaming isn't allowed on this connection. Reconnect the app and tap Start.\"}"
+ },
+ {
+  "group": "methods",
+  "check": "current_app over the bank answers (no content)",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": \"com.example.bank\"}"
+ },
+ {
+  "group": "methods",
+  "check": "BACK in the bank is allowed (the way out) and leaves it",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null} focus=com.google.android.apps.nexuslauncher/com.google.android.apps.nexuslauncher.NexusLauncherActivity"
+ },
+ {
+  "group": "never",
+  "check": "the owner can turn on Don't ask through the signed mode_change prompt (screen lock)",
+  "ok": true,
+  "evidence": "review opened=True prompt=['(always offered: False)'] approval={'type': 'approval', 'id': 'mc0bcf1790', 'approved': True, 'timestamp': 1791526692}"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, Buy now is refused (purchases stay off) with no prompt",
+  "ok": true,
+  "evidence": "gate_denied:never:money prompt=False bought=False"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, an ordinary tap goes through",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": null}"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, open_settings date_time is refused instead of asking",
+  "ok": true,
+  "evidence": "gate_denied:never:settings_page"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, an unknown Settings page is still refused",
+  "ok": true,
+  "evidence": "gate_denied_page:builtin:settings_unknown_page"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, the bank app is still blocked",
+  "ok": true,
+  "evidence": "gate_blocked_app:builtin:sensitive_apps"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, a custom scheme is still refused",
+  "ok": true,
+  "evidence": "gate_denied:builtin:url_scheme"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, typing a code into an OTP field is refused",
+  "ok": true,
+  "evidence": "gate_denied:never:otp_field"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, a password field is still refused",
+  "ok": true,
+  "evidence": "gate_password_field:builtin:password_field"
+ },
+ {
+  "group": "never",
+  "check": "under Don't ask, an everyday Settings page still opens",
+  "ok": true,
+  "evidence": "{\"ok\": true, \"result\": {\"package\": \"com.android.settings\"}}"
+ },
+ {
+  "group": "never",
+  "check": "a server 'permissions: auto' message ends Don't ask (a tightening): Buy now asks again",
+  "ok": true,
+  "evidence": "gate_needs_approval:risk:words:buy prompt=True"
+ }
+]
