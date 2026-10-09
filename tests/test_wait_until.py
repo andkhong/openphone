@@ -135,7 +135,9 @@ def test_loading_done_waits_out_a_spinner():
     cond, result = wait(phone, until="loading_done", timeout_s=10)
     assert result.met and 350 <= result.waited_ms < 2000
     # "Loading…" text and a percentage count as loading; a plain screen doesn't.
-    assert waiting.loading_element([el("Loading…")]) and waiting.loading_element([el("45%")])
+    assert waiting.loading_element([el("Loading…")])
+    # A bare percentage is a setting's value on stock Settings (battery "100%", brightness "83%"), not progress.
+    assert waiting.loading_element([el("45%"), el("100%")]) is None
     assert waiting.loading_element([el("Play Bots"), el("Settings")]) is None
 
 

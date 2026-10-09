@@ -53,8 +53,11 @@ FRAME_STILL_CELL = 12  # no cell moved more than this between two frames: the sc
 
 LOADING_CLASS = re.compile(r"progress|spinner|loading|shimmer", re.I)
 LOADING_ID = re.compile(r"progress|spinner|loading|shimmer|skeleton", re.I)
+# No bare percentage: stock Android Settings shows "100%" (battery) and "83%" (brightness) all the time, and
+# reading them as progress held every Settings launch for the whole launch wait (measured on an emulator,
+# 2026-10-08). A real progress bar is caught by its class or id.
 LOADING_TEXT = re.compile(r"^\s*(loading|please wait|connecting|starting|signing in|downloading|installing|"
-                          r"pending|preparing|updating)\b|\bloading\b\W*$|^\s*\d{1,3}\s?%\s*$", re.I)
+                          r"pending|preparing|updating)\b|\bloading\b\W*$", re.I)
 DIGITS = re.compile(r"\d+")
 
 
