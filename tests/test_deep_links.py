@@ -309,3 +309,14 @@ def test_the_docs_describe_the_method_and_the_tool():
     safety = (ROOT / "docs/safety.md").read_text()
     assert "open_settings_page" in safety
     assert (ROOT / "docs/design/deep-links.md").exists()
+
+
+
+def test_deep_links_can_be_switched_off_for_comparisons(monkeypatch, tmp_path):
+    from openmob.config import load_config
+
+    path = tmp_path / "config.yaml"
+    path.write_text("max_steps: 10\n")
+    assert load_config(path).deep_links is True
+    monkeypatch.setenv("OPENMOB_DEEP_LINKS", "off")
+    assert load_config(path).deep_links is False
