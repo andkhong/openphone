@@ -508,3 +508,19 @@ def test_a_google_search_may_land_in_the_browser():
     assert google.browser_ok and not app_links.APPS["youtube"].browser_ok
     m = app_links.match("Search Google for the weather tomorrow")
     assert m and m.link.id == "google.search" and m.params == {"q": "the weather tomorrow"}
+
+
+def test_a_play_store_page_by_app_name_opens_in_one_step(tmp_path):
+    # Installed: the name is looked up on the phone, no model guesses the id.
+    agent, driver, _, steps, _ = make([DONE], "Open the Play Store page for Spotify", tmp_path=tmp_path)
+    assert opened(driver) == [f"market://details?id={SPOTIFY}"]
+    assert steps[0]["source"] == "link" and len(agent.client.requests) == 1  # only the main model's done
+    # Not installed: the small text model gives the id, checked like any package id.
+    agent, driver, _, steps, _ = make([[text_block('{"package": "com.ubercab"}')], DONE],
+                                      "Open the Play Store page for Uber", tmp_path=tmp_path)
+    assert opened(driver) == ["market://details?id=com.ubercab"]
+    assert agent.client.requests[0]["model"] == agent.config.resolver_model
+    # No id from it: no link; the main model decides as always.
+    agent, driver, _, steps, _ = make([[text_block('{"package": null}')], DONE],
+                                      "Open the Play Store page for Uber", tmp_path=tmp_path)
+    assert opened(driver) == [] and steps[0]["tool"] == "done"

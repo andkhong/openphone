@@ -1457,6 +1457,10 @@ class Agent:
         says the link wouldn't open in that app (not installed, a browser would take it, a chooser would show):
         the main model then decides from the screen as always. Returns what ran."""
         match = app_links.match(state.task, self.config.confirm_keywords)
+        if match is None and (name := app_links.play_page_name(state.task)):
+            page = app_links.BY_ID["play_store.app"]
+            package = self.resolver.exact(name) if self.resolver else None  # installed: its id, no guessing
+            match = app_links.Match(page, {"package": package} if package else {}, () if package else page.params)
         if match is None:
             return None
         link, params = match.link, dict(match.params)
