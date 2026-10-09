@@ -582,7 +582,9 @@ const SCOPE_HELP = {
   "tasks:read": "Read tasks and their events",
   "screen:read": "See the phone's screen (sensitive)",
   "history:read": "Read your chat history",
+  "devices:drive": "Let an outside AI agent operate the phone step by step over MCP; it reads each screen's text (sensitive)",
 };
+const SENSITIVE_SCOPES = ["screen:read", "devices:drive"];
 const DEFAULT_SCOPES = ["devices:read", "tasks:run", "tasks:read"];
 const APPROVE_WARNING = "An AI model holding this key could approve purchases, sends or deletions it read about on the phone's screen.";
 const STATUS = {
@@ -909,7 +911,7 @@ function buildScopes(all) {
   scopesBuilt = true;
   $("scopes").replaceChildren(...all.map((s) => {
     const box = el("input", { type: "checkbox", value: s, checked: DEFAULT_SCOPES.includes(s) });
-    return el("label", { className: `scope${s === "screen:read" ? " sensitive" : ""}` }, box, el("div", {}, el("code", { textContent: s }), el("span", { textContent: SCOPE_HELP[s] || "" })));
+    return el("label", { className: `scope${SENSITIVE_SCOPES.includes(s) ? " sensitive" : ""}` }, box, el("div", {}, el("code", { textContent: s }), el("span", { textContent: SCOPE_HELP[s] || "" })));
   }));
 }
 function openCreate() {
@@ -975,7 +977,7 @@ function renderKeys() {
     const revoke = el("button", { className: "btn btn-sm btn-danger", type: "button", textContent: "Revoke" });
     revoke.setAttribute("aria-label", `Revoke key ${k.name}`);
     revoke.onclick = () => revokeKey(k, revoke);
-    const scopes = el("div", { className: "chips" }, ...k.scopes.map((s) => el("span", { className: `chip${s === "screen:read" ? " sensitive" : ""}`, textContent: s, title: SCOPE_HELP[s] || "" })));
+    const scopes = el("div", { className: "chips" }, ...k.scopes.map((s) => el("span", { className: `chip${SENSITIVE_SCOPES.includes(s) ? " sensitive" : ""}`, textContent: s, title: SCOPE_HELP[s] || "" })));
     const sessionsLink = el("a", { href: "#/sessions", textContent: "View sessions →" });
     sessionsLink.onclick = (e) => { e.preventDefault(); sessionKeyFilter = k.id; location.hash = "#/sessions"; };
     const row = el("tr", {},
@@ -999,6 +1001,7 @@ $("createKey").onsubmit = async (ev) => {
   const scopes = [...$("scopes").querySelectorAll("input:checked")].map((b) => b.value);
   if (!scopes.length) { $("keyError").textContent = "Choose at least one scope."; return; }
   if (scopes.includes("screen:read") && !confirm("screen:read lets this key see everything on your phone's screen. Create it anyway?")) return;
+  if (scopes.includes("devices:drive") && !confirm("devices:drive lets an outside AI agent operate your phone step by step and read every screen's text. Risky actions still need your approval on the phone. Create it anyway?")) return;
   if ($("keyConfirmApprove").checked && !confirm(`Let this key approve risky actions? ${APPROVE_WARNING}`)) return;
   $("keyError").textContent = "";
   try {

@@ -27,6 +27,7 @@ from collections import OrderedDict, deque
 from urllib.parse import urlparse
 
 from .. import permissions as perm
+from ..agent import drive
 from ..ledger import day_start
 from ..phone.base import DeviceError, PhoneTimeout
 from ..runner import FINAL_STATUSES
@@ -66,6 +67,10 @@ NOT_WAITING = "This task isn't waiting for an answer."
 REPORT = " Tell the user; don't retry or work around it."
 OWNER_APPROVES = ("Risky actions are approved by the phone's owner, who has been asked on their phone. "
                   'Check the task again later, or send {"approve": false} to decline.')
+BUSY = "This phone is busy with another task or drive session. Wait for it to finish, or cancel it."
+STEP_IN_PROGRESS = ("A step is still running on this session (or waiting for the owner's approval). Wait for it "
+                    "with get_session, or decline_step.")
+SESSION_ENDED = "This drive session has ended. Start another with start_session if the user wants more."
 
 
 def encode_cursor(row: dict) -> str:
@@ -469,14 +474,14 @@ class V1Service:
             return None  # disconnected meanwhile: the task waits or fails on its own
         return None
 
-    def permission_mode(self, p: Principal, device_id: str, mode: str | None) -> str:
+    def permission_mode(self, p: Principal, device_id: str, mode: str | None, max_mode: str | None = None) -> str:
         """The mode a task of this key runs in on this phone: `mode` if it's no looser than both the key's
         max_mode and the phone's ceiling (else 403 mode_not_allowed), or by default the phone's default
         mode tightened to fit."""
         _, session = self._owned_device(p.account_id, device_id)
         session_id = "app-" + device_id.removeprefix("app-")
         try:
-            return self.manager.check_mode(session.info.id if session else session_id, mode, p.max_mode)
+            return self.manager.check_mode(session.info.id if session else session_id, mode, max_mode or p.max_mode)
         except perm.ModeNotAllowed as exc:
             raise Forbidden(str(exc) + REPORT, code="mode_not_allowed") from None
         except perm.PermissionsInvalid as exc:
@@ -500,6 +505,38 @@ class V1Service:
         if tier not in self.cfg.api_tiers:
             raise BadRequest(f"Unknown tier. Choose one of: {', '.join(self.cfg.api_tiers)}")
         max_steps = min(max_steps or self.cfg.api_max_steps, self.cfg.api_max_steps)
+        if self.drive_active(session.info.id):  # an outside agent holds the phone: one task or session at a time
+            raise Conflict(BUSY, code="phone_busy")
+        self._admit_task(p)
+        if check_phone and (problem := self.phone_state(session)):
+            raise Conflict(LOCKED if problem == "phone_locked" else UNRESPONSIVE, code=problem)
+
+        coordinator = session.coordinator
+        self._watch(coordinator)
+        task_id = coordinator.new_task_id()
+        tier_cfg = self.cfg.api_tiers[tier]
+        meta = {"account_id": account_id, "key_id": key_id, "session_id": session.info.id,
+                "device_id": session.info.id.removeprefix("app-"), "tier": tier,
+                "credits_per_step": int(tier_cfg.get("credits_per_step", 1)),
+                "requester": p.name, "confirm_approve": p.confirm_approve, "permission_mode": mode}
+        self._register(task_id, meta)
+        self.ledger.start_task(task_id, account_id, key_id, meta["device_id"], tier, instruction)
+        self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction,
+                          outcome=f"mode={mode}")
+        # isolated: an API caller neither sees nor extends the phone chat's recent requests.
+        options = {"model": tier_cfg["model"], "max_steps": max_steps, "isolated": True,
+                   "permission_mode": mode}
+        if clean_start:
+            options["go_home"] = True
+        if blocked := self._blocker(account_id):
+            options["blocked"] = blocked
+        coordinator.enqueue(instruction, "api", options, task_id=task_id)
+        return self.public_task(account_id, task_id)
+
+    def _admit_task(self, p: Principal) -> None:
+        """The per-key and per-account caps a new task (or drive session) must fit under: unfinished tasks,
+        tasks and credits today."""
+        account_id, key_id = p.account_id, p.id
         with self._lock:
             if len(self.active.get(key_id, ())) >= self.cfg.api_max_concurrent_tasks:
                 raise RateLimited(f"This key already has {self.cfg.api_max_concurrent_tasks} unfinished "
@@ -517,34 +554,159 @@ class V1Service:
                 and self.account_credits_today(account_id) >= self.cfg.api_account_daily_credits):
             raise RateLimited("Daily credit limit reached for this account.", code="account_credits_exhausted",
                               **reset)
-        if check_phone and (problem := self.phone_state(session)):
+
+    def _register(self, task_id: str, meta: dict) -> None:
+        with self._lock:
+            self.registry[task_id] = meta
+            while len(self.registry) > KEEP_REGISTRY:
+                self.registry.popitem(last=False)
+            self.active.setdefault(meta["key_id"], set()).add(task_id)
+
+    # --- drive sessions: an outside agent decides each step (docs/design/mcp-drive.md) -------------------
+
+    def drive_active(self, session_id: str) -> bool:
+        """Whether a drive session holds this phone (started and not ended)."""
+        with self._lock:
+            metas = [m for m in self.registry.values() if m.get("drive") is not None and m["session_id"] == session_id]
+        return any(not m["drive"].ended.is_set() for m in metas)
+
+    def start_drive(self, p: Principal, device_id: str, goal: str, permission_mode: str | None = None,
+                    max_steps: int | None = None, screenshots: bool = False) -> dict:
+        """Start a drive session: a task on the phone whose steps the caller decides. The same admission as
+        create_task (the owned phone, the mode against the key's max_mode and the phone's ceiling, the caps,
+        the phone's lock state), plus: the phone must be idle, since the session holds it."""
+        self.require(p, "devices:drive")
+        if screenshots:
+            self.require(p, "screen:read")
+        account_id, key_id = p.account_id, p.id
+        _, session = self._owned_device(account_id, device_id)
+        if session is None or not session.online:
+            raise Conflict(OFFLINE, code="phone_offline")
+        if permission_mode in perm.MODES and perm.looser(permission_mode, drive.MAX_MODE):
+            raise Forbidden(f"Drive sessions run at most in {drive.MAX_MODE} mode: an outside agent decides every "
+                            f"step, so {permission_mode} isn't offered to it." + REPORT, code="mode_not_allowed")
+        mode = self.permission_mode(p, device_id, permission_mode, max_mode=perm.tightest(p.max_mode, drive.MAX_MODE))
+        if not goal or len(goal) > MAX_INSTRUCTION:
+            raise BadRequest(f"The goal must be 1 to {MAX_INSTRUCTION} characters.")
+        max_steps = min(max_steps or self.cfg.api_max_steps, self.cfg.api_max_steps)
+        snap = session.coordinator.snapshot()
+        if snap["state"] != "idle" or snap["queued"] or self.drive_active(session.info.id):
+            raise Conflict(BUSY, code="phone_busy")
+        self._admit_task(p)
+        if problem := self.phone_state(session):
             raise Conflict(LOCKED if problem == "phone_locked" else UNRESPONSIVE, code=problem)
 
         coordinator = session.coordinator
         self._watch(coordinator)
         task_id = coordinator.new_task_id()
-        tier_cfg = self.cfg.api_tiers[tier]
+        channel = drive.DriveChannel(self.cfg.api_drive_idle_seconds, self.cfg.api_drive_max_seconds, max_steps,
+                                     p.name)
         meta = {"account_id": account_id, "key_id": key_id, "session_id": session.info.id,
-                "device_id": session.info.id.removeprefix("app-"), "tier": tier,
-                "credits_per_step": int(tier_cfg.get("credits_per_step", 1)),
-                "requester": p.name, "confirm_approve": p.confirm_approve, "permission_mode": mode}
-        with self._lock:
-            self.registry[task_id] = meta
-            while len(self.registry) > KEEP_REGISTRY:
-                self.registry.popitem(last=False)
-            self.active.setdefault(key_id, set()).add(task_id)
-        self.ledger.start_task(task_id, account_id, key_id, meta["device_id"], tier, instruction)
-        self.ledger.audit("task.create", account_id, key_id, meta["device_id"], task_id, instruction=instruction,
-                          outcome=f"mode={mode}")
-        # isolated: an API caller neither sees nor extends the phone chat's recent requests.
-        options = {"model": tier_cfg["model"], "max_steps": max_steps, "isolated": True,
-                   "permission_mode": mode}
-        if clean_start:
-            options["go_home"] = True
+                "device_id": session.info.id.removeprefix("app-"), "tier": drive.TIER,
+                "credits_per_step": drive.CREDITS_PER_STEP, "requester": p.name,
+                "confirm_approve": p.confirm_approve, "permission_mode": mode, "drive": channel,
+                "screenshots": bool(screenshots)}
+        self._register(task_id, meta)
+        self.ledger.start_task(task_id, account_id, key_id, meta["device_id"], drive.TIER, goal)
+        self.ledger.audit("drive.start", account_id, key_id, meta["device_id"], task_id, instruction=goal,
+                          outcome=f"mode={mode} screenshots={'on' if screenshots else 'off'}")
+        # isolated: the session neither sees nor extends the phone chat's recent requests, like an API task.
+        options = {"max_steps": max_steps, "isolated": True, "permission_mode": mode, "drive": channel}
         if blocked := self._blocker(account_id):
             options["blocked"] = blocked
-        coordinator.enqueue(instruction, "api", options, task_id=task_id)
-        return self.public_task(account_id, task_id)
+        coordinator.enqueue(goal, "drive", options, task_id=task_id)
+        return self.drive_session(p, task_id)
+
+    def _drive(self, p: Principal, session_id: str) -> tuple[dict, drive.DriveChannel]:
+        """(registry entry, channel) of a drive session this key started; NotFound otherwise (a task that
+        isn't a session looks the same as one that doesn't exist)."""
+        self.check_task(p, session_id)
+        with self._lock:
+            meta = self.registry.get(session_id)
+        if meta is None or meta.get("drive") is None:
+            raise NotFound(f"Unknown session {session_id}")
+        return meta, meta["drive"]
+
+    def drive_session(self, p: Principal, session_id: str) -> dict:
+        """The session as the caller sees it: status, the step in flight or the last one, the latest screen
+        (the loop's view; sizes only, never pixels), and how it ended. Touches nothing on the phone."""
+        self.require(p, "devices:drive")
+        meta, channel = self._drive(p, session_id)
+        task = self.public_task(p.account_id, session_id)
+        if channel.ended.is_set() or task["status"] in FINAL_STATUSES:
+            status = "ended"
+        elif task["status"] == "needs_confirmation":
+            status = "needs_approval"
+        elif task["status"] == "needs_input":  # not expected (no ask_user), but the loop's own questions
+            status = "needs_approval"
+        else:
+            status = channel.status()
+        command = channel.in_flight() or channel.last
+        step = None
+        if command is not None and command.op != "observe":
+            step = {"id": command.id, "tool": command.name,
+                    "status": ("needs_approval" if status == "needs_approval" and not command.done.is_set()
+                               else "done" if command.done.is_set() else "running"),
+                    "outcome": ({**command.outcome, "text": clean_text(command.outcome["text"])}
+                                if command.outcome else None)}
+        ended = None
+        if status == "ended":
+            result = channel.result or {}
+            outcome = task.get("outcome") or {}
+            ended = {"reason": channel.reason or outcome.get("reason") or ("cancelled" if task["status"] == "cancelled"
+                                                                            else "ended"),
+                     "success": bool(result.get("success", outcome.get("success"))),
+                     "summary": clean_text(result.get("summary") or outcome.get("summary"))}
+        return {
+            "session_id": session_id, "device_id": meta["session_id"], "goal": task["instruction"],
+            "status": status, "task_status": task["status"], "permission_mode": meta.get("permission_mode"),
+            "steps": channel.steps, "max_steps": channel.max_steps, "step": step,
+            "question": clean_text(task["question"]) if status == "needs_approval" else None,
+            "approver": "key" if p.confirm_approve else "phone",
+            "screen": channel.view, "screen_text": channel.view_text, "ended": ended,
+            "credits": task.get("credits"),
+        }
+
+    def drive_command(self, p: Principal, session_id: str, op: str, name: str | None = None, args: dict | None = None,
+                      screenshot: bool = False, max_side: int = 1024) -> drive.Command:
+        """Hand the session one command: an act (a loop tool and its arguments), a look, or the end. It runs
+        on the phone's worker thread through Agent._execute; the caller waits on the returned Command."""
+        self.require(p, "devices:drive")
+        meta, channel = self._drive(p, session_id)
+        if op == "act" and name not in drive.TOOLS:
+            raise BadRequest(f"Unknown act {name!r}.")
+        screenshot = bool(screenshot or meta.get("screenshots"))
+        if screenshot:
+            self.require(p, "screen:read")  # pixels need the scope, as get_screenshot's do
+        if channel.ended.is_set():
+            raise Conflict(SESSION_ENDED, code="session_ended")
+        command = drive.Command(op=op, name=name, args=dict(args or {}), screenshot=screenshot,
+                                max_side=int(max_side))
+        try:
+            channel.submit(command)
+        except drive.DriveBusy:
+            raise Conflict(STEP_IN_PROGRESS, code="step_in_progress") from None
+        except drive.DriveEnded:
+            raise Conflict(SESSION_ENDED, code="session_ended") from None
+        if screenshot:
+            self.ledger.audit("screen.read", p.account_id, p.id, meta["device_id"], session_id)
+        return command
+
+    def drive_decline(self, p: Principal, session_id: str) -> dict:
+        """Decline the act waiting for the owner's approval (the owner can also deny it on the phone). Approving
+        is never possible from here: that takes the owner's screen lock, or a confirm_approve key through
+        answer_question."""
+        self.require(p, "devices:drive")
+        meta, channel = self._drive(p, session_id)
+        live = self._live(p.account_id, session_id)
+        info = live[1] if live else None
+        if not info or info["status"] != "needs_confirmation":
+            raise Conflict("No step of this session is waiting for an approval.", code="not_waiting")
+        session = self.manager.get(meta["session_id"])
+        if not session or not session.coordinator.answer(session_id, "no"):
+            raise Conflict("No step of this session is waiting for an approval.", code="not_waiting")
+        self.ledger.audit("task.answer", p.account_id, p.id, meta["device_id"], session_id, outcome="needs_confirmation")
+        return {"ok": True}
 
     def idempotent(self, p: Principal, idem_key: str | None, request: dict, create) -> tuple[dict, bool]:
         """Run `create()` once per Idempotency-Key (per API key, 24 h). Returns (response, replayed):
