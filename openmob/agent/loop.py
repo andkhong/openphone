@@ -484,8 +484,8 @@ class Agent:
             early: dict[str, Outcome] = {}  # tool calls already run while the reply streamed (vision_stream)
 
             def act_early(call) -> None:
-                if any(o.done for o in early.values()) or state.cancel.is_set():
-                    return  # the loop below marks it skipped
+                if early or state.cancel.is_set():
+                    return  # one action per turn: the loop below marks the rest not run
                 early[call.id] = self._act(call, obs, state)
 
             # Streaming actions run each call as it arrives, with no look in between: one-per-turn only.
@@ -518,7 +518,13 @@ class Agent:
             seen = obs  # the screen the model decided on: its indices and coordinates refer to it
             ran: Outcome | None = None  # the previous action in this turn (batch > 1)
             stop: str | None = None  # why the rest of this turn is skipped
+            acted = False  # an action of this reply already ran
             for n, tool_use in enumerate(tool_uses):
+                if batch <= 1 and acted and not stop:
+                    # One action per turn (the default): the next call was decided on a screen the first action may
+                    # have changed, so it doesn't run (security review 2026-10-09: a tap, TAB and type in one reply
+                    # typed into a password field the checks never saw).
+                    stop = "only one action runs per turn."
                 if batch > 1 and ran is not None and not stop:
                     stop = self._batch_stop(tool_use, n, batch)
                     if not stop:  # look before the next action, without asking the model
@@ -529,6 +535,7 @@ class Agent:
                         obs = fresh
                 if tool_use.id in early and not finished:
                     outcome = early[tool_use.id]
+                    acted = True
                 elif stop:
                     outcome = Outcome(f"Not run: {stop} Look at the new screen and decide again.", is_error=True)
                 elif finished or state.cancel.is_set():
@@ -536,6 +543,7 @@ class Agent:
                 else:
                     prompts = state.prompts
                     outcome = self._act(tool_use, seen, state)
+                    acted = True
                     if batch > 1:
                         ran = outcome
                         if outcome.is_error:
@@ -1217,9 +1225,11 @@ class Agent:
         # a password field, and dangerous URLs typed into an address bar.
         if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
             return self._refuse(str(args.get("url", ""))[:80], why)
-        if name == "type_text" and (refused := self._typing_refusal(str(args.get("text", "")),
-                                                                    self._field(state, obs), obs, state)):
-            return refused
+        if name == "type_text":
+            if not obs.elements and (refused := self._unseen_field_refusal(state, obs)):
+                return refused
+            if refused := self._typing_refusal(str(args.get("text", "")), self._field(state, obs), obs, state):
+                return refused
         if name in CHANGING:
             if self._needs_plan(state) and not (name == "press_key" and args.get("key") != "ENTER"):
                 return Outcome("Plan first: call propose_plan with a short numbered plan for the owner to approve "
@@ -2253,6 +2263,22 @@ class Agent:
         if state.acted_on is obs:  # e.g. the tap that focused it, this same step
             return state.tapped_field
         return gate.focused_field(obs.elements) or state.tapped_field
+
+    def _unseen_field_refusal(self, state: _TaskState, obs: Observation) -> Outcome | None:
+        """Typing on a screen whose element tree wasn't read (ui_tree auto stops reading a treeless app after two
+        looks): read it now, so the password and code checks judge the field that will get the text. A tree
+        that still has nothing in it means the field can't be seen, so nothing is typed (security review
+        2026-10-09: a login form shown after a game's splash was typed into unseen)."""
+        try:
+            fresh = self.driver.ui_elements()
+        except Exception:
+            fresh = []
+        if not fresh:
+            return self._refuse("a field nobody can see", "the screen can't be read, so the field the text would go "
+                                                          "to can't be checked. Tap a field you can see first.")
+        state.treeless_misses[obs.package or ""] = 0  # readable after all: keep reading it
+        obs.elements = fresh
+        return None
 
     def _typing_refusal(self, text: str, field: UIElement | None, obs: Observation,
                         state: _TaskState | None = None) -> Outcome | None:
