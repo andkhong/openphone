@@ -74,6 +74,8 @@ class ModelRequest:
     # Mark the conversation for prompt caching where the provider needs it (Anthropic); the history
     # must then stay byte-identical between calls for the cache to hit (see Agent._trim_history).
     cache_history: bool = False
+    # Claude: this call's effort, instead of the model's own (canvas screens; Agent._decision_effort).
+    effort: str | None = None
 
 
 @dataclass
@@ -166,8 +168,8 @@ class AnthropicAdapter:
             tools = [{"name": t["name"], "description": t["description"], "input_schema": t["parameters"]} for t in request.tools]
             tools[-1]["cache_control"] = {"type": "ephemeral"}
             kwargs["tools"] = tools
-        if self.effort:
-            kwargs["output_config"] = {"effort": self.effort}
+        if request.effort or self.effort:
+            kwargs["output_config"] = {"effort": request.effort or self.effort}
         if self.thinking:
             kwargs["thinking"] = {"type": self.thinking}
         return kwargs
