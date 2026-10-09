@@ -34,7 +34,7 @@ def _settings_pages() -> dict:
 
     return PAGES
 MODES = {"ask": 0, "plan": 1, "auto": 1, "trusted": 2, "never": 3}
-ACTION_PARAMS = ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "name", "package", "url", "page")
+ACTION_PARAMS = ("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "replace", "name", "package", "url", "page")
 
 
 # --- text ---------------------------------------------------------------------------------------

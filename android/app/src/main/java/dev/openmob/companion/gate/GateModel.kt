@@ -427,7 +427,7 @@ object GateScreen {
         return GateText.tokens(parts.filter { it.isNotEmpty() }.joinToString(" "))
     }
 
-    val ACTION_PARAMS = listOf("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "name", "package", "url", "page")
+    val ACTION_PARAMS = listOf("x", "y", "x1", "y1", "x2", "y2", "duration_ms", "text", "replace", "name", "package", "url", "page")
 
     /** What a permit binds: the method, its action params and the target's fingerprint. */
     fun binding(method: String, params: Map<String, Any?>, fp: String): String {
