@@ -46,6 +46,7 @@ RECHECK_MAX_MS = 800
 # On a slow phone the old screen is quiet before the new one draws, so the settle ended early, the next look
 # still showed it, and the model opened the link again (measured on an emulator, 2026-10-08).
 LINK_LAND_S = 2.5
+DEEP_LINK_SOURCE = "deep_link"  # the steps table's `source` for a Settings page opened straight from the request
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 PLAY_STORE = "com.android.vending"
 INSTALL_BUTTON = re.compile(r"install|update|get|install on (this )?(phone|device)", re.I)
@@ -123,6 +124,9 @@ class Observation:
         self.choice: StepChoice | None = None  # its fast-path decision
         self.risks: dict[int, float] = {}  # element index -> tap risk
         self.requested: dict[int, float] = {}  # element index -> "the request asked for this tap"
+        # The classifier wasn't asked about this screen: a direct first step was expected to leave it (the
+        # loop asks when no such step is taken, see Agent._classify_now).
+        self.unclassified = False
 
     @property
     def shot(self) -> Screenshot:
@@ -209,8 +213,9 @@ class _TaskState:
     # Plan with the model, execute with the classifier (config.plan_execute, agent/plan.py):
     plan_exec: plan.Plan | None = None  # the model's sub-goals, while the helper carries them out
     planned: int = 0  # tool calls the helper took toward the plan
-    # In-app links (config.app_links_fast, agent/app_links.py): the one fast link step a task may open first.
-    link_tried: bool = False
+    # The one direct first step a task may take without the classifier or the main model: an in-app link
+    # (config.app_links_fast, agent/app_links.py) or a Settings page (config.deep_links_fast).
+    direct_tried: bool = False
     link_cue: app_links.Link | None = None  # the entry just opened, when its cue must show on the next look
     url_targets: dict[str, dict | None] = field(default_factory=dict)  # a link's handler, resolved once before opening
 
@@ -331,16 +336,22 @@ class Agent:
 
     def _run(self, state: _TaskState, go_home: bool, isolated: bool = False) -> AgentResult:
         task = state.task
-        self.driver.wake_unlock()
+        with self.timer.phase("action"):  # phone actions before the first step: the wake, and HOME when asked
+            self.driver.wake_unlock()
+            # HOME when the launcher is already in front changes nothing: one read spares the press and its settle.
+            go_home = go_home and not self._home_in_front()
+            if go_home:
+                self.driver.key("HOME")
         if go_home:
-            self.driver.key("HOME")
             self._settle(self.config.settle_delay, state)
 
         try:
             route = router_for(self.client, self.config).route(self.task_model)
         except ModelUnavailable as exc:
             return AgentResult(False, str(exc), 0)
-        obs = self._observe_settled(state)
+        # A request that already names its first action (a link, a Settings page) doesn't ask the classifier about
+        # the screen it is leaving; the look after that step asks as usual.
+        obs = self._observe_settled(state, classify=not self._first_action_known(state))
         messages: list[dict] = [{"role": "user", "content": [{"type": "text", "text": self._request_text(task, isolated)}]}]
         self._show_later(state, messages, obs)
         if (self._plan_enabled() and not state.replay and not state.cancel.is_set()
@@ -392,14 +403,21 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
 
             self._apply_corrections(state, messages)
-            if not state.link_tried and not state.vision_next and not self._needs_plan(state) and self._app_links_fast_on():
-                # A request that plainly names one in-app destination opens it as the first action, with no model.
-                state.link_tried = True
-                taken = self._link_step(state, obs)
+            if not state.direct_tried and not state.vision_next and not self._needs_plan(state):
+                # A request that plainly names one in-app destination or one Settings page opens it as the first
+                # action, with no classifier or main-model decision.
+                state.direct_tried = True
+                taken = self._link_step(state, obs) if self._app_links_fast_on() else None
                 if taken is not None:
                     obs = self._after_fast_step(state, obs, taken, messages)
                     self._link_landing(state, obs, messages)
                     continue
+                taken = self._settings_step(state, obs) if self._deep_links_fast_on() else None
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages)
+                    continue
+            if obs.unclassified:  # no direct step after all: the classifier's usual look at this screen
+                self._classify_now(state, obs)
             if state.replay and not state.vision_next and not self._needs_plan(state):
                 taken = self._replay_step(state, obs)
                 if taken is not None:
@@ -653,9 +671,10 @@ class Agent:
 
     # --- observation -----------------------------------------------------
 
-    def _observe(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
+    def _observe(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = (),
+                 classify: bool = True) -> Observation:
         with self.timer.phase("observe"):
-            return self._observe_untimed(state, before, pending)
+            return self._observe_untimed(state, before, pending, classify)
 
     def _observe_pool(self):
         """One worker for screenshots taken alongside the other reads (parallel_observe)."""
@@ -681,9 +700,11 @@ class Agent:
         except Exception:
             return self._frame
 
-    def _observe_untimed(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
+    def _observe_untimed(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = (),
+                         classify: bool = True) -> Observation:
         # The fast path decides from the element list; its screenshot waits until a vision step needs it.
         # parallel_observe: the screenshot is taken while the app and the elements are read.
+        # classify=False: the classifier isn't asked (a direct first step is expected; _classify_now asks later if not).
         pending_shot = None
         if not self._lazy_shots(state) and self.config.parallel_observe:
             pending_shot = self._observe_pool().submit(self.driver.screenshot)
@@ -710,18 +731,29 @@ class Agent:
                 action["screen_changed"] = changed
         if state.plan_exec is not None:  # sub-goals whose cue is on screen are reached, before the classifier is asked
             self._plan_advance(state, obs)
-        if self.judge:
-            try:
-                if self._one_request(state, obs):
-                    try:
-                        self._classify_step(state, obs)
-                    except (KeyError, TypeError, ValueError) as exc:  # a malformed answer: the vision step
-                        self.io.event("error", f"Fast step skipped: {exc}")
-                else:
-                    obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
-            except JevError as exc:
-                self.io.event("error", str(exc))
+        if classify:
+            self._classify_now(state, obs)
+        else:
+            obs.unclassified = self.judge is not None
         return obs
+
+    def _classify_now(self, state: _TaskState, obs: Observation) -> None:
+        """The classifier's look at `obs`: the one request per step (jev_one_request) on screens the fast path
+        can use, else assess_screen. Every observation gets it, except the first look of a task whose first
+        action the request already names (then it's asked here only if that step isn't taken after all)."""
+        obs.unclassified = False
+        if not self.judge:
+            return
+        try:
+            if self._one_request(state, obs):
+                try:
+                    self._classify_step(state, obs)
+                except (KeyError, TypeError, ValueError) as exc:  # a malformed answer: the vision step
+                    self.io.event("error", f"Fast step skipped: {exc}")
+            else:
+                obs.assessment = self.timer.timed("jev", self.judge.assess_screen, state.task, self._describe(obs))
+        except JevError as exc:
+            self.io.event("error", str(exc))
 
     def _one_request(self, state: _TaskState, obs: Observation) -> bool:
         """Ask the screen classifier everything for this step at once: on fast-path tasks, on screens the
@@ -746,10 +778,12 @@ class Agent:
         obs.assessment, obs.choice = verdict.assessment, verdict.choice
         obs.risks = {int(k): v for k, v in verdict.risks.items()}
         obs.requested = {int(k): v for k, v in verdict.requested.items()}
+        obs.unclassified = False
 
-    def _observe_settled(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = ()) -> Observation:
+    def _observe_settled(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = (),
+                         classify: bool = True) -> Observation:
         """Observe, and sit out loading screens without spending a Claude call on each one."""
-        obs = self._observe(state, before, pending)
+        obs = self._observe(state, before, pending, classify)
         if self._unreadable(obs.package, obs.elements):
             seen = waiting.signature(obs.package, obs.elements)
             if seen != state.unreadable_seen:  # once per screen: one that never gets readable costs one wait
@@ -1355,16 +1389,64 @@ class Agent:
                        f"in Device care): if the screen is about {page.title.lower()}, you're on it.",
                        shown=f"Opened {shown}.", settle=self.config.launch_settle_delay, until="loading_done")
 
-    def _direct_settings_page(self, state: _TaskState) -> str | None:
-        """The fast path's deep link: the key of the Settings page a plain navigation request names exactly
-        ("Open Settings and go to Display"), when this phone can open it directly and the request names no
-        other app; else None (the usual launch)."""
-        if not self._can_open_settings() or not fast.navigation_only(state.task, self.config.confirm_keywords):
+    def _deep_links_fast_on(self) -> bool:
+        """The direct Settings step (config.deep_links_fast), on a phone that can open pages directly."""
+        return bool(self.config.deep_links_fast) and self._can_open_settings()
+
+    def _direct_settings_page(self, state: _TaskState) -> dict | None:
+        """The fast path's deep link: open_settings_page's arguments for the Settings page a plain navigation
+        request names exactly ("Open Settings and go to Display"; for an app's own page, "open Chrome's
+        notification settings and tell me whether notifications are allowed", the app resolved by its exact
+        name, never a guess), when this phone can open it directly; else None (the usual launch, or the main
+        model). A page that asks or is refused, an app the task may not touch or OpenMob itself, and a name
+        that isn't exactly an installed app's are the main model's call."""
+        if not self._can_open_settings():
             return None
-        key = fast.settings_page(state.task)
-        if key is None or self._settings_page_tier(settings_pages.PAGES[key]) != "allow":
-            return None  # a page that asks or is refused is the main model's call
-        return key
+        found = fast.direct_settings_request(state.task, self.config.confirm_keywords)
+        if found is None:
+            return None
+        key, name = found
+        if self._settings_page_tier(settings_pages.PAGES[key]) != "allow":
+            return None
+        args = {"page": key}
+        if name is not None:
+            package = self.resolver.exact(name) if self.resolver is not None else None
+            if package is None or package == settings_pages.OWN_PACKAGE or self._is_blocked(state, package):
+                return None
+            args["package"] = package
+        return args
+
+    def _settings_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """The direct Settings step (deep_links_fast): a request that plainly names one Settings page, or an app's
+        own page, opens it now, with no classifier or main-model decision, through open_settings_page's every
+        check (the page's tier, blocked apps, Ask every step, Plan first, the phone's gatekeeper). Returns what
+        ran, or None: the usual path."""
+        args = self._direct_settings_page(state)
+        if args is None:
+            return None
+        outcome = self._execute("open_settings_page", args, obs, state, fast_step=True, source=DEEP_LINK_SOURCE)
+        state.fast_steps += 1
+        self._event("error" if outcome.is_error else "action", f"open_settings_page: {outcome.shown or outcome.text}",
+                    {"timings": outcome.timings, "jev": self.judge is not None, "fast": True})
+        return [("open_settings_page", args, outcome)]
+
+    def _first_action_known(self, state: _TaskState) -> bool:
+        """Whether the request alone names the task's first action: a plain link request (app_links_fast) or a
+        plain Settings-page request (deep_links_fast). Only the request-side checks are made here; the step may
+        still step aside (a link a browser would take, a value the text model can't give), and the classifier is
+        then asked about the screen as usual."""
+        if state.vision_next or self._needs_plan(state):
+            return False
+        if self._app_links_fast_on() and self._link_match(state) is not None:
+            return True
+        return self._deep_links_fast_on() and self._direct_settings_page(state) is not None
+
+    def _home_in_front(self) -> bool:
+        """Whether the launcher is in front (a HOME press would change nothing)."""
+        try:
+            return gate.is_launcher(self.driver.current_app())
+        except DeviceError:
+            return False
 
     def _open_store(self, url: str, obs: Observation, state: _TaskState, text: str) -> Outcome:
         """launch_app's install_if_missing: the app's Play Store page, through open_url's checks. In Ask every step
@@ -1463,13 +1545,18 @@ class Agent:
         self.driver.open_url(url)
         if target is None and (backed := self._back_out_if_blocked(state, obs.package)):
             return backed
-        # Settled here, inside the step, so the result can say where it landed (recorded as settle time).
+        # The step ends once the destination's window is up (the screen left the one the link was opened from)
+        # and the app in front is the one expected (the entry's app, or a browser where that is fine): the
+        # settle until the page is quiet and done loading is then the next step's, as after a launch, and is
+        # recorded on the step it delays. When that quick look can't tell (the home screen, or an app that is
+        # neither: the old screen may just have redrawn), the step settles fully first and looks again, as before.
         self._await_new_screen(state, obs)
-        self._settle(self.config.launch_settle_delay, state, until="loading_done")
-        try:
-            landed = self.driver.current_app()
-        except DeviceError:
-            landed = None
+        landed = self._landed()
+        quick = (landed is not None and not gate.is_launcher(landed)
+                 and (app is None or landed in app.packages or (app.browser_ok and app_links.is_browser(landed))))
+        if not quick:
+            self._settle(self.config.launch_settle_delay, state, until="loading_done")
+            landed = self._landed()
         if state.task_app is None and landed and not gate.is_launcher(landed):
             state.task_app = landed
         where = self._app_label(landed) if landed else None
@@ -1496,14 +1583,18 @@ class Agent:
                         "the screen: a chooser or a dialog may be up, or the link may not have opened.")
         else:
             text = f"Opened {label}" + (f" in {where}." if where else ".")
-        return Outcome(text, settle=0, shown=f"Opened {shown}" + (f" in {where}." if where else "."), misrouted=wrong)
+        return Outcome(text, settle=self.config.launch_settle_delay if quick else 0, until="loading_done" if quick else None,
+                       shown=f"Opened {shown}" + (f" in {where}." if where else "."), misrouted=wrong)
 
-    def _link_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
-        """The fast link step: a request that plainly asks for one `view` catalog entry opens it now, with no
-        main-model decision (app_links.match). A value the request doesn't give plainly comes from the small text
-        model. Not taken (None: the usual path) when the entry's app is blocked for this task, or when the phone
-        says the link wouldn't open in that app (not installed, a browser would take it, a chooser would show):
-        the main model then decides from the screen as always. Returns what ran."""
+    def _landed(self) -> str | None:
+        try:
+            return self.driver.current_app()
+        except DeviceError:
+            return None
+
+    def _link_match(self, state: _TaskState) -> app_links.Match | None:
+        """The one `view` catalog entry the request plainly asks for (app_links.match, or a Play Store page by app
+        name), unless its app is blocked for this task: the request-side half of the fast link step."""
         match = app_links.match(state.task, self.config.confirm_keywords)
         if match is None and (name := app_links.play_page_name(state.task)):
             page = app_links.BY_ID["play_store.app"]
@@ -1511,9 +1602,20 @@ class Agent:
             match = app_links.Match(page, {"package": package} if package else {}, () if package else page.params)
         if match is None:
             return None
-        link, params = match.link, dict(match.params)
-        if link.side_effect != app_links.VIEW or any(self._is_blocked(state, p) for p in link.packages):
+        if match.link.side_effect != app_links.VIEW or any(self._is_blocked(state, p) for p in match.link.packages):
             return None
+        return match
+
+    def _link_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """The fast link step: a request that plainly asks for one `view` catalog entry opens it now, with no
+        main-model decision (app_links.match). A value the request doesn't give plainly comes from the small text
+        model. Not taken (None: the usual path) when the entry's app is blocked for this task, or when the phone
+        says the link wouldn't open in that app (not installed, a browser would take it, a chooser would show):
+        the main model then decides from the screen as always. Returns what ran."""
+        match = self._link_match(state)
+        if match is None:
+            return None
+        link, params = match.link, dict(match.params)
         for param in match.missing:
             value = self._fast_value(state, param.name, {"link": link.label, "parameter": {"name": param.name, "holds": param.description},
                                                          "today": time.strftime("%Y-%m-%d")},
@@ -2427,7 +2529,10 @@ class Agent:
             page = settings_pages.PAGES.get(str(args.get("page", "")))
             if page is None:
                 return None  # an unknown key errors without touching the phone
-            what = f"open the {page.title} Settings page" + (f" of {args.get('package')!r}" if args.get("package") else "")
+            package = str(args.get("package") or "")  # an installed app's package shows as its name; a name as given
+            known = bool(package) and self.resolver is not None and package in self.resolver.packages()
+            of_app = self._app_label(package) if known else repr(package)
+            what = f"open the {page.title} Settings page" + (f" of {of_app}" if package else "")
             action = self._action("open_settings", obs.package,
                                   typed=f"{args.get('page')} {args.get('package') or ''}".strip())
         if what is None:
@@ -2850,7 +2955,7 @@ class Agent:
         elif op == "LAUNCH_APP":
             # A request for one Settings page goes straight there (a deep link) instead of opening Settings.
             if page := self._direct_settings_page(state):
-                calls = [("open_settings_page", {"page": page})]
+                calls = [("open_settings_page", page)]
             else:
                 app = self._direct_app(state, obs) if c.fast_path_direct_launch else None
                 if app is None:
@@ -2989,7 +3094,8 @@ class Agent:
         +fast and its extras: +noshot (lazy screenshots), +1req (one classifier request per step),
         +launch (exact app names launch directly), +fastdone (the classifier may finish); +replay when
         stored paths may be replayed (replay_paths); +links when a plain in-app link request opens
-        first without the model (app_links_fast)."""
+        first without the model (app_links_fast); +pages when a plain Settings-page request does
+        (deep_links_fast)."""
         c = self.config
         out = "adaptive" if c.adaptive_settle else "fixed"
         if c.adaptive_settle and c.settle_quiet_ms != DEFAULT_QUIET_MS:
@@ -3005,6 +3111,8 @@ class Agent:
             out += "+plan"
         if c.app_links and c.app_links_fast:
             out += "+links"
+        if c.deep_links and c.deep_links_fast:
+            out += "+pages"
         return out
 
     def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None,

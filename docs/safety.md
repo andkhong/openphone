@@ -315,7 +315,11 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   as a tap (refused by default, since "date & time" is on the refuse list; if the owner takes it off, it
   asks, and is refused under Don't ask). An app's own pages are refused for blocked apps and for OpenMob
   itself. Ask every step asks before each deep link; Plan first needs the plan. A phone without the page
-  says so and the agent navigates instead. On a gatekeeper phone the call is judged again on the phone
+  says so and the agent navigates instead. A request that plainly names one page ("Open Settings and go to
+  Display"; "open Chrome's notification settings and tell me whether they're allowed", the app by its exact
+  installed name, never a guess) opens it as the task's first action without a model decision
+  (`deep_links_fast`), through the same checks: nothing opens this way that the model's own call couldn't.
+  On a gatekeeper phone the call is judged again on the phone
   (everyday pages open, Date & time asks with the screen lock, a blocked app's pages and unknown keys are
   refused).
 - **In-app links** (`open_link`, [design](design/app-links.md)): a server-side catalog of destinations inside

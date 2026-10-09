@@ -287,6 +287,7 @@ def test_remote_driver_calls_reach_the_phone(server):
 def test_phone_command_runs_agent_and_streams_events(server):
     url, manager, _ = server
     driver = FakeDriver(packages=["com.android.settings"], labels={"com.android.settings": "Settings"})
+    driver.package = "com.android.chrome"  # the phone page's browser is in front
     phone = FakePhone(url, driver)
     assert phone.welcome.wait(5)
     phone.send({"type": "command", "text": "open settings"})

@@ -156,6 +156,12 @@ class Config:
     # Settings deep links (open_settings_page) on phones that offer them. Off only for comparisons:
     # OPENMOB_DEEP_LINKS=off.
     deep_links: bool = True
+    # The direct Settings step: a request that plainly names one Settings page ("Open Settings and go to Display"),
+    # or an app's own page ("open Chrome's notification settings and tell me whether they're allowed"; the app by
+    # its exact installed name), opens it as the task's first action, with no classifier or main-model decision,
+    # through the tool's every check. Off: the page is opened only when the classifier chooses to launch Settings,
+    # or the main model calls the tool. OPENMOB_DEEP_LINKS_FAST=off to compare.
+    deep_links_fast: bool = True
     # In-app links (docs/design/app-links.md, agent/app_links.py): the open_link catalog tool (a YouTube search, Maps
     # directions, a Play Store page… from one link), and open_url reporting which app took the link and when the
     # app it belongs to didn't. Off only for comparisons: OPENMOB_APP_LINKS=off.
@@ -364,6 +370,8 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_DEEP_LINKS", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.deep_links = os.environ["OPENMOB_DEEP_LINKS"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_DEEP_LINKS_FAST", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.deep_links_fast = os.environ["OPENMOB_DEEP_LINKS_FAST"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_APP_LINKS", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.app_links = os.environ["OPENMOB_APP_LINKS"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_APP_LINKS_FAST", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):

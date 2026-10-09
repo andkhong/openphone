@@ -82,7 +82,7 @@ def test_settle_returns_once_the_screen_is_quiet(tmp_path):
     assert back["settle_ms"] < 1000 and done["settle_ms"] < 1000  # well under either cap, even under load
     assert back["settle_idle"] is True and done["settle_idle"] is True
     assert steps[0]["settle_idle"] is None  # nothing settled before the first step
-    assert {s["variant"] for s in steps} == {"adaptive+q50+links"}  # a non-default quiet time is named
+    assert {s["variant"] for s in steps} == {"adaptive+q50+links+pages"}  # a non-default quiet time is named
 
 
 def test_settle_stops_at_the_cap_on_a_screen_that_never_goes_quiet(tmp_path):
@@ -104,7 +104,7 @@ def test_adaptive_settle_can_be_switched_off(tmp_path, monkeypatch):
     driver = IdlePhone(busy=0.0)
     _, steps = run(driver, tmp_path, LAUNCH_THEN_DONE, settle_delay=0.2, launch_settle_delay=0.3, adaptive_settle=False)
     assert driver.idle_calls == [] and steps[1]["settle_ms"] >= 280
-    assert {s["variant"] for s in steps} == {"fixed+links"}
+    assert {s["variant"] for s in steps} == {"fixed+links+pages"}
 
     monkeypatch.chdir(tmp_path)
     (tmp_path / "c.yaml").write_text("model: claude-sonnet-5-5\n")

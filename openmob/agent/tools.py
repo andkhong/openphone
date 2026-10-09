@@ -190,8 +190,9 @@ OPEN_SETTINGS_TOOL = {
         "Open a Settings page directly, without navigating through Settings: display, wifi, bluetooth, sound, "
         "battery, location, notifications, apps, storage, airplane_mode or date_time; or an app's own page "
         "(app_details for its App info page, app_notifications for its notification settings) with the app's "
-        "name or package. Use it whenever the request wants a Settings page; if it errors, open Settings and "
-        "navigate there instead."
+        "name or package. Use it whenever the request wants a Settings page, even when the request lists the "
+        "taps that would get there (Settings > Apps > Chrome > Notifications is app_notifications, package "
+        "Chrome); if it errors, open Settings and navigate there instead."
     ),
     "input_schema": {
         "type": "object",
@@ -299,8 +300,11 @@ ONE_CALL_RULE = "Make exactly ONE tool call per turn, then check the next screen
 OPEN_URL_LINE = "- For a web page (https:// link), open_url can be faster than navigating.\n"
 # Added right after OPEN_URL_LINE when the phone can open Settings pages directly (tools.OPEN_SETTINGS_TOOL).
 SETTINGS_PAGE_LINE = ("- To reach a Settings page (Wi-Fi, Display, Battery, an app's notifications…), prefer "
-                      "open_settings_page: it opens the page directly in one step. If it errors, open Settings "
-                      "with launch_app and navigate there instead.\n")
+                      "open_settings_page: it opens the page directly in one step. A request that spells out the "
+                      "taps (\"open Settings, go to Apps, open Chrome, open its Notifications settings\") still "
+                      "wants that page: open_settings_page app_notifications with package Chrome gets there in one "
+                      "step (app_details for its App info page), and a \"tell me whether…\" is answered from the "
+                      "page that opens. If it errors, open Settings with launch_app and navigate there instead.\n")
 # Added right after OPEN_URL_LINE when in-app links are on (tools.OPEN_LINK_TOOL).
 APP_LINKS_LINE = ("- To reach a place inside an app (a YouTube, Spotify, Amazon, Google or Play Store search, a Maps "
                   "place or directions, a Play Store app page, a WhatsApp chat by number, the Gmail inbox, a Calendar "

@@ -22,6 +22,7 @@ def test_bench_compares_baseline_settle_and_fast_on_a_fake_phone(tmp_path):
 
     def make_agent(mode):
         driver = AppPhone(SETTINGS, {"Display": DISPLAY})
+        driver.package = "com.android.settings"  # not the launcher, so the bench's HOME press (and its settle) happens
         tap = [tool_use("tap_element", "a", index=1, target="Display")]
         responses = [DONE] if mode == "fast" else [tap, DONE]
         judge = Judge([("TAP", 1, 0.95), ("DONE", None, 0.95)])

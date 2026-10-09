@@ -70,11 +70,26 @@ The app advertises the capability `open_settings` in its `hello`; older apps are
   refused for an app the task may not touch (blocked apps, OpenMob itself).
 - It settles like a launch (`launch_settle_delay`, `loading_done`), records a step like any other, and ends a
   payment's follow-up like an app switch.
-- **Fast path:** when the classifier decides to launch an app and the request is plain navigation to one
-  Settings page by name ("Open Settings and go to Display", "show me the battery page"), the fast step opens the
-  page directly instead of launching Settings (`Agent._direct_settings_page`). Any other app named, a side
-  effect, or a page that would ask leaves the usual launch in place. The classifier's DONE then works as before
-  (the page's title is on screen).
+- **The direct step** (`deep_links_fast`, on by default; `OPENMOB_DEEP_LINKS_FAST=off` to compare): a request
+  that plainly names one Settings page opens it as the task's **first action**, before any classifier or
+  main-model decision, the way a plain link request does (docs/design/app-links.md §2.4): "Open Settings and go
+  to Display", "show me the battery page", and an app's own pages: "open Chrome's notification settings", "Open
+  Settings, go to Apps, open Chrome, open its Notifications settings, and tell me whether notifications are
+  allowed" (`app_notifications`), "show me Chrome's app info", "Open Settings, go to Apps, open Chrome"
+  (`app_details`). The request must only navigate (`fast.navigation_and_read_back`), may end with a read-back
+  clause ("tell me whether…", "is it on?") that the main model answers from the page that opens, must name the
+  page exactly, and must name no other app on the way. The app's name is resolved with the resolver's **exact**
+  lookup (an installed app's label or an alias, case and spacing aside): no fuzzy match, no model, so "Chrom's
+  notifications" is the main model's call. A page that asks or is refused, a blocked app and OpenMob itself are
+  never opened this way (the model's own call is then refused by the tool as before). It runs through
+  `_execute` like any tool: Ask every step asks first, Plan first needs the plan, the gatekeeper judges it on
+  the phone. The step is recorded `fast = 1`, `source = "deep_link"`, and the variant gains `+pages`. Jev isn't
+  needed. The task's first look doesn't ask the classifier about the screen it is leaving (the look after the
+  step does, as usual); when the step steps aside after all, the classifier is asked before the usual path.
+- **The classifier's deep link:** with the direct step off (or a request it doesn't read), the fast path still
+  opens the page instead of launching Settings when the classifier decides to launch an app and the request is
+  plain navigation to one page (`Agent._direct_settings_page` inside `_fast_step`), as built first. The
+  classifier's DONE then works as before (the page's title is on screen).
 
 ### 2.3 The gatekeeper (`feature/deep-links-gk`)
 
@@ -136,3 +151,69 @@ Jev on for the fast-path cells, off for the main-model cells. Keep measured numb
 estimates in §3.
 
 Not done yet: no phone was driven for this work (owner rule), so every number in §3 is an estimate.
+
+## 6. First-action polish (2026-10-08, branch `perf/first-action-polish`)
+
+Target: the first action on screen within 2 s (median). Measured on the owner's Samsung that day (`main`
+53112da; the first step's `total_ms` in the steps table): **median 2.2 s** over the first-run task set.
+
+### 6.1 Where the first step's time went (measured, 179 first steps on 2026-10-08)
+
+| First step | n | total (median) | where it goes |
+|---|---|---|---|
+| a fast link (`open_link`, YouTube/Maps/Play/Spotify/Amazon/Google searches) | 25 | **2.3 s** | settle inside the step 1.8 s (the page landing and its quiet/loading settle), classifier 0.16, observe 0.07, action 0.06, other 0.07 |
+| a fast Settings page (`open_settings_page`) | 10 | **1.1 s** | the landing wait 0.7 s (until the page drew), classifier 0.14, observe 0.07, action 0.05, other 0.07 |
+| the main model decides (vision step) | 42 | **2.5 s** | model 1.3–1.4 s, observe 0.45 s (the screenshot), classifier 0.15, other 0.15–0.2, action 0.06–0.19 |
+| a fast launch, the text model names the app | 14 | **1.15 s** | text model 0.7 s, classifier 0.16, observe 0.08, action 0.1 |
+| a fast launch, exact app name | 23 | **0.63 s** | other 0.35, classifier 0.16, observe 0.07, action 0.06 |
+
+"Other" (total minus the phases) was 117 ms median, 621 ms p90, 1.6 s max on first steps against 2 ms on
+second steps. It spiked on the first task after an idle gap (0.5–1.2 s), which matches the wake: the app's
+`wake_unlock` returns at once when the screen is on and waits up to 2 s for it to turn on plus 1.5 s for a
+swipe keyguard otherwise. The Chrome-notifications request on the Samsung: Haiku chose
+`open_settings_page app_notifications` in 5 of 7 evening runs (2 steps, 4.4–5.4 s); on the emulator 0 of 8.
+
+So the 2.2 s median was mostly the **landing settle counted inside the link step**: the `open_url` itself was
+sent within ~0.4 s of the request. The other half of the picture: a vision first step can't get under 2 s
+(the model alone is 1.3 s plus the screenshot), so the median depends on how many first steps are direct.
+
+### 6.2 What changed, with the gain each should bring (estimates, not measured)
+
+1. **Link steps end when their app is in front.** `_open_destination` used to settle the whole page load
+   inside the step "so the result can say where it landed". Now it waits only until the screen left the one
+   the link was opened from (`_await_new_screen`) and reads the app in front: when that is the entry's app
+   (or a browser where that is fine), the step ends and the quiet/loading settle is the next step's, like a
+   launch and as the steps table defines settle ("on the step it delayed"). When the quick look can't place
+   the landing (the home screen, or neither the app nor a browser: the old screen may just have redrawn),
+   the step settles fully and looks again, exactly as before, so the landing report keeps its accuracy.
+   *Estimate:* the first step of a link task from ~2.3 s to ~1.0–1.3 s; the task's total unchanged (the same
+   wait, on the next step). adb phones (no quick element list) keep the full in-step settle.
+2. **The direct Settings step** (§2.2): a plain Settings-page request, an app's page included, opens before
+   any classifier call. *Estimate:* for "Open Settings, go to Apps, open Chrome, open its Notifications
+   settings, and tell me whether…", 5 model-decided steps (12.5–13.1 s on the emulator) become one direct
+   step plus one model read-back: about 3–4 s on the Samsung, 4–6 s on the emulator; where Haiku already
+   chose the page (the Samsung, 2.4–2.7 s first step) the first step drops to about 1.0–1.2 s (no model
+   call, no screenshot, no classifier call before it).
+3. **The first look skips the classifier when the first action is known** (a link or a page):
+   *estimate* −0.13 to −0.24 s (the measured `jev_ms` on first steps) on every direct first step. If the
+   step steps aside after all, the classifier is asked then, so the cost of a wrong guess is nothing.
+4. **HOME only when the launcher isn't in front** (`go_home`: phone-page requests, `openmob bench`, the API's
+   `clean_start`): one `current_app` read (~20–50 ms) instead of the press and its settle. *Estimate:* −0.3 to
+   −0.8 s on such tasks when the phone is already home; nothing otherwise.
+5. **The wake and the HOME press are timed** as the first step's `action_ms` (they were "other"), so the next
+   measurement attributes them. No gain; the wake itself is the phone's.
+6. **The prompt nudge** (`SETTINGS_PAGE_LINE`, the tool's description): a request that spells out the taps
+   still wants the page; `app_notifications` with the app's package gets there; the read-back is answered
+   from the page. *Estimate:* for the main model on the emulator, 5 steps to 2 when it follows the nudge.
+
+Not changed: `_guard`, the gatekeeper, approvals, blocked apps, the tool's tier check. Nothing opens that
+the model's own `open_settings_page` call couldn't.
+
+### 6.3 How to measure
+
+The same plan as §5, plus the Chrome-notifications request, cold, five runs per cell, `deep_links_fast` on
+vs off (`OPENMOB_DEEP_LINKS_FAST`). From the steps table: the first step's `total_ms`, `source`
+(`deep_link`, `link`, or none), `jev_ms` (0 on a direct first step), `settle_ms` on steps 1 and 2 (the link
+settle moved), `action_ms` on step 1 (the wake), and the task's step count and model calls. Expect the
+first-step median over the first-run set to fall to about 1.0–1.3 s if the estimates hold; a vision first
+step stays at about 2.5 s.
