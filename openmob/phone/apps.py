@@ -65,6 +65,20 @@ def _score(query: str, candidate: str) -> float:
     )
 
 
+# A maker's name in front of an app's name ("Google Maps", "Samsung Notes") says little about which app it is.
+MAKER_WORDS = {"google", "samsung", "galaxy", "microsoft", "amazon", "meta", "apple", "the", "app", "my"}
+
+
+def _label_in_query_score(query: str, label: str) -> float:
+    """'maps' inside 'google maps': the label names every word of the request that isn't a maker's name.
+    Measured on an emulator: "Google Maps" resolved to Gmail by its initials (G M) while Maps was installed."""
+    words, have = set(query.split()), set(label.split())
+    strong = words - MAKER_WORDS
+    if not have or not strong or not have <= words or not strong <= have:
+        return 0.0
+    return 92.0
+
+
 def _subset_score(query: str, label: str) -> float:
     """'play store' fully inside 'google play store': strong match, weaker per extra word."""
     q, l = query.split(), label.split()
@@ -174,9 +188,12 @@ class AppResolver:
             if found := self._match_names(query, packages):
                 return found
 
-        # "where winds meet" -> "wwm", a common package naming pattern.
+        # "where winds meet" -> "wwm", a common package naming pattern. Not when an installed app's name shares
+        # a real word with the request ("Google Maps" vs Maps): the initials then point at the wrong app (Gmail).
         initials = "".join(word[0] for word in query.split())
-        if len(initials) >= 2:
+        strong = set(query.split()) - MAKER_WORDS
+        shares = any(strong & set(normalize(label).split()) for label in self.labels.values() if label)
+        if len(initials) >= 2 and not shares:
             hits = [p for p in packages if initials in re.split(r"[._]", p.lower())]
             if len(hits) == 1:
                 return Resolution(hits[0], "acronym", 90)
@@ -207,7 +224,8 @@ class AppResolver:
             label = normalize(self.labels.get(package) or "")
             if label == query:
                 return Resolution(package, "label")
-            score = max(_subset_score(query, label), _score(query, label), _score(query, package_words(package)))
+            score = max(_subset_score(query, label), _label_in_query_score(query, label), _score(query, label),
+                        _score(query, package_words(package)))
             if score >= FUZZY_THRESHOLD:
                 scored.append((score, package))
         if not scored:

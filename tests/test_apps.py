@@ -120,3 +120,18 @@ def test_spoken_name_inside_longer_label(tmp_path):
     assert r.resolve("play store").package == "com.android.vending"
     assert r.resolve("youtube music").package == "com.google.android.apps.youtube.music"
     assert r.resolve("music") is None  # ambiguous
+
+
+def test_a_makers_name_in_front_doesnt_send_google_maps_to_gmail(tmp_path):
+    # Measured on an emulator: "Google Maps" launched Gmail ("matched by acronym": G M) while Maps was installed.
+    from conftest import FakeDriver
+
+    labels = {"com.google.android.apps.maps": "Maps", "com.google.android.gm": "Gmail",
+              "com.google.android.googlequicksearchbox": "Google", "com.android.vending": "Google Play Store"}
+    driver = FakeDriver(packages=list(labels), labels=labels)
+    resolver = AppResolver(driver, label_cache=tmp_path / "l.json")
+    resolver.ensure_labels()
+    assert resolver.resolve("Google Maps").package == "com.google.android.apps.maps"
+    assert resolver.resolve("gmail").package == "com.google.android.gm"
+    assert resolver.resolve("google").package == "com.google.android.googlequicksearchbox"
+    assert resolver.resolve("play store").package == "com.android.vending"
