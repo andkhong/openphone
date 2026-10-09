@@ -320,3 +320,44 @@ def test_deep_links_can_be_switched_off_for_comparisons(monkeypatch, tmp_path):
     assert load_config(path).deep_links is True
     monkeypatch.setenv("OPENMOB_DEEP_LINKS", "off")
     assert load_config(path).deep_links is False
+
+
+def test_a_link_waits_for_the_screen_to_leave_the_one_it_was_opened_from(monkeypatch):
+    import threading
+    import time as _time
+
+    from conftest import FakeDriver, RecordingIO, ScriptedClient
+
+    from openmob.agent import loop as loop_mod
+    from openmob.agent.loop import Agent, Observation, _TaskState
+    from openmob.config import Config
+    from openmob.phone.adb import UIElement
+
+    home = [UIElement(0, "Chrome", "", "", "android.widget.TextView", True, None, (0, 0, 100, 50))]
+    wifi = [UIElement(0, "Wi-Fi", "", "", "android.widget.TextView", False, None, (0, 0, 100, 50))]
+
+    class SlowPhone(FakeDriver):
+        fast_ui_tree = True
+
+        def __init__(self, draws_after):
+            super().__init__()
+            self.reads, self.draws_after = 0, draws_after
+
+        def current_app(self):
+            return "com.android.settings" if self.reads >= self.draws_after else "com.google.android.apps.nexuslauncher"
+
+        def ui_elements(self):
+            self.reads += 1
+            return wifi if self.reads > self.draws_after else home
+
+    monkeypatch.setattr(loop_mod, "LINK_LAND_S", 0.6)
+    before = Observation(None, home, "com.google.android.apps.nexuslauncher")
+    state = _TaskState(task="t", cancel=threading.Event())
+    agent = Agent(ScriptedClient([]), SlowPhone(3), None, Config(), RecordingIO(), use_ocr=False)
+    start = _time.monotonic()
+    agent._await_new_screen(state, before)
+    assert _time.monotonic() - start < 0.55 and agent.driver.reads == 4  # left as soon as the new page drew
+    agent = Agent(ScriptedClient([]), SlowPhone(999), None, Config(), RecordingIO(), use_ocr=False)
+    start = _time.monotonic()
+    agent._await_new_screen(state, before)
+    assert 0.55 <= _time.monotonic() - start < 1.0  # never changed: gives up at the limit, the usual settle follows

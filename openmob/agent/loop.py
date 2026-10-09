@@ -42,6 +42,10 @@ FOCUS_QUIET_MS = 150  # fast TYPE_TEXT: after tapping the field, before typing
 SEARCH_EXTRA_QUIET_MS = 200  # after typing into a search field (jev-ultrafast waits 200 ms for suggestions)
 RECHECK_QUIET_MS = 200  # a tap target that moved (a list settling): wait this quiet before trusting its new place
 RECHECK_MAX_MS = 800
+# After a link or a Settings page opens: the most to wait for the screen to leave the one it was opened from.
+# On a slow phone the old screen is quiet before the new one draws, so the settle ended early, the next look
+# still showed it, and the model opened the link again (measured on an emulator, 2026-10-08).
+LINK_LAND_S = 2.5
 DEFAULT_QUIET_MS = 300  # config.settle_quiet_ms by default (a variant names any other value)
 PLAY_STORE = "com.android.vending"
 INSTALL_BUTTON = re.compile(r"install|update|get|install on (this )?(phone|device)", re.I)
@@ -1289,6 +1293,7 @@ class Agent:
         launched = opened.get("package") if isinstance(opened, dict) else None
         if state.task_app is None and launched:
             state.task_app = launched
+        self._await_new_screen(state, obs)
         # Settle until the page is quiet and done loading, without waiting for a given app in front: an OEM may
         # hand a page to another app (on a Samsung, Battery opens Device care, not Settings), and waiting for
         # Settings there sat out the whole launch wait (measured ~9 s per task).
@@ -1330,6 +1335,24 @@ class Agent:
 
     def _app_links_fast_on(self) -> bool:
         return self._app_links_on() and bool(self.config.app_links_fast)
+
+    def _await_new_screen(self, state: _TaskState, before: Observation) -> None:
+        """Wait (up to LINK_LAND_S) until the screen differs from `before`, the one a link or a Settings page was
+        opened from: by its contents, not its app, since a page may open in Settings, in another app (a Samsung's
+        Device care) or as another page of the app in front. The usual settle follows. Only on phones whose element
+        list is quick to read; a page that was already showing costs the whole wait (rare: the link would be moot)."""
+        if not getattr(self.driver, "fast_ui_tree", False):
+            return
+        seen = waiting.signature(before.package, before.elements)
+        deadline = time.monotonic() + LINK_LAND_S
+        with self.timer.phase("settle"):
+            while time.monotonic() < deadline and not state.cancel.is_set():
+                try:
+                    if waiting.signature(self.driver.current_app(), self.driver.ui_elements()) != seen:
+                        return
+                except DeviceError:
+                    return
+                state.cancel.wait(READABLE_POLL_S)
 
     def _open_link(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         """open_link: a catalog destination inside an app (app_links.LINKS). The URL is built from the entry's
@@ -1389,6 +1412,7 @@ class Agent:
         if target is None and (backed := self._back_out_if_blocked(state, obs.package)):
             return backed
         # Settled here, inside the step, so the result can say where it landed (recorded as settle time).
+        self._await_new_screen(state, obs)
         self._settle(self.config.launch_settle_delay, state, until="loading_done")
         try:
             landed = self.driver.current_app()
