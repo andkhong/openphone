@@ -87,7 +87,7 @@ def test_a_confident_tap_runs_without_the_main_model(tmp_path):
     tap, done = steps
     assert tap["tool"] == "tap_element" and tap["fast"] is True and done["fast"] is False
     assert tap["jev_ms"] >= 20 and tap["model_ms"] == 0  # a fast tap uses no model at all
-    assert tap["variant"] == "adaptive+fast+noshot+1req+launch+fastdone"
+    assert tap["variant"] == "adaptive+fast+noshot+1req+launch+fastdone+links"
     # The classifier saw an indexed table and only compatible targets per operation.
     screen, _, targets = judge.asked[0]
     assert screen["elements"][1].startswith("[1] TextView 'Display'")
@@ -160,7 +160,9 @@ def test_type_text_asks_the_small_text_model(tmp_path):
     driver = Phone(screen)
     judge = Judge([("TYPE_TEXT", 0, 0.95), ("DONE", None, 0.95)])
     io = RecordingIO()
-    agent, client, steps = make([[text_block('{"text": "lofi beats"}')], DONE], driver, judge, tmp_path, io=io)
+    # The in-app link fast path would open this search from a link (test_app_links.py); this tests typing.
+    agent, client, steps = make([[text_block('{"text": "lofi beats"}')], DONE], driver, judge, tmp_path, io=io,
+                                app_links_fast=False)
     agent.run("search youtube for lofi beats")
 
     assert client.requests[0]["model"] == agent.config.resolver_model  # the small model wrote the text

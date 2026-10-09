@@ -344,7 +344,7 @@ def test_a_plain_navigation_task_finishes_on_the_classifier(tmp_path):
     assert client.requests == []  # no vision step at all
     tap, done = steps
     assert done["tool"] == "done" and done["fast"] and done["done_via"] == "classifier"
-    assert done["variant"].endswith("+fastdone")
+    assert done["variant"].endswith("+fastdone+links")
 
 
 def test_vision_confirms_when_fast_done_is_off(tmp_path):
@@ -481,11 +481,11 @@ def test_variant_names_each_feature(tmp_path):
     jev = FakeJev([("ESCALATE", None, 0.99)])
     agent, _, steps = make([DONE], driver, jev, tmp_path, fast_path_done=True, settle_quiet_ms=200)
     agent.run("x")
-    assert steps[0]["variant"] == "adaptive+q200+fast+noshot+1req+launch+fastdone"
+    assert steps[0]["variant"] == "adaptive+q200+fast+noshot+1req+launch+fastdone+links"
     agent, _, steps = make([DONE], driver, jev, tmp_path, fast_path_lazy_screenshot=False, jev_one_request=False,
                            fast_path_direct_launch=False, fast_path_done=False)
     agent.run("x")
-    assert steps[0]["variant"] == "adaptive+fast"
+    assert steps[0]["variant"] == "adaptive+fast+links"
 
 
 def test_done_via_has_a_steps_column(tmp_path):

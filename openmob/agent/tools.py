@@ -5,6 +5,7 @@ All coordinates are pixels on the screenshot the model was shown.
 
 from ..phone.adb import KEYCODES
 from ..phone.settings_pages import PAGE_KEYS
+from . import app_links
 
 _POINT = {
     "x": {"type": "integer", "description": "X pixel on the screenshot"},
@@ -203,6 +204,31 @@ OPEN_SETTINGS_TOOL = {
 OPEN_SETTINGS_TOOL_SPEC = {"name": OPEN_SETTINGS_TOOL["name"], "description": OPEN_SETTINGS_TOOL["description"],
                            "parameters": OPEN_SETTINGS_TOOL["input_schema"]}
 
+# In-app links (docs/design/app-links.md): a catalog of destinations inside common apps that open from one link
+# (agent/app_links.py). Offered when config.app_links is on (Android phones); the fast path uses the same catalog.
+OPEN_LINK_TOOL = {
+    "name": "open_link",
+    "description": (
+        "Open a destination inside an app in one step, from a known link, instead of launching the app and tapping "
+        "through it: " + app_links.summary() + ". Parameters go in params ({\"q\": \"lofi\"}; ? marks an optional "
+        "one). Entries marked [draft] open a compose screen with the content filled in and send nothing until a tap. "
+        "The result says which app it landed in; if it errors, lands in the browser or on the wrong screen, "
+        "navigate in the app instead. For any other web page, use open_url."
+    ),
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "app": {"type": "string", "enum": app_links.APP_IDS},
+            "intent": {"type": "string", "description": "The entry's intent for that app (search, directions, …)"},
+            "params": {"type": "object", "description": "The entry's parameter values, as strings",
+                       "additionalProperties": {"type": "string"}},
+        },
+        "required": ["app", "intent"],
+    },
+}
+OPEN_LINK_TOOL_SPEC = {"name": OPEN_LINK_TOOL["name"], "description": OPEN_LINK_TOOL["description"],
+                       "parameters": OPEN_LINK_TOOL["input_schema"]}
+
 SYSTEM_PROMPT = """\
 You are OpenMob, an agent that operates the user's Android phone to carry out their spoken request. \
 It can be any Android phone and any app the user has installed.
@@ -273,6 +299,12 @@ OPEN_URL_LINE = "- For a web page (https:// link), open_url can be faster than n
 SETTINGS_PAGE_LINE = ("- To reach a Settings page (Wi-Fi, Display, Battery, an app's notifications…), prefer "
                       "open_settings_page: it opens the page directly in one step. If it errors, open Settings "
                       "with launch_app and navigate there instead.\n")
+# Added right after OPEN_URL_LINE when in-app links are on (tools.OPEN_LINK_TOOL).
+APP_LINKS_LINE = ("- To reach a place inside an app (a YouTube, Spotify, Amazon, Google or Play Store search, a Maps "
+                  "place or directions, a Play Store app page, a WhatsApp chat by number, the Gmail inbox, a Calendar "
+                  "day), prefer open_link: one step, no tapping through. If it errors, lands in the browser or on the "
+                  "wrong screen, navigate in the app instead. For an app that isn't listed, open_url with the app's "
+                  "own web link (its search page, say) often opens in the app too.\n")
 MULTI_CALL_RULE = (
     "Usually make one tool call per turn and check the next screenshot. When you can predict the screen after "
     "each action, you may make up to {n} calls in one turn (for example: tap a chess piece, then its target "
@@ -282,14 +314,17 @@ MULTI_CALL_RULE = (
 )
 
 
-def system_prompt(platform: str = "android", max_actions: int = 1, settings_pages: bool = False) -> str:
+def system_prompt(platform: str = "android", max_actions: int = 1, settings_pages: bool = False,
+                  app_links: bool = False) -> str:
     """The agent's instructions, with notes for the phone's platform and how many actions a turn may take.
-    `settings_pages`: the phone can open Settings pages directly, so say to prefer open_settings_page."""
+    `settings_pages`: the phone can open Settings pages directly, so say to prefer open_settings_page.
+    `app_links`: the open_link catalog is offered, so say to prefer it over tapping through an app."""
     prompt = SYSTEM_PROMPT
     if max_actions > 1:
         prompt = prompt.replace(ONE_CALL_RULE, MULTI_CALL_RULE.format(n=max_actions))
-    if settings_pages:
-        prompt = prompt.replace(OPEN_URL_LINE, OPEN_URL_LINE + SETTINGS_PAGE_LINE)
+    extra = (APP_LINKS_LINE if app_links else "") + (SETTINGS_PAGE_LINE if settings_pages else "")
+    if extra:
+        prompt = prompt.replace(OPEN_URL_LINE, OPEN_URL_LINE + extra)
     if platform == "ios":
         return (
             prompt.replace("the user's Android phone", "the user's iPhone")

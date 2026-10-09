@@ -60,6 +60,14 @@ replay_paths: false                 # OPENMOB_REPLAY=on to try it
 # with a screen cue each, then the classifier picks each tap, scroll, Back or app launch toward the current sub-goal
 # (every check still applies). The model takes over when a screen doesn't fit. Needs Jev (docs/design/fewer-model-calls.md).
 plan_execute: false                 # OPENMOB_PLAN_EXECUTE=on to try it
+# In-app links (docs/design/app-links.md): the open_link catalog tool (a YouTube search, Maps directions, a Play Store
+# page, a WhatsApp chat… from one link), and open_url saying which app took a link and when the app it belongs to
+# didn't. Every link passes the same checks as open_url. Off only for comparisons.
+app_links: true                     # OPENMOB_APP_LINKS=off to compare
+# The fast path for links: a request that plainly names one `view` entry ("search YouTube for lofi") opens it as the
+# task's first action with no main-model decision (a value the request doesn't give plainly comes from the small text
+# model). Only `view` entries, never drafts; skipped when the phone says the link wouldn't open in its app.
+app_links_fast: true                # OPENMOB_APP_LINKS_FAST=off to compare
 
 # Spoken app names -> package. Run `openmob apps` to find package names.
 aliases: {}
