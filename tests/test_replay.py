@@ -134,7 +134,7 @@ def test_a_second_run_replays_the_tap_without_the_vision_model(tmp_path):
     assert len(client.requests) == 1  # only the done
     tap, done = steps
     assert tap["source"] == "replay" and tap["fast"] is True and tap["model_ms"] == 0
-    assert tap["variant"].endswith("+replay") and done["fast"] is False and "source" not in done
+    assert tap["variant"].endswith("+replay+links") and done["fast"] is False and "source" not in done
     first = client.requests[0]["messages"][0]["content"]
     assert any("quick helper" in b.get("text", "") and "tap_element" in b.get("text", "") for b in first)
     assert ("action", "tap_element: Tapped [1] 'Display'. (replayed)") in io.events

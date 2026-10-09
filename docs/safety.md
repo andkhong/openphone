@@ -199,6 +199,19 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   asks, and is refused under Don't ask). An app's own pages are refused for blocked apps and for OpenMob
   itself. Ask every step asks before each deep link; Plan first needs the plan. A phone without the page
   says so and the agent navigates instead.
+- **In-app links** (`open_link`, [design](design/app-links.md)): a server-side catalog of destinations inside
+  common apps (a YouTube, Maps, Play Store, Spotify, Amazon or Google search, Maps directions, an app's Play Store
+  page, a WhatsApp chat by number, the Gmail inbox, a Calendar day) that open from one link, plus the agent's own
+  `open_url` links. Every one passes the same checks as `open_url` (the scheme allowlist, the handler resolved on
+  the phone against blocked apps, Ask every step and Plan first, the phone's gatekeeper), and nothing in the
+  catalog skips an ask that getting there by hand would have triggered. Each entry has a side-effect class:
+  `view` (shows something; opening it sends, buys and changes nothing: the only class the fast path may open
+  without the main model), `draft` (a compose screen with content filled in: a text message, an email, a number
+  in the dialer; nothing is sent until a tap, which is judged exactly as today), `action` (would commit on
+  landing: asks the owner before opening, bound to the exact link, and is refused under Don't ask; no entry has
+  this class today). The catalog uses only `https`, `market`, `sms`, `mailto` and `tel` links, never custom app
+  schemes. Search terms, numbers and message bodies in a link are the user's words: they reach the phone and the
+  model, and are redacted in the steps table and kept out of the activity feed, like typed text.
 - **Autofill and saved credentials** ("Use saved password", passkeys, saved cards) ask, and are
   refused under Don't ask.
 - The screen classifier can still only add caution: it can make a tap risky, never make it requested.
@@ -302,6 +315,7 @@ model's own description of it. The model's words can only add caution.
 | `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
 | `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar |
 | `open_settings_page` | Only a page key from the phone's fixed table (the phone picks the intent; unknown keys are refused there). The page's tier is judged like a tap on it (the stricter of the table and the Settings word lists), an app's own pages are refused for blocked apps, and the phone's gatekeeper judges the call again |
+| `open_link` | A catalog entry's link, built from its template with each parameter checked for its kind (a number is digits, a web address is `http(s)` only, a package is an application id). Then exactly `open_url`'s checks on the result, plus the entry's own app against the task's blocked apps. A `view` or `draft` entry opens like any link; an `action` entry asks first (none exists). The phone never receives a package or component: Android picks the handler, and the gatekeeper judges the URL |
 
 Typed text that goes through the clipboard (some fields only accept a paste) doesn't stay there: the
 app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
