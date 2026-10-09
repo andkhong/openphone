@@ -230,6 +230,21 @@ LINKS: tuple[Link, ...] = (
          note="the dialer only (the phone never auto-places a call); Call is a tap"),
 )
 BY_ID: dict[str, Link] = {link.id: link for link in LINKS}
+
+# "Open the Play Store page for Spotify": the app's name, not its package id. The agent looks the name up among
+# the installed apps, else asks the small text model for the id (a wrong one shows Play's "not found" page, and
+# the main model takes over). Measured before: 16-39 s by tapping through the Play Store.
+PLAY_PAGE = re.compile(r"^(?:please\s+)?(?:open|show(?:\s+me)?|go\s+to|pull\s+up|find)?\s*(?:the\s+)?"
+                       r"(?:play\s+store|google\s+play|play)(?:\s+store)?\s+(?:app\s+)?(?:page|listing)\s+(?:for|of)\s+"
+                       r"(?:the\s+)?(?P<name>.+?)(?:\s+app)?\s*$", re.I)
+
+
+def play_page_name(task: str) -> str | None:
+    """The app a request asks the Play Store page of, by name ("Spotify"), or None."""
+    text = clean(task)
+    m = PLAY_PAGE.fullmatch(text) if text else None
+    name = m.group("name").strip() if m else ""
+    return name if name and len(name) <= 60 and not _UI_WORDS.search(name) else None
 APP_IDS: list[str] = sorted({link.app for link in LINKS}, key=[a.id for a in APPS.values()].index)
 
 
