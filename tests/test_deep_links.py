@@ -135,7 +135,7 @@ def test_an_everyday_page_opens_directly_and_is_recorded(tmp_path):
     agent, driver, io, steps, result = make([[tool_use("open_settings_page", "a", page="display")], DONE],
                                             tmp_path=tmp_path)
     assert opened(driver) == [("open_settings", "display", None)]
-    assert tool_result(agent.client) == "Opened the Display Settings page."
+    assert tool_result(agent.client).startswith("Opened the Display Settings page. Some phones show this page in their own app")
     assert io.questions == [] and result.success and result.prompts == 0
     assert steps[0]["tool"] == "open_settings_page" and steps[0]["args"] == {"page": "display"} and not steps[0]["is_error"]
     assert ("action", "open_settings_page: Opened the Display Settings page.") in io.events
@@ -165,7 +165,7 @@ def test_an_apps_own_pages_take_its_name_and_refuse_apps_the_task_may_not_touch(
                                    [tool_use("open_settings_page", "b", page="app_details", package=CHROME)], DONE],
                                   tmp_path=tmp_path)
     assert opened(driver) == [("open_settings", "app_notifications", CHROME), ("open_settings", "app_details", CHROME)]
-    assert tool_result(agent.client) == "Opened the App notifications Settings page of Chrome."
+    assert tool_result(agent.client).startswith("Opened the App notifications Settings page of Chrome.")
 
     blocked = lambda package: package == CHASE  # noqa: E731
     agent, driver, _, _, _ = make([[tool_use("open_settings_page", "a", page="app_details", package="Chase")],
