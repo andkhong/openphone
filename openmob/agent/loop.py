@@ -24,11 +24,11 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import fast, gate, permission_dialogs, plan, replay, waiting
+from . import app_links, fast, gate, permission_dialogs, plan, replay, waiting
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
 from .timing import StepTimer
-from .tools import (OPEN_SETTINGS_TOOL_SPEC, PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE, PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC,
-                    TOOL_SPECS, mode_notes, system_prompt)
+from .tools import (OPEN_LINK_TOOL_SPEC, OPEN_SETTINGS_TOOL_SPEC, PLAN_REQUEST_PROMPT, PLAN_STEPS_NOTE,
+                    PLAN_STEPS_TOOL_SPEC, PLAN_TOOL_SPEC, TOOL_SPECS, mode_notes, system_prompt)
 from ..phone import settings_pages
 
 OBS_PREFIX = "SCREEN:"
@@ -51,7 +51,7 @@ BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owne
 REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
 # Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
 CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key",
-            "open_settings_page"}
+            "open_settings_page", "open_link"}
 # Tools after which the element list of the screen they acted on may be out of date.
 MOVES_SCREEN = CHANGING | {"scroll"}
 # ENTER in these apps sends what was typed.
@@ -149,6 +149,7 @@ class Outcome:
     until: str | None = None  # the settle after it waits for this too (launch_app, open_url: "loading_done")
     wait: dict | None = None  # a wait_until's condition and outcome, for the step record (wait_cond, wait_met…)
     shown: str | None = None  # what the activity feed shows instead of text (the model still gets text)
+    misrouted: bool = False  # a link landed somewhere other than its app (the browser, a chooser): the model's call
 
 
 @dataclass
@@ -198,6 +199,10 @@ class _TaskState:
     # Plan with the model, execute with the classifier (config.plan_execute, agent/plan.py):
     plan_exec: plan.Plan | None = None  # the model's sub-goals, while the helper carries them out
     planned: int = 0  # tool calls the helper took toward the plan
+    # In-app links (config.app_links_fast, agent/app_links.py): the one fast link step a task may open first.
+    link_tried: bool = False
+    link_cue: app_links.Link | None = None  # the entry just opened, when its cue must show on the next look
+    url_targets: dict[str, dict | None] = field(default_factory=dict)  # a link's handler, resolved once before opening
 
 
 def is_yes(answer: str) -> bool:
@@ -326,11 +331,14 @@ class Agent:
         batch = max(1, int(self.config.max_actions_per_turn or 1))
         planning = self._plan_enabled()
         deep_links = self._can_open_settings()
-        system = (system_prompt(self.platform, batch, settings_pages=deep_links) + mode_notes(mode)
+        links = self._app_links_on()
+        system = (system_prompt(self.platform, batch, settings_pages=deep_links, app_links=links) + mode_notes(mode)
                   + (PLAN_STEPS_NOTE if planning else "") + (BRIEF_REPLIES if self.config.vision_brief else ""))
         self._tools = TOOL_SPECS + [PLAN_TOOL_SPEC] if mode == "plan" else TOOL_SPECS
         if deep_links:  # only a phone that can open Settings pages directly is offered the tool
             self._tools = self._tools + [OPEN_SETTINGS_TOOL_SPEC]
+        if links:  # the catalog of in-app links (agent/app_links.py)
+            self._tools = self._tools + [OPEN_LINK_TOOL_SPEC]
         if planning:
             self._tools = self._tools + [PLAN_STEPS_TOOL_SPEC]
         for step in range(1, state.max_steps + 1):
@@ -350,6 +358,14 @@ class Agent:
                 return AgentResult(False, "Stopped.", step - 1)
 
             self._apply_corrections(state, messages)
+            if not state.link_tried and not state.vision_next and not self._needs_plan(state) and self._app_links_fast_on():
+                # A request that plainly names one in-app destination opens it as the first action, with no model.
+                state.link_tried = True
+                taken = self._link_step(state, obs)
+                if taken is not None:
+                    obs = self._after_fast_step(state, obs, taken, messages)
+                    self._link_landing(state, obs, messages)
+                    continue
             if state.replay and not state.vision_next and not self._needs_plan(state):
                 taken = self._replay_step(state, obs)
                 if taken is not None:
@@ -913,6 +929,9 @@ class Agent:
                 safe["text"] = REDACTED
                 if not outcome.is_error:
                     text = f"Typed {REDACTED}."
+            elif name == "open_link" and isinstance(args.get("params"), dict):
+                # A link's parameters (a search, a number) are the user's words, like typed text.
+                safe["params"] = {str(k): REDACTED for k in args["params"]}
             points: list[int] = []
             anchor = None
             if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
@@ -970,6 +989,8 @@ class Agent:
             return self._launch_app(args, obs, state)
         if name == "open_settings_page":
             return self._open_settings(args, obs, state)
+        if name == "open_link":
+            return self._open_link(args, obs, state)
 
         if name == "list_apps":
             # Fresh from the phone: an app installed or removed since the last look shows as it is now.
@@ -982,6 +1003,10 @@ class Agent:
 
         if name == "open_url":
             url = gate.web_url(str(args["url"]))
+            if self._app_links_on():
+                # As an in-app destination: the handler is reported, a page the app should have taken is said so.
+                return self._open_destination(url, obs, state, app_links.app_for_url(url), label=url,
+                                              shown=app_links.without_query(url))
             refused, resolved = self._check_url(url, state)
             if refused:
                 return refused
@@ -1285,6 +1310,160 @@ class Agent:
         if not resolved and (backed := self._back_out_if_blocked(state, obs.package)):
             return backed
         return Outcome(text, settle=self.config.launch_settle_delay, until="loading_done")
+
+    # --- in-app links (docs/design/app-links.md, agent/app_links.py) -------------------------------------
+
+    def _app_links_on(self) -> bool:
+        """The link catalog (open_link) and open_url's in-app behaviour: config.app_links, on Android phones."""
+        return bool(self.config.app_links) and self.platform == "android"
+
+    def _app_links_fast_on(self) -> bool:
+        return self._app_links_on() and bool(self.config.app_links_fast)
+
+    def _open_link(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
+        """open_link: a catalog destination inside an app (app_links.LINKS). The URL is built from the entry's
+        template and judged like any link (the scheme allowlist, blocked apps, the phone's gatekeeper). A `view`
+        or `draft` entry then opens as open_url does; an `action` entry asks the owner first (refused under Don't
+        ask). Nothing here skips an ask a tap would get: the taps that follow are judged as always."""
+        link = app_links.find(str(args.get("app", "")), str(args.get("intent", "")))
+        if link is None:
+            return Outcome(f"No link {str(args.get('app'))[:40]!r} / {str(args.get('intent'))[:40]!r}. The catalog: "
+                           f"{app_links.summary()}. For anything else, open_url a web link or navigate in the app.",
+                           is_error=True, settle=0)
+        if not self._app_links_on():
+            return Outcome("In-app links are off on this server. Use open_url, or navigate in the app.",
+                           is_error=True, settle=0)
+        try:
+            url = app_links.build(link, args.get("params") or {})
+        except ValueError as exc:
+            return Outcome(f"Can't open {link.label}: {exc}", is_error=True, settle=0)
+        if any(self._is_blocked(state, p) for p in link.packages):
+            return Outcome(f"{BLOCKED_APP_MESSAGE} That link opens in it. Don't try to open it another way; call done.",
+                           is_error=True, settle=0)
+        if link.side_effect == app_links.ACTION and not state.step_approved:
+            mode = state.perms.mode()
+            if mode == "never" or self.config.confirm_actions == "never":
+                return self._refuse(link.label, "this link acts as soon as it opens, so it asks the owner first, and "
+                                                "nobody can be asked while agents act without asking.")
+            state.risky = True
+            if not state.approved:
+                action = self._action("open_url", obs.package, typed=url)
+                answer = self._ask_owner(state, f"I'm about to open {link.label}, which acts as soon as it opens. "
+                                                "Should I go ahead?",
+                                         {"kind": "action", "action_kind": "link", "package": obs.package,
+                                          "action": action, "digest": action_digest(action)})
+                if not is_yes(answer):
+                    return Outcome(f"The user did not approve opening {link.label} (they said {answer!r}). Don't do "
+                                   "it. Pick another approach or call done.", is_error=True, settle=0)
+                if refused := self._approval_mismatch(action_digest(action), None, f"open {link.label}"):
+                    return refused
+            state.approved = False
+        return self._open_destination(url, obs, state, app_links.APPS[link.app], label=link.label, shown=link.label)
+
+    def _open_destination(self, url: str, obs: Observation, state: _TaskState, app: app_links.App | None, *,
+                          label: str, shown: str) -> Outcome:
+        """Open a link as a step into its app: the checks open_url always had (the scheme allowlist, the handler
+        resolved on the phone against the task's blocked apps; the gatekeeper judges it again on the phone), then
+        settle until the page is done loading and say where it landed. `app`: the catalog app the link belongs
+        to, so a landing in the browser is reported as such (the app isn't installed, or doesn't take these links
+        on this phone) and the model can adjust. Never waits for a particular package in front: an OEM may hand a
+        link to another app. `label` is for the model, `shown` for the feed (never the user's words)."""
+        if why := gate.url_refusal(url):
+            return self._refuse(url[:80], why)
+        target = state.url_targets.pop(url) if url in state.url_targets else self._url_target(url)
+        if refused := self._blocked_handler(target, state):
+            return refused
+        state.money_followup = None  # leaving the app ends a payment's follow-up
+        self.driver.open_url(url)
+        if target is None and (backed := self._back_out_if_blocked(state, obs.package)):
+            return backed
+        # Settled here, inside the step, so the result can say where it landed (recorded as settle time).
+        self._settle(self.config.launch_settle_delay, state, until="loading_done")
+        try:
+            landed = self.driver.current_app()
+        except DeviceError:
+            landed = None
+        if state.task_app is None and landed and not gate.is_launcher(landed):
+            state.task_app = landed
+        where = self._app_label(landed) if landed else None
+        wrong = False
+        if landed and gate.is_launcher(landed):
+            wrong = True
+            text = (f"Opened {label}, but the home screen is still in front: the link may not have opened. Look at "
+                    "the screen.")
+        elif app is not None and app.packages:
+            if landed in app.packages:
+                text = f"Opened {label} in {app.label}."
+            elif app_links.is_browser(landed):
+                wrong = True
+                if any(p in self.resolver.packages() for p in app.packages):
+                    text = (f"Opened {label} in {where}, not the {app.label} app: this phone sends these links to the "
+                            f"browser. If the web page serves the request, carry on there; otherwise open {app.label} "
+                            "with launch_app and navigate.")
+                else:
+                    text = (f"Opened {label} in {where}: the {app.label} app isn't installed. Carry on on the web, or "
+                            f"launch_app {app.label!r} with install_if_missing.")
+            else:
+                wrong = True
+                text = (f"Opened {label}, but {where or 'something else'} is in front rather than {app.label}. Look at "
+                        "the screen: a chooser or a dialog may be up, or the link may not have opened.")
+        else:
+            text = f"Opened {label}" + (f" in {where}." if where else ".")
+        return Outcome(text, settle=0, shown=f"Opened {shown}" + (f" in {where}." if where else "."), misrouted=wrong)
+
+    def _link_step(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """The fast link step: a request that plainly asks for one `view` catalog entry opens it now, with no
+        main-model decision (app_links.match). A value the request doesn't give plainly comes from the small text
+        model. Not taken (None: the usual path) when the entry's app is blocked for this task, or when the phone
+        says the link wouldn't open in that app (not installed, a browser would take it, a chooser would show):
+        the main model then decides from the screen as always. Returns what ran."""
+        match = app_links.match(state.task, self.config.confirm_keywords)
+        if match is None:
+            return None
+        link, params = match.link, dict(match.params)
+        if link.side_effect != app_links.VIEW or any(self._is_blocked(state, p) for p in link.packages):
+            return None
+        for param in match.missing:
+            value = self._fast_value(state, param.name, {"link": link.label, "parameter": {"name": param.name, "holds": param.description},
+                                                         "today": time.strftime("%Y-%m-%d")},
+                                     system=app_links.LINK_TEXT_SYSTEM)
+            if value is None:
+                return None
+            params[param.name] = value
+        try:
+            url = app_links.build(link, params)
+        except ValueError as exc:
+            self.io.event("status", f"Link not taken: {exc}")
+            return None
+        target = self._url_target(url)
+        if target is not None and link.packages:
+            handler = target.get("package")
+            if handler not in link.packages:
+                why = ("a chooser would show" if not handler else
+                       f"this phone opens these links in {self._app_label(handler)}, not {app_links.APPS[link.app].label}")
+                self.io.event("status", f"Link not taken ({why}); deciding the usual way.")
+                return None
+            state.url_targets[url] = target  # resolved once: _open_destination needn't ask the phone again
+        args = {"app": link.app, "intent": link.intent, "params": params}
+        outcome = self._execute("open_link", args, obs, state, fast_step=True, source=app_links.SOURCE)
+        state.fast_steps += 1
+        self._event("error" if outcome.is_error else "action", f"open_link: {outcome.shown or outcome.text}",
+                    {"timings": outcome.timings, "jev": self.judge is not None, "fast": True})
+        if outcome.misrouted:
+            state.vision_next = True  # it landed elsewhere: the main model looks and decides
+        state.link_cue = link if link.cue and not outcome.is_error else None
+        return [("open_link", args, outcome)]
+
+    def _link_landing(self, state: _TaskState, obs: Observation, messages: list[dict]) -> None:
+        """After the link step's look: an entry with a screen cue must show it, else the main model takes the
+        next step, told what was expected."""
+        link, state.link_cue = state.link_cue, None
+        if link is None or state.vision_next:
+            return
+        if not app_links.cue_shown(link, [el.label for el in obs.elements if fast.labeled(el)]):
+            state.vision_next = True
+            self._note_for_model(messages, f"(The screen after opening {link.label} doesn't show what was expected "
+                                           f"there ({link.cue}): check it and carry on, or navigate in the app.)")
 
     # --- waiting for something observable (agent/waiting.py) ---------------------------------------
 
@@ -1777,20 +1956,31 @@ class Agent:
         the task's blocked apps. (refusal or None, whether the handler was resolved)."""
         if why := gate.url_refusal(url):
             return self._refuse(url[:80], why), False
-        resolve = getattr(self.driver, "resolve_url", None)
-        target = None
-        if callable(resolve):
-            try:
-                target = resolve(url)
-            except DeviceError:
-                target = None
+        target = self._url_target(url)
         if target is None:
             return None, False
+        return self._blocked_handler(target, state), True
+
+    def _url_target(self, url: str) -> dict | None:
+        """Which app would open `url` ({"package", "candidates"}), resolved on the phone before opening (newer
+        apps, adb), or None when this phone can't say."""
+        resolve = getattr(self.driver, "resolve_url", None)
+        if not callable(resolve):
+            return None
+        try:
+            return resolve(url)
+        except DeviceError:
+            return None
+
+    def _blocked_handler(self, target: dict | None, state: _TaskState) -> Outcome | None:
+        """The link's resolved handler (or, with a chooser, any candidate) is an app the task may not open."""
+        if target is None:
+            return None
         handlers = [target["package"]] if target.get("package") else list(target.get("candidates") or [])
         if any(self._is_blocked(state, p) for p in handlers):
             return Outcome(f"{BLOCKED_APP_MESSAGE} That link opens in it. Don't try to open it another way; "
-                           "call done.", is_error=True, settle=0), True
-        return None, True
+                           "call done.", is_error=True, settle=0)
+        return None
 
     def _back_out_if_blocked(self, state: _TaskState, before: str | None) -> Outcome | None:
         """A phone that can't resolve links first: watch which app the link opened, and back out of a
@@ -1966,6 +2156,16 @@ class Agent:
         elif name == "open_url":
             what = f"open {args.get('url')!r}"
             action = self._action("open_url", obs.package, typed=str(args.get("url")))
+        elif name == "open_link":
+            link = app_links.find(str(args.get("app", "")), str(args.get("intent", "")))
+            try:
+                url = app_links.build(link, args.get("params") or {}) if link is not None else None
+            except ValueError:
+                url = None
+            if url is None:
+                return None  # it errors without touching the phone
+            what = f"open {link.label}"
+            action = self._action("open_url", obs.package, typed=url)  # the prompt shows the exact link
         elif name == "open_settings_page":
             page = settings_pages.PAGES.get(str(args.get("page", "")))
             if page is None:
@@ -2340,6 +2540,8 @@ class Agent:
             return f"{name} {args.get('direction') or args.get('key') or args.get('app')}"
         if name == "open_settings_page":
             return f"{name} {args.get('page')}"
+        if name == "open_link":
+            return f"{name} {args.get('app')}.{args.get('intent')}"  # never its parameters
         if name == "type_text":
             return "type text"
         return name
@@ -2468,15 +2670,16 @@ class Agent:
         self._event("action", f"done: {outcome.text}", {"timings": outcome.timings, "jev": True, "fast": True})
         return [("done", args, outcome)]
 
-    def _fast_value(self, state: _TaskState, key: str, context: dict) -> str | None:
-        """A small, fast text model writes one value ({"text": …} or {"app": …}); None if it can't."""
+    def _fast_value(self, state: _TaskState, key: str, context: dict, system: str = fast.TEXT_SYSTEM) -> str | None:
+        """A small, fast text model writes one value ({"text": …}, {"app": …}, or a link's parameter); None if
+        it can't."""
         model = self.config.fast_path_text_model or self.config.resolver_model
         router = router_for(self.client, self.config)
         try:
             route = router.route(model)
             with self.timer.phase("model"):
                 response = route.adapter.complete(ModelRequest(
-                    model=model, system=fast.TEXT_SYSTEM, tools=[], max_tokens=200,
+                    model=model, system=system, tools=[], max_tokens=200,
                     messages=[{"role": "user", "content": json.dumps({"user_request": state.task, "want": key, **context})}],
                 ))
         except (ModelUnavailable, ModelError) as exc:
@@ -2526,7 +2729,8 @@ class Agent:
         fixed | adaptive settle (+q<ms> for a quiet time other than 300 ms), then with the fast path
         +fast and its extras: +noshot (lazy screenshots), +1req (one classifier request per step),
         +launch (exact app names launch directly), +fastdone (the classifier may finish); +replay when
-        stored paths may be replayed (replay_paths)."""
+        stored paths may be replayed (replay_paths); +links when a plain in-app link request opens
+        first without the model (app_links_fast)."""
         c = self.config
         out = "adaptive" if c.adaptive_settle else "fixed"
         if c.adaptive_settle and c.settle_quiet_ms != DEFAULT_QUIET_MS:
@@ -2540,6 +2744,8 @@ class Agent:
             out += "+replay"
         if c.plan_execute:
             out += "+plan"
+        if c.app_links and c.app_links_fast:
+            out += "+links"
         return out
 
     def _settle(self, seconds: float, state: _TaskState, launched: str | None = None, quiet_ms: int | None = None,

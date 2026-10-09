@@ -151,6 +151,14 @@ class Config:
     # Settings deep links (open_settings_page) on phones that offer them. Off only for comparisons:
     # OPENMOB_DEEP_LINKS=off.
     deep_links: bool = True
+    # In-app links (docs/design/app-links.md, agent/app_links.py): the open_link catalog tool (a YouTube search, Maps
+    # directions, a Play Store page… from one link), and open_url reporting which app took the link and when the
+    # app it belongs to didn't. Off only for comparisons: OPENMOB_APP_LINKS=off.
+    app_links: bool = True
+    # The fast path for links: a request that plainly names one `view` catalog entry ("search YouTube for lofi")
+    # opens it as the task's first action, with no main-model decision; a value the request doesn't give plainly
+    # comes from the small text model. OPENMOB_APP_LINKS_FAST=off to compare.
+    app_links_fast: bool = True
     # Actions the main model may take from one reply (1: one per turn). Above 1 it may chain a few whose
     # next screen it can predict (a chess piece then its square, type then Enter): each still passes
     # every check, and the rest of the turn is skipped at any error, owner prompt or unexpected screen.
@@ -345,6 +353,10 @@ def load_config(path: str | Path | None = None) -> Config:
         cfg.plan_execute = os.environ["OPENMOB_PLAN_EXECUTE"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_DEEP_LINKS", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
         cfg.deep_links = os.environ["OPENMOB_DEEP_LINKS"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_APP_LINKS", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.app_links = os.environ["OPENMOB_APP_LINKS"].strip().lower() in ("on", "1", "true")
+    if os.environ.get("OPENMOB_APP_LINKS_FAST", "").strip().lower() in ("on", "1", "true", "off", "0", "false"):
+        cfg.app_links_fast = os.environ["OPENMOB_APP_LINKS_FAST"].strip().lower() in ("on", "1", "true")
     if os.environ.get("OPENMOB_SCROLL_SETTLE_S", "").strip():
         cfg.scroll_settle_delay = float(os.environ["OPENMOB_SCROLL_SETTLE_S"])
     cfg.workspace_id = os.environ.get("ANTHROPIC_WORKSPACE_ID")
