@@ -473,14 +473,14 @@ class V1Service:
             return None  # disconnected meanwhile: the task waits or fails on its own
         return None
 
-    def permission_mode(self, p: Principal, device_id: str, mode: str | None) -> str:
+    def permission_mode(self, p: Principal, device_id: str, mode: str | None, max_mode: str | None = None) -> str:
         """The mode a task of this key runs in on this phone: `mode` if it's no looser than both the key's
         max_mode and the phone's ceiling (else 403 mode_not_allowed), or by default the phone's default
         mode tightened to fit."""
         _, session = self._owned_device(p.account_id, device_id)
         session_id = "app-" + device_id.removeprefix("app-")
         try:
-            return self.manager.check_mode(session.info.id if session else session_id, mode, p.max_mode)
+            return self.manager.check_mode(session.info.id if session else session_id, mode, max_mode or p.max_mode)
         except perm.ModeNotAllowed as exc:
             raise Forbidden(str(exc) + REPORT, code="mode_not_allowed") from None
         except perm.PermissionsInvalid as exc:
@@ -581,7 +581,10 @@ class V1Service:
         _, session = self._owned_device(account_id, device_id)
         if session is None or not session.online:
             raise Conflict(OFFLINE, code="phone_offline")
-        mode = self.permission_mode(p, device_id, permission_mode)
+        if permission_mode in perm.MODES and perm.looser(permission_mode, drive.MAX_MODE):
+            raise Forbidden(f"Drive sessions run at most in {drive.MAX_MODE} mode: an outside agent decides every "
+                            f"step, so {permission_mode} isn't offered to it." + REPORT, code="mode_not_allowed")
+        mode = self.permission_mode(p, device_id, permission_mode, max_mode=perm.tightest(p.max_mode, drive.MAX_MODE))
         if not goal or len(goal) > MAX_INSTRUCTION:
             raise BadRequest(f"The goal must be 1 to {MAX_INSTRUCTION} characters.")
         max_steps = min(max_steps or self.cfg.api_max_steps, self.cfg.api_max_steps)

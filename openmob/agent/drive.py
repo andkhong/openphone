@@ -21,6 +21,9 @@ from ..phone.adb import Screenshot, UIElement, format_elements
 SOURCE = "drive"  # the steps table's `source` for an act an outside agent decided
 TIER = "drive"  # the task's tier in the ledger and the developer console
 CREDITS_PER_STEP = 1
+# The loosest mode a drive session runs in, whatever the key and phone allow (owner, 2026-10-09): an outside agent
+# decides every step, so Don't ask (never) is not offered to it.
+MAX_MODE = "trusted"
 REDACTED = "<redacted>"
 ESCAPE_KEYS = {"BACK", "HOME"}  # the only acts accepted while a blocked app is in front (the loop's own way out)
 KEYS = {"BACK", "HOME", "ENTER"}  # the keys a drive session may press

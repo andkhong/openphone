@@ -230,8 +230,9 @@ loop's own waits (after a launch, during an install) run as always: they only re
   `answer_question(approve=false)` on the session, which is one of its tasks.
 - **`max_mode`** caps the session's permission mode exactly as a task's (`V1Service.permission_mode`), and the
   phone's ceiling applies: a looser request is `mode_not_allowed`. The default is the phone's default mode
-  tightened to the key's `max_mode`. `never` is allowed when the owner allowed it for the key and the phone
-  (an owner question, §10).
+  tightened to the key's `max_mode` and to **`trusted`**. **Drive sessions never run in `never` (Don't ask)**,
+  whatever the key and phone allow (owner, 2026-10-09; `drive.MAX_MODE`): a request for it is
+  `mode_not_allowed`.
 - The session's blocked apps are the task's: sensitive apps unless the owner's `allow_sensitive_apps`,
   OpenMob itself always, every sensitive app under Don't ask.
 
@@ -298,21 +299,19 @@ model call of its own; the outside agent's thinking is on top and is not OpenMob
 So a step costs about what a loop step costs without its model time: roughly 1–1.5 s for a tap and its look,
 against 2–3 s with a Claude decision. Whether an outside agent is faster overall depends on its own model.
 
-## 10. Open owner decisions
+## 10. Owner decisions (2026-10-09)
 
-1. **Don't ask for drive sessions.** A key with `max_mode: never` on a phone where the owner turned Don't ask
-   on can drive without prompts (purchases, autofill and blocked apps still refused). That mirrors `run_task`.
-   Should the drive level be capped at `trusted` regardless, since the deciding model is not OpenMob's?
-2. **Screenshots by default.** Off here: elements only unless asked (`screenshots: true`) and `screen:read`.
-   Should `devices:drive` imply pixels (one scope to grant), or stay as two?
-3. **The element list under `devices:drive` alone.** The list holds every text on screen. It is treated as
-   part of driving (you can't drive blind) and the scope is marked sensitive. Alternative: require
-   `screen:read` for `observe` too.
-4. **OTP fields.** The drive level refuses typing into them; the loop doesn't (it types login codes under the
-   owner's instruction). Align the loop, or keep the asymmetry?
-5. **Idle timeout and duration** (120 s, 30 min) and the step cap (the task cap, 40). An outside agent that
-   thinks for a minute between steps is fine; one that goes away holds the phone for 2 minutes.
-6. **Credits.** A drive step is charged 1 credit (no model cost to OpenMob). Should it be 0, or the phone's time?
+1. **Don't ask: not for drive sessions.** Capped at `trusted` regardless of the key and phone, since the
+   deciding model is not OpenMob's (`drive.MAX_MODE`).
+2. **Screenshots stay opt-in:** elements only unless asked (`screenshots: true`) and `screen:read`.
+3. **The element list comes with `devices:drive` alone:** you can't drive blind; the scope is marked sensitive.
+4. **OTP fields: the asymmetry stays.** The drive level never types one-time codes; the loop may, under the
+   owner's own instruction.
+5. **Limits as proposed:** 120 s idle, 30 min, the task's step cap (40), 1 credit per step.
+
+Also fixed with these: a login form whose fields carry no label, description or hint no longer counts as a
+treeless (game) screen after two looks, so the tree keeps being read and the password and code checks see it.
+This applied to every task, not just drive sessions.
 
 ## 11. Threat model
 

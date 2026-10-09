@@ -405,3 +405,16 @@ def test_a_password_fields_text_is_redacted_in_the_view(tmp_path):
     assert "hunter2" not in channel.view_text and "Log in" in channel.view_text
     end(channel)
     assert wait_for(lambda: "result" in done)
+
+
+def test_a_login_form_without_labels_stays_readable_so_its_password_is_never_typed(tmp_path):
+    # Fields with no text, no description and no hint used to count as a game's treeless screen after two looks
+    # (ui_tree auto), and the tree stopped being read, so the password check couldn't see the field.
+    a, driver, io = agent(tmp_path, package=SHOP, elements=[field(0, password=True)])
+    channel, done = session(a)
+    for _ in range(3):
+        look(channel)
+    refused = act(channel, "type_text", text="hunter2")
+    assert refused.outcome["refused"] and "password" in refused.outcome["text"] and not did(driver, "type")
+    end(channel)
+    assert wait_for(lambda: "result" in done)

@@ -261,6 +261,15 @@ def test_a_mode_looser_than_the_key_allows_is_refused(api, driver_key):
     assert result.is_error and "mode_not_allowed" in text(result)
 
 
+def test_drive_never_runs_in_dont_ask_even_when_the_key_allows_it(api):
+    # Owner, 2026-10-09: drive is capped at trusted; an outside agent decides every step.
+    key = new_key(api, api.alice, DRIVE + ["tasks:read", "tasks:run"], max_mode="never")
+    api.alice.driver.elements = [button(0, "Search", rid="search")]
+    result = call(api, key, "start_session", goal="x", permission_mode="never")
+    assert result.is_error and "mode_not_allowed" in text(result) and "at most in trusted" in text(result)
+    assert not did(api.alice.driver, "tap")
+
+
 # --- the owner sees it and can stop it -----------------------------------------------------------
 
 

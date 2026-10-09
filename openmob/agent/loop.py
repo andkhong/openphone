@@ -823,7 +823,9 @@ class Agent:
         # Games make uiautomator slow and useless; stop asking after two empty dumps.
         if mode == "always" or (mode == "auto" and state.treeless_misses.get(package or "", 0) < 2):
             elements = self.driver.ui_elements()
-            useful = any(el.text or el.desc for el in elements)
+            # A text field counts even without a label: a login form whose fields have only hints (or nothing)
+            # must stay readable, or the password and code checks can't see it.
+            useful = any(el.text or el.desc or el.hint or el.editable or el.password for el in elements)
             key = package or ""
             state.treeless_misses[key] = 0 if useful else state.treeless_misses.get(key, 0) + 1
         if pending_shot is not None:
