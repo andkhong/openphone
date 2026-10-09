@@ -92,8 +92,14 @@ Settings pages and Build number, a bank app while it loads and once open (taps n
 are black or empty, no live-view frames), password and OTP fields, a keyboard/autofill tap over a
 WebView form, runtime permission dialogs, the phone-owned approval for "Buy now", that any other
 action voids an approval, the purchase follow-up, a deep WebView "Place order", prompt flooding,
-keep-awake by polling, and the friction of an honest checkout. The last results are in
-[gatekeeper-b7-results.md](research/gatekeeper-b7-results.md).
+keep-awake by polling, and the friction of an honest checkout. Phase 5 added `open_settings` page keys (unknown,
+security, app pages for the bank and OpenMob, malformed packages, date_time), `type_text` with `replace` (password,
+OTP and a field in the bank; an insert's permit can't be spent on a replace), `open_url` schemes (custom ones refused;
+tel:, sms:, mailto:, market: open their handler; an https link whose verified handler is the bank is refused), a window
+hidden from accessibility (reads black, acts refused, BACK allowed), the methods B7 never called (wait_for over the
+bank, task_grant, HOME, APP_SWITCH, wake_unlock), and Don't ask turned on through the signed mode_change prompt. The
+results are in [gatekeeper-b7-results.md](research/gatekeeper-b7-results.md) (B7) and
+[gatekeeper-phase5-results.md](research/gatekeeper-phase5-results.md) (Phase 5, with the onboarding checklist).
 
 Setup, on an Apple Silicon Mac (other hosts: the matching system image):
 

@@ -35,11 +35,21 @@ public class MainActivity extends Activity {
         Button signIn = new Button(this);
         signIn.setText("Sign in");
         signIn.setOnClickListener(v -> Log.i("LoginStandIn", "SIGN IN"));
+        // A one-time code field (the gatekeeper's otp_field rule matches its hint): typing is logged by length.
+        EditText otp = new EditText(this);
+        otp.setHint("Verification code");
+        otp.setInputType(InputType.TYPE_CLASS_NUMBER);
+        otp.addTextChangedListener(new android.text.TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            public void afterTextChanged(android.text.Editable s) { Log.i("LoginStandIn", "OTP length=" + s.length()); }
+        });
         LinearLayout.LayoutParams row = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 170);
         col.addView(title);
         col.addView(user, row);
         col.addView(pass, row);
         col.addView(signIn, row);
+        col.addView(otp, row);
         setContentView(col);
     }
 }

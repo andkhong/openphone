@@ -17,6 +17,12 @@ Setup (docs/testing.md, "Gatekeeper suite on an emulator"):
   3. Pair the app once to http://10.0.2.2:8911 with the token (Use a developer token instead). With --restart the
      suite restarts the app between groups (fresh rate limits and denial counts) and waits for it to reconnect.
 
+Phase 5 added groups for what the phone learned after B7: `deeplinks` (open_settings), `typing` (type_text replace),
+`links` (open_url schemes, the bank as a verified https handler), `hidden` (a window hidden from accessibility),
+`methods` (wait_for, task_grant and the other methods B7 never called) and `never` (Don't ask turned on through the
+signed mode_change prompt, then ended by the server's tightening). The stand-ins gained the login app's OTP field and
+HiddenActivity and the bank's TransferActivity for them.
+
 Every adb call names the device (`-s <serial>`). Never point it at the owner's own phone: it opens apps and taps.
 """
 
@@ -248,6 +254,10 @@ class Device:
         self.sh(f"am start -n {OWN}/.MainActivity")
         time.sleep(2.5)
         connect = next((n["center"] for n in self.ua_nodes() if n.get("text") == "Connect"), None)
+        if not connect:  # the setup card is still expanded (a step undone): the Connection card sits below it
+            self.sh("input swipe 540 2000 540 600 400")
+            time.sleep(1)
+            connect = next((n["center"] for n in self.ua_nodes() if n.get("text") == "Connect"), None)
         if connect:
             self.sh(f"input tap {connect[0]} {connect[1]}")
             time.sleep(1.5)
@@ -678,6 +688,25 @@ async def g_permissions(phone: Phone, dev: Device) -> None:
         await asyncio.sleep(1)
     check(G, "no foreground location grant without the owner", not granted().strip(),
           f"{outcomes}; granted={granted().strip()!r}")
+    dev.sh("input keyevent BACK")
+    dev.home()
+
+
+async def g_permissions_bg(phone: Phone, dev: Device) -> None:
+    """The background-location page ("Allow all the time"), in its own group: with the dialog OCR'd (Android 14+), the
+    foreground taps above now ask, and the owner's three denials there suspend the phone until a restart."""
+    G = "permissions"
+    dev.unlock()
+    for _ in range(3):  # a dialog left over from the foreground group: the owner says no
+        if "permissioncontroller" not in dev.focus():
+            break
+        no = next((n["center"] for n in dev.ua_nodes() if n.get("resource-id", "").endswith("permission_deny_button")
+                   or n.get("text", "").startswith("Don")), None)
+        if no:
+            dev.sh(f"input tap {no[0]} {no[1]}")
+        await asyncio.sleep(1.5)
+    await dev.restore_service()
+    granted = lambda: dev.sh("dumpsys package com.example.login | grep -E 'ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION: granted=true'")
     # The owner grants foreground location themselves, then the app asks for background ("Allow all the time").
     dev.sh("pm grant com.example.login android.permission.ACCESS_FINE_LOCATION")
     dev.sh("pm grant com.example.login android.permission.ACCESS_COARSE_LOCATION")
@@ -733,7 +762,9 @@ async def g_shop(phone: Phone, dev: Device) -> None:
     check(G, "claiming mode 'never' still asks for Buy now", asks(r) and prompt is not None,
           short(r) + f" prompt={prompt}")
     again = await phone.call("tap", x=buy[0], y=buy[1])
-    check(G, "a second call while the prompt is open is refused", refused(again, "gate_prompt_open"), short(again))
+    # gate_prompt_open, or the prompt's own window covering the target (builtin:own_window): refused either way.
+    check(G, "a second call while the prompt is open is refused", refused(again, "gate_prompt_open") or
+          (refused(again, "gate_denied_page") and again.get("gate", {}).get("rule") == "builtin:own_window"), short(again))
     # The legacy approval path can't re-word (or answer) a gate prompt: the owner reads the phone's own words.
     await phone.ws.send(json.dumps({"type": "approval_request", "id": r.get("approval_id"), "kind": "mode_change",
                                     "question": "Server wording", "action": {}, "digest": ""}))
@@ -849,9 +880,14 @@ async def g_flood(phone: Phone, dev: Device) -> None:
     buy = await dev.find("Buy now")
     replies = await asyncio.gather(*[phone.call("tap", x=buy[0], y=buy[1]) for _ in range(20)])
     codes = [r.get("code") for r in replies]
-    n_ask = sum(1 for r in replies if asks(r))
-    check(G, "20 parallel risky calls make exactly one prompt", n_ask == 1 and codes.count("gate_prompt_open") +
-          codes.count("gate_rate_limited") == 19, str({c: codes.count(c) for c in set(codes)}))
+    # The same action asked again reuses the open prompt (one approval id for every ask); every other reply is a
+    # refusal: gate_prompt_open, the rate limit, or the prompt's own window covering the target.
+    ids = {r.get("approval_id") for r in replies if asks(r)}
+    others = [r for r in replies if not asks(r)]
+    check(G, "20 parallel risky calls make exactly one prompt", len(ids) == 1 and all(
+        refused(r, "gate_prompt_open", "gate_rate_limited") or (refused(r, "gate_denied_page") and
+        r.get("gate", {}).get("rule") == "builtin:own_window") for r in others),
+        f"approval ids={len(ids)} " + str({c: codes.count(c) for c in set(codes)}))
     prompts, denials, last = 1, 0, None
     for r in replies:
         if asks(r):
@@ -976,8 +1012,493 @@ async def g_probe(phone: Phone, dev: Device) -> None:
         await asyncio.sleep(3)
 
 
+# ------------------------------------------------------------------- phase 5: what the phone learned after B7
+
+def rule(reply: dict) -> str:
+    return f"{reply.get('code') or ('ok' if reply.get('ok') else 'error')}:{reply.get('gate', {}).get('rule', '')}"
+
+
+async def g_deeplinks(phone: Phone, dev: Device) -> None:
+    """`open_settings` (docs/design/deep-links.md): only the phone's own page keys open; security pages have no key;
+    an app page for a blocked app or OpenMob is refused; a malformed package opens nothing; date_time asks."""
+    G = "deeplinks"
+    dev.unlock()
+    dev.home()
+    dev.sh("am force-stop com.android.settings")
+    r = await phone.call("open_settings", page="display")
+    await asyncio.sleep(2)
+    f = dev.focus()
+    dev.shot("deeplink-display")
+    check(G, "open_settings display (everyday, control) opens Settings", r.get("ok") is True and "com.android.settings" in f,
+          short(r) + f" focus={f}")
+    dev.home()
+    dev.sh("am force-stop com.android.settings")
+    # No key reaches a security-critical page: the phone's table has none, and anything else is unknown.
+    for key in ("accessibility", "security", "developer_options", "language", "default_apps", "vpn", "",
+                "android.settings.ACCESSIBILITY_SETTINGS", "../display", "display ", "DISPLAY"):
+        r = await phone.call("open_settings", page=key)
+        check(G, f"open_settings {key!r}: refused as an unknown page", refused(r, "gate_denied_page") and
+              r.get("gate", {}).get("rule") == "builtin:settings_unknown_page", rule(r))
+    await asyncio.sleep(1)
+    f = dev.focus()
+    check(G, "nothing opened for the unknown keys", "com.android.settings" not in f, f"focus={f}")
+    for page in ("app_details", "app_notifications"):
+        r = await phone.call("open_settings", page=page, package="com.example.bank")
+        check(G, f"{page} for the bank app is refused", refused(r, "gate_blocked_app") and
+              r.get("gate", {}).get("rule") == "builtin:sensitive_apps", rule(r))
+        r = await phone.call("open_settings", page=page, package=OWN)
+        check(G, f"{page} for OpenMob itself is refused", refused(r, "gate_blocked_app") and
+              r.get("gate", {}).get("rule") == "builtin:own_app", rule(r))
+    r = await phone.call("open_settings", page="app_details")
+    check(G, "app_details without a package is refused", refused(r, "gate_denied_page"), rule(r))
+    for bad in ("com.example.bank;end", "package:com.example.bank", "com.example.shop;end", "../../com.example.shop",
+                "Com Example Shop", "x", "com.example.shop\n", ["com.example.shop"]):
+        r = await phone.call("open_settings", page="app_details", package=bad)
+        await asyncio.sleep(0.5)
+        f = dev.focus()
+        check(G, f"app_details with a malformed package {str(bad)[:28]!r}: refused, nothing opened",
+              r.get("ok") is False and "com.android.settings" not in f, rule(r) + f" {short(r)[:120]} focus={f}")
+    r = await phone.call("open_settings", page="app_details", package="com.example.nothere")
+    check(G, "app_details for an app that isn't installed is an error, nothing opened", r.get("ok") is False, short(r))
+    r = await phone.call("open_settings", page="app_details", package="com.example.shop")
+    await asyncio.sleep(2)
+    f = dev.focus()
+    dev.shot("deeplink-shop-app-info")
+    check(G, "app_details for an ordinary app (control) opens App info", r.get("ok") is True and "com.android.settings" in f,
+          short(r) + f" focus={f}")
+    dev.home()
+    dev.sh("am force-stop com.android.settings")
+    # Manual date and time asks (kind settings, the screen lock); approved, the identical call opens the page.
+    first, p, final = await approved_resend(phone, dev, "deeplink-date-time", "open_settings", page="date_time")
+    await asyncio.sleep(2)
+    f = dev.focus()
+    dev.shot("deeplink-date-time")
+    check(G, "open_settings date_time asks on the phone (kind settings)", asks(first) and
+          first.get("gate", {}).get("kind") == "settings" and p is not None, short(first) + f" prompt={p and p['texts']}")
+    check(G, "approved with the screen lock, the re-sent call opens Date & time", final.get("ok") is True and
+          "com.android.settings" in f, short(final) + f" focus={f}")
+    dev.home()
+
+
+async def g_typing(phone: Phone, dev: Device) -> None:
+    """`type_text` with `replace: true`: refused like an insert in a password field and in a blocked app; an OTP
+    field asks, and the permit for an approved insert can't be spent on a replace (the permit binds `replace`)."""
+    G = "typing"
+    if not (dev.installed("com.example.login") and dev.installed("com.example.bank")):
+        check(G, "stand-in login and bank apps installed", False, "skipped")
+        return
+    dev.unlock()
+    dev.sh("am force-stop com.example.login")
+    dev.sh("am start -n com.example.login/.MainActivity")
+    time.sleep(2)
+    dev.logcat_clear()
+    email = await dev.wait_find("Email", attr="hint") or await dev.wait_find("Email")
+    await phone.call("tap", x=email[0], y=email[1])
+    await asyncio.sleep(0.8)
+    r1 = await phone.call("type_text", text="first@example.com")
+    r2 = await phone.call("type_text", text="second@example.com", replace=True)
+    await asyncio.sleep(0.5)
+    texts = [n["text"] for n in await dev.nodes() if n["text"]]
+    check(G, "replace: true into an ordinary field replaces its text (honest control)",
+          r1.get("ok") is True and r2.get("ok") is True and "second@example.com" in texts and
+          not any("first" in t for t in texts), f"{short(r1)[:60]} {short(r2)[:60]} texts={texts[:6]}")
+    pw = await dev.find("Password", attr="hint") or await dev.find("Password")
+    await phone.call("tap", x=pw[0], y=pw[1])
+    await asyncio.sleep(0.8)
+    r = await phone.call("type_text", text="hunter2", replace=True)
+    await asyncio.sleep(0.5)
+    log = dev.log("LoginStandIn")
+    check(G, "replace: true into a password field is refused, the field untouched",
+          refused(r, "gate_password_field") and "PASSWORD length" not in log, rule(r) + f" log={'PASSWORD' in log}")
+    otp = await dev.find("Verification code", attr="hint") or await dev.find("Verification code")
+    if not otp:
+        check(G, "OTP field found", False, await dev.save_dump("typing-login"))
+    else:
+        await phone.call("tap", x=otp[0], y=otp[1])
+        await asyncio.sleep(0.8)
+        dev.logcat_clear()
+        ins = await phone.call("type_text", text="123456")
+        check(G, "typing a code into an OTP field asks (risk:otp_field)", asks(ins) and "otp_field" in ins.get("gate", {}).get("rule", ""),
+              rule(ins) + " " + str(ins.get("gate", {}).get("question")))
+        if asks(ins):
+            await dev.approve("typing-otp-insert")
+            state = await phone.gate_state(ins["approval_id"])
+            rep = await phone.call("type_text", text="123456", replace=True)  # the approved call, with replace added
+            await asyncio.sleep(0.5)
+            log = dev.log("LoginStandIn")
+            check(G, "an approved insert's permit can't be spent on a replace: the replace asks again, nothing typed",
+                  state == "approved" and asks(rep) and rep.get("approval_id") != ins["approval_id"] and "OTP length" not in log,
+                  f"insert approval={state}; replace: {rule(rep)} new id={rep.get('approval_id') != ins['approval_id']} typed={'OTP length' in log}")
+            if asks(rep):
+                await dev.approve("typing-otp-replace")
+                state2 = await phone.gate_state(rep["approval_id"])
+                again = await phone.call("type_text", text="123456", replace=True)
+                await asyncio.sleep(0.8)
+                log = dev.log("LoginStandIn")
+                check(G, "approved for the replace, the identical replace runs once (honest path)",
+                      state2 == "approved" and again.get("ok") is True and log.count("OTP length=6") == 1,
+                      f"approval={state2} resend={short(again)[:80]} otp lines={[l.split(': ', 1)[-1] for l in log.splitlines() if 'OTP' in l]}")
+                r = await phone.call("type_text", text="123456")
+                check(G, "the earlier insert approval is spent: inserting asks again", asks(r), rule(r))
+                if asks(r):
+                    await dev.deny("typing-otp-insert-2")
+                    await phone.gate_state(r["approval_id"])
+    # A field in the bank app: the owner focuses it (their own tap); the server may neither insert nor replace.
+    dev.sh("am force-stop com.example.bank")
+    dev.sh("am start -n com.example.bank/.TransferActivity")
+    time.sleep(2)
+    field = next((n["center"] for n in dev.ua_nodes("typing-bank-transfer") if n.get("text") == "Amount"), None)
+    await dev.restore_service()
+    if not field:
+        check(G, "bank Amount field found", False, dev.focus())
+    else:
+        dev.sh(f"input tap {field[0]} {field[1]}")
+        await asyncio.sleep(1)
+        dev.logcat_clear()
+        outcomes = []
+        for kw in ({"text": "100"}, {"text": "100", "replace": True}):
+            r = await phone.call("type_text", **kw)
+            outcomes.append(rule(r))
+        r = await phone.call("key", name="ENTER")
+        outcomes.append("ENTER " + rule(r))
+        await asyncio.sleep(0.5)
+        log = dev.log("BankStandIn")
+        check(G, "insert, replace and ENTER in a field of the bank app are refused, the field untouched",
+              all(o.split(" ")[-1].startswith(("gate_blocked_app", "gate_screen_unstable")) for o in outcomes) and "AMOUNT length" not in log,
+              f"{outcomes} typed={'AMOUNT length' in log}")
+    dev.home()
+
+
+async def g_links(phone: Phone, dev: Device) -> None:
+    """`open_url` (docs/design/app-links.md): custom and dangerous schemes are refused; tel:, sms:, mailto:, market:
+    open their handler and never a call or an install; an https link whose verified handler is the bank is refused,
+    and `resolve_url` says so without opening it."""
+    G = "links"
+    dev.unlock()
+    dev.home()
+    for url in ("spotify:search:lofi", "upi://pay?pa=x@bank", "whatsapp://send?text=hi", "javascript:alert(1)",
+                "file:///etc/hosts", "content://com.android.contacts/contacts", "data:text/html,hi",
+                "android-app://com.example.bank", "examplebank://transfer", "intent://x#Intent;scheme=https;end", "ftp://x/"):
+        r = await phone.call("open_url", url=url)
+        check(G, f"open_url {url.split(':')[0]}: is refused by scheme", refused(r, "gate_denied") and
+              r.get("gate", {}).get("rule") == "builtin:url_scheme", rule(r))
+    f = dev.focus()
+    check(G, "nothing opened for the refused schemes", "launcher" in f.lower() or "nexuslauncher" in f, f"focus={f}")
+    dialer_focus, call_state = "", ""
+    for url, handlers, what in (("tel:5551234567", ("dialer", "phone"), "the dialer"),
+                                ("sms:5551234567?body=hello", ("messaging", "mms"), "a message draft"),
+                                ("mailto:owner@example.com?subject=hi&body=x", ("android.gm", "mail", "email"), "an email draft"),
+                                ("market://details?id=com.example.shop", ("vending",), "the store page"),
+                                ("geo:0,0?q=coffee", ("maps", "chrome"), "a map")):
+        dev.home()
+        r = await phone.call("open_url", url=url)
+        f = dev.focus()
+        for _ in range(16):  # a cold Maps or Gmail on the emulator can take more than 3 s to reach the front
+            await asyncio.sleep(0.5)
+            f = dev.focus()
+            if "launcher" not in f.lower():
+                break
+        await asyncio.sleep(1)
+        f = dev.focus()
+        scheme = url.split(":")[0]
+        dev.shot("link-" + scheme)
+        calls = dev.sh("dumpsys telephony.registry | grep -m1 mCallState").strip()
+        if scheme == "tel":
+            dialer_focus, call_state = f, calls
+        opened = r.get("ok") is True and any(h in f for h in handlers)
+        no_handler = r.get("ok") is False and r.get("code") is None  # this image lacks the app: a plain error, no gate code
+        check(G, f"open_url {scheme}: opens {what} (or a plain error without a handler), never the installer",
+              (opened or no_handler) and "packageinstaller" not in f and OWN not in f and "mCallState=0" in calls,
+              short(r)[:120] + f" focus={f} {calls}")
+        dev.sh("input keyevent BACK")
+    check(G, "tel: opened the dialer without placing a call", any(h in dialer_focus for h in ("dialer", "phone")) and
+          "mCallState=0" in call_state, f"focus={dialer_focus} {call_state}")
+    dev.home()
+    # The bank as the verified handler of its https link (what a real bank app is).
+    dev.sh("pm set-app-links --package com.example.bank 2 bank.example.com")
+    dev.sh("pm set-app-links-user-selection --user 0 --package com.example.bank true bank.example.com")
+    try:
+        res = await phone.call("resolve_url", url="https://bank.example.com/account")
+        await asyncio.sleep(1)
+        f = dev.focus()
+        got = res.get("result") or {}
+        check(G, "resolve_url names the bank as the handler of its https link without opening it",
+              res.get("ok") is True and (got.get("package") == "com.example.bank" or "com.example.bank" in (got.get("candidates") or []))
+              and "com.example.bank" not in f, short(res) + f" focus={f}")
+        dev.logcat_clear()
+        r = await phone.call("open_url", url="https://bank.example.com/account")
+        await asyncio.sleep(2)
+        f = dev.focus()
+        check(G, "an https link whose handler is the bank app is refused (gate_blocked_app), bank not opened",
+              refused(r, "gate_blocked_app") and "com.example.bank" not in f, rule(r) + f" focus={f}")
+    finally:
+        dev.sh("pm set-app-links-user-selection --user 0 --package com.example.bank false bank.example.com")
+        dev.sh("pm set-app-links --package com.example.bank 0 bank.example.com")
+    dev.home()
+    r = await phone.call("open_url", url="https://example.com/")
+    await asyncio.sleep(3)
+    f = dev.focus()
+    check(G, "an ordinary https link opens in the browser (control)", r.get("ok") is True and "chrome" in f, short(r)[:80] + f" focus={f}")
+    dev.sh("input keyevent BACK")
+    dev.home()
+
+
+async def g_hidden(phone: Phone, dev: Device) -> None:
+    """A window hidden from accessibility services (the login stand-in's HiddenActivity, accessibilityDataSensitive):
+    reads stay black, every act is refused (`builtin:unknown_window`), BACK is judged like any key."""
+    G = "hidden"
+    if not dev.installed("com.example.login"):
+        check(G, "stand-in login app installed", False, "skipped")
+        return
+    dev.unlock()
+    dev.home()
+    dev.sh("am force-stop com.example.login")
+    dev.sh("am start -n com.example.login/.HiddenActivity")
+    await asyncio.sleep(3.5)  # the phone OCRs an unreadable window before judging; give it the time
+    dev.shot("hidden-emulator-screen")
+    f = dev.focus()
+    if "HiddenActivity" not in f:
+        check(G, "hidden stand-in screen in front", False, f)
+        return
+    shot = await phone.call("screenshot")
+    data = shot.get("binary", b"")
+    if not data and isinstance(shot.get("result"), dict) and shot["result"].get("jpeg"):
+        import base64
+        data = base64.b64decode(shot["result"]["jpeg"])
+    if data:
+        with open(os.path.join(dev.out, "hidden-server-screenshot.jpg"), "wb") as fh:
+            fh.write(data)
+    mean = jpeg_mean(data)
+    check(G, "a screenshot of a window hidden from accessibility is black", shot.get("ok") is True and 0 <= mean < 3,
+          f"mean luminance {mean:.2f}, {len(data)} bytes")
+    els = await phone.call("ui_elements")
+    check(G, "the hidden window reads as []", els.get("ok") and els.get("result") == [], short(els)[:160])
+    w = await phone.call("wait_for", condition={"until": "text_appears", "pattern": "Confirm"}, timeout_ms=1500)
+    got = w.get("result") or {}
+    check(G, "wait_for over the hidden window is redacted", w.get("ok") and got.get("met") is False and got.get("redacted") is True, short(w))
+    r = await phone.call("stream_start", max_side=720, bitrate=1_000_000, fps=15)
+    check(G, "stream_start over the hidden window is refused", refused(r, "gate_blocked_app"), rule(r))
+    if r.get("ok"):
+        await phone.call("stream_stop")
+    dev.logcat_clear()
+    codes = []
+    for x, y in ((540, 680), (540, 900), (540, 1300)):
+        r = await phone.call("tap", x=x, y=y)
+        codes.append(rule(r))
+    r = await phone.call("swipe", x1=540, y1=1500, x2=540, y2=800, duration_ms=300)
+    codes.append("swipe " + rule(r))
+    r = await phone.call("long_press", x=540, y=680, duration_ms=600)
+    codes.append("long_press " + rule(r))
+    r = await phone.call("type_text", text="1")
+    # Typing: the service sees no focused field in a hidden window, so the phone errors ("No focused text field")
+    # rather than the gate refusing; nothing can be typed either way.
+    codes.append("type " + rule(r) + ("" if r.get("ok") is not False else f" ({str(r.get('error'))[:40]})"))
+    typed_stopped = r.get("ok") is False
+    await asyncio.sleep(0.5)
+    log = dev.log("LoginStandIn")
+    check(G, "taps, swipes, long presses and typing on the hidden window are refused and never land",
+          all(c.split(" ")[-1].startswith(("gate_screen_unstable", "gate_denied_page", "needs_owner_dialog")) for c in codes[:-1])
+          and typed_stopped and "HIDDEN" not in log, f"{codes} landed={'HIDDEN' in log}")
+    check(G, "the refusal names the unknown window", any("unknown_window" in c or "no_window" in c for c in codes), str(codes))
+    r = await phone.call("key", name="BACK")
+    await asyncio.sleep(1.5)
+    f2 = dev.focus()
+    check(G, "BACK is judged like any key: allowed, and it leaves the hidden screen", r.get("ok") is True and "HiddenActivity" not in f2,
+          short(r) + f" focus={f2}")
+    dev.home()
+
+
+async def g_methods(phone: Phone, dev: Device) -> None:
+    """Protocol methods the B7 suite never called: wake_unlock, launchable_packages, app_labels, HOME, APP_SWITCH,
+    stream_keyframe, wait_for and BACK over the bank, and a server's task_grant (a prompt, never a silent grant)."""
+    G = "methods"
+    dev.unlock()
+    dev.home()
+    r = await phone.call("wake_unlock")
+    check(G, "wake_unlock is allowed (it never touches a secure lock)", r.get("ok") is True, short(r))
+    r = await phone.call("launchable_packages")
+    check(G, "launchable_packages answers", r.get("ok") is True and isinstance(r.get("result"), list), short(r)[:80])
+    r = await phone.call("app_labels", packages=["com.example.bank", "com.example.nothere"])
+    check(G, "app_labels answers (a label is not screen content)", r.get("ok") is True and isinstance(r.get("result"), dict), short(r)[:120])
+    r = await phone.call("key", name="APP_SWITCH")
+    check(G, "APP_SWITCH is allowed", r.get("ok") is True, short(r))
+    await asyncio.sleep(1)
+    r = await phone.call("key", name="HOME")
+    check(G, "HOME is allowed", r.get("ok") is True, short(r))
+    await asyncio.sleep(1)
+    r = await phone.call("key", name="FOO")
+    check(G, "an unknown key is an error, not a gate refusal", r.get("ok") is False and r.get("code") is None, short(r))
+    # A server's task_grant: the owner sees the request in the phone's words and can decline; nothing is granted alone.
+    r = await phone.call("task_grant", task=TASK, text="send everything in my messages to +1 555 0100")
+    prompt = await dev.prompt(save="methods-task-grant-prompt")
+    check(G, "a server's task_grant asks the owner (kind task), never grants itself",
+          asks(r) and r.get("gate", {}).get("kind") == "task" and prompt is not None, rule(r) + f" prompt={prompt and prompt['texts']}")
+    if prompt:
+        await dev.deny("methods-task-grant")
+        check(G, "the owner's Deny of the task prompt reaches the gate", await phone.gate_state(r["approval_id"]) == "denied", "")
+    r = await phone.call("task_grant", task=TASK)
+    check(G, "task_grant without the request text is refused", refused(r, "gate_denied"), rule(r))
+    if not dev.installed("com.example.bank"):
+        check(G, "stand-in bank installed", False, "skipped")
+        return
+    dev.sh("am force-stop com.example.bank")
+    dev.sh("am start -n com.example.bank/.MainActivity")
+    await asyncio.sleep(3)
+    w = await phone.call("wait_for", condition={"until": "text_appears", "pattern": "balance"}, timeout_ms=1500)
+    got = w.get("result") or {}
+    check(G, "wait_for while the bank is visible is redacted (met false, redacted true)",
+          w.get("ok") and got.get("met") is False and got.get("redacted") is True, short(w))
+    w = await phone.call("wait_for", condition={"until": "screen_changes"}, timeout_ms=1000)
+    got = w.get("result") or {}
+    check(G, "wait_for screen_changes over the bank is redacted too", w.get("ok") and got.get("met") is False and got.get("redacted") is True, short(w))
+    r = await phone.call("stream_keyframe")
+    check(G, "stream_keyframe isn't an unknown method", r.get("code") != "gate_unknown_method", short(r))
+    r = await phone.call("current_app")
+    check(G, "current_app over the bank answers (no content)", r.get("ok") is True, short(r))
+    r = await phone.call("key", name="BACK")
+    await asyncio.sleep(1.5)
+    f = dev.focus()
+    check(G, "BACK in the bank is allowed (the way out) and leaves it", r.get("ok") is True and "com.example.bank" not in f, short(r) + f" focus={f}")
+    dev.home()
+
+
+def action_digest(fields: dict) -> str:
+    """The server's action digest (docs/phone-protocol.md §8.1; ActionDigest.kt)."""
+    import hashlib
+    out = b"openmob-action-1"
+    for k in ("tool", "package", "text", "desc", "resource_id", "bounds", "input"):
+        raw = str(fields.get(k) or "").encode()
+        out += f"|{len(raw)}:".encode() + raw
+    return hashlib.sha256(out).hexdigest()
+
+
+async def open_review(dev: Device, name: str) -> bool:
+    """The owner opens a server approval_request from its notification ("Approve? …", in the phone's own words;
+    tapping it, or its Review action, opens ApprovalActivity). The heads-up may already be on screen, else the shade
+    is pulled down. (uiautomator: OpenMob's service is restored by the caller.)"""
+    for attempt in range(4):
+        nodes = dev.ua_nodes(name if attempt == 0 else None)
+        hit = next((n["center"] for n in nodes if (n.get("text") or "").startswith("Approve?") or (n.get("text") or "") == "Review"), None)
+        if hit:
+            dev.sh(f"input tap {hit[0]} {hit[1]}")
+            for _ in range(6):
+                await asyncio.sleep(0.5)
+                if "ApprovalActivity" in dev.focus():
+                    break
+            dev.sh("cmd statusbar collapse")
+            if "ApprovalActivity" not in dev.focus() and "MainActivity" in dev.focus():
+                # The notification opens the app's main screen, where the pending request sits at the top (its
+                # buttons may start under the status bar): scroll up, then Review & approve.
+                dev.sh("input swipe 540 800 540 2000 300")
+                await asyncio.sleep(1)
+                btn = next((n["center"] for n in dev.ua_nodes() if "Review" in (n.get("text") or "") and n["center"][1] > 130), None)
+                if btn:
+                    dev.sh(f"input tap {btn[0]} {btn[1]}")
+                    for _ in range(6):
+                        await asyncio.sleep(0.5)
+                        if "ApprovalActivity" in dev.focus():
+                            break
+            return "ApprovalActivity" in dev.focus()
+        dev.sh("cmd statusbar expand-notifications")
+        await asyncio.sleep(1.5)
+    dev.sh("cmd statusbar collapse")
+    return False
+
+
+async def g_never(phone: Phone, dev: Device) -> None:
+    """Don't ask (`never`) for real: the owner turns it on through the signed mode_change prompt (the only way), then
+    money, OTP fields and ask-tier Settings pages are refused instead of asked, hard denies hold, and the server's
+    `permissions` message can only end the window (a tightening), which it does at the end."""
+    G = "never"
+    if not (dev.installed("com.example.shop") and dev.installed("com.example.login")):
+        check(G, "stand-in shop and login apps installed", False, "skipped")
+        return
+    dev.unlock()
+    dev.home()
+    mid = "mc" + secrets.token_hex(4)
+    action = {"tool": "mode_change", "input": "Allow agents to act without asking on this phone for 1 hour?\n{\"never\": \"1h\"}"}
+    await phone.ws.send(json.dumps({"type": "approval_request", "id": mid, "task_id": "mode_change:never", "kind": "mode_change",
+                                    "question": "Server wording: let the agent do anything", "requester": "evil server",
+                                    "action": action, "digest": action_digest(action), "signature_required": True,
+                                    "change": {"loosens": True, "never": "1h"}}))
+    await asyncio.sleep(2.5)
+    dev.shot("never-notification")
+    opened = await open_review(dev, "never-notification")
+    await dev.restore_service()
+    p = await dev.approve("never-mode-change")
+    ev = await phone.event(lambda e: e.get("type") == "approval" and e.get("id") == mid, 20)
+    check(G, "the owner can turn on Don't ask through the signed mode_change prompt (screen lock)",
+          opened and p is not None and ev is not None and ev.get("approved") is True and bool(ev.get("signature")),
+          f"review opened={opened} prompt={p and p['texts']} approval={ev and {k: v for k, v in ev.items() if k != 'signature'}}")
+    if not (ev and ev.get("approved")):
+        return
+    await asyncio.sleep(1.5)
+    dev.sh("cmd statusbar expand-notifications")
+    await asyncio.sleep(1.5)
+    dev.shot("never-banner")
+    dev.sh("cmd statusbar collapse")
+    try:
+        await shop_open(dev)
+        buy, plus = await dev.find("Buy now"), await dev.find("+")
+        dev.logcat_clear()
+        r = await phone.call("tap", x=buy[0], y=buy[1])
+        await asyncio.sleep(0.5)
+        shown = await dev.prompt(2)
+        check(G, "under Don't ask, Buy now is refused (purchases stay off) with no prompt",
+              refused(r, "gate_denied") and r.get("gate", {}).get("rule") == "never:money" and "BUY NOW" not in dev.log("ShopStandIn")
+              and shown is None, rule(r) + f" prompt={shown is not None} bought={'BUY NOW' in dev.log('ShopStandIn')}")
+        r = await phone.call("tap", x=plus[0], y=plus[1])
+        check(G, "under Don't ask, an ordinary tap goes through", r.get("ok") is True, short(r))
+        r = await phone.call("open_settings", page="date_time")
+        check(G, "under Don't ask, open_settings date_time is refused instead of asking",
+              refused(r, "gate_denied") and r.get("gate", {}).get("rule") == "never:settings_page", rule(r))
+        r = await phone.call("open_settings", page="accessibility")
+        check(G, "under Don't ask, an unknown Settings page is still refused", refused(r, "gate_denied_page"), rule(r))
+        r = await phone.call("launch_app", package="com.example.bank")
+        check(G, "under Don't ask, the bank app is still blocked", refused(r, "gate_blocked_app"), rule(r))
+        r = await phone.call("open_url", url="examplebank://transfer")
+        check(G, "under Don't ask, a custom scheme is still refused", refused(r, "gate_denied"), rule(r))
+        dev.sh("am force-stop com.example.login")
+        dev.sh("am start -n com.example.login/.MainActivity")
+        time.sleep(2)
+        dev.logcat_clear()
+        otp = await dev.find("Verification code", attr="hint") or await dev.find("Verification code")
+        if otp:
+            await phone.call("tap", x=otp[0], y=otp[1])
+            await asyncio.sleep(0.8)
+            r = await phone.call("type_text", text="123456")
+            check(G, "under Don't ask, typing a code into an OTP field is refused", refused(r, "gate_denied") and
+                  r.get("gate", {}).get("rule") == "never:otp_field" and "OTP length" not in dev.log("LoginStandIn"), rule(r))
+        pw = await dev.find("Password", attr="hint") or await dev.find("Password")
+        if pw:
+            await phone.call("tap", x=pw[0], y=pw[1])
+            await asyncio.sleep(0.8)
+            r = await phone.call("type_text", text="hunter2")
+            check(G, "under Don't ask, a password field is still refused", refused(r, "gate_password_field"), rule(r))
+        r = await phone.call("open_settings", page="display")
+        await asyncio.sleep(1.5)
+        check(G, "under Don't ask, an everyday Settings page still opens", r.get("ok") is True, short(r))
+        dev.home()
+    finally:
+        # The server can end the window (a tightening is taken from anywhere), never start one (basics).
+        await phone.ws.send(json.dumps({"type": "permissions", "default_mode": "auto", "ceiling": "auto"}))
+        await asyncio.sleep(2)
+    await shop_open(dev)
+    buy = await dev.find("Buy now")
+    r = await phone.call("tap", x=buy[0], y=buy[1])
+    prompt = await dev.prompt()
+    check(G, "a server 'permissions: auto' message ends Don't ask (a tightening): Buy now asks again",
+          asks(r) and prompt is not None, rule(r) + f" prompt={prompt is not None}")
+    if prompt:
+        await dev.approve("never-off-buy-now")  # approved, never re-sent
+        await phone.gate_state(r["approval_id"])
+    dev.home()
+
+
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
-          "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction, "probe": g_probe}
+          "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
+          "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "hidden": g_hidden, "methods": g_methods, "never": g_never,
+          "probe": g_probe}
 
 
 async def main() -> None:
@@ -987,7 +1508,7 @@ async def main() -> None:
     parser.add_argument("--token", default="")
     parser.add_argument("--pin", default=None, help="the emulator's PIN: approve prompts automatically")
     parser.add_argument("--out", default="evil-server-evidence")
-    parser.add_argument("--groups", default=",".join(GROUPS))
+    parser.add_argument("--groups", default=",".join(g for g in GROUPS if g != "probe"))
     parser.add_argument("--restart", action="store_true", help="restart the app before each group")
     args = parser.parse_args()
     dev = Device(args.serial, args.out, args.pin)

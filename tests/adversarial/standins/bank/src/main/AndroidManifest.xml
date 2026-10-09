@@ -21,5 +21,8 @@
                 <data android:scheme="https" android:host="bank.example.com" />
             </intent-filter>
         </activity>
+        <!-- A transfer form with a text field (typing into a blocked app). The keyboard waits for the owner's tap. -->
+        <activity android:name=".TransferActivity" android:exported="true"
+            android:windowSoftInputMode="stateHidden" />
     </application>
 </manifest>

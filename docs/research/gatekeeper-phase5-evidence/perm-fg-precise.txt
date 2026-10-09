@@ -1,0 +1,7 @@
+com.google.android.permissioncontroller/com.android.permissioncontroller.permission.ui.GrantPermissionsActivity
+com.google.android.permissioncontroller	'Allow Example Login to access this device’s location?'	''	com.android.permissioncontroller:id/permission_message	[133,721][947,854]
+com.google.android.permissioncontroller	'Precise'	''	com.android.permissioncontroller:id/permission_location_accuracy_radio_fine	[157,917][498,1330]
+com.google.android.permissioncontroller	'Approximate'	''	com.android.permissioncontroller:id/permission_location_accuracy_radio_coarse	[582,917][923,1330]
+com.google.android.permissioncontroller	'While using the app'	''	com.android.permissioncontroller:id/permission_allow_foreground_only_button	[133,1398][947,1545]
+com.google.android.permissioncontroller	'Only this time'	''	com.android.permissioncontroller:id/permission_allow_one_time_button	[133,1555][947,1702]
+com.google.android.permissioncontroller	'Don’t allow'	''	com.android.permissioncontroller:id/permission_deny_button	[133,1712][947,1859]

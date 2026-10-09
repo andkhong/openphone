@@ -1,0 +1,8 @@
+com.example.shop/com.example.shop.DeepCheckoutActivity
+'Example Shop'	''	hint=''		[42, 166, 377, 237]
+'11:10'	'11:10\u202fPM'	hint=''	clock	[50, 43, 175, 86]
+''	'OpenMob notification: OpenMob agent can control this phone'	hint=''		[175, 1, 233, 128]
+''	'Android System notification: Serial console enabled'	hint=''		[233, 1, 291, 128]
+''	'Wifi signal full.'	hint=''	wifi_signal	[891, 44, 930, 83]
+''	'Phone signal full.'	hint=''	mobile_combo	[930, 35, 969, 93]
+''	'Battery charging, 100 percent.'	hint=''	battery	[985, 47, 1005, 81]

@@ -15,5 +15,7 @@
         <activity android:name=".WebLoginActivity" android:exported="true"
             android:windowSoftInputMode="adjustResize" />
         <activity android:name=".LocationActivity" android:exported="true" />
+        <!-- A window hidden from accessibility services (Android 14+): the gatekeeper's unknown_window case. -->
+        <activity android:name=".HiddenActivity" android:exported="true" />
     </application>
 </manifest>
