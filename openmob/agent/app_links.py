@@ -49,6 +49,7 @@ class App:
     packages: tuple[str, ...]  # where a link should land; () = whatever handles it (a browser's page, the SMS app)
     hosts: tuple[str, ...] = ()  # its web hosts ("youtube.com"; "google.com/maps" = host plus a path prefix)
     names: tuple[str, ...] = ()  # how a request names it, for the fast path
+    browser_ok: bool = False  # a browser serves its links as well as the app does (a Google search): not a miss
 
 
 @dataclass(frozen=True)
@@ -106,7 +107,8 @@ APPS: dict[str, App] = {a.id: a for a in (
     App("whatsapp", "WhatsApp", ("com.whatsapp", "com.whatsapp.w4b"),
         ("wa.me", "api.whatsapp.com"), ("whatsapp", "whats app")),
     App("amazon", "Amazon", ("com.amazon.mShop.android.shopping",), ("amazon.com", "amzn.to"), ("amazon",)),
-    App("google", "Google", ("com.google.android.googlequicksearchbox",), ("google.com",), ("google search", "google")),
+    App("google", "Google", ("com.google.android.googlequicksearchbox",), ("google.com",), ("google search", "google"),
+        browser_ok=True),
     App("gmail", "Gmail", ("com.google.android.gm",), ("mail.google.com",), ("gmail", "google mail")),
     App("calendar", "Google Calendar", ("com.google.android.calendar",), ("calendar.google.com",),
         ("google calendar", "calendar", "my calendar")),

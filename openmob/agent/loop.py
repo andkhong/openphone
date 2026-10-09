@@ -1479,8 +1479,8 @@ class Agent:
             text = (f"Opened {label}, but the home screen is still in front: the link may not have opened. Look at "
                     "the screen.")
         elif app is not None and app.packages:
-            if landed in app.packages:
-                text = f"Opened {label} in {app.label}."
+            if landed in app.packages or (app.browser_ok and app_links.is_browser(landed)):
+                text = f"Opened {label} in {where if landed not in app.packages else app.label}."
             elif app_links.is_browser(landed):
                 wrong = True
                 if any(p in self.resolver.packages() for p in app.packages):
@@ -1525,7 +1525,7 @@ class Agent:
         target = self._url_target(url)
         if target is not None and link.packages:
             handler = target.get("package")
-            if handler not in link.packages:
+            if handler not in link.packages and not (app_links.APPS[link.app].browser_ok and app_links.is_browser(handler)):
                 why = ("a chooser would show" if not handler else
                        f"this phone opens these links in {self._app_label(handler)}, not {app_links.APPS[link.app].label}")
                 self.io.event("status", f"Link not taken ({why}); deciding the usual way.")
