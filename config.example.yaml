@@ -60,6 +60,12 @@ replay_paths: false                 # OPENMOB_REPLAY=on to try it
 # with a screen cue each, then the classifier picks each tap, scroll, Back or app launch toward the current sub-goal
 # (every check still applies). The model takes over when a screen doesn't fit. Needs Jev (docs/design/fewer-model-calls.md).
 plan_execute: false                 # OPENMOB_PLAN_EXECUTE=on to try it
+# Settings deep links (docs/design/deep-links.md): open_settings_page on phones whose app can open Settings pages
+# directly. The direct step opens the page a request plainly names ("Open Settings and go to Display", "open Chrome's
+# notification settings and tell me whether they're allowed": the app by its exact installed name) as the task's first
+# action, before any classifier or main-model decision, through the tool's every check. Off only for comparisons.
+deep_links: true                    # OPENMOB_DEEP_LINKS=off to compare
+deep_links_fast: true               # OPENMOB_DEEP_LINKS_FAST=off to compare
 # In-app links (docs/design/app-links.md): the open_link catalog tool (a YouTube search, Maps directions, a Play Store
 # page, a WhatsApp chat… from one link), and open_url saying which app took a link and when the app it belongs to
 # didn't. Every link passes the same checks as open_url. Off only for comparisons.

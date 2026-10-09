@@ -6,6 +6,7 @@ ask), an app's own pages are refused for blocked apps, and a phone without the p
 """
 
 import re
+import time
 from pathlib import Path
 
 import pytest
@@ -16,8 +17,8 @@ from test_remote import FakePhone, server  # noqa: F401  (server is a fixture)
 
 from openmob import permissions as perm
 from openmob.agent import fast
-from openmob.agent.loop import BLOCKED_APP_MESSAGE, CHANGING, Agent
-from openmob.agent.tools import OPEN_SETTINGS_TOOL_SPEC, SETTINGS_PAGE_LINE, system_prompt
+from openmob.agent.loop import BLOCKED_APP_MESSAGE, CHANGING, DEEP_LINK_SOURCE, Agent
+from openmob.agent.tools import OPEN_SETTINGS_TOOL, OPEN_SETTINGS_TOOL_SPEC, SETTINGS_PAGE_LINE, system_prompt
 from openmob.config import Config
 from openmob.phone import settings_pages as sp
 from openmob.phone.adb import AdbError
@@ -257,6 +258,202 @@ def test_the_fast_path_launches_as_usual_when_another_app_or_an_old_app_is_invol
                       judge=Judge([("LAUNCH_APP", None, 0.95), ("ESCALATE", None, 0.95)]), use_ocr=False)
         agent.run(task)
         assert opened(driver) == [] and expect in driver.actions, task
+
+
+# --- the direct Settings step (deep_links_fast): the page from the request, before any classifier or model ---
+
+
+NOTIFY = ("Open Settings, go to Apps, open Chrome, open its Notifications settings, and tell me whether "
+          "notifications are allowed")
+KW = Config().confirm_keywords
+
+
+class CountingJudge(Judge):
+    """Counts the classifier's looks at screens (assess_screen), besides the next_step answers it records."""
+
+    def __init__(self, script, screen_delay=0.0):
+        super().__init__(script)
+        self.screens, self.screen_delay = 0, screen_delay
+
+    def assess_screen(self, request, screen):
+        self.screens += 1
+        time.sleep(self.screen_delay)
+        return super().assess_screen(request, screen)
+
+
+def run_direct(task, responses=(DONE,), driver=None, judge=None, tmp_path=None, mode=None, io=None, blocked=None,
+               go_home=False, **cfg):
+    config = Config(**{"settle_delay": 0, "launch_settle_delay": 0, "fast_path": "on", "fast_path_done": False, **cfg})
+    driver = driver if driver is not None else Phone(elements=HOME)
+    resolver = AppResolver(driver, {"settings": SETTINGS}, label_cache=tmp_path / "l.json")
+    resolver.ensure_labels()
+    io = io or RecordingIO()
+    steps = []
+    io.record_step = steps.append
+    agent = Agent(ScriptedClient(list(responses)), driver, resolver, config, io, judge=judge, use_ocr=False)
+    perms = perm.TaskPermissions(mode or "auto", lambda: perm.normalize(perm.default_settings()))
+    result = agent.run(task, permissions=perms, blocked=blocked, go_home=go_home)
+    return agent, driver, io, steps, result
+
+
+def helper_note(client) -> str:
+    """What the main model was told before its first decision (the quick helper's note, the screen)."""
+    return " ".join(b.get("text", "") for b in client.requests[0]["messages"][0]["content"] if isinstance(b, dict))
+
+
+@pytest.mark.parametrize("task, want", [
+    (NOTIFY, ("app_notifications", "Chrome")),
+    (NOTIFY + ".", ("app_notifications", "Chrome")),
+    ("open Chrome's notification settings", ("app_notifications", "Chrome")),
+    ("open chrome notification settings", ("app_notifications", "chrome")),
+    ("go to Chrome's notifications in Settings", ("app_notifications", "Chrome")),
+    ("open the notification settings for Chrome", ("app_notifications", "Chrome")),
+    ("show me the notifications settings of the Chrome app", ("app_notifications", "Chrome")),
+    ("open chrome's notification settings, are they on?", ("app_notifications", "chrome")),
+    ("open Chrome's notification settings and check if notifications are allowed", ("app_notifications", "Chrome")),
+    ("please open Chrome's app info", ("app_details", "Chrome")),
+    ("open the app info page for Chrome", ("app_details", "Chrome")),
+    ("Open Settings, go to Apps, open Chrome", ("app_details", "Chrome")),
+    ("Open Settings and go to Display", ("display", None)),
+    ("Open Settings and go to Display and tell me the brightness", ("display", None)),
+    ("show me the battery page", ("battery", None)),
+    ("open the notification settings", ("notifications", None)),
+    # Not a plain page request: a side effect, an unclear or missing app, another app on the way, navigation
+    # after the read-back, a correction: the main model's call.
+    ("open Chrome's notification settings and turn them off", None),
+    ("open Chrome's notification settings and allow notifications", None),
+    ("open Chrome's settings", None),
+    ("open Chrome", None),
+    ("open Chrome and go to Display", None),
+    ("open Chrome, open Maps' notification settings", None),
+    ("open settings and see the toggle", None),
+    ("open display settings and look at the brightness", None),
+    ("is bluetooth on", None),
+    ("open Chrome's notification settings, then open YouTube", None),
+    ("tell me whether notifications are allowed, then open Chrome's notification settings", None),
+    ("Open Settings and go to Display\nUser correction: go to Sound instead", None),
+    ("turn on dark mode in display settings", None),
+    ("open Chrome's notification settings and send a message", None),
+])
+def test_requests_that_name_a_page_or_an_apps_page_with_a_read_back(task, want):
+    assert fast.direct_settings_request(task, KW) == want
+
+
+def test_an_apps_page_request_opens_the_page_first_without_the_classifier_or_the_model(tmp_path):
+    judge = CountingJudge([("ESCALATE", None, 0.95)])
+    agent, driver, io, steps, result = run_direct(NOTIFY, judge=judge, tmp_path=tmp_path)
+    assert driver.actions[:2] == [("wake",), ("open_settings", "app_notifications", CHROME)]  # the very first action
+    first = steps[0]
+    assert first["tool"] == "open_settings_page" and first["args"] == {"page": "app_notifications", "package": CHROME}
+    assert first["fast"] is True and first["source"] == DEEP_LINK_SOURCE and first["model_ms"] == 0 and first["jev_ms"] == 0
+    assert "+pages" in first["variant"]
+    # The classifier's first look was at the page that opened, never at the home screen the step left.
+    assert judge.screens == 1 and [a["action"] for a in judge.asked[0][1]] == ["open_settings_page app_notifications"]
+    # The read-back is the main model's: one call, which answered from the page.
+    assert len(agent.client.requests) == 1 and result.success and result.done_via == "vision" and result.fast_steps == 1
+    told = helper_note(agent.client)
+    assert "quick helper" in told and "open_settings_page" in told and "Opened the App notifications Settings page of Chrome." in told
+    assert ("action", "open_settings_page: Opened the App notifications Settings page of Chrome.") in io.events
+
+
+def test_a_plain_page_request_takes_the_deep_link_without_jev(tmp_path):
+    agent, driver, _, steps, result = run_direct("Open Settings and go to Display", tmp_path=tmp_path)  # no judge at all
+    assert opened(driver) == [("open_settings", "display", None)] and driver.actions[1] == ("open_settings", "display", None)
+    assert steps[0]["source"] == DEEP_LINK_SOURCE and steps[0]["fast"] is True and steps[0]["jev_ms"] == 0
+    assert len(agent.client.requests) == 1 and result.success
+
+
+def test_phrasings_of_an_apps_pages_open_the_right_page(tmp_path):
+    for task, page in (("open Chrome's notification settings", "app_notifications"),
+                       ("open the notification settings for Chrome and tell me if they're on", "app_notifications"),
+                       ("show me Chrome's app info", "app_details"),
+                       ("Open Settings, go to Apps, open Chrome", "app_details")):
+        _, driver, _, steps, _ = run_direct(task, tmp_path=tmp_path)
+        assert opened(driver) == [("open_settings", page, CHROME)] and steps[0]["args"]["package"] == CHROME, task
+
+
+def test_requests_that_arent_plain_or_name_an_app_the_task_may_not_touch_leave_it_to_the_model(tmp_path):
+    blocked = lambda package: package == CHASE  # noqa: E731
+    for task in ("open Chrome's notification settings and turn them off",  # a side effect
+                 "open Chrom's notification settings",  # not exactly an installed app's name: no guessing
+                 "open Chase's notification settings",  # a blocked app
+                 "open OpenMob's notification settings",  # OpenMob itself
+                 "open Chrome's settings"):  # the app's own settings or its App info page? unclear
+        agent, driver, _, steps, _ = run_direct(task, tmp_path=tmp_path, blocked=blocked)
+        assert opened(driver) == [] and steps[0]["tool"] == "done" and len(agent.client.requests) == 1, task
+    # The model's own call for a blocked app is refused as before (the tool's check, not the fast path's).
+    agent, driver, _, _, _ = run_direct("open Chase's notification settings", tmp_path=tmp_path, blocked=blocked, responses=[
+        [tool_use("open_settings_page", "a", page="app_notifications", package="Chase")], DONE])
+    assert opened(driver) == [] and tool_result(agent.client).startswith(BLOCKED_APP_MESSAGE)
+
+
+def test_the_direct_step_can_be_switched_off_and_the_classifiers_deep_link_stays(monkeypatch, tmp_path):
+    judge = CountingJudge([("LAUNCH_APP", None, 0.95), ("ESCALATE", None, 0.95)])
+    agent, driver, _, steps, _ = run_direct("Open Settings and go to Display", judge=judge, tmp_path=tmp_path,
+                                            deep_links_fast=False)
+    # The classifier looked at the home screen first and chose to launch; the fast step opened the page instead.
+    assert opened(driver) == [("open_settings", "display", None)] and judge.screens == 2
+    assert steps[0]["fast"] is True and steps[0].get("source") is None and "+pages" not in steps[0]["variant"]
+    agent, driver, _, steps, _ = run_direct("Open Settings and go to Display", tmp_path=tmp_path, deep_links_fast=False)
+    assert opened(driver) == [] and steps[0]["tool"] == "done"  # no judge, no direct step: the model's call
+
+    from openmob.config import load_config
+
+    path = tmp_path / "config.yaml"
+    path.write_text("max_steps: 10\n")
+    assert load_config(path).deep_links_fast is True
+    monkeypatch.setenv("OPENMOB_DEEP_LINKS_FAST", "off")
+    assert load_config(path).deep_links_fast is False
+
+
+def test_the_classifier_is_asked_when_the_direct_step_steps_aside_after_all(tmp_path):
+    """A plain link request whose link the phone would hand to a browser: the first look skipped the classifier
+    (a direct step was expected), so it is asked before the usual path goes on."""
+    from test_app_links import Phone as LinkPhone
+
+    judge = CountingJudge([("ESCALATE", None, 0.95)], screen_delay=0.02)
+    agent, driver, io, steps, _ = run_direct("search YouTube for lofi", driver=LinkPhone(opens={}, elements=HOME),
+                                             judge=judge, tmp_path=tmp_path)
+    assert [a for a in driver.actions if a[0] == "url"] == [] and opened(driver) == []
+    assert any(k == "status" and m.startswith("Link not taken") for k, m in io.events)
+    assert judge.screens == 1 and len(judge.asked) == 1  # asked about the home screen, once, before the model
+    assert steps[0]["tool"] == "done" and steps[0]["jev_ms"] >= 15 and len(agent.client.requests) == 1
+
+
+def test_ask_every_step_asks_before_the_direct_step_and_plan_first_leaves_it_to_the_plan(tmp_path):
+    agent, driver, io, steps, _ = run_direct("open Chrome's notification settings", io=RecordingIO(answers=["yes"]),
+                                             tmp_path=tmp_path, mode="ask")
+    assert io.questions == ["Next step: open the App notifications Settings page of Chrome. Should I go ahead?"]
+    assert opened(driver) == [("open_settings", "app_notifications", CHROME)] and steps[0]["source"] == DEEP_LINK_SOURCE
+    agent, driver, _, steps, _ = run_direct("open Chrome's notification settings", io=RecordingIO(answers=["no"]),
+                                            tmp_path=tmp_path, mode="ask")
+    assert opened(driver) == [] and steps[0]["is_error"] and "did not approve" in helper_note(agent.client)
+    agent, driver, _, _, _ = run_direct("open Chrome's notification settings", tmp_path=tmp_path, mode="plan")
+    assert opened(driver) == [] and len(agent.client.requests) == 1
+
+
+def test_home_is_pressed_only_when_the_launcher_isnt_in_front(tmp_path):
+    _, driver, _, _, _ = run_direct("Open Settings and go to Display", tmp_path=tmp_path, go_home=True)
+    assert driver.actions == [("wake",), ("open_settings", "display", None)]  # the launcher was in front: no HOME
+    phone = Phone(elements=HOME)
+    phone.package = CHROME
+    _, driver, _, _, _ = run_direct("Open Settings and go to Display", driver=phone, tmp_path=tmp_path, go_home=True)
+    assert driver.actions[:3] == [("wake",), ("key", "HOME"), ("open_settings", "display", None)]
+
+
+def test_the_wake_and_home_count_as_the_first_steps_action_time(tmp_path):
+    class SleepyPhone(Phone):
+        def wake_unlock(self):
+            time.sleep(0.05)
+            super().wake_unlock()
+
+    _, _, _, steps, _ = run_direct("Open Settings and go to Display", driver=SleepyPhone(elements=HOME), tmp_path=tmp_path)
+    assert steps[0]["action_ms"] >= 40 and steps[1]["action_ms"] < 40
+
+
+def test_the_prompt_nudges_the_model_toward_an_apps_page_even_when_the_taps_are_spelled_out():
+    assert "app_notifications with package Chrome" in SETTINGS_PAGE_LINE and "tell me whether" in SETTINGS_PAGE_LINE
+    assert "Settings > Apps > Chrome > Notifications is app_notifications" in OPEN_SETTINGS_TOOL["description"]
 
 
 # --- the drivers -------------------------------------------------------------------------------

@@ -24,6 +24,16 @@ rather than single runs, cold and warm reported apart, on at least two phones (t
 emulator or another phone), and a clean-state check that stops a run on a stuck screen. This page isn't public documentation: it names Jev (TypeSafe), which public output never
 does.
 
+**The first step** (measured 2026-10-08 on the Samsung, 179 first steps; docs/design/deep-links.md §6 has
+the table): a fast link step took 2.3 s median, of which 1.8 s was the page's landing settle counted inside
+the step; a fast Settings page 1.1 s (0.7 s landing); a vision first step 2.5 s (model 1.3–1.4 s, screenshot
+0.45 s); "other" (the wake, before it was timed) 117 ms median, 621 ms p90. Since then a link step ends when
+its app is in front (the loading settle is the next step's, as after a launch), a plain Settings-page
+request opens its page before any classifier call (`source = "deep_link"`, variant `+pages`), the first look
+skips the classifier when the first action is known from the request, HOME is pressed only when the launcher
+isn't in front, and the wake is counted as the first step's action. Estimated, not measured: the first-step
+median over the first-run set from 2.2 s to about 1.0–1.3 s; vision first steps stay at about 2.5 s.
+
 ## What each step records
 
 Every tool call the agent makes is a row in the `steps` table of `history.sqlite`. A step runs from
@@ -37,8 +47,8 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `jev_ms` | Jev: `assess_screen` on every observation, `assess_tap` in the risky-tap check, and app picking inside `launch_app`; on fast-path tasks with `jev_one_request`, the one request per step that replaces the first two. 0 when Jev is off |
 | `wait_ms` | Human time and loading screens: the waits in `_observe_settled`, risky-tap approvals, and `ask_user` answers |
 | `model_ms` | The main model call or calls, including a nudge call that returned no tool call |
-| `action_ms` | The tool itself: the phone action and the tool's own work, such as app resolution. App picking by the small LLM picker is counted here |
-| `settle_ms` | The sleep after an action before the next observation, plus the `wait` tool's sleep. It is counted on the step it delayed, the step after the action that caused it, so a step's row can be written when its action ends |
+| `action_ms` | The tool itself: the phone action and the tool's own work, such as app resolution. App picking by the small LLM picker is counted here. On a task's first step, also the wake (`wake_unlock`) and the HOME press before it when one is asked for (since 2026-10-08; before, that time was "other") |
+| `settle_ms` | The sleep after an action before the next observation, plus the `wait` tool's sleep. It is counted on the step it delayed, the step after the action that caused it, so a step's row can be written when its action ends. A link or Settings-page step also holds the wait until the screen left the one it was opened from (up to 2.5 s); a link whose landing the quick look can't place (the home screen, neither the app nor a browser) settles fully inside its step, as every link did before 2026-10-08 |
 | `total_ms` | The step's wall time. Total minus the phases is bookkeeping, shown as "other" in the report |
 | `jev` | 1 or 0: whether Jev was on for the step |
 | `model` | The model that decided the step |

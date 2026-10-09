@@ -177,17 +177,128 @@ def app_phrases(task: str) -> list[str]:
     return out
 
 
+def has_side_effect(text: str, confirm_keywords: list[str]) -> bool:
+    """A word that implies a side effect (config.confirm_keywords plus SIDE_EFFECT_WORDS), as a whole word."""
+    text = text.lower()
+    return any(re.search(rf"\b{re.escape(word.lower())}\b", text) for word in (*confirm_keywords, *SIDE_EFFECT_WORDS))
+
+
 def navigation_only(task: str, confirm_keywords: list[str]) -> bool:
     """The request only opens or shows things: every clause starts with a navigation verb, and no word
     in it implies a side effect. Corrections added mid-task don't count as navigation."""
-    if CORRECTION_PREFIX in task:
+    if CORRECTION_PREFIX in task or has_side_effect(task, confirm_keywords):
         return False
-    text = task.lower()
-    for word in (*confirm_keywords, *SIDE_EFFECT_WORDS):
-        if re.search(rf"\b{re.escape(word.lower())}\b", text):
-            return False
     parts = clauses(task)
     return bool(parts) and all(_after_verb(c, NAVIGATION_VERBS) for c in parts)
+
+
+# A trailing clause that only asks what the screen shows ("and tell me whether notifications are allowed", "is it
+# on?"): the navigation before it can run on its own, and the main model answers from the page that opens. Verbs
+# that also navigate ("see", "look", "check", "read") count only with a question word after them.
+READ_BACK = re.compile(r"^(?:tell me|let me know|say|report|find out|(?:check|see|look|read|confirm)\s+(?:me\s+)?"
+                       r"(?:whether|if|what|how|which|that)|read\s+(?:me|out|back)|what|whether|if|is|are|does|do|"
+                       r"which|how)\b", re.I)
+
+
+def navigation_and_read_back(task: str, confirm_keywords: list[str]) -> list[str] | None:
+    """The navigation clauses of a request that only navigates and then, at most, asks what the screen
+    shows ("Open Settings, go to Apps, open Chrome, open its Notifications settings, and tell me whether
+    notifications are allowed"): their objects ('Settings', 'Apps', 'Chrome', 'its Notifications settings'),
+    or None when the request is anything else (a side effect anywhere, a clause that neither navigates nor
+    reads back, navigation after the read-back, a mid-task correction)."""
+    if CORRECTION_PREFIX in task or has_side_effect(task, confirm_keywords):
+        return None
+    objects: list[str] = []
+    reading = False
+    for clause in clauses(task):
+        if READ_BACK.match(LEADING_FILLER.sub("", clause.strip())):
+            reading = True
+            continue
+        rest = _after_verb(clause, NAVIGATION_VERBS)
+        if reading or not rest:
+            return None
+        objects.append(rest)
+    return objects or None
+
+
+# An app's own Settings pages, as a request names them (phone/settings_pages.py: app_notifications, app_details).
+APP_PAGE_WHAT = {
+    "app_notifications": r"(?:app\s+)?notifications?(?:\s+(?:settings?|page|screen|section|options|preferences))?",
+    "app_details": r"(?:app(?:lication)?\s+)?(?:info|information|details)(?:\s+(?:page|screen|settings?))?",
+}
+_APP_WHAT = {key: re.compile(rf"^{what}$", re.I) for key, what in APP_PAGE_WHAT.items()}  # the page alone
+_APP_PAGE = {key: re.compile(rf"^(?P<app>.+?)(?:'s|’s|s')?\s+(?P<what>{what})$", re.I) for key, what in APP_PAGE_WHAT.items()}
+_PAGE_OF_APP = re.compile(r"^(?P<what>.+?)\s+(?:for|of)\s+(?:the\s+)?(?P<app>.+?)(?:\s+app)?$", re.I)
+_BACK_REFERENCE = re.compile(r"^(?:its|their|the app|that app|this app|the app's)$", re.I)
+_IN_SETTINGS = re.compile(r"\s+(?:in|on|under|from|via)\s+(?:the\s+)?(?:settings|the settings app|settings app)$", re.I)
+
+
+def _app_page(obj: str) -> tuple[str, str | None] | None:
+    """('app_notifications', 'Chrome') for "Chrome's notification settings"; the app is None when the object
+    names the page alone ("notification settings") or refers back to an app named earlier ("its Notifications
+    settings")."""
+    obj = _IN_SETTINGS.sub("", obj.strip())
+    if m := _PAGE_OF_APP.match(obj):  # "notification settings for Chrome"
+        for key, rx in _APP_WHAT.items():
+            if rx.match(m.group("what").strip()):
+                return key, ARTICLES.sub("", m.group("app").strip())
+    for key, rx in _APP_WHAT.items():
+        if rx.match(obj):
+            return key, None
+    for key, rx in _APP_PAGE.items():
+        if m := rx.match(obj):
+            app = ARTICLES.sub("", m.group("app").strip())
+            return key, (None if _BACK_REFERENCE.match(app) else app)
+    return None
+
+
+def app_settings_page(objects: list[str]) -> tuple[str, str] | None:
+    """The app page a request's navigation objects ask for, with the app's name as written: ('app_notifications',
+    'Chrome') for ['Chrome's notification settings'], ['Settings', 'Apps', 'Chrome', 'its Notifications settings']
+    or ['notification settings for Chrome']; ('app_details', 'Chrome') for ['Chrome's app info'] or
+    ['Settings', 'Apps', 'Chrome'] (in Settings' app list, an app opens its App info page). None when no app page
+    is named, the app is unclear (two names, or none), or anything else than Settings and its Apps list is named
+    on the way. The caller resolves the name to an installed app exactly, or not at all."""
+    from ..phone.settings_pages import page_for
+
+    if not objects:
+        return None
+    is_settings = lambda o: _names_match(_IN_SETTINGS.sub("", o), "settings")  # noqa: E731
+    is_apps = lambda o: (p := page_for(_IN_SETTINGS.sub("", o))) is not None and p.key == "apps"  # noqa: E731
+    *way, last = objects
+    found = _app_page(last)
+    if found is None:
+        if not any(is_apps(o) for o in way) or is_settings(last) or page_for(last) is not None:
+            return None
+        found = ("app_details", _IN_SETTINGS.sub("", last).strip())  # "go to Apps, open Chrome"
+    key, app = found
+    others = [o for o in way if not is_settings(o) and not is_apps(o)]
+    if app is not None:
+        others = [o for o in others if not _names_match(o, app)]
+    if len(others) > 1 or (app is None and not others):
+        return None
+    if others and app is None:
+        app = ARTICLES.sub("", others[0].strip())
+    elif others:
+        return None  # another app on the way ("open Chrome, open Maps' notification settings")
+    if not app or is_settings(app) or page_for(app) is not None or _names_match(app, "apps"):
+        return None
+    return key, app
+
+
+def direct_settings_request(task: str, confirm_keywords: list[str]) -> tuple[str, str | None] | None:
+    """The Settings page a request plainly asks to open, with the app's name for an app's own page, or None:
+    ('display', None) for "Open Settings and go to Display"; ('app_notifications', 'Chrome') for "open Chrome's
+    notification settings and tell me whether notifications are allowed". The request must only navigate
+    (a read-back may follow), name the page exactly and name no other app. The caller checks the phone can
+    open the page, its tier, and that the app is installed (loop.Agent._direct_settings_page)."""
+    objects = navigation_and_read_back(task, confirm_keywords)
+    if not objects:
+        return None
+    navigation = " and ".join(f"open {o}" for o in objects)  # the navigation alone, as settings_page reads it
+    if (key := settings_page(navigation)) is not None:
+        return key, None
+    return app_settings_page(objects)
 
 
 def key_target(task: str) -> str | None:
