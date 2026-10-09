@@ -20,7 +20,11 @@ from test_remote import wait_for
 
 TOOLS = {"list_devices", "run_task", "get_task", "answer_question", "cancel_task", "get_screenshot",
          "start_orchestration", "get_orchestration", "cancel_orchestration",
-         "get_permissions", "change_permissions"}
+         "get_permissions", "change_permissions",
+         # the drive level (test_mcp_drive.py)
+         "start_session", "observe", "get_session", "tap", "type_text", "swipe", "press_key", "launch_app",
+         "open_url", "open_link", "open_settings_page", "wait_until", "list_apps", "propose_plan",
+         "decline_step", "end_session"}
 
 
 def key_of(user):

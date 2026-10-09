@@ -112,6 +112,8 @@ openmob key revoke you@example.com <key id>
 
 Keys carry scopes (`screen:read` is opt-in), per-key rate limits and quotas, and every action is audited. Responses talk in tiers (`fast`, `balanced`, `best`), steps and credits. See [docs/api.md](docs/api.md).
 
+The same server is an MCP server at `/mcp` for Claude Code, Claude Desktop, Cursor and custom agents: `run_task` hands a goal to OpenMob's agent, and the **drive level** (`devices:drive`, opt-in) lets an outside agent operate the phone step by step with its own reasoning, under exactly the checks and owner approvals OpenMob's own agent gets. See [docs/mcp.md](docs/mcp.md) and [docs/design/mcp-drive.md](docs/design/mcp-drive.md).
+
 ## Use
 
 ```sh

@@ -276,6 +276,19 @@ def is_search_field(el: UIElement | None) -> bool:
                                        for v in (el.resource_id, el.cls, el.desc, el.hint)))
 
 
+OTP_FIELD = re.compile(r"\b(otp|one[\s_-]?time|verification|verify|2fa|two[\s_-]?factor|auth(entication)?[\s_-]?code|"
+                       r"security[\s_-]?code|sms[\s_-]?code|login[\s_-]?code|confirmation[\s_-]?code|passcode|"
+                       r"pin[\s_-]?code|totp|mfa)\b", re.IGNORECASE)
+
+
+def is_otp_field(el: UIElement | None) -> bool:
+    """A text field that looks like it takes a one-time or verification code (by its own hint, resource id or
+    description). The drive level never types into one (docs/design/mcp-drive.md §4); the loop may."""
+    if el is None:
+        return False
+    return any(OTP_FIELD.search(v or "") for v in (el.hint, el.resource_id, el.desc))
+
+
 def is_url_bar(el: UIElement | None, package: str | None) -> bool:
     """A browser's address bar: its id says so, or it is a browser's field holding a URL."""
     if el is None or not (el.editable or "EditText" in (el.cls or "")):

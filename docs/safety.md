@@ -327,6 +327,22 @@ previous clipboard back, or clears it.
 These are server-side checks. The [phone gatekeeper design](design/phone-gatekeeper.md) moves the
 same rules onto the phone itself.
 
+### The drive level (an outside agent at the controls)
+
+Over MCP, a key with the `devices:drive` scope (never a default) can operate a phone step by step with its own
+model instead of OpenMob's ([MCP: the drive level](mcp.md#the-drive-level-your-own-agent-at-the-controls),
+[design](design/mcp-drive.md)). Nothing in this document changes for it: a drive session is a task on the phone,
+and every act it sends runs through the same server-side path as the agent's own tool calls, so the table above
+applies act by act, risky acts wait for your approval on the phone (bound to the exact act, signed with the
+screen lock), blocked apps are refused and show nothing, password fields are never typed into, the permission
+mode is capped by the key's `max_mode` and the phone's ceiling, and the phone's gatekeeper judges each act again
+on gatekeeper builds. Two things are stricter than for the agent: typing into a field that looks like a
+one-time-code field is refused (the agent types login codes under your instruction; an outside agent that read
+the code off your Messages app must not), and only BACK, HOME and ENTER can be pressed. The agent cannot approve
+anything, in any mode. You see the session as a task (its goal, every act, the outcome) in the feed and the
+developer console, the phone shows which key is driving, and Stop on the phone or the dashboard ends it. It
+also ends on its own after its step cap, 2 minutes without a command, or 30 minutes.
+
 ## Sensitive apps are off-limits by default
 
 API tasks can't open banking, payment, wallet, crypto, password-manager or authenticator apps. A

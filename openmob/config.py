@@ -263,6 +263,10 @@ class Config:
     # A task whose question nobody answers ends (failed, question_timeout) after this long. 0: never.
     question_timeout_seconds: int = 300
     api_max_steps: int = 40  # the most steps a developer may ask for
+    # MCP drive sessions (docs/design/mcp-drive.md): an outside agent driving step by step. A session with no
+    # command for api_drive_idle_seconds ends; so does one older than api_drive_max_seconds.
+    api_drive_idle_seconds: int = 120
+    api_drive_max_seconds: int = 1800
     sensitive_apps: list[str] = field(default_factory=lambda: list(DEFAULT_SENSITIVE_APPS))
     # Retention: task text (chats, orchestration plans and results, webhook bodies) older than this
     # many days is deleted; billing totals and the hashed audit log stay. 0 keeps everything forever.

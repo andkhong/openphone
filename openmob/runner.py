@@ -407,6 +407,7 @@ class Coordinator:
                 go_home = options.pop("go_home", source == "phone") or self._own_app_in_front()
                 self._block_own_app(options)
                 self._permissions(options)
+                driven = options.get("drive") is not None  # an outside agent decided: not a model run
                 result = self.agent.run(text, self.cancel, go_home=go_home, **options)
                 data = {"final": True, "success": result.success, "steps": result.steps}
                 if isinstance(getattr(result, "mode", None), str):  # the agent ran under a permission mode
@@ -426,7 +427,7 @@ class Coordinator:
                         data["reason"] = self._stop_reason
                 self.event("result" if result.success else "error", f"{summary} ({result.steps} steps)", data=data)
                 self.speaker.say(result.summary)
-                if not data.get("cancelled"):  # a stop is the user's call, not the model's result
+                if not data.get("cancelled") and not driven:  # a stop is the user's call, not the model's result
                     self._record_model_run(task_id, result.success, result.steps)
             except Exception as exc:  # keep the worker alive for the next command
                 # Why, for callers and billing: the phone stopped answering, it failed, or we did.
