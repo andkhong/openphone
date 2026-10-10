@@ -61,6 +61,7 @@
   "slider_class": "(?i)SeekBar|Slider|RangeBar",
   "scroller_class": "(?i)RecyclerView|ScrollView|ListView|GridView|ViewPager|WebView",
   "payment_field": "(?i)card.?number|cc.?num|credit.?card|cvv|cvc|security.?code|expir|iban|card.?holder|cc.?exp|cc.?csc",
+  "sensitive_numbers": {"_doc": "Card numbers and SSNs in typed text and links (SensitiveNumbers.kt, openmob/agent/sensitive.py). Where the field or screen matches ssn_label, 9 bare digits and test SSNs such as 000-12-3456 count too.", "ssn_label": "(?i)(^|[^a-z])ssn([^a-z]|$)|social.?security"},
   "otp_field": "(?i)otp|one.?time|verification.?code|sms.?code|2fa|auth.?code|passcode|pin.?code",
   "search_field": "(?i)search|query|SearchView",
   "url_bar": "(?i)url_bar|url_field|urlbar|omnibox|location_bar|address_bar|mozac_browser_toolbar_edit|search_or_type_url|url_edit",

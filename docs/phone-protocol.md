@@ -690,7 +690,7 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 |---|---|---|
 | `gate_blocked_app` | A blocked app (banking, payments, wallets, password managers, authenticators, OpenMob itself): launching it, a link into it, acting in it, or its app-info page | Report to the agent; don't retry |
 | `gate_denied_page` | A security-critical Settings page, the keyguard or a system approval prompt, OpenMob's own windows, installing an app (`builtin:installer`), uninstalling OpenMob or a blocked app (`builtin:uninstall_protected`) | Report; don't retry |
-| `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
+| `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a link carrying a card number or SSN (`builtin:sensitive_link`: `open_url`, typed into an address bar, or ENTER on one), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
 | `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
 | `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
 | `gate_prompt_open` | Another prompt is still open on the phone (also a gesture that would land on the phone's own prompt while it waits, which otherwise gets `gate_denied_page`/`builtin:own_window`), or one closed less than a second ago (`builtin:prompt_cooldown`) | Wait for it to be answered: the server tries the call again every second, for up to `gate_prompt_wait_seconds` (30 s) |

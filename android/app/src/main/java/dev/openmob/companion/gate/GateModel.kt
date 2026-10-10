@@ -111,6 +111,8 @@ class GateRules(val d: Map<String, Any?>) {
     fun list(key: String): List<String> = d[key].strings()
     val schemesAllowed = d["schemes"].obj()["allowed"].strings()
     val schemesTypedRefused = d["schemes"].obj()["typed_refused"].strings()
+    /** Field or screen words that make 9 bare digits (or a test SSN) count as an SSN (SensitiveNumbers). */
+    val ssnLabel = Regex(d["sensitive_numbers"].obj().str("ssn_label"))
     val version: Long = d.long("version")
 
     fun blocked(pkg: String?): Boolean {

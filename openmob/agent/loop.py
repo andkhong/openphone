@@ -24,7 +24,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import app_links, fast, gate, permission_dialogs, plan, replay, timing, waiting
+from . import app_links, fast, gate, permission_dialogs, plan, replay, sensitive, timing, waiting
 from .drive import DriveChannel, screen_view
 from .drive import ESCAPE_KEYS as DRIVE_ESCAPE_KEYS, SOURCE as DRIVE_SOURCE
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
@@ -167,6 +167,29 @@ class Outcome:
     wait: dict | None = None  # a wait_until's condition and outcome, for the step record (wait_cond, wait_met…)
     shown: str | None = None  # what the activity feed shows instead of text (the model still gets text)
     misrouted: bool = False  # a link landed somewhere other than its app (the browser, a chooser): the model's call
+
+
+def typed_shown(outcome: Outcome, text: str) -> str:
+    """What the feed, the events and the logs show for a type_text step: never the text itself (the steps table's
+    convention, mcp-drive.md §7). A success is "Typed <redacted>."; an error keeps its words with the typed text (as
+    given, quoted, or cut short the way a prompt shows it) taken out. The model still reads outcome.text."""
+    if not outcome.is_error:
+        return f"Typed {REDACTED}."
+    shown = outcome.shown or outcome.text
+    if text:
+        cut = text if len(text) <= 80 else text[:79] + "…"  # how the ask-every-step prompt quotes it
+        for form in (repr(text), repr(cut)):
+            shown = shown.replace(form, repr(REDACTED))
+        for form in sorted({text, repr(text)[1:-1], text[:79], repr(text[:79])[1:-1]}, key=len, reverse=True):
+            if len(form) >= 4:  # a short word is too common to strip from a message; its quoted form is gone above
+                shown = shown.replace(form, REDACTED)
+    return sensitive.redact(shown)
+
+
+def url_shown(url: str) -> str:
+    """A link as a refusal names it in the feed: never with a card number or SSN it carries."""
+    kind = sensitive.in_url(url)
+    return f"a link carrying {sensitive.describe(kind)}" if kind else url[:80]
 
 
 @dataclass
@@ -1142,6 +1165,8 @@ class Agent:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         if note and not outcome.is_error:
             outcome.text = note
+        if name == "type_text":  # the feed, the events and the logs never show what was typed (mcp-drive.md §7)
+            outcome.shown = typed_shown(outcome, str(args.get("text", "")))
         if outcome.done:
             outcome.done_via = done_via
         outcome.timings = self.timer.take()
@@ -1185,11 +1210,15 @@ class Agent:
             text = outcome.text
             if name == "type_text":
                 safe["text"] = REDACTED
-                if not outcome.is_error:
-                    text = f"Typed {REDACTED}."
+                text = typed_shown(outcome, str(args.get("text", "")))
+            elif name == "open_url" and sensitive.in_url(str(args.get("url", ""))):
+                safe["url"] = REDACTED  # a refused link carrying a card number or SSN
             elif name == "open_link" and isinstance(args.get("params"), dict):
                 # A link's parameters (a search, a number) are the user's words, like typed text.
                 safe["params"] = {str(k): REDACTED for k in args["params"]}
+            # A card number or SSN anywhere else (a summary, an ask_user question, a target) is redacted too.
+            safe = {k: sensitive.redact(v) if isinstance(v, str) else v for k, v in safe.items()}
+            text = sensitive.redact(text)
             points: list[int] = []
             anchor = None
             if name == "tap_element" and str(args.get("index", "")).lstrip("-").isdigit():
@@ -1236,7 +1265,9 @@ class Agent:
         # Refused in every mode, before anything asks: links outside the scheme allowlist, typing into
         # a password field, and dangerous URLs typed into an address bar.
         if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
-            return self._refuse(str(args.get("url", ""))[:80], why)
+            return self._refuse(url_shown(str(args.get("url", ""))), why)
+        if name == "open_link" and (why := self._link_refusal(args)):
+            return self._refuse(f"a {str(args.get('app', ''))[:40]} link", why)
         if name == "type_text":
             if not obs.elements and (refused := self._unseen_field_refusal(state, obs)):
                 return refused
@@ -1395,6 +1426,9 @@ class Agent:
             field = self._field(state, obs)
             if refused := self._typing_refusal(text, field, obs, state):
                 return refused
+            if (kind := self._sensitive_kind(text, field, obs)) and (
+                    blocked := self._ask_sensitive(kind, text, field, obs, state)):
+                return blocked
             if args.get("submit") and (blocked := self._guard_enter(state, obs, field, typed=text)):
                 return blocked
             state.typed = True
@@ -1667,6 +1701,15 @@ class Agent:
                     return
                 state.cancel.wait(READABLE_POLL_S)
 
+    @staticmethod
+    def _link_refusal(args: dict) -> str | None:
+        """open_link's parameters carrying a card number or SSN: refused before anything asks (the built link is
+        checked again by url_refusal)."""
+        params = args.get("params")
+        if not isinstance(params, dict):
+            return None
+        return gate.carries_sensitive(" ".join(f"{k}={v}" for k, v in params.items()))
+
     def _open_link(self, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         """open_link: a catalog destination inside an app (app_links.LINKS). The URL is built from the entry's
         template and judged like any link (the scheme allowlist, blocked apps, the phone's gatekeeper). A `view`
@@ -1714,7 +1757,7 @@ class Agent:
         on this phone) and the model can adjust. Never waits for a particular package in front: an OEM may hand a
         link to another app. `label` is for the model, `shown` for the feed (never the user's words)."""
         if why := gate.url_refusal(url):
-            return self._refuse(url[:80], why)
+            return self._refuse(url_shown(url), why)
         target = state.url_targets.pop(url) if url in state.url_targets else self._url_target(url)
         if refused := self._blocked_handler(target, state):
             return refused
@@ -2329,11 +2372,57 @@ class Agent:
             return self._refuse("a one-time-code field", "an outside agent never types verification codes; the "
                                                          "owner types them.")
         scheme = gate.dangerous_text(text)
-        if scheme and (gate.is_url_bar(field, obs.package) or (
-                field is None and gate.is_browser(obs.package, obs.elements))):
+        address_bar = gate.is_url_bar(field, obs.package) or (
+            field is None and gate.is_browser(obs.package, obs.elements))
+        if scheme and address_bar:
             return self._refuse(f"{scheme}: in the address bar", f"{scheme}: links can run code or reach into "
                                                                  "apps, so they're never typed.")
+        if address_bar and gate.looks_like_url(text) and (why := gate.carries_sensitive(text)):
+            return self._refuse("a link in the address bar", why)  # F3: no data out through links
+        if kind := self._sensitive_kind(text, field, obs):
+            what = sensitive.describe(kind)
+            if state is None or state.refuse_otp:
+                return self._refuse(f"{what} typed", "an outside agent never types card numbers or Social Security "
+                                                     "numbers; the owner types them.")
+            if state.perms.mode() == "never" or self.config.confirm_actions == "never":
+                return self._refuse(f"{what} typed", f"typing {what} asks the owner first, and nobody can be asked "
+                                                     "while agents act without asking.")
         return None
+
+    @staticmethod
+    def _sensitive_kind(text: str, field: UIElement | None, obs: Observation) -> str | None:
+        """A card number or SSN in text about to be typed (sensitive.find), in any field. The field's own words, or
+        the screen's, saying SSN or Social Security make a bare 9 digits (or a test value like 000-12-3456) count;
+        a card field (card number, CVV, expiry) makes any 3 digits count."""
+        about = " ".join(p for p in (field.hint, field.desc, field.resource_id) if p) if field is not None else ""
+        on_screen = any(sensitive.ssn_label(f"{e.text} {e.desc} {e.hint} {e.resource_id}")
+                        for e in obs.elements if e is not field)
+        return sensitive.find(text, ssn_context=sensitive.ssn_label(about) or on_screen,
+                              card_field=sensitive.card_label(about))
+
+    def _ask_sensitive(self, kind: str, text: str, field: UIElement | None, obs: Observation,
+                       state: _TaskState) -> Outcome | None:
+        """Typing a card number or SSN asks the owner, every time (owner, F2): never covered by a task approval,
+        a trusted entry, "Don't confirm everyday actions" or a request that names it. The question never holds the
+        number. (Refused under Don't ask and in drive sessions: _typing_refusal.)"""
+        if state.perms.mode() == "ask" and state.step_approved:
+            return None  # the owner just approved typing this very text (ask every step)
+        what = sensitive.describe(kind)
+        package = obs.package
+        # The field by its hint, description or id: never its text, which may hold what was typed before.
+        name = (field.hint or field.desc or gate.readable_id(field.resource_id)) if field is not None else ""
+        into = f" into {name[:60]!r}" if name else ""
+        where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
+        action = self._action("type_text", package, field, typed=text)
+        digest = action_digest(action)
+        state.risky = True
+        answer = self._ask_owner(state, f"I'm about to type {what}{into}{where}. Should I go ahead?",
+                                 {"kind": "action", "action_kind": "sensitive_number", "package": package,
+                                  "hint_ok": True, "action": action, "digest": digest})
+        if is_yes(answer):
+            return self._approval_mismatch(digest, None, f"type {what}")
+        return Outcome(f"The user did not approve typing {what} (they said {answer!r}). Don't type it. Pick another "
+                       "approach or call done.", is_error=True, settle=0)
 
     def _guard_enter(self, state: _TaskState, obs: Observation, field: UIElement | None,
                      typed: str | None = None) -> Outcome | None:
@@ -2378,7 +2467,7 @@ class Agent:
         the app that will handle it, resolved on the phone before opening (newer apps, adb), against
         the task's blocked apps. (refusal or None, whether the handler was resolved)."""
         if why := gate.url_refusal(url):
-            return self._refuse(url[:80], why), False
+            return self._refuse(url_shown(url), why), False
         target = self._url_target(url)
         if target is None:
             return None, False
@@ -2719,7 +2808,9 @@ class Agent:
         elif name == "type_text":
             text = str(args.get("text", ""))
             shown = text if len(text) <= 80 else text[:79] + "…"
-            what = f"type {shown!r}" + (" and press Enter" if args.get("submit") else "")
+            kind = self._sensitive_kind(text, self._field(state, obs), obs)
+            what = (f"type {sensitive.describe(kind)}" if kind else f"type {shown!r}") + (
+                " and press Enter" if args.get("submit") else "")  # a card number or SSN is never in a question
             action = self._action("type_text", obs.package, self._field(state, obs), typed=text)
         elif name == "press_key":
             if args.get("key") != "ENTER":

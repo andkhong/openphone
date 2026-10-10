@@ -457,7 +457,7 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call", "install")) return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call", "install", "sensitive_number")) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
         // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -573,7 +573,7 @@ class Gatekeeper(
         if (now() >= g.expires || g.used >= lim("task_grant_steps")) return false
         val text = params["task_text"]?.toString().orEmpty().split(WS).filter { it.isNotEmpty() }.joinToString(" ").take(300)
         if (text.isNotEmpty() && GateText.sha256(text) != g.digest) return false // the grant was for another request
-        if (risk.kind == "task" || risk.kind == "step" || level(risk) != "tap" || risk.kind !in g.kinds) return false
+        if (risk.kind == "task" || risk.kind == "step" || risk.kind == "sensitive_number" || level(risk) != "tap" || risk.kind !in g.kinds) return false
         var app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
         if (risk.reason.startsWith("uninstall:")) app = risk.grant.orEmpty() // an uninstall counts as the app it removes
         val label = GateText.tokens(screen.labels[app].orEmpty())
@@ -1661,8 +1661,21 @@ class Gatekeeper(
         if (callApp(w.pkg) && (completesCode(text) || completesCode(node.text + text))) {
             // Some dialers run a code as soon as its last # is typed (review H2).
             j.risk = callCodeRisk(node.text + text, app)
+        } else if (rules.isCat("browser", w.pkg) && (rules.rxKey("url_bar").containsMatchIn(node.id) || GateText.looksLikeUrl(node.text))
+            && GateText.looksLikeUrl(text) && SensitiveNumbers.inUrl(text, rules.ssnLabel) != null) {
+            // No data out through links (F3): a link carrying a card number or SSN is never typed into the address bar.
+            j.refuse = Triple("gate_denied", "builtin:sensitive_link", "That link carries " +
+                SensitiveNumbers.describe(SensitiveNumbers.inUrl(text, rules.ssnLabel)) + "; links never carry them out.")
         } else if (rules.rxKey("payment_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "card_field", always = true, wording = "Allow typing into the card field in $app?")
+        } else if (SensitiveNumbers.find(text, ssnContext = rules.ssnLabel.containsMatchIn("$about ${node.desc}") ||
+                rules.ssnLabel.containsMatchIn(GateScreen.screenText(screen))) != null) {
+            // A card number or SSN in any field (F2): asks at tap level, every time. Never covered by a task approval,
+            // "everyday" or a grant; refused under Don't ask (always).
+            val what = SensitiveNumbers.describe(SensitiveNumbers.find(text, ssnContext = true))
+            val field = node.hint.ifEmpty { node.desc }.take(40)
+            j.risk = Risk("sensitive_number", "sensitive_number", always = true,
+                wording = "Allow typing $what" + (if (field.isNotEmpty()) " into “$field”" else "") + " in $app?")
         } else if (rules.rxKey("otp_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "otp_field", always = true, wording = "Allow typing a code into $app?")
         }
@@ -1734,6 +1747,12 @@ class Gatekeeper(
         if (scheme == null || scheme !in rules.schemesAllowed) {
             j.refuse = Triple("gate_denied", "builtin:url_scheme",
                 "${scheme ?: "that"}: links aren't opened by agents (only https, http, tel, geo, mailto, sms and market).")
+            return j
+        }
+        SensitiveNumbers.inUrl(url, rules.ssnLabel)?.let { kind ->
+            // No data out through links (F3): open_url, or ENTER on an address bar holding it. Refused, never asked.
+            j.refuse = Triple("gate_denied", "builtin:sensitive_link",
+                "That link carries ${SensitiveNumbers.describe(kind)}; links never carry them out.")
             return j
         }
         for (pkg in if (handler.isNotEmpty()) listOf(handler) else candidates) {

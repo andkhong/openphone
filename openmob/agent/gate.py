@@ -16,6 +16,7 @@ from ..config import Config
 from ..permissions import (APP_INFO_ALLOWED, APP_INFO_ASK, APP_INFO_MARKERS, BROWSER_PACKAGE, KIND_WORDS,
                            SETTINGS_CHANGE_WORDS, SETTINGS_PACKAGE)
 from ..phone.adb import UIElement
+from . import sensitive
 
 TITLE_BAND = 0.16  # the top of the screen, where a Settings page's title sits
 LAUNCHER = re.compile(r"launcher|\.home$|trebuchet|lawnchair|nexuslauncher", re.IGNORECASE)
@@ -415,4 +416,13 @@ def url_refusal(url: str) -> str | None:
     if scheme not in SAFE_SCHEMES:
         return (f"{scheme}: links go straight into apps, so only web links (https://) and tel, mailto, sms, "
                 "geo and market links are opened.")
+    return carries_sensitive(url)
+
+
+def carries_sensitive(url: str) -> str | None:
+    """No data out through links (F3): a link (or a link's parameters) carrying a card number or SSN anywhere, decoded,
+    would hand it to whoever runs the site. Refused in every mode, never asked."""
+    if kind := sensitive.in_url(url):
+        return (f"this link carries {sensitive.describe(kind)}, and opening it would send that to whoever runs the "
+                "site, so it's never opened.")
     return None

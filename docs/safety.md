@@ -75,7 +75,9 @@ tap where a blocked app's window lies under the one on top is refused.
 
 **Asked on the phone, with its own words and screen lock:** money commits ("Buy now", "Place your order",
 "Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
-notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
+notification action buttons, typing into OTP or card fields, typing a card number or SSN into any field (never
+covered, refused under Don't ask; a link carrying one is refused outright, see [Sensitive numbers](#sensitive-numbers)),
+ENTER in a chat or a checkout or a web form,
 "slide to pay", **installing an app the request doesn't name** (owner, 2026-10-09: a free Play Store
 install runs unasked only when the task's own words name the app on the store page, by a distinctive word of its
 title's name part, before any tagline (common English words such as "this", "tap" or "install", and makers' names,
@@ -449,10 +451,45 @@ model's own description of it. The model's words can only add caution.
 | `tap_element` | By the element's own text, description and resource id, plus whatever its centre lands on |
 | `swipe`, `scroll` | A swipe that barely moves (within twice the touch slop, 48 px) or is quicker than 150 ms is a tap, judged as one at its start point; so is a swipe that starts and ends on the same button. Any other swipe is judged at each end that is a commit control: a slider ("Slide to pay") or a risky label |
 | ENTER (`press_key ENTER`, `type_text` with `submit`) | In messaging, email and social apps it's a **send**. In a browser or web form, and on a payment screen, it's a **submit** that asks (as a payment when money words are on screen). Search boxes never ask. In a browser's address bar, the link checks below run on the URL |
-| `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
-| `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar |
+| `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. A link carrying a card number or SSN anywhere (host, path, query or fragment, URL-decoded) is refused ([Sensitive numbers](#sensitive-numbers)). With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
+| `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar, nor a link carrying a card number or SSN. A card number or SSN in any field asks ([Sensitive numbers](#sensitive-numbers)) |
 | `open_settings_page` | Only a page key from the phone's fixed table (the phone picks the intent; unknown keys are refused there). The page's tier is judged like a tap on it (the stricter of the table and the Settings word lists), an app's own pages are refused for blocked apps, and the phone's gatekeeper judges the call again |
 | `open_link` | A catalog entry's link, built from its template with each parameter checked for its kind (a number is digits, a web address is `http(s)` only, a package is an application id). Then exactly `open_url`'s checks on the result, plus the entry's own app against the task's blocked apps. A `view` or `draft` entry opens like any link; an `action` entry asks first (none exists). The phone never receives a package or component: Android picks the handler, and the gatekeeper judges the URL |
+
+### Sensitive numbers
+
+Card numbers and US Social Security numbers get their own rules (2026-10-10, after an abuse test typed a card
+into a "Name on card" field, typed an SSN into a loan form, and sent a card number out in a link's query). The
+server (`openmob/agent/sensitive.py`) and the phone (`SensitiveNumbers.kt`) use the same detector, pinned by a
+shared fixture:
+- **A card number:** 13 to 19 digits, optionally grouped by single spaces, dashes or pluses (a grouped number
+  starts with a 4-digit group), first digit 2 to 6, passing the Luhn check. Not after `+` (a phone number) or
+  after `<digit>.` (a coordinate's decimals). **CVV and expiry** count in a card field (card number, CVV, expiry…:
+  any 3 digits) and are covered anyway when typed next to a card number.
+- **An SSN:** `ddd-dd-dddd` with a valid area (not 000, 666 or 9xx), group and serial. Where the field or the
+  screen says SSN or Social Security, `ddd dd dddd`, 9 bare digits and test values such as 000-12-3456 count too.
+- Phone numbers, order numbers, dates, timestamps and map coordinates don't count (a test sweeps 24,000 generated
+  ones; that is a generated set, not a measurement of real use).
+
+What happens:
+- **Typing one asks**, in any field and in any app, at tap level (kind `sensitive_number`; a card field keeps its
+  stronger screen-lock ask). It is **never covered**: not by a task approval, "Always allow", "Don't confirm
+  everyday actions", or a request that spells the number out. It is **refused under Don't ask** and **in drive
+  sessions** (an outside agent never types card numbers or SSNs, like verification codes). `type_text` with
+  `replace` or `submit` is judged the same way. The question names the kind ("a card number"), never the digits.
+- **A link carrying one is refused**, never asked: `open_url`, `open_link` parameters, a URL typed into a browser's
+  address bar, and ENTER on an address bar holding one, after URL-decoding (up to three rounds, so `%20`, `%2B`,
+  `+` and double encoding don't hide it). On the agent loop and in drive sessions alike, and again on the phone.
+- **Redaction:** any card number or SSN in an event (the request in "Working on: …", the model's thoughts, its
+  summary, a refusal) is replaced by `<redacted>` before it reaches the feed, `/v1/tasks/{id}/events`, webhooks'
+  task, the history, the steps table or the server console.
+- The phone can't tell a drive session from a task, so the drive refusal is the server's; a compromised server
+  driving the phone still meets the phone's ask.
+
+**Typed text is never shown.** The feed, `/v1/tasks/{id}/events`, the history, the developer console, the server
+console and the steps table show a typing step as `Typed <redacted>.`, from the agent loop and from drive sessions;
+an error about it has the text taken out. Only the model (or the outside agent) that typed it gets its own words
+back in its tool result.
 
 Typed text that goes through the clipboard (some fields only accept a paste) doesn't stay there: the
 app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
@@ -497,7 +534,8 @@ screen lock), blocked apps are refused and show nothing, password fields are nev
 mode is capped by the key's `max_mode` and the phone's ceiling, and the phone's gatekeeper judges each act again
 on gatekeeper builds. Two things are stricter than for the agent: typing into a field that looks like a
 one-time-code field is refused (the agent types login codes under your instruction; an outside agent that read
-the code off your Messages app must not), and only BACK, HOME and ENTER can be pressed. The agent cannot approve
+the code off your Messages app must not), so is typing a card number or SSN anywhere
+([Sensitive numbers](#sensitive-numbers)), and only BACK, HOME and ENTER can be pressed. The agent cannot approve
 anything, in any mode. You see the session as a task (its goal, every act, the outcome) in the feed and the
 developer console, the phone shows which key is driving, and Stop on the phone or the dashboard ends it. It
 also ends on its own after its step cap, 2 minutes without a command, or 30 minutes.
