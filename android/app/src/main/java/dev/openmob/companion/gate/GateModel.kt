@@ -307,6 +307,20 @@ object GateScreen {
         return null
     }
 
+    /** Every clickable or labeled node under (x, y) in [window] (below its root), each with its path from the root,
+     *  in tree order: what a tap there could land on, whatever the views' drawing order (at most [limit]). */
+    fun targetsAt(window: GWindow, x: Double, y: Double, limit: Int = 60): List<GTarget> {
+        val out = mutableListOf<GTarget>()
+        fun visit(n: GNode, path: List<GNode>) {
+            if (out.size >= limit) return
+            val p = path + n
+            if (path.isNotEmpty() && (n.clicks || n.text.isNotEmpty() || n.desc.isNotEmpty())) out.add(GTarget(window, p))
+            for (c in n.children) if (c.contains(x, y)) visit(c, p)
+        }
+        window.root?.let { if (it.contains(x, y)) visit(it, emptyList()) }
+        return out
+    }
+
     class Field(val window: GWindow, val node: GNode, val path: List<GNode>)
 
     /** Which field the gate judged: its window, bounds, id and class (PhoneActions types only into a node that

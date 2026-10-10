@@ -9492,6 +9492,39 @@
     },
     "screen": "dialer_google",
     "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 870,
+      "y": 1775
+     }
+    },
+    "screen": "dialer_google_code",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint",
+     "rule": "risk:call:mmi"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google_code",
+    "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
      "kind": "call_code",
@@ -9730,10 +9763,7 @@
     },
     "screen": "launcher",
     "expect": {
-     "decision": "ask",
-     "code": "gate_needs_approval",
-     "kind": "call_code",
-     "level": "fingerprint"
+     "decision": "allow"
     }
    }
   ]
@@ -10058,6 +10088,245 @@
      "decision": "refuse",
      "code": "gate_prompt_open",
      "rule": "builtin:prompt_open"
+    }
+   }
+  ]
+ },
+ {
+  "name": "hit test: a risky control drawn above a later full-screen layer is still judged",
+  "tags": [
+   "hit_test"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "hit_buy_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "hit_place_order_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "terminal"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 980,
+      "y": 2250
+     }
+    },
+    "screen": "hit_send_toolbar",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "hit_settings_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 2200
+     }
+    },
+    "screen": "hit_delete_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "check the weather"
+     }
+    },
+    "screen": "hit_install_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1750
+     }
+    },
+    "screen": "hit_overlay_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app",
+     "rule": "builtin:sensitive_apps"
+    }
+   }
+  ]
+ },
+ {
+  "name": "hit test: ordinary taps on layered screens don't start asking",
+  "tags": [
+   "hit_test",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1050
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 340
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "hit_buy_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 400,
+      "y": 2250
+     }
+    },
+    "screen": "hit_send_toolbar",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install the torchlight app"
+     }
+    },
+    "screen": "hit_install_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "hit_overlay_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
     }
    }
   ]

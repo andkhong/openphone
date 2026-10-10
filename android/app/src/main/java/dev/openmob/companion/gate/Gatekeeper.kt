@@ -1358,6 +1358,9 @@ class Gatekeeper(
     /** An MMI/USSD code (call forwarding `**21*…#`, settings codes): any * or #, plain or percent-encoded. */
     fun mmi(text: String) = '*' in text || '#' in text || "%23" in text || "%2a" in text.lowercase()
 
+    /** The dialer's number would then be a complete MMI/USSD code: it starts with * or # and has a later #. */
+    fun completesCode(number: String) = rules.rx(callRules.str("code_complete")).containsMatchIn(number)
+
     /** The number a dialer window holds: its number field (by id, else any field with text). */
     private fun dialedNumber(w: GWindow): String {
         val rx = rules.rx(callRules.str("number_ids"))
@@ -1392,9 +1395,10 @@ class Gatekeeper(
         val safe = has(label, callRules["safe_words"].strings()) || ids.any { rules.rx(callRules.str("safe_ids")).containsMatchIn(it) }
         if (safe) return null
         if (callApp(w.pkg)) {
-            val codeKey = raw.any { it == "*" || it == "#" } || ids.any { rules.rx(callRules.str("code_keys")).containsMatchIn(it) } ||
-                (label.size == 1 && label[0] in setOf("pound", "star"))
-            if (codeKey) return callCodeRisk(dialedNumber(w) + raw.firstOrNull { it == "*" || it == "#" }.orEmpty(), app)
+            // The # key completing a code (owner, 2026-10-10: the * key alone never runs one).
+            val poundKey = raw.any { it == "#" } || ids.any { rules.rx(callRules.str("code_keys")).containsMatchIn(it) } ||
+                (label.size == 1 && label[0] == "pound")
+            if (poundKey && completesCode(dialedNumber(w) + "#")) return callCodeRisk(dialedNumber(w) + "#", app)
             val call = has(label, callRules["words"].strings()) || ids.any { rules.rx(callRules.str("ids")).containsMatchIn(it) }
             if (!call) return null
             val number = dialedNumber(w).ifEmpty { shown }
@@ -1412,10 +1416,44 @@ class Gatekeeper(
         return listOfNotNull(t.pressed, t.hit).any { rx.containsMatchIn(it.cls) }
     }
 
+    /** A tap, judged by every clickable or labeled node under the point, not only the hit path (review C follow-up):
+     *  the hit test follows the last child that contains the point, but a view drawn above its siblings by elevation
+     *  or layering isn't always last (Google Phone's Call button over a full-screen layer). The strictest verdict
+     *  wins: refuse > ask with the screen lock > ask with a tap > allow; on a tie, the hit path's. A blocked app's
+     *  window under the one on top, at the point, refuses too. */
     private fun judgePoint(x: Double, y: Double, screen: GScreen): Judgement {
         // No window there that the phone knows of: it can't judge the touch.
         val t = GateScreen.hitTest(rules, screen, x, y) ?: return Judgement(changing = true,
             refuse = Triple("gate_screen_unstable", "builtin:no_window", "The phone can't see what's there. Look again."))
+        screen.ordered.firstOrNull { w ->
+            w !== t.window && w.layer < t.window.layer && w.type == "application" &&
+                GateScreen.contains(w.bounds, x, y) && rules.blocked(w.pkg)
+        }?.let { w ->
+            return Judgement(pkg = w.pkg, changing = true, refuse = Triple("gate_blocked_app", "builtin:sensitive_apps",
+                "Blocked on the phone: ${w.pkg} is a sensitive app, under what's on top here. Don't open it another way; call done."))
+        }
+        var best = judgeTarget(t, x, y, screen)
+        var rank = strictness(best)
+        for (alt in GateScreen.targetsAt(t.window, x, y)) {
+            if (rank >= 3) break
+            if (alt.pressed === t.pressed && alt.hit === t.hit) continue
+            val j = judgeTarget(alt, x, y, screen)
+            val r = strictness(j)
+            if (r > rank) { best = j; rank = r }
+        }
+        return best
+    }
+
+    /** refuse 3 > ask with the screen lock 2 > ask with a tap 1 > allow 0. A Play Store install counts as a tap-level
+     *  ask: whether it asks depends on the task text, decided in [admit]. */
+    private fun strictness(j: Judgement): Int = when {
+        j.refuse != null -> 3
+        j.risk == null -> if (j.installTitle != null) 1 else 0
+        level(j.risk!!) == "fingerprint" -> 2
+        else -> 1
+    }
+
+    private fun judgeTarget(t: GTarget, x: Double, y: Double, screen: GScreen): Judgement {
         val w = t.window
         val j = Judgement(pkg = w.pkg, fp = t.fp(false), strictFp = t.fp(true), changing = true, app = appWindow(w))
         j.moneyFp = j.strictFp + "|$" + GateScreen.moneyAmounts(w, t).joinToString(",")
@@ -1597,7 +1635,7 @@ class Gatekeeper(
         j.payment = GateScreen.paymentContext(rules, screen)
         val about = "${node.id} ${node.hint}"
         val app = label(screen, w.pkg)
-        if (callApp(w.pkg) && mmi(text)) {
+        if (callApp(w.pkg) && (completesCode(text) || completesCode(node.text + text))) {
             // Some dialers run a code as soon as its last # is typed (review H2).
             j.risk = callCodeRisk(node.text + text, app)
         } else if (rules.rxKey("payment_field").containsMatchIn(about)) {
@@ -1687,10 +1725,8 @@ class Gatekeeper(
         }
         if (scheme == "tel" && handler.isNotEmpty() && !rules.isCat("dialer", handler)) {
             j.refuse = Triple("gate_denied", "builtin:tel_handler", "tel: links only open the dialer.")
-        } else if (scheme == "tel" && mmi(url.substringAfter(':'))) {
-            // A code with * or # (call forwarding…): some dialers run codes they're handed, so it asks first (H2).
-            j.risk = callCodeRisk(url.substringAfter(':'), label(screen, handler.ifEmpty { "the dialer" }))
         }
+        // A tel: link with * or # only opens the dialer too (owner, 2026-10-10): dialing the code asks, once.
         return j
     }
 

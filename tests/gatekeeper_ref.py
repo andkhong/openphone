@@ -304,6 +304,26 @@ class Target:
         return "|".join([str(self.window.id), self.window.package, p.fp(bounds) if p else "", h.fp(bounds) if h else ""])
 
 
+def targets_at(window: Window, x: float, y: float, limit: int = 60) -> list:
+    """Every clickable or labeled node under (x, y) in the window (below its root), with its path from the root, in
+    tree order: what a tap there could land on, whatever the views' drawing order (GateScreen.targetsAt)."""
+    out = []
+
+    def visit(n, path):
+        if len(out) >= limit:
+            return
+        p = path + [n]
+        if path and (n.clickable or n.long_clickable or n.text or n.desc):
+            out.append(Target(window, p))
+        for c in n.children:
+            if c.contains(x, y):
+                visit(c, p)
+
+    if window.root is not None and window.root.contains(x, y):
+        visit(window.root, [])
+    return out
+
+
 def hit_test(rules: Rules, screen: Screen, x: float, y: float) -> Target | None:
     """The window that catches a touch at (x, y) (highest layer first; our own keep-awake overlay never
     catches touches), and the path to the deepest node there."""
@@ -1829,6 +1849,10 @@ class Gatekeeper:
         """An MMI/USSD code (call forwarding `**21*…#`, settings codes): any * or #, plain or percent-encoded."""
         return "*" in text or "#" in text or "%23" in text or "%2a" in text.lower()
 
+    def completes_code(self, number: str) -> bool:
+        """The dialer's number would then be a complete MMI/USSD code: it starts with * or # and has a later #."""
+        return bool(re.search(self.r.d["calls"]["code_complete"], number))
+
     def _dialed_number(self, w: Window) -> str:
         rx = re.compile(self.r.d["calls"]["number_ids"])
         nodes = walk(w.root, [])
@@ -1871,11 +1895,11 @@ class Gatekeeper:
         if any_phrase(label, c["safe_words"]) or any(re.search(c["safe_ids"], i) for i in ids):
             return None
         if self.call_app(w.package):
-            code_key = any(x in ("*", "#") for x in raw) or any(re.search(c["code_keys"], i) for i in ids) or \
-                (len(label) == 1 and label[0] in ("pound", "star"))
-            if code_key:
-                return self._call_code_risk(self._dialed_number(w) + next((x for x in raw if x in ("*", "#")), ""),
-                                            app)
+            # The # key completing a code (owner, 2026-10-10: the * key alone never runs one).
+            pound = any(x == "#" for x in raw) or any(re.search(c["code_keys"], i) for i in ids) or \
+                (len(label) == 1 and label[0] == "pound")
+            if pound and self.completes_code(self._dialed_number(w) + "#"):
+                return self._call_code_risk(self._dialed_number(w) + "#", app)
             if not (any_phrase(label, c["words"]) or any(re.search(c["ids"], i) for i in ids)):
                 return None
             number = self._dialed_number(w) or shown
@@ -1889,11 +1913,44 @@ class Gatekeeper:
         return None
 
     def _judge_point(self, method: str, x: float, y: float, screen: Screen) -> Judgement:
+        """A tap, judged by every clickable or labeled node under the point, not only the hit path: a view drawn above
+        its siblings by elevation isn't always the last child. The strictest verdict wins (refuse > ask with the
+        screen lock > ask with a tap > allow; on a tie, the hit path's). A blocked app's window under the one on
+        top, at the point, refuses too."""
         r = self.r
         t = hit_test(r, screen, x, y)
         if t is None:  # no window there that the phone knows of: it can't judge the touch
             return Judgement(changing=True, refuse=("gate_screen_unstable", "builtin:no_window",
                                                     "The phone can't see what's there. Look again."))
+        for w in screen.ordered():
+            if w is not t.window and w.layer < t.window.layer and w.type == "application" and \
+                    contains(w.bounds, x, y) and r.blocked(w.package):
+                return Judgement(package=w.package, changing=True, refuse=(
+                    "gate_blocked_app", "builtin:sensitive_apps",
+                    f"Blocked on the phone: {w.package} is a sensitive app, under what's on top here. Don't open it "
+                    "another way; call done."))
+        best = self._judge_target(method, t, x, y, screen)
+        rank = self._strictness(best)
+        for alt in targets_at(t.window, x, y):
+            if rank >= 3:
+                break
+            if alt.pressed is t.pressed and alt.hit is t.hit:
+                continue
+            j = self._judge_target(method, alt, x, y, screen)
+            if self._strictness(j) > rank:
+                best, rank = j, self._strictness(j)
+        return best
+
+    def _strictness(self, j: Judgement) -> int:
+        """refuse 3 > ask with the screen lock 2 > ask with a tap 1 > allow 0."""
+        if j.refuse:
+            return 3
+        if j.risk is None:  # a Play Store install: a tap-level ask unless the task text names the app (admit)
+            return 1 if j.install_title is not None else 0
+        return 2 if self.level(j.risk) == "fingerprint" else 1
+
+    def _judge_target(self, method: str, t: Target, x: float, y: float, screen: Screen) -> Judgement:
+        r = self.r
         w = t.window
         j = Judgement(package=w.package, fp=t.fp(False), strict_fp=t.fp(True), changing=True,
                       app=self._app_window(w))
@@ -2101,7 +2158,7 @@ class Gatekeeper:
         j.payment = payment_context(r, screen)
         about = f"{node.id} {node.hint}"
         app = self.label(screen, w.package)
-        if self.call_app(w.package) and self.mmi(text):
+        if self.call_app(w.package) and (self.completes_code(text) or self.completes_code(node.text + text)):
             j.risk = self._call_code_risk(node.text + text, app)  # some dialers run a code once its # is typed (H2)
         elif re.compile(r.d["payment_field"]).search(about):
             j.risk = Risk("fill", "card_field", always=True, wording=f"Allow typing into the card field in {app}?")
@@ -2191,9 +2248,7 @@ class Gatekeeper:
                 return j
         if scheme == "tel" and handler and not r.is_cat("dialer", handler):
             j.refuse = ("gate_denied", "builtin:tel_handler", "tel: links only open the dialer.")
-        elif scheme == "tel" and self.mmi(url.split(":", 1)[-1]):
-            # A code with * or # (call forwarding…): some dialers run codes they're handed, so it asks first (H2).
-            j.risk = self._call_code_risk(url.split(":", 1)[-1], self.label(screen, handler or "the dialer"))
+        # A tel: link with * or # only opens the dialer too (owner, 2026-10-10): dialing the code asks, once.
         return j
 
 

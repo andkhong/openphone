@@ -13,5 +13,7 @@
         <activity android:name=".CartActivity" android:exported="true" />
         <activity android:name=".CheckoutActivity" android:exported="true" />
         <activity android:name=".DeepCheckoutActivity" android:exported="true" />
+        <!-- The gate's hit test: Buy now in an earlier sibling, drawn above a later full-screen layer. -->
+        <activity android:name=".LayeredActivity" android:exported="true" />
     </application>
 </manifest>

@@ -120,7 +120,7 @@
                 "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"]
   },
   "calls": {
-    "_doc": "Placing a phone call (review H2). In these packages (the main dialers, contacts apps and in-call screens), a tap whose label or id says call or dial, ENTER in their number field, places a call: it asks at tap level. In any app, a button labelled exactly Call, or voice/video call, asks too. A number containing * or # is an MMI/USSD code (call forwarding, settings changes): dialing it, typing it, tapping the dialpad's * or # key there, or opening a tel: link with it asks with the screen lock.",
+    "_doc": "Placing a phone call (review H2). In these packages (the main dialers, contacts apps and in-call screens), a tap whose label or id says call or dial, ENTER in their number field, places a call: it asks at tap level. In any app, a button labelled exactly Call, or voice/video call, asks too. A number containing * or # is an MMI/USSD code (call forwarding, settings changes): dialing it asks with the screen lock (see _code_doc).",
     "packages": ["com.google.android.dialer", "com.samsung.android.dialer", "com.android.dialer",
                  "com.google.android.contacts", "com.samsung.android.app.contacts", "com.android.contacts",
                  "com.android.server.telecom", "com.samsung.android.incallui", "com.android.incallui"],
@@ -133,7 +133,9 @@
     "safe_ids": "(?i)end_?call|hang_?up|decline|reject|call_?log|call_?history",
     "any_app_ids": "(?i)voice_?call|video_?call|audio_?call",
     "number_ids": "(?i)digits|dialpad_?edit|edit_?text_?number|number_?field|dial_?number",
-    "code_keys": "(?i)(^|[/_:])(pound|star|key_?pound|key_?star)$"
+    "code_keys": "(?i)(^|[/_:])(pound|key_?pound)$",
+    "_code_doc": "Owner, 2026-10-10: one prompt, at the dialing. A tel: link with * or # only opens the dialer. The dialpad's # key, or typed text, asks with the screen lock only when it completes a code (the number then starts with * or # and has a later #); the Call button and ENTER ask with the screen lock for any number with * or #.",
+    "code_complete": "^\\s*[*#].*#"
   },
   "payment_words": ["pay", "pay now", "place order", "place your order", "buy now", "checkout", "complete purchase",
                     "confirm purchase", "order total", "total due"],

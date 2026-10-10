@@ -798,15 +798,48 @@ async def g_calls(phone: Phone, dev: Device) -> None:
           and "mCallState=0" in calls, f"{code} rule={rule(reply)} question={reply.get('gate', {}).get('question')!r} {calls}")
     dev.sh("input keyevent BACK")
     dev.home()
+    # Owner, 2026-10-10: one prompt, at the dialing. The link only opens the dialer; Call then asks with the screen lock.
     r = await phone.call("open_url", url="tel:**21*5551234%23")
-    prompt = await dev.deny("calls-mmi-link-deny") if asks(r) else None
+    await asyncio.sleep(3)
+    f = dev.focus()
+    check(G, "a tel: link with a forwarding code opens the dialer without asking",
+          r.get("ok") is True and ("dialer" in f or "phone" in f), short(r)[:160] + f" focus={f}")
+    code, reply, prompt = await ua_tap(phone, dev, is_call_button, "calls-mmi-dial")
+    calls = dev.sh("dumpsys telephony.registry | grep -m1 mCallState").strip()
+    check(G, "dialing the forwarding code asks with the screen lock (kind call_code); no call placed",
+          code == "gate_needs_approval" and reply.get("gate", {}).get("kind") == "call_code" and prompt is not None
+          and "mCallState=0" in calls, f"{code} rule={rule(reply)} question={reply.get('gate', {}).get('question')!r} {calls}")
+    dev.sh("input keyevent BACK")
+    dev.home()
+
+
+async def g_hittest(phone: Phone, dev: Device) -> None:
+    """The gate's hit test (2026-10-10): the shop stand-in's Buy now sits in an earlier sibling than a full-screen
+    layer and is drawn above it by elevation. The tap must still be judged as Buy now (it asks; the owner denies; no
+    checkout), while a tap on the product title stays unasked."""
+    G = "hittest"
+    if not dev.installed("com.example.shop"):
+        check(G, "stand-in shop installed", False, "skipped")
+        return
+    await shop_open(dev, ".LayeredActivity")
+    dev.logcat_clear()
+    buy = await dev.find("Buy now")
+    title = await dev.find("Wireless earbuds", contains=True)
+    if not buy or not title:
+        check(G, "the layered page is readable", False, f"buy={buy} title={title}")
+        return
+    r = await phone.call("tap", x=title[0], y=title[1])
+    check(G, "a tap on the product title over the layer doesn't ask", r.get("ok") is True, short(r))
+    r = await phone.call("tap", x=buy[0], y=buy[1])
+    prompt = None
     if asks(r):
+        prompt = await dev.deny("hittest-buy-deny")
         await phone.gate_state(r["approval_id"])
     await asyncio.sleep(1)
-    calls = dev.sh("dumpsys telephony.registry | grep -m1 mCallState").strip()
-    check(G, "a tel: link with a forwarding code asks with the screen lock (kind call_code)",
-          asks(r) and r.get("gate", {}).get("kind") == "call_code" and "mCallState=0" in calls,
-          f"{short(r)[:160]} prompt={prompt is not None} {calls}")
+    bought = "BUY NOW layered" in dev.log("ShopStandIn")
+    check(G, "Buy now under a later full-screen layer asks (kind pay) and nothing is bought",
+          asks(r) and r.get("gate", {}).get("kind") == "pay" and prompt is not None and not bought,
+          f"{short(r)[:200]} prompt={prompt is not None} bought={bought}")
     dev.home()
 
 
@@ -1574,7 +1607,7 @@ async def g_never(phone: Phone, dev: Device) -> None:
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
           "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "hidden": g_hidden, "methods": g_methods, "never": g_never,
-          "spoof": g_spoof, "calls": g_calls, "probe": g_probe}
+          "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "probe": g_probe}
 
 
 async def main() -> None:

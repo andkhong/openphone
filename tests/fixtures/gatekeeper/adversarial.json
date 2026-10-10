@@ -936,17 +936,18 @@
   ]
  },
  {
-  "name": "H2: tel: link with a forwarding code",
+  "name": "H2: complete a forwarding code with the dialpad's # key",
   "tags": [],
   "steps": [
    {
     "call": {
-     "method": "open_url",
+     "method": "tap",
      "params": {
-      "url": "tel:**21*5551234%23"
+      "x": 870,
+      "y": 1775
      }
     },
-    "screen": "launcher",
+    "screen": "dialer_google_code",
     "expect": {
      "decision": "ask",
      "code": "gate_needs_approval",
@@ -1031,6 +1032,68 @@
     "expect": {
      "decision": "refuse",
      "code": "gate_screen_unstable"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Buy now drawn above a later full-screen layer",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "hit_buy_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Send in a toolbar over the conversation",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 980,
+      "y": 2250
+     }
+    },
+    "screen": "hit_send_toolbar",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "tap through an app's window into a blocked app under it",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1750
+     }
+    },
+    "screen": "hit_overlay_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
     }
    }
   ]
