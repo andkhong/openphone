@@ -734,6 +734,82 @@ async def g_permissions_bg(phone: Phone, dev: Device) -> None:
     dev.home()
 
 
+async def g_spoof(phone: Phone, dev: Device) -> None:
+    """Security review C, H1: the stand-in draws "Allow Example Login to send you notifications?" on its own screen,
+    then asks for contacts. Allow must not go through as a notifications grant: it asks (the owner denies), and
+    contacts stay ungranted."""
+    G = "spoof"
+    dev.unlock()
+    dev.sh("pm revoke com.example.login android.permission.READ_CONTACTS")
+    dev.sh("pm clear-permission-flags com.example.login android.permission.READ_CONTACTS user-set user-fixed")
+    dev.sh("am force-stop com.example.login")
+    dev.sh("am start -n com.example.login/.SpoofActivity")
+    await asyncio.sleep(2)
+    b = await dev.wait_find("Use contacts")
+    await phone.call("tap", x=b[0], y=b[1])  # the agent works in this app: it becomes the session app
+    await asyncio.sleep(2.5)
+    dev.shot("spoof-contacts-dialog")
+    seen = [n["text"] for n in await dev.nodes() if n["text"]]
+    code, reply, prompt = await perm_tap(phone, dev, "Allow", "spoof-allow")
+    await asyncio.sleep(1)
+    granted = dev.sh("dumpsys package com.example.login | grep 'READ_CONTACTS: granted=true'").strip()
+    check(G, "Allow under an app-drawn notifications title asks (the owner denies) and contacts aren't granted",
+          code == "gate_needs_approval" and prompt is not None and not granted,
+          f"rule={rule(reply)} question={reply.get('gate', {}).get('question')!r} agent reads={seen[:6]} granted={granted!r}")
+    dev.sh("input keyevent BACK")
+    dev.home()
+
+
+async def ua_tap(phone: Phone, dev: Device, match, name: str) -> tuple[str, dict, dict | None]:
+    """The agent taps a node uiautomator finds (OpenMob's service restored first); a prompt that comes is denied."""
+    target = next((n for n in dev.ua_nodes(name) if match(n)), None)
+    await dev.restore_service()
+    if not target:
+        return "missing", {}, None
+    r = await phone.call("tap", x=target["center"][0], y=target["center"][1])
+    prompt = None
+    if asks(r):
+        prompt = await dev.deny(name + "-deny")
+        await phone.gate_state(r["approval_id"])
+    return r.get("code") or "ok", r, prompt
+
+
+def is_call_button(n: dict) -> bool:
+    rid, desc = n.get("resource-id", ""), n.get("content-desc", "").lower()
+    return ("dialer" in n.get("package", "") and (any(k in rid for k in ("dialpad_floating_action_button",
+                                                                           "dialpad_voice_call_button", "call_button"))
+                                                  or desc in ("dial", "call")))
+
+
+async def g_calls(phone: Phone, dev: Device) -> None:
+    """Security review C, H2: a tel: link opens the dialer (allowed, no call); the dialer's Call button asks; a number
+    with * or # (call forwarding **21*…#) asks with the screen lock. The owner denies; no call is placed."""
+    G = "calls"
+    dev.unlock()
+    dev.home()
+    r = await phone.call("open_url", url="tel:5551234567")
+    await asyncio.sleep(3)
+    f = dev.focus()
+    check(G, "tel: opens the dialer without asking", r.get("ok") is True and ("dialer" in f or "phone" in f), short(r) + f" focus={f}")
+    code, reply, prompt = await ua_tap(phone, dev, is_call_button, "calls-dial")
+    calls = dev.sh("dumpsys telephony.registry | grep -m1 mCallState").strip()
+    check(G, "tapping Call in the dialer asks (kind call) and no call is placed",
+          code == "gate_needs_approval" and reply.get("gate", {}).get("kind") == "call" and prompt is not None
+          and "mCallState=0" in calls, f"{code} rule={rule(reply)} question={reply.get('gate', {}).get('question')!r} {calls}")
+    dev.sh("input keyevent BACK")
+    dev.home()
+    r = await phone.call("open_url", url="tel:**21*5551234%23")
+    prompt = await dev.deny("calls-mmi-link-deny") if asks(r) else None
+    if asks(r):
+        await phone.gate_state(r["approval_id"])
+    await asyncio.sleep(1)
+    calls = dev.sh("dumpsys telephony.registry | grep -m1 mCallState").strip()
+    check(G, "a tel: link with a forwarding code asks with the screen lock (kind call_code)",
+          asks(r) and r.get("gate", {}).get("kind") == "call_code" and "mCallState=0" in calls,
+          f"{short(r)[:160]} prompt={prompt is not None} {calls}")
+    dev.home()
+
+
 async def clear_prompt(dev: Device, name: str) -> None:
     """The owner denies a prompt left open by the previous step (so the next one starts clean)."""
     if "ApprovalActivity" in dev.focus():
@@ -1498,7 +1574,7 @@ async def g_never(phone: Phone, dev: Device) -> None:
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
           "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "hidden": g_hidden, "methods": g_methods, "never": g_never,
-          "probe": g_probe}
+          "spoof": g_spoof, "calls": g_calls, "probe": g_probe}
 
 
 async def main() -> None:

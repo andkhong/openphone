@@ -36,6 +36,7 @@ import android.view.Display
 import android.view.ViewConfiguration
 import dev.openmob.companion.gate.Admission
 import dev.openmob.companion.gate.GateHost
+import dev.openmob.companion.gate.GateScreen
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -524,9 +525,13 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                 else -> intent.putExtra(SettingsPages.EXTRA_APP_PACKAGE, req.pkg)
             }
         }
+        // Only a system app answers, and only a Settings package (Samsung hands Battery and Storage to Device care,
+        // which counts): never a third-party app or the chooser. The intent is pinned to it (review L5).
         @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
-        val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY or PackageManager.MATCH_SYSTEM_ONLY)
+            ?.activityInfo?.packageName?.takeIf { GateHost.isSettingsPackage(it) }
             ?: throw IllegalStateException("This phone has no ${req.page.title} Settings page. Navigate there instead.")
+        intent.setPackage(handler)
         gate()
         try {
             service.startActivity(intent)
@@ -589,8 +594,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     // --- text input ------------------------------------------------------------------------------
 
     private fun typeText(text: String, replace: Boolean = false): Any? {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         gate()
+        // Resolved after the re-check, and only the field the gate judged (review M2, L3).
+        val node = judgedField() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         // Defense in depth: the server should never ask, but a password is never typed for anyone.
         if (node.isPassword) throw IllegalStateException("I don't type passwords. Please type it yourself.")
         val old = currentText(node)
@@ -633,7 +639,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     /** Backspace: removes the selection, or the code point before the cursor. */
     private fun deleteBackward(): Any? {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
+        val node = judgedField() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         val old = currentText(node)
         var (start, end) = selection(node, old) ?: (old.length to old.length)
         if (start == end) {
@@ -683,13 +689,31 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return min(a, b).coerceAtMost(text.length) to max(a, b).coerceAtMost(text.length)
     }
 
-    /** The focused text input in any window (custom inputs may not report isEditable). */
+    /** The focused text input the gate judged: found after the gate's re-check, and refused unless it is the same
+     *  field (window, bounds, id, class) the gate saw (review M2, L3). The gate refuses typing when it sees no field,
+     *  so a field this wider search finds but the gate didn't is never typed into. */
+    private fun judgedField(): AccessibilityNodeInfo? {
+        val node = focusedEditable() ?: return null
+        val want = admission?.field ?: return node
+        val r = Rect().also(node::getBoundsInScreen)
+        val got = GateScreen.fieldRef(node.windowId, intArrayOf(r.left, r.top, r.right, r.bottom),
+            node.viewIdResourceName.orEmpty(), node.className?.toString().orEmpty())
+        if (got != want) {
+            throw GateRefusal(Admission("refuse", code = "gate_screen_changed", rule = "builtin:field_changed",
+                message = "The focused field changed before typing. Look again.", method = admission?.method.orEmpty(),
+                params = admission?.params.orEmpty()))
+        }
+        return node
+    }
+
+    /** The focused text input in any window (custom inputs may not report isEditable). The tree search stays within
+     *  the gate's own read limits (GateScreens: 1,500 nodes, depth 60). */
     private fun focusedEditable(): AccessibilityNodeInfo? {
         service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (acceptsText(it)) return it }
         val roots = listOfNotNull(service.rootInActiveWindow) + service.windows.mapNotNull { it.root }
         for (root in roots) {
             root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (acceptsText(it)) return it }
-            findFocusedEditable(root)?.let { return it }
+            findFocusedEditable(root, 0, intArrayOf(FIELD_SEARCH_NODES))?.let { return it }
         }
         return null
     }
@@ -697,10 +721,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private fun acceptsText(node: AccessibilityNodeInfo): Boolean = node.isEditable ||
         node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT || it.id == AccessibilityNodeInfo.ACTION_PASTE }
 
-    private fun findFocusedEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    private fun findFocusedEditable(node: AccessibilityNodeInfo, depth: Int, left: IntArray): AccessibilityNodeInfo? {
+        if (left[0]-- <= 0 || depth > FIELD_SEARCH_DEPTH) return null
         if (node.isFocused && acceptsText(node)) return node
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let(::findFocusedEditable)?.let { return it }
+            node.getChild(i)?.let { findFocusedEditable(it, depth + 1, left) }?.let { return it }
         }
         return null
     }
@@ -734,7 +759,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     }
 
     private fun imeEnter() {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field to press ENTER in")
+        val node = judgedField() ?: throw IllegalStateException("No focused text field to press ENTER in")
         if (!node.performAction(AccessibilityAction.ACTION_IME_ENTER.id)) {
             throw IllegalStateException("The focused field does not support ENTER (ACTION_IME_ENTER failed)")
         }
@@ -797,6 +822,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private companion object {
         /** One gesture at a time across calls (each call has its own PhoneActions). */
         val gestureLock = Any()
+        const val FIELD_SEARCH_NODES = 1500 // the gate's own read limits (GateScreens.MAX_NODES, MAX_DEPTH)
+        const val FIELD_SEARCH_DEPTH = 60
         const val CROP_W = 900
         const val CROP_H = 600
         const val MAX_SIDE = 1280

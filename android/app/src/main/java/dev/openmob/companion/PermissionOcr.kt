@@ -23,11 +23,12 @@ object PermissionOcr {
     private class Reading(val window: Int, val changed: Long, val at: Long, val lines: List<GOcrLine>)
     @Volatile private var cache: Reading? = null
 
-    /** The screen's text lines, or null when the screen can't be captured or read. */
+    /** The screen's text lines, or null when the screen can't be captured or read. [fresh]: never the cached reading
+     *  (the re-check right before an act: a dialog can swap its content in place with no event, review M1). */
     @Synchronized
-    fun read(service: OpenMobAccessibilityService, window: Int): List<GOcrLine>? {
+    fun read(service: OpenMobAccessibilityService, window: Int, fresh: Boolean = false): List<GOcrLine>? {
         val now = SystemClock.uptimeMillis()
-        cache?.let { if (it.window == window && it.changed == service.lastChangeAt && now - it.at < CACHE_MS) return it.lines }
+        if (!fresh) cache?.let { if (it.window == window && it.changed == service.lastChangeAt && now - it.at < CACHE_MS) return it.lines }
         val changed = service.lastChangeAt
         val bitmap = runCatching { PhoneActions(service).screenBitmap() }.getOrNull()
         if (bitmap == null) {
@@ -54,7 +55,10 @@ object PermissionOcr {
         return if (age < 3_000) c?.lines else null
     }
 
-    private val worker = java.util.concurrent.Executors.newSingleThreadExecutor()
+    /** Forget the last reading (after a gesture: what it read may no longer be on screen). */
+    fun invalidate() { cache = null }
+
+    private val worker =java.util.concurrent.Executors.newSingleThreadExecutor()
 
     /** Load the model ahead of time: its first use takes seconds (measured 3.5 s on an emulator), too long for a
      *  dialog to wait black. Runs once, in the background. */

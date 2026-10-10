@@ -659,7 +659,9 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   or "everyday". `needs_owner_dialog` remains for Safety Center, default-app pickers and OCR failure. Reads of an
   identified system dialog are no longer blacked out; a window with no package from any source still is.
   Trade-off: OCR misreads fail toward asking, but a dialog drawn by a malicious app to look like the permission
-  controller is out of scope (the window's package or event must be the permission controller).
+  controller is out of scope. (Since the Samsung fix below, a window with no package and no tree also counts when
+  the OCR shows an "Allow X to" title and a "Don't allow" line, without any package or event: review C, L6, not
+  yet addressed.)
 - **Review of D26:** B1: the Precise/Approximate choice OCR can't see is recorded only after every reverify check
   passed and the gesture's `onCompleted` fired (`completed()`); a refused card tap, or a new dialog window id,
   resets it to the assumed Precise. Hardening: a window with no package is a permission dialog only if the
@@ -680,6 +682,56 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   records identification, OCR timing and the shown/black decision (only the dialog's title as screen text).
   Emulator end to end: screenshots and the live-view gate show the dialog about 0.5 s after it appears; the
   agent's tap on "Allow" goes through with no prompt and grants the permission.
+- **D26, the OCR title rule (security review C, 2026-10-09, H1/M1/M3):** the OCR reads the whole screen, the
+  requesting app's own text through the scrim included, so an app could draw a benign "Allow X to send you
+  notifications?" above a real contacts or microphone dialog and have Allow judged as notifications. Now only the
+  dialog card counts (`withOcr`/`with_ocr`, `ocr.button_gap_lines` in `rules.json`):
+  - every permission-style title on screen is found (a line starting like a title, with its wrapped lines up to
+    the "?", that names an app);
+  - the dialog's title is the one nearest above the Allow/Deny buttons; the card runs from it down to the last
+    button of the contiguous button stack (gaps of at most 4 button heights), and lines outside it are dropped;
+  - Precise/Approximate count only between the title and the buttons, so app-drawn "Approximate" text is never
+    the card (M3); the remembered card choice is keyed by the window **and** its title;
+  - **fail closed:** no title, or more than one permission-style title anywhere on screen, marks the dialog
+    `ocr_unsure`: "Don't allow" and Approximate still pass; every grant asks at tap level
+    (`permission:ocr_unsure`), and is refused under Don't ask;
+  - a permission-dialog tap's binding includes the dialog's question, so an approval for one question never
+    covers the same button under another (content swapped in place, M1);
+  - the re-check right before an act always takes a fresh screenshot and OCR (never the 1.5 s cache), and the
+    cache is dropped after every gesture (M1). Estimated cost: one extra capture and recognition (the capture
+    alone waits out the system's 333 ms limit) on each act while a hidden dialog is up; not measured yet.
+  Residual: an app that hides the real title (it can't: the card is drawn over it) or a dialog whose title OCR
+  misses entirely (then `ocr_unsure`: asks). Not tested on a real device.
+- **Security review C, the other phone-side fixes (2026-10-09):**
+  - **Calls (H2):** `rules.json` `calls`. In the dialers, contacts apps and in-call screens listed by package
+    (Google, Samsung, AOSP), a tap whose label or id says call or dial (not End call, Call history…) and ENTER in
+    their number field ask at tap level (kind `call`); a Call, voice-call or video-call button in any app does too.
+    A number with `*` or `#` (MMI/USSD), the dialpad's `*`/`#` keys, typing such a code into a dialer, or a `tel:`
+    link with one asks with the screen lock (kind `call_code`, refused under Don't ask). "Don't confirm everyday
+    actions" never covers calls; a task grant whose request says call/dial/phone covers kind `call` only.
+    Any clickable node under the tap point counts, not only the hit path: on the API 35 emulator Google Phone's
+    Call button sits in an earlier sibling than a full-screen layer, so the path never reached it (a call was placed
+    unasked until this was added). The same hit-test limit still applies to the other risk rules (money, send…): not yet addressed.
+    Coverage is by package and label: other OEM dialers, single-tap calls from a Favorites tile or a Recents row
+    without a call label, and calls from apps whose button isn't labelled Call are not covered.
+  - **No judged field (M2, L3):** typing, ENTER and DELETE with no field the gate can judge are refused
+    (`builtin:no_field`). The admission carries the judged field (window, bounds, id, class); reverify refuses if
+    focus moved (`builtin:field_changed`), and PhoneActions resolves the field after the re-check and types only
+    into that one. Its own search keeps to the gate's limits (1,500 nodes, depth 60).
+  - **Samsung Device care (M4)** (`com.samsung.android.lool`, `sm`, `sm_cn`, `sm.devicesecurity`) is a Settings
+    package; "device protection" and "auto blocker" are refused. `open_settings` resolves system apps only, must
+    land on a Settings package, and is pinned to it (L5).
+  - **Paused (M5):** no task prompt while the phone is paused after 3 denials.
+  - **Notifications (L1):** a switch on a notifications page naming a blocked app or OpenMob asks.
+  - **Overlays (L2):** the approval screen hides other apps' overlays (API 31+).
+  - **Phase 5 item 1:** a gesture onto OpenMob's own prompt while it waits returns `gate_prompt_open` (wait).
+- **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
+  mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
+  `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
+  letters from its title (the topmost text above the button that isn't a button, rating, count or badge; generic
+  words such as app, free, game, play, learn, pro, com don't count) appears as a whole word in the request. Otherwise
+  it asks at tap level (kind `install`, `install:unnamed`), is never covered by a task grant or "everyday", and is
+  refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.
 - **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
   for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
   for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window

@@ -693,10 +693,10 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
 | `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
 | `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
-| `gate_prompt_open` | Another prompt is still open on the phone | Wait for it to be answered |
+| `gate_prompt_open` | Another prompt is still open on the phone (also a gesture that would land on the phone's own prompt while it waits, which otherwise gets `gate_denied_page`/`builtin:own_window`) | Wait for it to be answered |
 | `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts the owner was shown in 10 minutes (refused calls and prompts never shown don't count, and the same action asked again reuses the open prompt; `error` says how long to wait), or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
-| `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt) | Report to the agent; never retried automatically |
-| `gate_screen_unstable` | The screen didn't settle within a second for a risky action | Report; look again |
+| `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt); for typing, ENTER and DELETE, focus moved to another field (`builtin:field_changed`) | Report to the agent; never retried automatically |
+| `gate_screen_unstable` | The screen didn't settle within a second for a risky action; or typing, ENTER or DELETE with no focused field the phone can judge (`builtin:no_field`, `builtin:focus_unread`) | Report; look again (tap the field first) |
 | `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
 | `needs_owner_dialog` | A system dialog the phone can't read or OCR-classify is up (Safety Center, default-app pickers; a permission dialog only when on-device OCR is unavailable); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
 | `gate_permission_choice` | A permission-dialog choice the owner's settings never allow: "Allow all the time"; a grant the owner set to Don't allow; a grant while Precise is selected and the owner allows approximate only. `error` says what to tap instead | Tap what `error` says ("Only this time", "Don't allow", "Approximate" first) |
@@ -707,7 +707,9 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 
 For a risky action (a money commit, a send/post/delete, autofill or saved credentials, a share target, an
 unrecognized Settings change, an unlabeled tap in a shopping app, typing into an OTP or card field, ENTER in a
-chat or a checkout, every changing act in `ask` mode) the phone replies at once:
+chat or a checkout, placing a phone call (kind `call`; a number or `tel:` link with `*` or `#`, an MMI/USSD code,
+is kind `call_code` and takes the screen lock), a Play Store install the call's `task_text` doesn't name (kind
+`install`), every changing act in `ask` mode) the phone replies at once:
 
 ```json
 {"type": "result", "id": "…", "ok": false, "code": "gate_needs_approval", "approval_id": "3f…",

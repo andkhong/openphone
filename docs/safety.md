@@ -74,7 +74,15 @@ Unknown methods are refused.
 **Asked on the phone, with its own words and screen lock:** money commits ("Buy now", "Place your order",
 "Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
 notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
-"slide to pay", unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
+"slide to pay", **installing an app the request doesn't name** (owner, 2026-10-09: a free Play Store
+install runs unasked only when the task's own words name the app on the store page, by a distinctive word of its
+title; any other install asks at tap level, isn't covered by a task approval or "Don't confirm everyday actions", and
+is refused under Don't ask; with no request text, as in a drive session, it always asks; a paid install asks as a
+purchase), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
+ENTER in their number field, a "Call", voice-call or video-call button in any app; a `tel:` link only opens the
+dialer and isn't a call), **dialing a code with `*` or `#`** (MMI/USSD such as `**21*…#` call forwarding: dialing it,
+typing it into a dialer, its dialpad keys, or a `tel:` link with one, all with the screen lock),
+unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
 manual date and time, Build number (turning on developer options), the VPN consent dialog, pairing a new
 Bluetooth device, app-info actions other than Force stop and Clear cache,
 any change on a Settings page the phone doesn't recognize, and a permission dialog for an app other than the
@@ -311,9 +319,10 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   open Settings pages directly does so only from its own fixed table of pages (Display, Wi-Fi, Bluetooth,
   Sound, Battery, Location, Notifications, Apps, Storage, Airplane mode, Date & time, and an app's App info
   and notification pages); the server sends a key, never an intent, and no key exists for a
-  security-critical page. Everyday pages open without asking. Date & time is judged by the same word lists
-  as a tap (refused by default, since "date & time" is on the refuse list; if the owner takes it off, it
-  asks, and is refused under Don't ask). An app's own pages are refused for blocked apps and for OpenMob
+  security-critical page. Everyday pages open without asking. Date & time: the server refuses it by default
+  ("date & time" is on the server's refuse list; if the owner takes it off there, it asks, and is refused under
+  Don't ask); a gatekeeper phone judges it on its own table and asks with the screen lock (refused under Don't
+  ask). An app's own pages are refused for blocked apps and for OpenMob
   itself. Ask every step asks before each deep link; Plan first needs the plan. A phone without the page
   says so and the agent navigates instead. A request that plainly names one page ("Open Settings and go to
   Display"; "open Chrome's notification settings and tell me whether they're allowed", the app by its exact
@@ -330,7 +339,8 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   catalog skips an ask that getting there by hand would have triggered. Each entry has a side-effect class:
   `view` (shows something; opening it sends, buys and changes nothing: the only class the fast path may open
   without the main model), `draft` (a compose screen with content filled in: a text message, an email, a number
-  in the dialer; nothing is sent until a tap, which is judged exactly as today), `action` (would commit on
+  in the dialer; nothing is sent until a tap, which is judged exactly as today: on a gatekeeper phone the dialer's
+  Call tap asks, and a number with `*` or `#` asks with the screen lock), `action` (would commit on
   landing: asks the owner before opening, bound to the exact link, and is refused under Don't ask; no entry has
   this class today). The catalog uses only `https`, `market`, `sms`, `mailto` and `tel` links, never custom app
   schemes. Search terms, numbers and message bodies in a link are the user's words: they reach the phone and the
