@@ -739,8 +739,17 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
     (2026-10-10): 158 checks passed, 0 failed, the friction group still one prompt per honest checkout. The new
     `hittest` group (the shop stand-in's `LayeredActivity`) asks for a Buy now drawn above a later layer; the old
     hit path missed it.
-  - Not covered: real swipes (scrolls) still judge their two end points by the hit path only; a non-touchable
-    overlay window the phone can't see at all.
+  - Not covered: a non-touchable overlay window the phone can't see at all.
+- **Scrolls (review of 2026-10-10):** a real phone asked "Allow sliding 'Proud host of Wikipedia and other free
+  knowledge projects' in Chrome?" for a plain scroll down a Wikipedia page: a swipe's end points were judged by the
+  words of the clickable node under each (up to 40 nodes of its subtree), the same as a tap, so page text and links
+  ("Donate") under the finger counted. A scroll doesn't press what it starts on. Now a swipe that is mostly vertical
+  (|dy| ≥ 2|dx|) and starts inside a list or page (`scroller_class` on the start's hit path) isn't judged by words;
+  it asks only for what a drag can move: a slider or seekbar **anywhere under the start point** (before: only on
+  the hit path, so one under a later layer was missed), a "slide to"/"swipe to" label, or a control whose own words
+  say slide or swipe ("Swipe up to pay"). Sideways swipes and swipes outside lists are judged as before (a list
+  row's "Delete" still asks on a sideways swipe). Measured on the reference engine: 0 curated steps changed; 4 of
+  1108 fuzz steps changed (2 scroll asks became the server hint's ask, 1 allow became a slider ask, 1 knock-on).
 - **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
   mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
   `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+

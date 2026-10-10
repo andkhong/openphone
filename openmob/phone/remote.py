@@ -148,6 +148,10 @@ class RemoteDriver(CachedScreenshots):
         self._gate_hint: str = ""  # the server's own caution for the next act call (Agent._guard)
         # (GateRefused) -> bool: wait for the owner's answer on the phone (the agent sets it). True: re-send once.
         self.gate_approver = None
+        # (GateRefused, seconds waited so far) -> bool: another prompt is open on the phone (gate_prompt_open: an
+        # earlier task's, or one that just closed). True: try the call again (the agent waits a moment first); False:
+        # give up and report it.
+        self.prompt_waiter = None
         # (PhoneLocked) -> bool: pause until the owner unlocks (the agent sets it). True: unlocked in time.
         self.lock_waiter = None
         # (OwnerDialog) -> bool: pause until the owner answers a system dialog the phone can't read. True: it closed.
@@ -285,17 +289,53 @@ class RemoteDriver(CachedScreenshots):
                                   "the screen again before acting.") from None
             raise
         except GateRefused as exc:
+            if exc.code == "gate_prompt_open" and self.prompt_waiter is not None:
+                done, value = self._while_prompt_open(exc, method, _wait, params)
+                if done:
+                    return value
+                exc = value
             if exc.code != "gate_needs_approval" or self.gate_approver is None:
-                raise
+                raise exc from None
             verdict = self.gate_approver(exc)
             if verdict is True or verdict == "yes":
                 return self._call_once(method, _wait, **params)  # at most once per approval
+            # Not approved on the phone: withdraw its prompt (a no from the phone is already closed there; a stopped
+            # task's or a dashboard decline's would otherwise stay up, and block every act, until it expires).
+            self.gate_withdraw(exc.approval_id)
+            if verdict == "cancelled":
+                raise GateRefused("gate_no_answer", "The task was stopped while the phone's prompt waited, so this "
+                                  "didn't happen; the prompt was withdrawn.", exc.rule, exc.package, exc.approval_id,
+                                  kind=exc.kind) from None
             if verdict == "no_answer":
                 raise GateRefused("gate_no_answer", "The owner didn't answer the phone's prompt in time, so this "
                                   "didn't happen (they made no decision). Don't retry it now; call done or ask them.",
                                   exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
             raise GateRefused("gate_denied", "The owner declined this on the phone. Don't do it; pick another "
                               "approach or call done.", exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
+
+    def _while_prompt_open(self, exc: GateRefused, method: str, _wait: bool, params: dict) -> tuple[bool, object]:
+        """Another prompt is open on the phone (or one just closed): nothing ran. Try again while the agent's
+        prompt_waiter says to wait. (True, result): the call went through. (False, refusal): the refusal to handle
+        (a new one, e.g. gate_needs_approval, or the last gate_prompt_open once the wait gave up)."""
+        waiter, started = self.prompt_waiter, time.monotonic()
+        while waiter is not None and waiter(exc, time.monotonic() - started):
+            try:
+                return True, self._call_once(method, _wait, **params)
+            except GateRefused as again:
+                exc = again
+                if again.code != "gate_prompt_open":
+                    break
+        return False, exc
+
+    def gate_withdraw(self, approval_id: str) -> bool:
+        """Withdraw a prompt the phone's gatekeeper is showing (the task stopped, or it was declined off the phone):
+        the phone closes it unanswered. Best effort; only phones whose hello lists "gate_cancel"."""
+        if not approval_id or not self.gatekeeper or "gate_cancel" not in self.capabilities:
+            return False
+        try:
+            return bool((self._call_once("gate_cancel", False, approval_id=approval_id) or {}).get("cancelled"))
+        except DeviceError:
+            return False
 
     def _call_once(self, method: str, _wait: bool = True, **params):
         """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""
