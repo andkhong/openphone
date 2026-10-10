@@ -157,6 +157,11 @@ class FailureWindow:
 
 
 def client_ip(request) -> str:
+    """The visitor's address. On Fly every request arrives from Fly's proxy, so per-IP limits would lump everyone
+    together (one visitor could lock out sign-in for all): Fly's own Fly-Client-IP header is used there. It's
+    trusted only when FLY_APP_NAME is set, i.e. behind Fly's proxy, which overwrites any value a client sends."""
+    if os.environ.get("FLY_APP_NAME") and (fly := request.headers.get("fly-client-ip", "").strip()):
+        return fly
     return request.client.host if request.client else "?"
 
 

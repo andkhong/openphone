@@ -312,11 +312,11 @@ def test_the_agent_waits_without_model_calls_and_records_it(tmp_path):
 
 
 def test_an_install_tap_waits_for_open_without_the_model(tmp_path):
-    phone = TimedPhone([(0, STORE, [el("Install", cls="Button")]),
+    phone = TimedPhone([(0, STORE, [el("Chess.com"), el("Install", cls="Button", i=1)]),
                         (0.4, STORE, [el("Cancel"), el("Open", enabled=False, i=1)]),
                         (0.8, STORE, [el("Uninstall"), el("Open", i=1)])], device=(1080, 2400))
     agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0, target="Install")],
+        [tool_use("tap_element", "a", index=1, target="Install")],
         [tool_use("done", "b", summary="Installed.", success=True)],
     ], tmp_path)
     original = phone.tap
@@ -330,9 +330,9 @@ def test_an_install_tap_waits_for_open_without_the_model(tmp_path):
 
 def test_an_install_tap_that_starts_nothing_stops_waiting(tmp_path, monkeypatch):
     monkeypatch.setattr("openmob.agent.loop.INSTALL_TAP_GRACE_S", 0.3)
-    phone = TimedPhone([(0, STORE, [el("Install", cls="Button")])])
+    phone = TimedPhone([(0, STORE, [el("Chess.com"), el("Install", cls="Button", i=1)])])
     agent, client, io_ = make(phone, [
-        [tool_use("tap_element", "a", index=0, target="Install")],
+        [tool_use("tap_element", "a", index=1, target="Install")],
         [tool_use("done", "b", summary="no", success=False)],
     ], tmp_path)
     agent.run("install chess")

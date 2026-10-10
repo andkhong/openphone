@@ -98,7 +98,10 @@ DEFAULT_SETTINGS_EVERYDAY = [
     "location", "notifications", "app notifications", "flashlight", "auto-rotate", "night light",
 ]
 # asked even on an everyday page: pairing a new Bluetooth device.
-DEFAULT_SETTINGS_ASK = ["pair new device", "pair a new device", "pair new", "pair"]
+# "Allow all the time" grants background location (or another background permission): it asks even on a page
+# whose title makes it everyday ("Location"). Security review 2026-10-09.
+DEFAULT_SETTINGS_ASK = ["pair new device", "pair a new device", "pair new", "pair", "allow all the time",
+                        "allow all the time (background)"]
 APP_INFO_MARKERS = ("app info", "force stop")
 APP_INFO_ALLOWED = ("force stop", "clear cache")
 APP_INFO_ASK = ("uninstall", "disable", "clear storage", "clear data", "uninstall updates")

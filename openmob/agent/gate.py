@@ -168,6 +168,36 @@ DANGEROUS_SCHEMES = ("javascript", "vbscript", "intent", "file", "content", "dat
 
 
 PRICE_ONLY_MONEY = ("subscribe", "join")  # money only with a price nearby (YouTube's Subscribe is free)
+
+# Installing from the Play Store (owner, 2026-10-09): a free install runs unasked only when the request names the app
+# on the store page; any other install asks, and is refused under Don't ask. A screen, an ad or a guessed package id
+# can't pick what gets installed.
+INSTALL_WORDS = re.compile(r"^\s*(install|get|instalar|installieren|installer|installa)\b", re.I)
+_TITLE_SKIP = re.compile(r"^(install|open|uninstall|update|cancel|more|search|get|share|wishlist|play|buy|"
+                         r"contains ads|in-app purchases|\d[\d.,]*\s*[kmb+]*.*|[\d.]+\s*★?.*)$", re.I)
+_GENERIC = {"app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
+            "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"}
+
+
+def is_install(text: str) -> bool:
+    """A Play Store install button's words ("Install", "Get")."""
+    return bool(INSTALL_WORDS.search(text or ""))
+
+
+def store_title(elements: list, button=None) -> str:
+    """The app's name on a Play Store page: the topmost text above the install button that isn't a button,
+    rating, count or badge. Empty when it can't be told."""
+    top = button.bounds[1] if button is not None else None
+    texts = [e for e in elements if e.text and len(e.text.strip()) >= 2 and not _TITLE_SKIP.match(e.text.strip())
+             and (top is None or e.bounds[3] <= top)]
+    return min(texts, key=lambda e: (e.bounds[1], e.bounds[0])).text.strip() if texts else ""
+
+
+def names_app(request: str, title: str) -> bool:
+    """The request names the store page's app: one of its title's distinctive words is a word of the request."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(w) >= 3 and w not in _GENERIC}
+    asked = set(re.findall(r"[a-z0-9]+", (request or "").lower()))
+    return bool(words & asked)
 SELF_NAMES = ["note to self", "notes to self", "message yourself", "saved messages"]
 LINK = re.compile(r"(?i)https?://|www\.|youtu\.be/|\b[a-z0-9-]+\.(?:com|be|org|net|io|tv|app|co)/")
 

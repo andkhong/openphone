@@ -635,7 +635,8 @@ class Agent:
                             {"timings": result.timings, "jev": self.judge is not None})
                 channel.steps += 1
                 refused = result.is_error and (result.text.startswith("Not allowed on this phone")
-                                               or result.text.startswith(BLOCKED_APP_MESSAGE))
+                                               or result.text.startswith(BLOCKED_APP_MESSAGE)
+                                               or result.text.startswith("Refused on the phone"))
                 outcome = {"text": result.text, "is_error": result.is_error, "refused": refused}
                 command.outcome = outcome  # known now, whatever happens next (close() keeps it)
                 if result.done:
@@ -2104,9 +2105,19 @@ class Agent:
                 requested = requested and asked >= 0.5
             except JevError as exc:
                 self.io.event("error", str(exc))
+        # A Play Store install the request doesn't name asks (and is refused under Don't ask): owner, 2026-10-09.
+        install = package == PLAY_STORE and gate.is_install(desc or extra) and not money
+        unnamed_install = install and not gate.names_app(state.task, gate.store_title(obs.elements, element))
+        if unnamed_install:
+            risky, requested = True, False
+            if mode == "never" or cfg.confirm_actions == "never":
+                return self._refuse(shown, "installing an app the request doesn't name asks the owner first, and "
+                                           "nobody can be asked while agents act without asking.")
         if risky:
             state.risky = True
         kind = "settings" if tier == "ask" else (gate.kind_of(hits, money, credential) or kind_hint)
+        if unnamed_install:
+            kind = "install"
         share = gate.is_share(hits)
         settings = state.perms.current_settings()
         if mode == "never" or cfg.confirm_actions == "never":
@@ -2121,7 +2132,8 @@ class Agent:
         if not risky:
             return None
         # "Don't confirm everyday actions" (signed on the phone): only money and dangerous actions are confirmed.
-        if mode != "ask" and settings.get("everyday") and not money and not credential and tier != "ask":
+        if mode != "ask" and settings.get("everyday") and not money and not credential and tier != "ask" and (
+                not unnamed_install):
             return None
         if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None

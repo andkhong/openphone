@@ -220,10 +220,13 @@ class AppResolver:
 
     def _match_names(self, query: str, packages: list[str]) -> Resolution | None:
         scored: list[tuple[float, str]] = []
+        exact = [p for p in packages if normalize(self.labels.get(p) or "") == query]
+        if len(exact) == 1:
+            return Resolution(exact[0], "label")
+        if len(exact) > 1:
+            return None  # two apps share the name (a planted "Chase"?): let something smarter decide, never the first
         for package in packages:
             label = normalize(self.labels.get(package) or "")
-            if label == query:
-                return Resolution(package, "label")
             score = max(_subset_score(query, label), _label_in_query_score(query, label), _score(query, label),
                         _score(query, package_words(package)))
             if score >= FUZZY_THRESHOLD:

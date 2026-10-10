@@ -100,9 +100,9 @@ DEFAULT_API_TIERS = {
 # (matched against the package name, case-insensitively).
 DEFAULT_SENSITIVE_APPS = [
     r"bank", r"banking", r"\bpay\b", r"\.pay", r"wallet", r"paypal", r"venmo", r"squareup\.cash", r"zelle",
-    r"chase", r"wellsfargo", r"bofa", r"\\.citi", r"revolut", r"monzo", r"transferwise", r"coinbase", r"binance",
+    r"chase", r"wellsfargo", r"bofa", r"\.citi", r"revolut", r"monzo", r"transferwise", r"coinbase", r"binance",
     r"crypto", r"spay", r"walletnfcrel", r"1password", r"bitwarden", r"lastpass", r"dashlane", r"keepass",
-    r"\\.keeper", r"authenticator", r"authy",
+    r"\.keeper", r"authenticator", r"authy",
 ]
 
 FAST_PATH_MODES = ("off", "fast_tier", "on")
