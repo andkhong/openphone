@@ -825,7 +825,7 @@ SCREENS.update({
     "kalshi_ticket": kalshi_ticket(),
     "kalshi_ticket_odds": kalshi_ticket(odds="44%"),
     "kalshi_ticket_repriced": kalshi_ticket(cost="$5.40", payout="$12.80"),
-    "ticker_board": screen(app("com.example.trading", [
+    "ticker_board": screen(app("com.example.tickers", [
         node(text=t, bounds=(40, 200 + 90 * i, 1040, 280 + 90 * i))
         for i, t in enumerate(["AAPL 189.20 +1.2%", "TSLA 242.10 −0.8%", "NVDA 121.50 +2.4%", "YES 63¢",
                                "NO 37¢", "BTC $67,120"])] + [button("AAPL", "", (40, 900, 1040, 1000))]),

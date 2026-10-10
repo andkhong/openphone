@@ -8329,7 +8329,7 @@
     "id": 1,
     "type": "application",
     "layer": 1,
-    "package": "com.example.trading",
+    "package": "com.example.tickers",
     "title": "",
     "bounds": [
      0,

@@ -59,7 +59,8 @@ KIND_WORDS = {
 }
 
 DEFAULT_MONEY_KEYWORDS = ["buy", "pay", "order", "checkout", "subscribe", "purchase", "transfer", "book",
-                          "donate", "place order", "payment", "top up", "recharge"]
+                          "donate", "place order", "payment", "top up", "recharge", "sell", "trade", "place trade",
+                          "withdraw", "send money"]
 # Steps on the way to a commit point, not the commit itself: never asked about on their own.
 DEFAULT_SKIP_PHRASES = [
     "add to cart", "add to basket", "add to bag", "proceed to checkout", "go to checkout", "continue to checkout",
