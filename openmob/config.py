@@ -268,6 +268,10 @@ class Config:
     # A system dialog the phone can't read (Android 14+ permission dialogs) pauses the task while the owner answers
     # it on the phone, for up to this long; then it fails with reason needs_owner_dialog.
     owner_dialog_wait_seconds: float = 300.0
+    # Gatekeeper phones: an act refused because another prompt is open on the phone (gate_prompt_open: a prompt
+    # left from a stopped task on an older app, or the 1 s cool-down after any prompt) is tried again every
+    # second for up to this long, instead of failing the step. 0: report it at once (before 2026-10-10).
+    gate_prompt_wait_seconds: float = 30.0
     api_max_steps: int = 40  # the most steps a developer may ask for
     # MCP drive sessions (docs/design/mcp-drive.md): an outside agent driving step by step. A session with no
     # command for api_drive_idle_seconds ends; so does one older than api_drive_max_seconds.

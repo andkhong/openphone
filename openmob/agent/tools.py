@@ -106,7 +106,8 @@ TOOLS = [
     },
     {
         "name": "type_text",
-        "description": "Type text into the focused input field. Tap the field first.",
+        "description": "Type text into the focused input field. Tap the field first. To go to a typed URL or run a "
+                       "typed search, set submit (or press_key ENTER) instead of tapping the on-screen keyboard.",
         "input_schema": {
             "type": "object",
             "properties": {

@@ -10330,5 +10330,212 @@
     }
    }
   ]
+ },
+ {
+  "name": "a scroll over a web page's links and words doesn't ask (Wikipedia in Chrome, 2026-10-10)",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1800,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 400
+     }
+    },
+    "screen": "wiki_page",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 600,
+      "x2": 540,
+      "y2": 1800,
+      "duration_ms": 400
+     }
+    },
+    "screen": "wiki_page",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a scroll starting on a slider asks, even one off the hit path",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1750,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 400
+     }
+    },
+    "screen": "seekbar_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:slider"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 2000,
+      "x2": 540,
+      "y2": 800,
+      "duration_ms": 400
+     }
+    },
+    "screen": "swipe_up_pay",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "rule": "risk:slider"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a sideways swipe on a list row is judged by its words",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 900,
+      "y1": 680,
+      "x2": 100,
+      "y2": 680,
+      "duration_ms": 300
+     }
+    },
+    "screen": "list_row_delete",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   }
+  ]
+ },
+ {
+  "name": "common words in the request don't name the store page's app",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "tap install on this page"
+     }
+    },
+    "screen": "store_tap_titans",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t2",
+      "task_text": "install tap titans"
+     }
+    },
+    "screen": "store_tap_titans",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a prompt the server withdrew (its task stopped) doesn't hold the next act",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "call": {
+     "method": "gate_cancel",
+     "params": {
+      "approval_id": "gk-withdrawn"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
  }
 ]

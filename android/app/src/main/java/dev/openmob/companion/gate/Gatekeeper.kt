@@ -1339,11 +1339,14 @@ class Gatekeeper(
         }.minWithOrNull(compareBy({ it.bounds[1] }, { it.bounds[0] }))?.text?.trim().orEmpty()
     }
 
-    /** The request names the store page's app: one of its title's distinctive words is a word of the request. */
+    /** The request names the store page's app: a distinctive word of its title's name part (before any tagline) is
+     *  a word of the request; generic words, common English words ("this", "tap") and makers' names (install.stop)
+     *  count for nothing. */
     fun namesApp(request: String, title: String): Boolean {
-        val generic = installRules["generic"].strings().toSet()
+        val generic = installRules["generic"].strings().toSet() + installRules["stop"].strings()
         val word = Regex("[a-z0-9]+")
-        val words = word.findAll(title.lowercase()).map { it.value }.filter { it.length >= 3 && it !in generic }.toSet()
+        val name = title.split(TAGLINE, limit = 2)[0] // up to a tagline ("Chess - Play and Learn")
+        val words = word.findAll(name.lowercase()).map { it.value }.filter { it.length >= 3 && it !in generic }.toSet()
         val asked = word.findAll(request.lowercase()).map { it.value }.toSet()
         return words.any { it in asked }
     }
@@ -1414,6 +1417,18 @@ class Gatekeeper(
     private fun sliderAt(t: GTarget): Boolean {
         val rx = rules.rxKey("slider_class")
         return listOfNotNull(t.pressed, t.hit).any { rx.containsMatchIn(it.cls) }
+    }
+
+    /** A slider or seekbar anywhere under (x, y) in [w], whatever the drawing order: a drag starting there moves it. */
+    private fun sliderUnder(w: GWindow, x: Double, y: Double): Boolean {
+        val rx = rules.rxKey("slider_class")
+        var seen = 0
+        fun visit(n: GNode): Boolean {
+            if (++seen > 2000) return false
+            if (rx.containsMatchIn(n.cls)) return true
+            return n.children.any { it.contains(x, y) && visit(it) }
+        }
+        return w.root?.let { it.contains(x, y) && visit(it) } == true
     }
 
     /** A tap, judged by every clickable or labeled node under the point, not only the hit path (review C follow-up):
@@ -1589,11 +1604,19 @@ class Gatekeeper(
             app = start != null && appWindow(start.window))
         for (t in ends) if (t != null) surfaceRefusal(t.window)?.let { j.refuse = it; return j }
         j.payment = GateScreen.paymentContext(rules, screen)
+        // A scroll (mostly vertical, starting inside a list or web page): the content under the finger moves, it isn't
+        // pressed, so its words ("Donate" in a page, a row's "Delete") don't make it risky. What a drag can still
+        // move is: a slider or seekbar anywhere under the start (not only on the hit path), or a control whose words
+        // say to slide or swipe it ("Swipe up to pay"). Any other swipe is judged at both ends as before.
+        val scroll = start != null && Math.abs(y2 - y1) >= 2 * Math.abs(x2 - x1) &&
+            start.path.any { rules.rxKey("scroller_class").containsMatchIn(it.cls) }
         for (t in ends) {
             if (t == null) continue
             val label = t.labelTokens()
-            val slider = sliderAt(t) || has(label, rules.w.getValue("slide"))
-            var risk = wordRisk(label, t.ids(), t.window.pkg, j.payment)
+            val slider = sliderAt(t) || has(label, rules.w.getValue("slide")) ||
+                (t === start && sliderUnder(t.window, x1, y1)) ||
+                (scroll && ("slide" in label || "swipe" in label))
+            var risk = if (scroll) null else wordRisk(label, t.ids(), t.window.pkg, j.payment)
             if (risk == null && slider) {
                 val money = j.payment || has(GateText.stripPhrases(label, rules.w.getValue("pre_commit")),
                     rules.w.getValue("flow_start") + rules.w.getValue("terminal"))
@@ -1737,6 +1760,7 @@ class Gatekeeper(
         /** Well over the accessibility service's notificationTimeout (100 ms), the event delay the list lags by. */
         const val SETTLE_MS = 250L
         val GESTURES = setOf("tap", "long_press", "swipe")
+        private val TAGLINE = Regex("\\s[-\u2013\u2014|]\\s|:\\s")
         /** The buttons that answer a permission dialog (the location card's Precise/Approximate aren't among them). */
         val GRANT_ROLES = setOf("allow", "deny", "deny_forever", "one_time", "foreground", "always")
 

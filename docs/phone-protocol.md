@@ -693,7 +693,7 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
 | `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
 | `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
-| `gate_prompt_open` | Another prompt is still open on the phone (also a gesture that would land on the phone's own prompt while it waits, which otherwise gets `gate_denied_page`/`builtin:own_window`) | Wait for it to be answered |
+| `gate_prompt_open` | Another prompt is still open on the phone (also a gesture that would land on the phone's own prompt while it waits, which otherwise gets `gate_denied_page`/`builtin:own_window`), or one closed less than a second ago (`builtin:prompt_cooldown`) | Wait for it to be answered: the server tries the call again every second, for up to `gate_prompt_wait_seconds` (30 s) |
 | `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts the owner was shown in 10 minutes (refused calls and prompts never shown don't count, and the same action asked again reuses the open prompt; `error` says how long to wait), or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
 | `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt); for typing, ENTER and DELETE, focus moved to another field (`builtin:field_changed`) | Report to the agent; never retried automatically |
 | `gate_screen_unstable` | The screen didn't settle within a second for a risky action; or typing, ENTER or DELETE with no focused field the phone can judge (`builtin:no_field`, `builtin:focus_unread`) | Report; look again (tap the field first) |
@@ -824,6 +824,14 @@ grants the task and permits that step (the server re-sends it). A task with no s
 a fingerprint-level step keeps its own fingerprint prompt (never covered by the grant). A request typed or
 spoken on the phone itself is granted without a prompt (`rule: task_grant:own_request`). The `task_grant`
 method still exists (it asks up front) but the server no longer calls it.
+
+**Withdrawing a prompt (`gate_cancel`, 2026-10-10).** Phones whose hello lists `"gate_cancel"` take
+`{"method": "gate_cancel", "params": {"approval_id": "gk…"}}`, a meta call: the phone closes that prompt unanswered
+(its notification and screen go, no permit is minted, no denial is counted) and answers `{"cancelled": bool}`
+(false: it was already answered or gone). The server sends it whenever a phone prompt it waited on ends without an
+approval: the task was stopped, the dashboard or API declined it, or it ended unanswered. Before this, a stopped
+task's prompt stayed up for its full two minutes and every later act got `gate_prompt_open`. It can only take a
+prompt away, never approve one, so a server gains nothing by sending it.
 
 The grant is bound to the task id and the request text's digest (another text for the same id asks again), and
 lasts until the task ends, 30 minutes on the monotonic clock, or 25 risky steps, whichever comes first. Under it,

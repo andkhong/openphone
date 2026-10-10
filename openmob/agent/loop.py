@@ -79,6 +79,10 @@ STEP_TOKEN_FIELDS = ("input_tokens", "output_tokens", "cache_read_tokens", "cach
 # this long for it to become readable before the model looks at it or an action is reported as failed.
 READABLE_WAIT_S = 1.5
 READABLE_POLL_S = 0.15
+# A coordinate tap the model describes as the keyboard's Go / Enter / Search key: pressed as ENTER instead.
+KEYBOARD_ENTER = re.compile(r"(?i)\b(go|enter|search|done|return|submit)\b.*\b(key|keyboard)\b|"
+                            r"\bkeyboard\b.*\b(go|enter|search|done|return)\b")
+PROMPT_POLL_S = 1.0  # between tries while another prompt is open on a gatekeeper phone (gate_prompt_open)
 # A refusal that means "the phone can't read what's there yet", not "no" (the gatekeeper's code).
 UNREADABLE_CODES = {"gate_screen_unstable"}
 DIALOG_TAP_REFUSED = ("Android doesn't let OpenMob press buttons in permission dialogs (the tap would be ignored), so "
@@ -218,6 +222,7 @@ class _TaskState:
     # (config.app_links_fast, agent/app_links.py) or a Settings page (config.deep_links_fast).
     direct_tried: bool = False
     link_cue: app_links.Link | None = None  # the entry just opened, when its cue must show on the next look
+    link_echo: str = ""  # what that entry's landing screen should show back (its search query), if it has an echo
     url_targets: dict[str, dict | None] = field(default_factory=dict)  # a link's handler, resolved once before opening
     # A drive session (docs/design/mcp-drive.md): never type into a one-time-code field (the loop may, under the
     # owner's instruction; an outside agent that read the code off the screen is the account-takeover shape).
@@ -500,7 +505,13 @@ class Agent:
             tool_uses = response.tool_calls
             if not tool_uses:
                 text = " ".join(response.text).strip()
-                if nudged or response.stop_reason == "refusal":
+                if response.stop_reason == "refusal":
+                    # The provider's safety check ended the reply (2026-10-10: an empty reply, 0 output tokens, on a
+                    # page built to inject instructions): say so, rather than a bare "I stopped without finishing".
+                    return AgentResult(False, text or "The model declined to continue (the provider's safety check "
+                                       "stopped its reply), so nothing more was done. Something on the screen may be "
+                                       "content it won't act on.", step, reason="model_refusal")
+                if nudged:
                     return AgentResult(False, text or "I stopped without finishing.", step)
                 nudged = True
                 messages.append({
@@ -1329,6 +1340,16 @@ class Agent:
                 return self._wait_for_install(text, state)
             return Outcome(text)
 
+        if name == "tap" and KEYBOARD_ENTER.search(str(args.get("target", ""))):
+            # The on-screen keyboard's Go / Enter / Search key, tapped by its picture: the same as ENTER, judged by
+            # the ENTER rules. A tap in the keyboard's window is judged on the phone as a credential surface (its
+            # suggestion strip can hold saved passwords), so it asked "Fill your saved card or password into
+            # Chrome?" for a plain Go (2026-10-10).
+            outcome = self._dispatch("press_key", {"key": "ENTER"}, obs, state)
+            if not outcome.is_error:
+                outcome.text = "Pressed ENTER (the keyboard's key, as press_key ENTER: use that, or type_text submit)."
+            return outcome
+
         if name in ("tap", "long_press"):
             # A long press is judged exactly like a tap, whatever its duration.
             x, y = obs.shot.to_device(args["x"], args["y"])
@@ -1425,10 +1446,7 @@ class Agent:
         install_if_missing its Play Store page opens instead (the same checks as open_url)."""
         app = str(args["app"])
         install = bool(args.get("install_if_missing"))
-        resolution = self.resolver.resolve(app)
-        if resolution is None:
-            self.resolver.packages(refresh=True)  # installed since the list was read?
-            resolution = self.resolver.resolve(app)
+        resolution = self.resolver.find(app)  # read the list again if nothing matches: installed since?
         if resolution is None:
             if install:
                 return self._open_store(f"market://search?q={quote(app)}&c=apps", obs, state,
@@ -1502,7 +1520,7 @@ class Agent:
         package = None
         if page.needs_package:
             wanted = str(args.get("package", "")).strip()
-            resolution = self.resolver.resolve(wanted) if wanted else None
+            resolution = self.resolver.find(wanted) if wanted else None
             if resolution is None:
                 return Outcome(f"The {page.title} page needs an installed app: pass its name or package "
                                f"(got {wanted!r}). Use list_apps to find it.", is_error=True, settle=0)
@@ -1803,7 +1821,8 @@ class Agent:
                     {"timings": outcome.timings, "jev": self.judge is not None, "fast": True})
         if outcome.misrouted:
             state.vision_next = True  # it landed elsewhere: the main model looks and decides
-        state.link_cue = link if link.cue and not outcome.is_error else None
+        state.link_cue = link if (link.cue or link.echo) and not outcome.is_error else None
+        state.link_echo = str(params.get(link.echo) or "") if link.echo else ""
         return [("open_link", args, outcome)]
 
     def _link_landing(self, state: _TaskState, obs: Observation, messages: list[dict]) -> None:
@@ -1812,10 +1831,17 @@ class Agent:
         link, state.link_cue = state.link_cue, None
         if link is None or state.vision_next:
             return
-        if not app_links.cue_shown(link, [el.label for el in obs.elements if fast.labeled(el)]):
+        labels = [el.label for el in obs.elements if fast.labeled(el)]
+        if not app_links.cue_shown(link, labels):
             state.vision_next = True
             self._note_for_model(messages, f"(The screen after opening {link.label} doesn't show what was expected "
                                            f"there ({link.cue}): check it and carry on, or navigate in the app.)")
+        elif not app_links.echo_shown(state.link_echo, labels):
+            # A cold app can drop the link's query and show its home screen (YouTube, once in 10 cold runs).
+            state.vision_next = True
+            self._note_for_model(messages, f"(The screen after opening {link.label} doesn't show the search it was "
+                                           "opened with: the app may have dropped it while starting. Check the screen; "
+                                           "open the link again or search in the app.)")
 
     # --- waiting for something observable (agent/waiting.py) ---------------------------------------
 
@@ -1839,7 +1865,7 @@ class Agent:
         except ValueError as exc:
             return Outcome(f"Error: {exc}", is_error=True, settle=0)
         if cond.until == "app_in_front" and "." not in cond.target:
-            resolution = self.resolver.resolve(cond.target)  # an app's name: its package
+            resolution = self.resolver.find(cond.target)  # an app's name: its package
             if resolution is None:
                 return Outcome(f"No installed app clearly matches {cond.target!r}; give its package.",
                                is_error=True, settle=0)
@@ -2469,6 +2495,9 @@ class Agent:
         self.driver.gate_task_text = state.task if task_ok else ""
         self.driver.gate_task_source = (source() if callable(source) else "An agent") if task_ok else ""
         self.driver.gate_approver = self._gate_approval if state else None
+        if hasattr(self.driver, "prompt_waiter"):
+            self.driver.prompt_waiter = (lambda exc, waited: self._prompt_wait(self._gate_state, exc, waited)) \
+                if state else None
         self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
         if hasattr(self.driver, "dialog_waiter"):
             self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
@@ -2524,8 +2553,24 @@ class Agent:
                                   "package": refusal.package, "action_kind": refusal.kind})
         if is_yes(answer):
             return "yes"
+        if state.cancel.is_set():
+            return "cancelled"  # the task was stopped while it waited: not the owner's no (the driver withdraws it)
         # "no answer": the prompt ended without a decision (timed out, or interrupted and never answered).
         return "no_answer" if answer.strip().lower() == "no answer" else "no"
+
+    def _prompt_wait(self, state: _TaskState | None, refusal, waited: float) -> bool:
+        """The phone refused an act because another of its prompts is open, or one closed a moment ago
+        (gate_prompt_open): nothing ran. Wait a moment and try again (True), for up to gate_prompt_wait_seconds per
+        call, rather than failing the step: a prompt left from a stopped task, or the 1 s cool-down after any
+        prompt, would otherwise fail a new task's first act. False: give up (the step reports the refusal)."""
+        limit = float(getattr(self.config, "gate_prompt_wait_seconds", 0) or 0)
+        if state is None or state.cancel.is_set() or waited >= limit:
+            return False
+        if waited == 0 and refusal.rule != "builtin:prompt_cooldown":
+            self.io.event("status", "Another approval prompt is open on the phone: waiting for it to close.")
+        with self.timer.phase("wait"):
+            state.cancel.wait(min(PROMPT_POLL_S, limit - waited))
+        return not state.cancel.is_set()
 
     def _dialog_wait(self, state: _TaskState | None) -> bool:
         """A system dialog the phone can't read is up (Android 14+ permission dialogs): the task pauses with the
@@ -3153,6 +3198,10 @@ class Agent:
                 if app is None:
                     return None
                 calls = [("launch_app", {"app": app})]
+        elif op == "BACK" and not state.actions:
+            # A task's first action: the screen is whatever the last task left. Backing out of it costs a step
+            # (0.3-1.1 s measured on 2026-10-10) and can leave a half-filled form; the main model decides instead.
+            return None
         elif op in fast.SIMPLE_OPERATIONS:
             name, args = fast.SIMPLE_OPERATIONS[op]
             calls = [(name, dict(args))]

@@ -1834,8 +1834,9 @@ class Gatekeeper:
 
     def names_app(self, request: str, title: str) -> bool:
         """The request names the store page's app: one of its title's distinctive words is a word of the request."""
-        generic = set(self.r.d["install"]["generic"])
-        words = {x for x in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(x) >= 3 and x not in generic}
+        generic = set(self.r.d["install"]["generic"]) | set(self.r.d["install"]["stop"])
+        name = re.split(r"\s[-\u2013\u2014|]\s|:\s", title or "", maxsplit=1)[0]  # up to a tagline
+        words = {x for x in re.findall(r"[a-z0-9]+", name.lower()) if len(x) >= 3 and x not in generic}
         return bool(words & set(re.findall(r"[a-z0-9]+", (request or "").lower())))
 
     # --- phone calls (review H2) ----------------------------------------------------------------
@@ -2082,6 +2083,21 @@ class Gatekeeper:
         j.risk = risk
         return j
 
+    def _slider_under(self, w: Window, x: float, y: float) -> bool:
+        """A slider or seekbar anywhere under (x, y) in the window, whatever the drawing order."""
+        rx = re.compile(self.r.d["slider_class"])
+        seen = [0]
+
+        def visit(n) -> bool:
+            seen[0] += 1
+            if seen[0] > 2000:
+                return False
+            if rx.search(n.cls or ""):
+                return True
+            return any(c.contains(x, y) and visit(c) for c in n.children)
+
+        return w.root is not None and w.root.contains(x, y) and visit(w.root)
+
     def _judge_swipe(self, x1, y1, x2, y2, screen: Screen) -> Judgement:
         r = self.r
         start = hit_test(r, screen, x1, y1)
@@ -2100,13 +2116,20 @@ class Gatekeeper:
                 j.refuse = refusal
                 return j
         j.payment = payment_context(r, screen)
+        # A scroll (mostly vertical, starting inside a list or web page): the content under the finger moves, it isn't
+        # pressed, so its words don't make it risky; a slider under the start, or a control whose words say to slide or
+        # swipe it, still asks (Gatekeeper.judgeSwipe).
+        scroll = start is not None and abs(y2 - y1) >= 2 * abs(x2 - x1) and \
+            any(re.search(r.d["scroller_class"], n.cls or "") for n in start.path)
         for t in (start, end):
             if t is None:
                 continue
             label = t.label_tokens()
             slider = any(re.compile(r.d["slider_class"]).search(n.cls or "") for n in (t.pressed, t.hit) if n) \
-                or any_phrase(label, r.w["slide"])
-            risk = self._word_risk(label, t.ids(), t.window.package, j.payment)
+                or any_phrase(label, r.w["slide"]) \
+                or (t is start and self._slider_under(t.window, x1, y1)) \
+                or (scroll and ("slide" in label or "swipe" in label))
+            risk = None if scroll else self._word_risk(label, t.ids(), t.window.package, j.payment)
             if risk is None and slider:
                 money = j.payment or any_phrase(strip_phrases(label, r.w["pre_commit"]),
                                                 r.w["flow_start"] + r.w["terminal"])

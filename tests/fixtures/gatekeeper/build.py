@@ -1761,6 +1761,60 @@ ADVERSARIAL += [
 ]
 
 
+# --- bug and optimization review, 2026-10-10 ---------------------------------------------------------------------------
+# A scroll over a web page or list: the content under the finger moves, it isn't pressed (the owner's Samsung asked
+# "Allow sliding 'Proud host of Wikipedia…'" for a scroll down in Chrome). Sliders and slide-to controls still ask,
+# now found anywhere under the start, not only on the hit path.
+WIKI = "com.android.chrome"
+SCREENS.update({
+    "wiki_page": screen(app(WIKI, [
+        node(cls="android.webkit.WebView", bounds=(0, 200, W, H), children=[
+            node(cls="android.view.View", bounds=(0, 200, W, H), clickable=True, children=[
+                node(text="Proud host of Wikipedia and other free knowledge projects", bounds=(40, 220, 1040, 300)),
+                button("Donate now", "", (40, 320, 400, 400)),
+                node(text="The Golden Gate Bridge is a suspension bridge", bounds=(40, 1700, 1040, 1900))])])]),
+        labels=LABELS),
+    "seekbar_layered": screen(app(SHOP, [
+        node(cls="androidx.recyclerview.widget.RecyclerView", bounds=(0, 200, W, H), children=[
+            node(desc="Tip amount", cls="android.widget.SeekBar", bounds=(40, 1700, 1040, 1800)),
+            node(cls="android.widget.FrameLayout", bounds=(0, 1500, W, 2000))])]), labels=LABELS),
+    "swipe_up_pay": screen(app(SHOP, [
+        node(cls="android.widget.ScrollView", bounds=(0, 200, W, H), children=[
+            node(text="Total $20.00", bounds=(40, 400, 1040, 480)),
+            node(desc="Swipe up to pay $20.00", cls="android.view.View", bounds=(40, 1900, 1040, 2100), clickable=True)])]),
+        labels=LABELS),
+    "list_row_delete": screen(app(SHOP, [
+        node(cls="androidx.recyclerview.widget.RecyclerView", bounds=(0, 200, W, H), children=[
+            node(cls="android.widget.LinearLayout", bounds=(0, 600, W, 760), clickable=True, children=[
+                node(text="Delete draft", bounds=(40, 620, 800, 700))])])]), labels=LABELS),
+    "store_tap_titans": screen(app("com.android.vending", [
+        node(text="Tap Titans 2: Clicker RPG", bounds=(40, 300, 1040, 400)),
+        button("Install", "com.android.vending:id/install_button", (40, 800, 1040, 920))]), labels=LABELS),
+})
+SCENARIOS += [
+    sc("a scroll over a web page's links and words doesn't ask (Wikipedia in Chrome, 2026-10-10)", [
+        step("swipe", "wiki_page", allow(), x1=540, y1=1800, x2=540, y2=600, duration_ms=400),
+        step("swipe", "wiki_page", allow(), x1=540, y1=600, x2=540, y2=1800, duration_ms=400)], tags=["friction"]),
+    sc("a scroll starting on a slider asks, even one off the hit path", [
+        step("swipe", "seekbar_layered", ask("other", rule="risk:slider"), x1=540, y1=1750, x2=540, y2=600, duration_ms=400),
+        step("swipe", "swipe_up_pay", ask("pay", rule="risk:slider"), x1=540, y1=2000, x2=540, y2=800, duration_ms=400)],
+       tags=["risk"]),
+    sc("a sideways swipe on a list row is judged by its words", [
+        step("swipe", "list_row_delete", ask("delete"), x1=900, y1=680, x2=100, y2=680, duration_ms=300)], tags=["risk"]),
+    sc("common words in the request don't name the store page's app", [
+        step("tap", "store_tap_titans", ask("install"), x=540, y=860, task="t1", task_text="tap install on this page"),
+        step("tap", "store_tap_titans", allow(), x=540, y=860, task="t2", task_text="install tap titans")], tags=["risk"]),
+    sc("a prompt the server withdrew (its task stopped) doesn't hold the next act", [
+        step("tap", "whatsapp_chat", ask("send"), **SEND),
+        step("gate_cancel", "launcher", allow(), approval_id="gk-withdrawn"), {"cancel": "last"},
+        step("tap", "amazon_product", allow(), **ADD_TO_CART)], keep_open=True),
+]
+ADVERSARIAL += [
+    sc("a scroll that starts on a seekbar hidden under a later layer",
+       [step("swipe", "seekbar_layered", ask("other"), x1=540, y1=1750, x2=540, y2=600, duration_ms=400)]),
+]
+
+
 def main():
     (HERE / "screens.json").write_text(json.dumps(SCREENS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "scenarios.json").write_text(json.dumps(SCENARIOS, indent=1, ensure_ascii=False) + "\n")

@@ -71,6 +71,7 @@ class Link:
     query: tuple[tuple[str, str], ...] = ()  # (parameter, query key) for parameters that go in the query string
     side_effect: str = VIEW
     cue: str | None = None  # a regex a label on the landing screen matches, when the package alone can't tell
+    echo: str | None = None  # a parameter the landing screen shows back (a search box holding the query)
     patterns: tuple[str, ...] = ()  # fast path: request shapes that give the values ({app} = the app's names)
     verbs: tuple[str, ...] = ()  # fast path: words that name this intent when no pattern gives the values
     note: str = ""  # one line for the catalog's doc and the tool description
@@ -180,7 +181,7 @@ _Q = Param("q", "what to search for")
 LINKS: tuple[Link, ...] = (
     Link("youtube", "search", "a YouTube search", "https://www.youtube.com/results", (_Q,), (("q", "search_query"),),
          patterns=SEARCH + PLAY, verbs=_SEARCH_WORDS + ("play", "watch", "listen to", "videos of", "videos about"),
-         note="playing a result is the next tap"),
+         note="playing a result is the next tap", echo="q"),
     Link("youtube", "video", "a YouTube video", "https://www.youtube.com/watch", (Param("id", "the video id (the v= part of its link)", kind="id"),),
          (("id", "v"),)),
     Link("youtube", "channel", "a YouTube channel", "https://www.youtube.com/{handle}",
@@ -555,6 +556,25 @@ def match(task: str, confirm_keywords: list[str] | tuple[str, ...] = (), today: 
             return None
         return Match(link, {}, missing)
     return None
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[^\W_]+", (text or "").lower())
+
+
+def echo_shown(value: str, labels: list[str]) -> bool:
+    """The landing screen shows a parameter back: one label holds every word of it in order (a search box with the
+    query), or holds its first words when the box cuts a long query short. True for an empty value."""
+    want = _words(value)
+    if not want:
+        return True
+    for label in labels:
+        have = " ".join(_words(label))
+        if not have:
+            continue
+        if " ".join(want) in have or (len(have) >= 12 and " ".join(want).startswith(have.rstrip(" "))):
+            return True
+    return False
 
 
 def cue_shown(link: Link, labels: list[str]) -> bool:

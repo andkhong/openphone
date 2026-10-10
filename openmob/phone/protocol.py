@@ -91,6 +91,9 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     # Gatekeeper phones (capability "task_grant"): ask the owner, once, to approve this task (its request text, as
     # the phone shows it). ok: granted; gate_needs_approval: the phone is asking (re-send after gate_event approved).
     "task_grant": ({"task": "str", "text": "str", "source": "str"}, "{granted: true}", 15),
+    # Gatekeeper phones (capability "gate_cancel"): withdraw one of the phone's own prompts (the task stopped, or it
+    # was declined off the phone). Only closes a prompt unanswered: no permit, no denial counted. A tightening.
+    "gate_cancel": ({"approval_id": "str"}, "{cancelled: bool}", 5),
     # Newer apps (hello device.capabilities has "wait_for"): return as soon as a condition holds on the
     # phone's own element list (checked on each window or content change), or at timeout_ms (max 10 s
     # per call). Read-only: a wait never acts. See agent/waiting.py and docs/phone-protocol.md §4.16.

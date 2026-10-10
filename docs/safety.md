@@ -78,7 +78,8 @@ tap where a blocked app's window lies under the one on top is refused.
 notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
 "slide to pay", **installing an app the request doesn't name** (owner, 2026-10-09: a free Play Store
 install runs unasked only when the task's own words name the app on the store page, by a distinctive word of its
-title; any other install asks at tap level, isn't covered by a task approval or "Don't confirm everyday actions", and
+title's name part, before any tagline (common English words such as "this", "tap" or "install", and makers' names,
+don't count); any other install asks at tap level, isn't covered by a task approval or "Don't confirm everyday actions", and
 is refused under Don't ask; with no request text, as in a drive session, it always asks; a paid install asks as a
 purchase), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
 ENTER in their number field, a "Call", voice-call or video-call button in any app; a `tel:` link only opens the
