@@ -309,6 +309,13 @@ object GateScreen {
 
     class Field(val window: GWindow, val node: GNode, val path: List<GNode>)
 
+    /** Which field the gate judged: its window, bounds, id and class (PhoneActions types only into a node that
+     *  matches). */
+    fun fieldRef(f: Field): String = fieldRef(f.window.id, f.node.bounds, f.node.id, f.node.cls)
+
+    fun fieldRef(window: Int, bounds: IntArray, id: String, cls: String): String =
+        "$window|${bounds.joinToString(",")}|$id|$cls"
+
     fun focusedField(screen: GScreen): Field? {
         for (w in screen.ordered) findFocused(w.root, emptyList())?.let { return Field(w, it.last(), it) }
         // Not in the walked tree (e.g. a Jetpack Compose text field): the node the phone's live input focus resolves

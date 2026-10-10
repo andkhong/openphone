@@ -84,7 +84,9 @@
     "ocr": {"_doc": "The phone's own screenshot, read with ML Kit (bundled Latin model, offline): text lines below min_conf are dropped; the title starts with title_start and runs to its '?'; a button is a line that reads exactly as a button text, its box padded by pad px. Anything else in the dialog, tapped, asks.",
             "min_conf": 0.5, "pad": 16, "title_lines": 4, "event_slack_ms": 1500,
             "package": "com.android.permissioncontroller",
-            "title_start": "(?i)^(allow\\s|¿?(quieres\\s+)?permitir\\s|zulassen|darf\\s)"},
+            "title_start": "(?i)^(allow\\s|¿?(quieres\\s+)?permitir\\s|zulassen|darf\\s)",
+            "_card_doc": "Only the dialog card counts (review H1, M3): the title is the permission-style title nearest above the Allow/Deny buttons; the card runs from that title down to the last button of the contiguous button stack (a gap of at most button_gap_lines button heights); lines outside it are dropped. Precise/Approximate count only between the title and the buttons. More than one permission-style title on screen, or none, and any grant asks.",
+            "button_gap_lines": 4},
     "button_ids": [["one_time", "permission_allow_one_time_button$"],
                    ["foreground", "permission_allow_foreground_only_button$"],
                    ["always", "permission_allow_always_button$"],
@@ -109,6 +111,22 @@
     "_persistent_doc": "Dangerous kinds whose dialog offers no one-time option: the default 'once' doesn't stretch to a lasting Allow; it asks unless the owner signed persistent_grants: allow.",
     "persistent_ask": ["contacts", "sms", "phone", "calendar", "body_sensors", "nearby_devices"]
   },
+  "calls": {
+    "_doc": "Placing a phone call (review H2). In these packages (the main dialers, contacts apps and in-call screens), a tap whose label or id says call or dial, ENTER in their number field, places a call: it asks at tap level. In any app, a button labelled exactly Call, or voice/video call, asks too. A number containing * or # is an MMI/USSD code (call forwarding, settings changes): dialing it, typing it, tapping the dialpad's * or # key there, or opening a tel: link with it asks with the screen lock.",
+    "packages": ["com.google.android.dialer", "com.samsung.android.dialer", "com.android.dialer",
+                 "com.google.android.contacts", "com.samsung.android.app.contacts", "com.android.contacts",
+                 "com.android.server.telecom", "com.samsung.android.incallui", "com.android.incallui"],
+    "words": ["call", "dial", "redial", "call back", "voice call", "video call", "call mobile", "call home", "call work"],
+    "any_app_words": ["voice call", "video call", "audio call", "start call", "start voice call", "start video call",
+                      "call now", "place call"],
+    "safe_words": ["end call", "end", "hang up", "decline", "reject", "call history", "call log", "call logs",
+                   "call settings", "call recording", "call blocking", "block", "mute", "hold", "speaker", "keypad"],
+    "ids": "(?i)call_?button|dial_?button|voice_?call|video_?call|audio_?call|dialpad_floating_action_button|fab_?dial|btn_?call|call_?icon|call_?action",
+    "safe_ids": "(?i)end_?call|hang_?up|decline|reject|call_?log|call_?history",
+    "any_app_ids": "(?i)voice_?call|video_?call|audio_?call",
+    "number_ids": "(?i)digits|dialpad_?edit|edit_?text_?number|number_?field|dial_?number",
+    "code_keys": "(?i)(^|[/_:])(pound|star|key_?pound|key_?star)$"
+  },
   "payment_words": ["pay", "pay now", "place order", "place your order", "buy now", "checkout", "complete purchase",
                     "confirm purchase", "order total", "total due"],
   "schemes": {
@@ -127,7 +145,7 @@
     "share_titles": "(?i)share|quick share|nearby share|chooser|resolver"
   },
   "settings": {
-    "packages": "(?i)^com\\.android\\.settings$|^com\\.google\\.android\\.settings|^com\\.samsung\\.android\\.settings|^com\\.android\\.settings\\.intelligence$|^com\\.miui\\.securitycenter$|^com\\.samsung\\.accessibility$|^com\\.android\\.permissioncontroller$|^com\\.google\\.android\\.permissioncontroller$|^com\\.coloros\\.safecenter$|^com\\.oneplus\\.security$|^com\\.huawei\\.systemmanager$|^com\\.android\\.vpndialogs$",
+    "packages": "(?i)^com\\.android\\.settings$|^com\\.google\\.android\\.settings|^com\\.samsung\\.android\\.settings|^com\\.android\\.settings\\.intelligence$|^com\\.miui\\.securitycenter$|^com\\.samsung\\.accessibility$|^com\\.android\\.permissioncontroller$|^com\\.google\\.android\\.permissioncontroller$|^com\\.coloros\\.safecenter$|^com\\.oneplus\\.security$|^com\\.huawei\\.systemmanager$|^com\\.android\\.vpndialogs$|^com\\.samsung\\.android\\.lool$|^com\\.samsung\\.android\\.sm(_cn)?$|^com\\.samsung\\.android\\.sm\\.devicesecurity$",
     "gms_package": "com.google.android.gms",
     "gms_settings_titles": "(?i)google account|manage your google account|security|passwords|passkeys|devices|third.party",
     "permission_packages": "(?i)permissioncontroller",
@@ -144,7 +162,7 @@
                "modify system settings", "trusted credentials", "encryption & credentials", "smart lock",
                "find my device", "private dns", "vpn", "languages", "language", "system languages",
                "languages & input", "regional preferences", "region", "google account",
-               "manage your google account", "device & app notifications"],
+               "manage your google account", "device & app notifications", "device protection", "auto blocker"],
     "refuse_activities": "(?i)Accessibility|Development|Security|Vpn|PrivateDns|Locale|Language|UserSettings|AccountSettings|ManageAccounts|DeviceAdmin|NotificationAccess|SpecialAccess|UsageAccess|ManageExternalStorage|WirelessDebugging|AdbWireless|DefaultApp|ChooseLock|ScreenLock|Biometric|Fingerprint|FaceSettings|InputMethodAndLanguage|AvailableVirtualKeyboard|ManageInputMethods|UnknownSources|ExternalSources|OverlaySettings|WriteSettings|TrustedCredentials|FactoryReset|MasterClear|ResetDashboard",
     "everyday": ["wi-fi", "wifi", "internet", "network & internet", "mobile data", "mobile network", "sim", "hotspot", "hotspot & tethering", "airplane mode", "bluetooth", "connected devices", "connection preferences", "nfc", "display", "dark theme", "dark mode", "brightness", "adaptive brightness", "font size", "display size", "screen timeout", "sound", "sound & vibration", "volume", "vibration", "vibration & haptics", "do not disturb", "ringtone", "battery", "battery saver", "storage", "location", "use location", "notifications", "app notifications", "flashlight", "auto-rotate", "night light", "about phone", "search settings"],
     "ask_pages": ["build number", "date & time", "date and time", "set time", "set date", "time zone", "automatic date & time",

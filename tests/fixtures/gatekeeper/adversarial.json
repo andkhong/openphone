@@ -845,5 +845,171 @@
     }
    }
   ]
+ },
+ {
+  "name": "H1: a fake notifications title above a camera dialog, then While using the app",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_camera_spoof",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H1: a fake notifications title above a contacts dialog, then Allow",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_contacts_spoof",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H2: Call on a premium number the dialer shows (after a tel: link)",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H2: tel: link with a forwarding code",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:**21*5551234%23"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H2: dial **21*<number># (call forwarding)",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google_mmi",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "**21*5550100#"
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code"
+    }
+   }
+  ]
+ },
+ {
+  "name": "M2: type with no judged field",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   }
+  ]
  }
 ]

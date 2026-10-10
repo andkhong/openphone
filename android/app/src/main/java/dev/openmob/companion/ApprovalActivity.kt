@@ -63,6 +63,8 @@ class ApprovalActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // No other app's overlay may cover part of the question while the owner answers (review L2; API 31+).
+        if (android.os.Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(buildContent())
         open(intent)

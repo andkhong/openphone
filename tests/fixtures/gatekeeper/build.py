@@ -1468,6 +1468,175 @@ SCENARIOS += [
 ]
 
 
+# --- batch security review C (2026-10-09): phone-side fixes ---------------------------------------------------------
+FAKE_NOTIF = ocr_line("Allow Kalshi to send you notifications?", (60, 400, 1000, 460))  # the app's own text, above
+CAMERA_TITLE = ["Allow Kalshi to take pictures and", "record video?"]
+SCREENS.update({
+    # H1: the requesting app draws a benign permission title above the real dialog (the OCR reads the whole screen).
+    "ocr_camera": ocr_dialog(CAMERA_TITLE, LOC_BUTTONS, cards=False),
+    "ocr_camera_spoof": ocr_dialog(CAMERA_TITLE, LOC_BUTTONS, cards=False, extra=[FAKE_NOTIF]),
+    "ocr_contacts_spoof": ocr_dialog(["Allow Kalshi to access your", "contacts?"], ["Allow", "Don't allow"], cards=False,
+                                     extra=[FAKE_NOTIF]),
+    # ...or below it, with a fake Allow of its own.
+    "ocr_camera_spoof_below": ocr_dialog(CAMERA_TITLE, LOC_BUTTONS, cards=False, extra=[
+        ocr_line("Allow Kalshi to send you notifications?", (120, 1950, 960, 2000)),
+        ocr_line("Allow", (300, 2080, 780, 2130))]),
+    # M3: an app-drawn "Approximate" outside the dialog card.
+    "ocr_location_fake_approx": ocr_dialog(LOC_TITLE, LOC_BUTTONS,
+                                           extra=[ocr_line("Approximate", (400, 2250, 700, 2300))]),
+    # M1: the same window, the same buttons, another question (content swapped in place).
+    "ocr_contacts_other_swap": ocr_dialog(["Allow Tracker to access your", "contacts?"], LOC_BUTTONS, cards=False),
+})
+
+DIALER = "com.google.android.dialer"
+LABELS.update({DIALER: "Phone", "com.samsung.android.dialer": "Phone", "com.android.dialer": "Phone",
+               "com.samsung.android.lool": "Device care"})
+
+
+def dialer(package, number, call_desc="dial", call_id="dialpad_voice_call_button", focused=True):
+    return screen(app(package, [
+        node(id=f"{package}:id/digits", cls="android.widget.EditText", text=number, editable=True, focused=focused,
+             bounds=(40, 300, 1040, 420)),
+        button("#", f"{package}:id/pound", (700, 1700, 1040, 1850)),
+        button("", f"{package}:id/{call_id}", (390, 2000, 690, 2150), desc=call_desc),
+        button("Call history", f"{package}:id/call_history", (0, 2200, 540, 2300))]), labels=LABELS)
+
+
+CALL_BTN, POUND, CALL_HISTORY = dict(x=540, y=2075), dict(x=870, y=1775), dict(x=270, y=2250)
+SCREENS.update({
+    "dialer_google": dialer(DIALER, "+1 900-555-0100"),
+    "dialer_google_mmi": dialer(DIALER, "**21*5550100#"),
+    "dialer_samsung": dialer("com.samsung.android.dialer", "5551234", call_desc="Call", call_id="dialButton"),
+    "dialer_aosp": dialer("com.android.dialer", "5551234", call_desc="Call", call_id="dialpad_floating_action_button"),
+    "incall_google": screen(app(DIALER, [
+        button("", f"{DIALER}:id/incall_end_call", (390, 2000, 690, 2150), desc="End call"),
+        button("", f"{DIALER}:id/incall_add_call", (40, 1700, 340, 1850), desc="Add call")]), labels=LABELS),
+    "whatsapp_header": screen(app("com.whatsapp", [
+        button("", "com.whatsapp:id/menuitem_voice_call", (800, 100, 920, 220), desc="Voice call"),
+        button("", "com.whatsapp:id/menuitem_video_call", (920, 100, 1040, 220), desc="Video call")]), labels=LABELS),
+    # M2: a focused field, and another one where focus moved before the gesture.
+    "form_a": screen(app("com.example.app", [
+        node(id="com.example.app:id/name", cls="android.widget.EditText", editable=True, focused=True,
+             bounds=(40, 400, 1040, 500)),
+        node(id="com.example.app:id/note", cls="android.widget.EditText", editable=True, bounds=(40, 600, 1040, 700))]),
+        labels=LABELS),
+    "form_b": screen(app("com.example.app", [
+        node(id="com.example.app:id/name", cls="android.widget.EditText", editable=True, bounds=(40, 400, 1040, 500)),
+        node(id="com.example.app:id/note", cls="android.widget.EditText", editable=True, focused=True,
+             bounds=(40, 600, 1040, 700))]), labels=LABELS),
+    # M4: Samsung's Device care (Battery and Storage open there).
+    "devicecare_home": screen(app("com.samsung.android.lool", [
+        node(text="Device care", id="com.samsung.android.lool:id/title", bounds=(48, 150, 900, 260)),
+        row("Battery", 420), row("Device protection", 560)], title="Device care"), labels=LABELS),
+    "devicecare_background_limits": screen(app("com.samsung.android.lool", [
+        node(text="Background usage limits", id="com.samsung.android.lool:id/title", bounds=(48, 150, 900, 260)),
+        row("Put unused apps to sleep", 420, checked=True)], title="Background usage limits"), labels=LABELS),
+    # L1: the global per-app notification list.
+    "settings_app_notifications_list": settings("App notifications", [
+        ("Chase", 420, "android:id/title", True), ("OpenMob", 560, "android:id/title", True),
+        ("Chrome", 700, "android:id/title", True)]),
+    # Phase 5 item 1: OpenMob's own approval prompt on top.
+    "own_prompt": screen(app("dev.openmob.companion", [
+        button("Allow", "dev.openmob.companion:id/allow", (40, 1800, 1040, 1950))], id=9, layer=9), labels=LABELS),
+})
+SCREENS["launcher"]["resolve"]["tel:**21*5551234%23"] = {"package": DIALER}
+
+SCENARIOS += [
+    sc("OCR H1: a permission-style title the app drew above the real dialog makes every grant ask", [
+        KALSHI,
+        step("tap", "ocr_camera", ask("permission", rule="risk:permission:camera"), **WHILE_USING),
+        step("tap", "ocr_camera", allow(), **ONCE),
+        step("tap", "ocr_camera_spoof", ask("permission", level="tap", rule="risk:permission:ocr_unsure"), **WHILE_USING),
+        step("tap", "ocr_camera_spoof", ask("permission", rule="risk:permission:ocr_unsure"), **ONCE),
+        step("tap", "ocr_camera_spoof", allow(), **DENY_BTN),
+        step("tap", "ocr_camera_spoof_below", ask("permission", rule="risk:permission:ocr_unsure"), **WHILE_USING),
+        step("tap", "ocr_contacts_spoof", ask("permission", rule="risk:permission:ocr_unsure"), x=540, y=1505)],
+       tags=["permissions", "ocr", "review_c"]),
+    sc("OCR M3: an app-drawn Approximate outside the card is no card choice", [
+        KALSHI,
+        step("tap", "ocr_location_fake_approx", ask("permission", rule="risk:permission:unknown"), x=550, y=2275),
+        {"cancel": "last"}, {"advance_ms": 2000},
+        step("tap", "ocr_location_fake_approx", refuse("gate_permission_choice", rule="permission:location_accuracy"),
+             **ONCE),
+        step("tap", "ocr_location_fake_approx", allow(), **APPROX),  # the real card
+        step("tap", "ocr_location_fake_approx", allow(), **ONCE)], tags=["permissions", "ocr", "review_c"]),
+    sc("OCR M1: an approval binds the dialog's question; the same button under another question asks again", [
+        KALSHI,
+        step("tap", "ocr_location_other", ask("permission", rule="risk:permission:other_app"), **WHILE_USING),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "ocr_contacts_other_swap", ask("permission", rule="risk:permission:other_app"), **WHILE_USING)],
+       tags=["permissions", "ocr", "review_c"]),
+    sc("M2: typing, ENTER and DELETE with no field the gate can judge are refused", [
+        step("type_text", "kalshi_app", refuse("gate_screen_unstable", rule="builtin:no_field"), text="hello"),
+        step("key", "kalshi_app", refuse("gate_screen_unstable", rule="builtin:no_field"), name="ENTER"),
+        step("key", "kalshi_app", refuse("gate_screen_unstable", rule="builtin:no_field"), name="DELETE"),
+        step("key", "kalshi_app", allow(), name="BACK"),
+        step("type_text", "form_a", allow(), text="hello")], tags=["hard_deny", "review_c"]),
+    sc("M2/L3: focus moving to another field before the text lands is refused", [
+        step("type_text", "form_a", refuse("gate_screen_changed", rule="builtin:field_changed"), reverify="form_b",
+             text="hello"),
+        step("key", "form_a", refuse("gate_screen_changed", rule="builtin:field_changed"), reverify="form_b",
+             name="DELETE")], tags=["review_c"]),
+    sc("H2: placing a call asks; an MMI code asks with the screen lock; the dialer opening doesn't", [
+        step("open_url", "launcher", allow(), url="tel:5551234"),
+        step("tap", "dialer_google", ask("call", level="tap", rule="risk:call:dial"), **CALL_BTN),
+        step("tap", "dialer_google", allow(), **CALL_HISTORY),
+        step("tap", "dialer_google", ask("call_code", level="fingerprint", rule="risk:call:mmi"), **POUND),
+        step("tap", "dialer_google_mmi", ask("call_code", level="fingerprint", rule="risk:call:mmi"), **CALL_BTN),
+        step("tap", "dialer_samsung", ask("call", level="tap"), **CALL_BTN),
+        step("tap", "dialer_aosp", ask("call", level="tap"), **CALL_BTN),
+        step("tap", "incall_google", allow(), x=540, y=2075),  # End call
+        step("tap", "incall_google", ask("call"), x=190, y=1775),  # Add call
+        step("tap", "whatsapp_header", ask("call", rule="risk:call:button"), x=860, y=160),
+        step("tap", "whatsapp_header", ask("call", rule="risk:call:button"), x=980, y=160)], tags=["calls", "review_c"]),
+    sc("H2: typing a code or pressing ENTER in the dialer", [
+        step("type_text", "dialer_google", allow(), text="5551234"),
+        step("type_text", "dialer_google", ask("call_code", level="fingerprint"), text="*#06#"),
+        step("key", "dialer_google", ask("call", rule="risk:call:enter"), name="ENTER"),
+        step("key", "dialer_google_mmi", ask("call_code", level="fingerprint"), name="ENTER"),
+        step("open_url", "launcher", ask("call_code", level="fingerprint"), url="tel:**21*5551234%23")],
+       tags=["calls", "review_c"]),
+    sc("H2: Don't confirm everyday actions doesn't cover calls; Don't ask refuses codes", [
+        EVERYDAY,
+        step("tap", "dialer_google", ask("call"), **CALL_BTN),
+        {"policy": {"type": "never", "duration_ms": 3600000}, "sig": "valid", "expect_accepted": True},
+        step("tap", "dialer_google_mmi", refuse("gate_denied", rule="never:call:mmi"), mode="never", **CALL_BTN)],
+       tags=["calls", "modes", "review_c"]),
+    sc("M4: Samsung's Device care is judged as Settings", [
+        step("tap", "devicecare_home", refuse("gate_denied_page"), x=540, y=620),  # Device protection
+        step("tap", "devicecare_home", allow(), x=540, y=480),  # Battery: everyday
+        step("tap", "devicecare_background_limits", ask("settings", level="fingerprint"), x=540, y=480)],
+       tags=["settings", "review_c"]),
+    sc("M5: no task prompt while paused after 3 denials", [
+        *[s for i in range(3) for s in (task_grant(ask("task"), task=f"t{i}", text=f"share video {i}"), {"deny": "last"})],
+        task_grant(refuse("gate_rate_limited", rule="builtin:suspended"), task="t9", text="share video 9"),
+        {"resume": True},
+        task_grant(ask("task"), task="t9", text="share video 9")], tags=["limits", "review_c"]),
+    sc("L1: notification switches for a blocked app or OpenMob ask; others don't", [
+        step("tap", "settings_app_notifications_list", ask("settings"), x=540, y=480),
+        step("tap", "settings_app_notifications_list", ask("settings"), x=540, y=620),
+        step("tap", "settings_app_notifications_list", allow(), x=540, y=760)], tags=["settings", "review_c"]),
+    sc("Phase 5 item 1: a gesture onto the phone's own prompt while it waits says wait (gate_prompt_open)", [
+        step("tap", "own_prompt", refuse("gate_denied_page", rule="builtin:own_window"), x=540, y=1875),
+        step("tap", "whatsapp_chat", ask("send"), **SEND),
+        step("tap", "own_prompt", refuse("gate_prompt_open", rule="builtin:prompt_open"), x=540, y=1875)],
+       keep_open=True, tags=["review_c"]),
+]
+
+ADVERSARIAL += [
+    sc("H1: a fake notifications title above a camera dialog, then While using the app",
+       [KALSHI, step("tap", "ocr_camera_spoof", ask("permission"), **WHILE_USING)]),
+    sc("H1: a fake notifications title above a contacts dialog, then Allow",
+       [KALSHI, step("tap", "ocr_contacts_spoof", ask("permission"), x=540, y=1505)]),
+    sc("H2: Call on a premium number the dialer shows (after a tel: link)",
+       [step("tap", "dialer_google", ask("call"), **CALL_BTN)]),
+    sc("H2: tel: link with a forwarding code", [step("open_url", "launcher", ask("call_code"), url="tel:**21*5551234%23")]),
+    sc("H2: dial **21*<number># (call forwarding)", [step("tap", "dialer_google_mmi", ask("call_code"), **CALL_BTN),
+                                                     step("type_text", "dialer_google", ask("call_code"), text="**21*5550100#")]),
+    sc("M2: type with no judged field", [step("type_text", "kalshi_app", refuse("gate_screen_unstable"), text="123456")]),
+]
+
+
 def main():
     (HERE / "screens.json").write_text(json.dumps(SCREENS, indent=1, ensure_ascii=False) + "\n")
     (HERE / "scenarios.json").write_text(json.dumps(SCENARIOS, indent=1, ensure_ascii=False) + "\n")

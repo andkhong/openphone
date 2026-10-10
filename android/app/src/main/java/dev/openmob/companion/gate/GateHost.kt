@@ -135,7 +135,14 @@ object GateHost {
     }
 
     /** The admitted action's gesture completed (PhoneActions): the gate may record what it changed. */
-    fun completed(adm: Admission?) { if (adm != null) runCatching { gk().completed(adm) } }
+    fun completed(adm: Admission?) {
+        PermissionOcr.invalidate() // what it read may no longer be on screen (review M1)
+        if (adm != null) runCatching { gk().completed(adm) }
+    }
+
+    /** The system Settings app, or a package Settings hands a page to (Samsung's Device care): `open_settings` opens
+     *  nothing else (review L5). */
+    fun isSettingsPackage(pkg: String): Boolean = gk().rules.settingsPkg.containsMatchIn(pkg)
 
     /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
     fun ownerDialogOpened(message: String) { ownerDialog = message }
@@ -193,7 +200,7 @@ object GateHost {
 
     private const val STILL_MS = 150L
     private const val TRANSIENT_MS = 600L
-    private val TRANSIENT = setOf("builtin:unknown_window", "builtin:no_window", "builtin:focus_unread")
+    private val TRANSIENT = setOf("builtin:unknown_window", "builtin:no_window", "builtin:focus_unread", "builtin:no_field")
 
     /** Right before the side effect (PhoneActions, under the gesture lock). Waits up to a second for a quiet screen
      *  when the action is risky. Returns the refusal, or null to go ahead. */
@@ -211,12 +218,12 @@ object GateHost {
         }
         if (!focused && adm.method in Gatekeeper.GESTURES) return g.unsettled(adm)
         while (true) {
-            var now = screen(service, adm.method, adm.params)
+            var now = screen(service, adm.method, adm.params, fresh = true)
             if (adm.strict) {
                 // D5's stillness is the target's: the same element, bounds and window over STILL_MS, numbers blanked.
                 // The rest of the screen may keep changing.
                 SystemClock.sleep(STILL_MS)
-                val later = screen(service, adm.method, adm.params)
+                val later = screen(service, adm.method, adm.params, fresh = true)
                 now = later.withQuiet(if (g.stableKey(adm, now) == g.stableKey(adm, later)) 60_000L else 0L)
             }
             val out = g.reverify(adm, now)
@@ -230,7 +237,7 @@ object GateHost {
         }
     }
 
-    private fun screen(service: OpenMobAccessibilityService, method: String, params: Map<String, Any?>): GScreen {
+    private fun screen(service: OpenMobAccessibilityService, method: String, params: Map<String, Any?>, fresh: Boolean = false): GScreen {
         val urls = mutableListOf<String>()
         if (method == "open_url") params["url"]?.toString()?.let(urls::add)
         val launch = if (method == "launch_app") listOfNotNull(params["package"]?.toString()) else emptyList()
@@ -241,7 +248,8 @@ object GateHost {
         }
         var screen = GateScreens.capture(service, urls, launch, points)
         // A permission dialog Android hides from accessibility: read it with the phone's own OCR (the gate judges it).
-        gk().ocrCandidate(screen)?.let { screen = screen.withOcr(PermissionOcr.read(service, it.id)) }
+        // The re-check right before an act never reuses a cached reading (review M1).
+        gk().ocrCandidate(screen)?.let { screen = screen.withOcr(PermissionOcr.read(service, it.id, fresh)) }
         if (method == "key" && params["name"]?.toString()?.uppercase() == "ENTER") {
             // ENTER in a browser's URL bar opens what's typed there: resolve it like open_url.
             GateScreen.focusedField(screen)?.node?.text?.trim()?.takeIf { GateText.looksLikeUrl(it) }?.let { text ->

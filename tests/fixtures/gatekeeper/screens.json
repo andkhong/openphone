@@ -60,7 +60,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -90,6 +94,9 @@
    },
    "market://details?id=com.chess": {
     "package": "com.android.vending"
+   },
+   "tel:**21*5551234%23": {
+    "package": "com.google.android.dialer"
    }
   }
  },
@@ -264,7 +271,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "amazon_checkout": {
@@ -381,7 +392,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "amazon_checkout_card": {
@@ -487,7 +502,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "amazon_autofill": {
@@ -608,7 +627,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "slide_to_pay": {
@@ -685,7 +708,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "chase": {
@@ -749,7 +776,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "login_form": {
@@ -843,7 +874,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "otp_form": {
@@ -909,7 +944,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "chrome_url_js": {
@@ -974,7 +1013,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "chrome_url_bank": {
@@ -1039,7 +1082,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "resolve": {
    "https://www.chase.com/": {
@@ -1110,7 +1157,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "web_checkout_enter": {
@@ -1230,7 +1281,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "whatsapp_chat": {
@@ -1323,7 +1378,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "gmail_list": {
@@ -1428,7 +1487,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_main": {
@@ -1688,7 +1751,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_internet": {
@@ -1852,7 +1919,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_security": {
@@ -2000,7 +2071,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_dev": {
@@ -2108,7 +2183,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_keyboards": {
@@ -2216,7 +2295,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_datetime": {
@@ -2380,7 +2463,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_bluetooth": {
@@ -2528,7 +2615,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_system": {
@@ -2664,7 +2755,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_app_info_amazon": {
@@ -2868,7 +2963,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_app_info_chase": {
@@ -3016,7 +3115,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "samsung_accessibility": {
@@ -3123,7 +3226,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "openmob_app": {
@@ -3187,7 +3294,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "keyguard_secure": {
@@ -3389,7 +3500,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "share_sheet": {
@@ -3493,7 +3608,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "german_shop": {
@@ -3610,7 +3729,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "permission_dialog_session": {
@@ -3741,7 +3864,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "permission_dialog_other": {
@@ -3858,7 +3985,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "whatsapp_chat_busy": {
@@ -3951,7 +4082,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "quiet_ms": 40
  },
@@ -4014,7 +4149,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "deep_truncated": {
@@ -4092,7 +4231,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_about": {
@@ -4240,7 +4383,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "vpn_consent": {
@@ -4370,7 +4517,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "contacts_app": {
@@ -4447,7 +4598,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "permission_dialog_contacts_word": {
@@ -4564,7 +4719,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "inapp_webview_autofill": {
@@ -4686,7 +4845,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "native_autofill": {
@@ -4794,7 +4957,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "kalshi_app": {
@@ -4858,7 +5025,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_google": {
@@ -5033,7 +5204,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_approx": {
@@ -5208,7 +5383,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_samsung": {
@@ -5383,7 +5562,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_always_only": {
@@ -5514,7 +5697,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "notifications_kalshi": {
@@ -5645,7 +5832,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "camera_kalshi": {
@@ -5790,7 +5981,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_other_app": {
@@ -5965,7 +6160,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "location_oem_unknown": {
@@ -6082,7 +6281,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "otp_focus_unread": {
@@ -6148,7 +6351,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "focus_unknown_window": {
@@ -6216,7 +6423,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "hidden_permission_dialog": {
@@ -6296,7 +6507,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "hidden_permission_samsung": {
@@ -6389,7 +6604,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "partial_window": {
@@ -6453,7 +6672,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "no_accessibility": {
@@ -6476,7 +6699,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_field": {
@@ -6603,7 +6830,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_password": {
@@ -6730,7 +6961,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_otp": {
@@ -6857,7 +7092,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_blocked": {
@@ -6984,7 +7223,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_unknown_window": {
@@ -7111,7 +7354,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_unlisted_window": {
@@ -7238,7 +7485,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "compose_webview": {
@@ -7351,7 +7602,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "kalshi_market": {
@@ -7468,7 +7723,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "quiet_ms": 40
  },
@@ -7586,7 +7845,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "quiet_ms": 40
  },
@@ -7717,7 +7980,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "kalshi_ticket_odds": {
@@ -7847,7 +8114,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "kalshi_ticket_repriced": {
@@ -7977,7 +8248,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "ticker_board": {
@@ -8119,7 +8394,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "youtube_channel": {
@@ -8223,7 +8502,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "youtube_join": {
@@ -8313,7 +8596,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "share_link_sheet": {
@@ -8472,7 +8759,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -8607,7 +8898,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -8703,7 +8998,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -8799,7 +9098,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -8895,7 +9198,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "photo_viewer": {
@@ -8959,7 +9266,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "instagram_post": {
@@ -9036,7 +9347,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "messenger_share_list": {
@@ -9181,7 +9496,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -9277,7 +9596,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -9373,7 +9696,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "owner": [
    "Ann Lee",
@@ -9485,7 +9812,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "paywall_offscreen_price": {
@@ -9590,7 +9921,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "shop_subscribe": {
@@ -9654,7 +9989,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "ocr_location": {
@@ -9736,7 +10075,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -9900,7 +10243,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10034,7 +10381,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10188,7 +10539,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10352,7 +10707,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10516,7 +10875,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10650,7 +11013,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10814,7 +11181,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -10958,7 +11329,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -11102,7 +11477,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -11226,7 +11605,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": null
  },
@@ -11371,7 +11754,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "uninstall_chase": {
@@ -11515,7 +11902,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "uninstall_openmob": {
@@ -11659,7 +12050,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "uninstall_unknown": {
@@ -11803,7 +12198,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "install_apk": {
@@ -11947,7 +12346,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_app_info_chess": {
@@ -12123,7 +12526,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "settings_app_info_openmob": {
@@ -12271,7 +12678,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "chess_app": {
@@ -12348,7 +12759,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "samsung_notifications_real": {
@@ -12431,7 +12846,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   },
   "ocr": [
    {
@@ -12704,7 +13123,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "nearby_kalshi_allow_only": {
@@ -12835,7 +13258,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "camera_kalshi_allow_only": {
@@ -12966,7 +13393,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "play_store_paid": {
@@ -13043,7 +13474,11 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  },
  "play_store_chess": {
@@ -13120,7 +13555,2235 @@
    "com.google.android.youtube": "YouTube",
    "com.facebook.orca": "Messenger",
    "com.google.android.apps.nexuslauncher": "Pixel Launcher",
-   "com.android.vending": "Google Play Store"
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "ocr_camera": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to take pictures and record video?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to take pictures and",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "record video?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_camera_spoof": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to take pictures and record video?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to take pictures and",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "record video?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Allow Kalshi to send you notifications?",
+    "bounds": [
+     60,
+     400,
+     1000,
+     460
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_contacts_spoof": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to access your contacts?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to access your",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "contacts?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Allow",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Allow Kalshi to send you notifications?",
+    "bounds": [
+     60,
+     400,
+     1000,
+     460
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_camera_spoof_below": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to take pictures and record video?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to take pictures and",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "record video?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Allow Kalshi to send you notifications?",
+    "bounds": [
+     120,
+     1950,
+     960,
+     2000
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Allow",
+    "bounds": [
+     300,
+     2080,
+     780,
+     2130
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_location_fake_approx": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Kalshi to access this device's location?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Kalshi to access this",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "device's location?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Precise",
+    "bounds": [
+     200,
+     1260,
+     360,
+     1310
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Approximate",
+    "bounds": [
+     690,
+     1260,
+     910,
+     1310
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Approximate",
+    "bounds": [
+     400,
+     2250,
+     700,
+     2300
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "ocr_contacts_other_swap": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.kalshi",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Markets",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        400
+       ],
+       "children": []
+      }
+     ]
+    }
+   },
+   {
+    "id": 7,
+    "type": "application",
+    "layer": 5,
+    "package": "",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "since": 5000
+   }
+  ],
+  "event": {
+   "package": "com.google.android.permissioncontroller",
+   "text": "Allow Tracker to access your contacts?",
+   "at": 5100
+  },
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  },
+  "ocr": [
+   {
+    "text": "Markets",
+    "bounds": [
+     60,
+     250,
+     300,
+     320
+    ],
+    "conf": 0.9
+   },
+   {
+    "text": "Allow Tracker to access your",
+    "bounds": [
+     120,
+     880,
+     960,
+     930
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "contacts?",
+    "bounds": [
+     120,
+     940,
+     960,
+     990
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "While using the app",
+    "bounds": [
+     300,
+     1480,
+     780,
+     1530
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Only this time",
+    "bounds": [
+     300,
+     1610,
+     780,
+     1660
+    ],
+    "conf": 0.95
+   },
+   {
+    "text": "Don't allow",
+    "bounds": [
+     300,
+     1740,
+     780,
+     1790
+    ],
+    "conf": 0.95
+   }
+  ]
+ },
+ "dialer_google": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.dialer",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "+1 900-555-0100",
+       "desc": "",
+       "id": "com.google.android.dialer:id/digits",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        300,
+        1040,
+        420
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "#",
+       "desc": "",
+       "id": "com.google.android.dialer:id/pound",
+       "cls": "android.widget.Button",
+       "bounds": [
+        700,
+        1700,
+        1040,
+        1850
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "dial",
+       "id": "com.google.android.dialer:id/dialpad_voice_call_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        390,
+        2000,
+        690,
+        2150
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Call history",
+       "desc": "",
+       "id": "com.google.android.dialer:id/call_history",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        2200,
+        540,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "dialer_google_mmi": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.dialer",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "**21*5550100#",
+       "desc": "",
+       "id": "com.google.android.dialer:id/digits",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        300,
+        1040,
+        420
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "#",
+       "desc": "",
+       "id": "com.google.android.dialer:id/pound",
+       "cls": "android.widget.Button",
+       "bounds": [
+        700,
+        1700,
+        1040,
+        1850
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "dial",
+       "id": "com.google.android.dialer:id/dialpad_voice_call_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        390,
+        2000,
+        690,
+        2150
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Call history",
+       "desc": "",
+       "id": "com.google.android.dialer:id/call_history",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        2200,
+        540,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "dialer_samsung": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.samsung.android.dialer",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "5551234",
+       "desc": "",
+       "id": "com.samsung.android.dialer:id/digits",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        300,
+        1040,
+        420
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "#",
+       "desc": "",
+       "id": "com.samsung.android.dialer:id/pound",
+       "cls": "android.widget.Button",
+       "bounds": [
+        700,
+        1700,
+        1040,
+        1850
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Call",
+       "id": "com.samsung.android.dialer:id/dialButton",
+       "cls": "android.widget.Button",
+       "bounds": [
+        390,
+        2000,
+        690,
+        2150
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Call history",
+       "desc": "",
+       "id": "com.samsung.android.dialer:id/call_history",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        2200,
+        540,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "dialer_aosp": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.dialer",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "5551234",
+       "desc": "",
+       "id": "com.android.dialer:id/digits",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        300,
+        1040,
+        420
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "#",
+       "desc": "",
+       "id": "com.android.dialer:id/pound",
+       "cls": "android.widget.Button",
+       "bounds": [
+        700,
+        1700,
+        1040,
+        1850
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Call",
+       "id": "com.android.dialer:id/dialpad_floating_action_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        390,
+        2000,
+        690,
+        2150
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "Call history",
+       "desc": "",
+       "id": "com.android.dialer:id/call_history",
+       "cls": "android.widget.Button",
+       "bounds": [
+        0,
+        2200,
+        540,
+        2300
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "incall_google": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.google.android.dialer",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "End call",
+       "id": "com.google.android.dialer:id/incall_end_call",
+       "cls": "android.widget.Button",
+       "bounds": [
+        390,
+        2000,
+        690,
+        2150
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Add call",
+       "id": "com.google.android.dialer:id/incall_add_call",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1700,
+        340,
+        1850
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "whatsapp_header": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.whatsapp",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "Voice call",
+       "id": "com.whatsapp:id/menuitem_voice_call",
+       "cls": "android.widget.Button",
+       "bounds": [
+        800,
+        100,
+        920,
+        220
+       ],
+       "children": [],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "Video call",
+       "id": "com.whatsapp:id/menuitem_video_call",
+       "cls": "android.widget.Button",
+       "bounds": [
+        920,
+        100,
+        1040,
+        220
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "form_a": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "com.example.app:id/name",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "com.example.app:id/note",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        600,
+        1040,
+        700
+       ],
+       "children": [],
+       "editable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "form_b": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.app",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "com.example.app:id/name",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        400,
+        1040,
+        500
+       ],
+       "children": [],
+       "editable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "com.example.app:id/note",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        40,
+        600,
+        1040,
+        700
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "devicecare_home": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.samsung.android.lool",
+    "title": "Device care",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Device care",
+       "desc": "",
+       "id": "com.samsung.android.lool:id/title",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Battery",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "Device protection",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        }
+       ],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "devicecare_background_limits": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.samsung.android.lool",
+    "title": "Background usage limits",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Background usage limits",
+       "desc": "",
+       "id": "com.samsung.android.lool:id/title",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Put unused apps to sleep",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "settings_app_notifications_list": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.settings",
+    "title": "App notifications",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "App notifications",
+       "desc": "",
+       "id": "com.android.settings:id/collapsing_toolbar",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        48,
+        150,
+        900,
+        260
+       ],
+       "children": []
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        420,
+        1080,
+        540
+       ],
+       "children": [
+        {
+         "text": "Chase",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          440,
+          800,
+          500
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          440,
+          1040,
+          520
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        560,
+        1080,
+        680
+       ],
+       "children": [
+        {
+         "text": "OpenMob",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          580,
+          800,
+          640
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          580,
+          1040,
+          660
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      },
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.LinearLayout",
+       "bounds": [
+        0,
+        700,
+        1080,
+        820
+       ],
+       "children": [
+        {
+         "text": "Chrome",
+         "desc": "",
+         "id": "android:id/title",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          48,
+          720,
+          800,
+          780
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "android:id/switch_widget",
+         "cls": "android.widget.Switch",
+         "bounds": [
+          900,
+          720,
+          1040,
+          800
+         ],
+         "children": [],
+         "checked": true,
+         "clickable": false
+        }
+       ],
+       "clickable": true,
+       "checked": true
+      }
+     ]
+    }
+   }
+  ],
+  "activity": "com.android.settings.SubSettings",
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
+  }
+ },
+ "own_prompt": {
+  "windows": [
+   {
+    "id": 9,
+    "type": "application",
+    "layer": 9,
+    "package": "dev.openmob.companion",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Allow",
+       "desc": "",
+       "id": "dev.openmob.companion:id/allow",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        1800,
+        1040,
+        1950
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care"
   }
  }
 }

@@ -35,6 +35,8 @@ class Judgement(
     var moneyFp: String = "",
     /** How a prompt names this action from what the phone sees (used when only the server's hint makes it ask). */
     var wording: String = "",
+    /** type_text, ENTER, DELETE: the field the gate judged (window, bounds, id, class); only it may get the text. */
+    var field: String = "",
 )
 
 class GrantOffer(val kind: String, val binding: String, val durationMs: Long, val confirmTwice: Boolean) {
@@ -51,6 +53,8 @@ class Admission(
     val plain: String = "",
     /** An ask's confirmation level: tap (Allow/Deny, the tap key) | fingerprint (the screen lock). */
     val level: String = "",
+    /** type_text, ENTER, DELETE: the field the gate judged; PhoneActions types only into it (review M2, L3). */
+    var field: String = "",
 ) {
     val allowed get() = decision == "allow"
 }
@@ -283,7 +287,7 @@ class Gatekeeper(
      *  unrecognized Settings changes). Low-risk actions never get here. */
     fun level(risk: Risk): String =
         // A Settings change the phone didn't recognize fails closed (D2): never a tap.
-        if (risk.money != null || (risk.kind == "fill" && risk.grant == null) || risk.kind == "settings") "fingerprint"
+        if (risk.money != null || (risk.kind == "fill" && risk.grant == null) || risk.kind == "settings" || risk.kind == "call_code") "fingerprint"
         else "tap"
 
     fun tightenPermission(perm: String, value: String): Boolean = synchronized(lock) {
@@ -352,6 +356,16 @@ class Gatekeeper(
     // --- admit ------------------------------------------------------------------------------------
 
     fun admit(method: String, params: Map<String, Any?>, rawScreen: GScreen): Admission = synchronized(lock) {
+        judgedField = ""
+        val a = admitChecked(method, params, rawScreen)
+        if (a.decision == "allow" || a.decision == "ask") a.field = judgedField
+        a
+    }
+
+    /** The field the last [admit] judged (type_text, ENTER, DELETE). */
+    private var judgedField = ""
+
+    private fun admitChecked(method: String, params: Map<String, Any?>, rawScreen: GScreen): Admission {
         val now = now()
         expire(now)
         val screen = withOcr(rawScreen)
@@ -377,7 +391,14 @@ class Gatekeeper(
             return refuse("needs_owner_dialog", "builtin:owner_dialog", it, method, params)
         }
         val j = judge(method, params, screen)
-        j.refuse?.let { return refuse(it.first, it.second, it.third, method, params, j.pkg) }
+        judgedField = j.field
+        j.refuse?.let {
+            // A gesture that would land on the phone's own prompt while it waits for the owner: wait, don't give up
+            // (Phase 5 item 1).
+            if (pending.isNotEmpty() && it.second == "builtin:own_window") return refuse("gate_prompt_open", "builtin:prompt_open",
+                "Waiting for the owner to answer a prompt on the phone.", method, params, j.pkg)
+            return refuse(it.first, it.second, it.third, method, params, j.pkg)
+        }
         if (suspended) return refuse("gate_rate_limited", "builtin:suspended",
             "Paused on the phone after repeated denials. The owner can resume.", method, params)
         val bind = GateScreen.binding(method, params, if (j.risk?.money != null) j.moneyFp else j.strictFp)
@@ -424,7 +445,7 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind != "permission" && risk.kind != "uninstall") return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call")) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
         // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -460,7 +481,7 @@ class Gatekeeper(
         pending[id] = Pending(id, bind, now, risk, j.pkg, params["task"]?.toString().orEmpty(), offer, method, params)
             .also { it.level = level(risk) }
         onEvent?.invoke(id, "pending")
-        Admission("ask", code = "gate_needs_approval", rule = "risk:${risk.reason}", kind = risk.kind, approvalId = id,
+        return Admission("ask", code = "gate_needs_approval", rule = "risk:${risk.reason}", kind = risk.kind, approvalId = id,
             wording = risk.wording, grantOffer = offer, binding = bind, money = risk.money, plain = plain, level = level(risk),
             message = "Waiting for the owner's approval on the phone.", method = method, params = params, pkg = j.pkg)
     }
@@ -478,6 +499,9 @@ class Gatekeeper(
         val method = "task_grant"
         if (task.isEmpty() || text.isEmpty()) return refuse("gate_denied", "builtin:task_request",
             "A task grant needs the task id and its request text.", method, params)
+        // Paused after repeated denials: no task prompt either (review M5), so a server can't wear the owner down.
+        if (suspended) return refuse("gate_rate_limited", "builtin:suspended",
+            "Paused on the phone after repeated denials. The owner can resume.", method, params)
         val digest = GateText.sha256(text)
         val bind = GateText.sha256("gk1-task|$task|$digest")
         taskGrants[task]?.let { g ->
@@ -522,7 +546,8 @@ class Gatekeeper(
         val kinds = mutableSetOf("other", "fill")
         for ((kind, extra) in listOf("send" to listOf("share", "message", "text", "reply", "forward", "email", "tell"),
                                      "share" to listOf("share", "send", "forward"), "post" to listOf("share"),
-                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty", "uninstall"))) {
+                                     "delete" to listOf("unsubscribe", "clear", "remove", "empty", "uninstall"),
+                                     "call" to listOf("call", "dial", "phone", "ring"))) {
             if (GateText.anyPhrase(toks, (rules.w[kind] ?: emptyList()) + extra) != null) kinds.add(kind)
         }
         return kinds
@@ -741,7 +766,7 @@ class Gatekeeper(
         armed = null
     }
 
-    private var armed: Pair<String, Pair<Int, String>>? = null
+    private var armed: Pair<String, Pair<String, String>>? = null
 
     private fun reverifyChecks(adm: Admission, rawScreen: GScreen): Admission {
         if (!adm.allowed || adm.method !in rules.act) return adm
@@ -757,6 +782,11 @@ class Gatekeeper(
         j.refuse?.let {
             adm.permit?.let(permits::remove)
             return refuse(it.first, it.second, it.third, adm.method, adm.params, j.pkg)
+        }
+        if (j.field != adm.field) { // focus moved to another field since the check (review M2, L3)
+            adm.permit?.let(permits::remove)
+            return refuse("gate_screen_changed", "builtin:field_changed", "The focused field changed before typing. Look again.",
+                adm.method, adm.params, j.pkg)
         }
         if (adm.strict) {
             if (GateScreen.binding(adm.method, adm.params, if (adm.money != null) j.moneyFp else j.strictFp) != adm.binding) {
@@ -786,7 +816,7 @@ class Gatekeeper(
     // --- permission dialogs Android hides from accessibility (Android 14+): the phone's own OCR ---------------
 
     /** OCR can't see which location card is chosen: the card the phone let through last, in this dialog. */
-    private var accuracyChoice: Pair<Int, String>? = null
+    private var accuracyChoice: Pair<String, String>? = null
 
     /** The permission-controller window with no readable tree (identified by its package, or by the last
      *  window-state event when Android hides even that). */
@@ -843,9 +873,16 @@ class Gatekeeper(
         return null
     }
 
-    /** The screen with the hidden permission dialog rebuilt from the phone's OCR: the title as its message, each line
-     *  that reads exactly as a button as a clickable node (its box padded), the rest as text. The dialog's root is
-     *  clickable, so a tap anywhere else in it (a button OCR missed, a low-confidence line) asks. */
+    /** One permission-style title the OCR read: its lines (indexes into the sorted lines), text and box. */
+    private class TitleBlock(val idx: List<Int>, val text: String, val top: Int, val bottom: Int)
+
+    /** The screen with the hidden permission dialog rebuilt from the phone's OCR. Only the dialog card counts (review
+     *  H1, M3): the OCR reads the whole screen, the app's own text through the scrim included, so the title is the
+     *  permission-style title nearest above the Allow/Deny buttons, and lines outside the card (that title down to the
+     *  last button of the button stack) are dropped. Precise/Approximate count only between the title and the
+     *  buttons. Any doubt (no title, more than one permission-style title on screen, no buttons under it) marks the
+     *  dialog `ocr_unsure`: every grant on it asks. Each button line becomes a clickable node (its box padded), the
+     *  rest text; the dialog's root is clickable, so a tap anywhere else in it (a button OCR missed) asks. */
     fun withOcr(screen: GScreen): GScreen {
         val w = ocrWindow(screen)
         if (w == null) {
@@ -857,35 +894,77 @@ class Gatekeeper(
         val minConf = (o["min_conf"] as Number).toDouble()
         val pad = (o["pad"] as Number).toInt()
         val maxTitle = (o["title_lines"] as Number).toInt()
+        val gapLines = (o["button_gap_lines"] as Number).toInt()
         val start = rules.rx(o.str("title_start"))
         val lines = ocr.filter { it.text.isNotBlank() && it.conf >= minConf }
             .sortedWith(compareBy({ it.bounds[1] }, { it.bounds[0] }))
-        if (accuracyChoice != null && accuracyChoice?.first != w.id) accuracyChoice = null // another dialog: Precise again
-        val choice = accuracyChoice
-        val title = mutableListOf<String>()
-        var taking = false
+        val texts = lines.map { it.text.split(WS).filter { t -> t.isNotEmpty() }.joinToString(" ") }
+        val roles = texts.map { textRole(it) }
+        // Every permission-style title on screen: a line starting like one, plus its wrapped lines up to the '?'.
+        val blocks = mutableListOf<TitleBlock>()
+        val used = mutableSetOf<Int>()
+        for (k in lines.indices) {
+            if (k in used || roles[k] != null || !start.containsMatchIn(texts[k])) continue
+            val idx = mutableListOf(k)
+            var j = k
+            while (!texts[j].endsWith("?") && idx.size < maxTitle && j + 1 < lines.size && roles[j + 1] == null) { j++; idx.add(j) }
+            val text = idx.joinToString(" ") { texts[it] }
+            if (permApp(text) == null) continue
+            used.addAll(idx)
+            blocks.add(TitleBlock(idx, text, idx.minOf { lines[it].bounds[1] }, idx.maxOf { lines[it].bounds[3] }))
+        }
+        val buttons = lines.indices.filter { roles[it] in GRANT_ROLES }
+        fun below(b: TitleBlock) = buttons.filter { lines[it].bounds[1] >= b.bottom }.sortedBy { lines[it].bounds[1] }
+        val chosen = blocks.filter { below(it).isNotEmpty() }.maxByOrNull { it.top }
+        val unsure = blocks.size != 1 || chosen == null
+        // The card: the chosen title down to the end of the button stack under it.
+        var keep: (Int) -> Boolean = { true }
+        var cardTop = Int.MIN_VALUE
+        var firstButtonTop = Int.MAX_VALUE
+        if (chosen != null) {
+            val stack = mutableListOf<Int>()
+            for (b in below(chosen)) {
+                if (stack.isEmpty()) { stack.add(b); continue }
+                val last = lines[stack.last()].bounds
+                val height = maxOf(1, last[3] - last[1])
+                if (lines[b].bounds[1] - last[3] <= gapLines * height) stack.add(b) else break
+            }
+            val box = (chosen.idx + stack).map { lines[it].bounds }
+            val left = box.minOf { it[0] } - pad
+            val right = box.maxOf { it[2] } + pad
+            val top = chosen.top - pad
+            val bottom = box.maxOf { it[3] } + pad
+            cardTop = chosen.bottom
+            firstButtonTop = lines[stack.first()].bounds[1]
+            // In doubt every grant asks anyway: keep every line, so the prompt can name the button tapped.
+            if (!unsure) keep = { i -> lines[i].bounds.let { b -> b[0] >= left && b[2] <= right && b[1] >= top && b[3] <= bottom } }
+        }
+        val message = chosen?.text
+            ?: lines.indices.filter { roles[it] == null }.joinToString(" ") { texts[it] }.ifEmpty { "?" }
+        val key = "${w.id}|$message"
+        if (accuracyChoice != null && accuracyChoice?.first != key) accuracyChoice = null // another dialog: Precise again
+        val choice = if (unsure) null else accuracyChoice
         val nodes = mutableListOf<GNode>()
-        for (b in lines) {
-            val text = b.text.split(WS).filter { it.isNotEmpty() }.joinToString(" ")
-            val role = textRole(text)
-            val (l, t, r, bt) = b.bounds.toList()
-            if (role != null) {
-                taking = false
+        for (i in lines.indices) {
+            if (!keep(i)) continue
+            val text = texts[i]
+            val role = roles[i]
+            val (l, t, r, bt) = lines[i].bounds.toList()
+            // The location card's Precise/Approximate only between the title and the buttons: app-drawn text elsewhere
+            // is never the card (M3).
+            val cardRole = role == "precise" || role == "approximate"
+            val inCard = chosen != null && t >= cardTop && bt <= firstButtonTop
+            if (role != null && (!cardRole || inCard || chosen == null)) {
                 // OCR can't see the radio: Android pre-selects Precise.
-                val checked = if (role == "precise" || role == "approximate") role == (choice?.second ?: "precise") else null
+                val checked = if (cardRole) role == (choice?.second ?: "precise") else null
                 nodes.add(GNode(text = text, id = "ocr", cls = "OCRText", bounds = intArrayOf(l - pad, t - pad, r + pad, bt + pad),
                     clickable = true, checked = checked))
                 continue
             }
-            if (title.isEmpty() && start.containsMatchIn(text)) taking = true
-            if (taking && title.size < maxTitle) {
-                title.add(text)
-                taking = !text.endsWith("?")
-            }
             nodes.add(GNode(text = text, cls = "OCRText", bounds = intArrayOf(l, t, r, bt)))
         }
-        val message = title.joinToString(" ").ifEmpty { nodes.filter { !it.clickable }.joinToString(" ") { it.text } }.ifEmpty { "?" }
         nodes.add(0, GNode(text = message, id = "permission_message", cls = "OCRText"))
+        if (unsure) nodes.add(1, GNode(id = "ocr_unsure", cls = "OCRText"))
         val root = GNode(cls = "OCRDialog", bounds = w.bounds, clickable = true, children = nodes)
         val pkg = w.pkg.ifEmpty {
             if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(screen.eventPackage)) screen.eventPackage
@@ -899,13 +978,16 @@ class Gatekeeper(
     fun ocrPreview(screen: GScreen): GScreen = synchronized(lock) { withOcr(screen) }
 
     /** (window id, precise|approximate) when this tap is on an OCR'd dialog's location card. */
-    private fun ocrCard(adm: Admission, screen: GScreen): Pair<Int, String>? {
+    private fun ocrCard(adm: Admission, screen: GScreen): Pair<String, String>? {
         val x = (adm.params["x"] as? Number)?.toDouble() ?: return null
         val y = (adm.params["y"] as? Number)?.toDouble() ?: return null
         val t = GateScreen.hitTest(rules, screen, x, y) ?: return null
-        if (t.window.root?.cls != "OCRDialog") return null
+        val root = t.window.root ?: return null
+        if (root.cls != "OCRDialog" || root.children.any { it.id == "ocr_unsure" }) return null
+        val message = root.children.firstOrNull { it.id == "permission_message" }?.text.orEmpty()
         val role = permRole(t)
-        return if (role == "precise" || role == "approximate") t.window.id to role else null
+        // Keyed by the window and its title: the same window showing another question starts from Precise again (M1).
+        return if (role == "precise" || role == "approximate") "${t.window.id}|$message" to role else null
     }
 
     // --- the judge -------------------------------------------------------------------------------------
@@ -1065,6 +1147,14 @@ class Gatekeeper(
             if (sessionAppAsks(w, screen, title)) return "allow" to ""
             return if (changingTap(t, label)) "ask" to page else "none" to ""
         }
+        // Notification switches for a blocked app (a bank's transaction alerts) or for OpenMob itself ask (review L1).
+        if ((GateText.hasPhrase(title, "notifications") || GateText.hasPhrase(title, "notification")) && changingTap(t, label)) {
+            val protectedLabels = screen.labels.filter { rules.blocked(it.key) || it.key in rules.own }.map { GateText.tokens(it.value) } +
+                uninstallRules["own_labels"].strings().map { GateText.tokens(it) }
+            if (protectedLabels.any { it.isNotEmpty() && (GateText.hasPhrase(label, it.joinToString(" ")) || GateText.hasPhrase(title, it.joinToString(" "))) }) {
+                return "ask" to page
+            }
+        }
         if (has(title, rules.sList("everyday")) || has(label, rules.sList("everyday"))) return "allow" to ""
         return if (changingTap(t, label)) "ask" to page else "none" to ""
     }
@@ -1127,6 +1217,10 @@ class Gatekeeper(
         if (role in setOf("deny", "deny_forever", "approximate")) return null
         if (role == "always") return Triple("gate_permission_choice", "permission:always",
             "Never \"Allow all the time\": tap \"While using the app\" (or \"Only this time\") instead.")
+        // The OCR couldn't pin down which question the dialog asks (no title, or more than one permission-style title
+        // on screen, e.g. one an app drew itself above the real dialog): any grant asks (review H1).
+        if (walk(w.root).any { it.id == "ocr_unsure" }) return Risk("permission", "permission:ocr_unsure", always = true,
+            wording = "Allow $name's permission request? The phone couldn't tell for sure which permission it is: check the dialog.")
         val what = if (role == "precise") "precise location" else kind.replace('_', ' ')
         val wording = "Allow $name to use your $what?"
         val (value, settingKind) = when {
@@ -1174,10 +1268,14 @@ class Gatekeeper(
     private fun preciseSelected(w: GWindow): Boolean =
         walk(w.root).any { it.checked == true && permRole(GTarget(w, listOf(it))) == "precise" }
 
-    /** The phone has an input focus it couldn't read: typing or ENTER would go somewhere unjudged (review R1). */
-    private fun focusUnread(screen: GScreen): Triple<String, String, String>? =
+    /** No field the gate can judge has focus: typing, ENTER and DELETE are refused by rule (review M2), since they
+     *  would otherwise land wherever the phone's own search finds focus, unjudged. A focus it couldn't read (R1) says
+     *  so; no focus at all says to tap the field. */
+    private fun focusUnread(screen: GScreen): Triple<String, String, String> =
         if (screen.focusExpected) Triple("gate_screen_unstable", "builtin:focus_unread",
-            "The field that has focus couldn't be read. Look again.") else null
+            "The field that has focus couldn't be read. Look again.")
+        else Triple("gate_screen_unstable", "builtin:no_field",
+            "No text field the phone can judge has focus. Tap the field first, then look again.")
 
     private fun changingTap(t: GTarget?, label: List<String>): Boolean {
         if (t != null && listOfNotNull(t.pressed, t.hit).any { it.checked != null }) return true
@@ -1214,6 +1312,52 @@ class Gatekeeper(
         return null
     }
 
+    // --- phone calls (review H2) ----------------------------------------------------------------------------
+
+    private val callRules = rules.d["calls"].obj()
+
+    /** A dialer, contacts app or in-call screen: its call buttons place calls. */
+    fun callApp(pkg: String) = pkg in callRules["packages"].strings()
+
+    /** An MMI/USSD code (call forwarding `**21*…#`, settings codes): any * or #, plain or percent-encoded. */
+    fun mmi(text: String) = '*' in text || '#' in text || "%23" in text || "%2a" in text.lowercase()
+
+    /** The number a dialer window holds: its number field (by id, else any field with text). */
+    private fun dialedNumber(w: GWindow): String {
+        val rx = rules.rx(callRules.str("number_ids"))
+        val nodes = walk(w.root)
+        return (nodes.firstOrNull { rx.containsMatchIn(it.id) && it.text.isNotEmpty() }
+            ?: nodes.firstOrNull { (it.editable || "EditText" in it.cls) && it.text.isNotEmpty() })?.text?.trim().orEmpty()
+    }
+
+    private fun callCodeRisk(number: String, app: String) = Risk("call_code", "call:mmi", always = true,
+        wording = "Allow dialing the code “${number.take(40)}” in $app? Codes with * or # can change phone settings, such as forwarding your calls.")
+
+    /** A tap that places a call: in a dialer, contacts app or in-call screen, a label or id that says call or dial
+     *  (not end call, call history…), or the dialpad's * and # keys; in any app, a button labelled exactly Call, or
+     *  voice/video call. A number with * or # asks with the screen lock. */
+    private fun callRisk(t: GTarget, label: List<String>, ids: List<String>, screen: GScreen): Risk? {
+        val w = t.window
+        val app = label(screen, w.pkg)
+        val safe = has(label, callRules["safe_words"].strings()) || ids.any { rules.rx(callRules.str("safe_ids")).containsMatchIn(it) }
+        if (safe) return null
+        if (callApp(w.pkg)) {
+            val raw = listOfNotNull(t.pressed, t.hit).map { "${it.text}${it.desc}".trim() }
+            val codeKey = raw.any { it == "*" || it == "#" } || ids.any { rules.rx(callRules.str("code_keys")).containsMatchIn(it) } ||
+                (label.size == 1 && label[0] in setOf("pound", "star"))
+            if (codeKey) return callCodeRisk(dialedNumber(w) + raw.firstOrNull { it == "*" || it == "#" }.orEmpty(), app)
+            val call = has(label, callRules["words"].strings()) || ids.any { rules.rx(callRules.str("ids")).containsMatchIn(it) }
+            if (!call) return null
+            val number = dialedNumber(w).ifEmpty { t.shown() }
+            if (mmi(number)) return callCodeRisk(number, app)
+            return Risk("call", "call:dial", wording = "Allow placing a call" +
+                (if (number.isNotEmpty()) " to “${number.take(40)}”" else "") + " from $app?")
+        }
+        val anyApp = label == listOf("call") || has(label, callRules["any_app_words"].strings()) ||
+            ids.any { rules.rx(callRules.str("any_app_ids")).containsMatchIn(it) }
+        return if (anyApp) Risk("call", "call:button", wording = "Allow starting a call (“${t.shown().take(40)}”) in $app?") else null
+    }
+
     private fun sliderAt(t: GTarget): Boolean {
         val rx = rules.rxKey("slider_class")
         return listOfNotNull(t.pressed, t.hit).any { rx.containsMatchIn(it.cls) }
@@ -1246,6 +1390,10 @@ class Gatekeeper(
 
         if (rules.rx(rules.sStr("permission_packages")).containsMatchIn(w.pkg) &&
             walk(w.root).any { it.id.endsWith("permission_message") && it.text.isNotEmpty() }) {
+            // The question is part of what an approval binds: the same button under another question (a dialog's
+            // content swapped in place) needs a new approval (review M1).
+            val msg = "|msg:" + GateText.tokens(walk(w.root).first { it.id.endsWith("permission_message") && it.text.isNotEmpty() }.text).joinToString(" ")
+            j.fp += msg; j.strictFp += msg; j.moneyFp += msg
             when (val res = permissionDialog(w, t, screen)) {
                 is Triple<*, *, *> -> j.refuse = Triple(res.first as String, res.second as String, res.third as String)
                 else -> j.risk = res as Risk?
@@ -1313,6 +1461,7 @@ class Gatekeeper(
             j.risk = Risk("other", "notification_action", wording = wording())
             return j
         }
+        callRisk(t, label, ids, screen)?.let { j.risk = it; return j }
         var risk = wordRisk(label, ids, w.pkg, j.payment, GateScreen.priced(screen, w))
         // A message to yourself ("Note to self", your own chat): nobody else receives it.
         // An in-app share list's "Send" next to your own name, while a public link is shared.
@@ -1381,7 +1530,8 @@ class Gatekeeper(
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}/${if (node.password) 1 else 0}"
         val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = true, app = appWindow(w),
-            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","))
+            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","),
+            field = GateScreen.fieldRef(f))
         surfaceRefusal(w)?.let { j.refuse = it; return j }
         if (node.password) {
             j.refuse = Triple("gate_password_field", "builtin:password_field",
@@ -1395,7 +1545,10 @@ class Gatekeeper(
         j.payment = GateScreen.paymentContext(rules, screen)
         val about = "${node.id} ${node.hint}"
         val app = label(screen, w.pkg)
-        if (rules.rxKey("payment_field").containsMatchIn(about)) {
+        if (callApp(w.pkg) && mmi(text)) {
+            // Some dialers run a code as soon as its last # is typed (review H2).
+            j.risk = callCodeRisk(node.text + text, app)
+        } else if (rules.rxKey("payment_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "card_field", always = true, wording = "Allow typing into the card field in $app?")
         } else if (rules.rxKey("otp_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "otp_field", always = true, wording = "Allow typing a code into $app?")
@@ -1410,7 +1563,8 @@ class Gatekeeper(
         val node = f.node
         val fp = "${w.id}|${w.pkg}|${node.id}/${node.hint}/${node.cls}"
         val j = Judgement(pkg = w.pkg, fp = fp, strictFp = fp + "/" + node.bounds.joinToString(","), changing = name == "ENTER", app = appWindow(w),
-            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","))
+            moneyFp = fp + "/" + node.bounds.joinToString(",") + "|$" + GateScreen.moneyAmounts(w, null).joinToString(","),
+            field = GateScreen.fieldRef(f))
         surfaceRefusal(w)?.let { j.refuse = it; return j }
         if (name == "DELETE") return j
         val browser = rules.isCat("browser", w.pkg)
@@ -1422,10 +1576,17 @@ class Gatekeeper(
             uj.fp = fp + "|" + uj.fp
             uj.strictFp = j.strictFp + "|" + uj.strictFp
             uj.changing = true
+            uj.field = j.field
             return uj
         }
         j.payment = GateScreen.paymentContext(rules, screen)
         val app = label(screen, w.pkg)
+        if (callApp(w.pkg)) { // ENTER in a dialer's number field places the call (review H2)
+            val number = node.text.trim()
+            j.risk = if (mmi(number)) callCodeRisk(number, app) else Risk("call", "call:enter",
+                wording = "Allow placing a call" + (if (number.isNotEmpty()) " to “${number.take(40)}”" else "") + " from $app?")
+            return j
+        }
         val searchRx = rules.rxKey("search_field")
         val search = listOf(node.id, node.cls, node.hint, node.desc).any { searchRx.containsMatchIn(it) }
         if (j.payment) {
@@ -1474,6 +1635,9 @@ class Gatekeeper(
         }
         if (scheme == "tel" && handler.isNotEmpty() && !rules.isCat("dialer", handler)) {
             j.refuse = Triple("gate_denied", "builtin:tel_handler", "tel: links only open the dialer.")
+        } else if (scheme == "tel" && mmi(url.substringAfter(':'))) {
+            // A code with * or # (call forwarding…): some dialers run codes they're handed, so it asks first (H2).
+            j.risk = callCodeRisk(url.substringAfter(':'), label(screen, handler.ifEmpty { "the dialer" }))
         }
         return j
     }
@@ -1485,6 +1649,8 @@ class Gatekeeper(
         /** Well over the accessibility service's notificationTimeout (100 ms), the event delay the list lags by. */
         const val SETTLE_MS = 250L
         val GESTURES = setOf("tap", "long_press", "swipe")
+        /** The buttons that answer a permission dialog (the location card's Precise/Approximate aren't among them). */
+        val GRANT_ROLES = setOf("allow", "deny", "deny_forever", "one_time", "foreground", "always")
 
         /** A record's canonical text: sorted key=value pairs (booleans as 1/0). */
         fun canon(record: Map<String, Any?>): String = record.filterValues { it != null }.toSortedMap().entries

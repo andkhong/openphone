@@ -338,6 +338,11 @@ def focused_field(screen: Screen) -> tuple[Window, Node, list] | None:
     return None
 
 
+def field_ref(w: Window, node: Node) -> str:
+    """Which field the gate judged: its window, bounds, id and class (GateScreen.fieldRef)."""
+    return f"{w.id}|{','.join(str(int(v)) for v in node.bounds)}|{node.id}|{node.cls}"
+
+
 def _find_focused(node: Node | None, path: list) -> list | None:
     if node is None:
         return None
@@ -521,6 +526,7 @@ class Judgement:
     label: list = field(default_factory=list)  # the target's words (a cart or checkout word ends a purchase flow)
     money_fp: str = ""  # strict_fp plus the currency amounts a money commit is about (any change voids a permit)
     wording: str = ""  # how a prompt names this action from what the phone sees (a deep link names its page)
+    field_ref: str = ""  # type_text, ENTER, DELETE: the field the gate judged (window, bounds, id, class)
 
 
 @dataclass
@@ -542,6 +548,7 @@ class Admission:
     money: str | None = None
     plain: str = ""  # the binding with every number blanked (tells a price change from a moved target)
     level: str = ""  # an ask's confirmation level: tap (Allow/Deny) | fingerprint (the screen lock)
+    field_ref: str = ""  # type_text, ENTER, DELETE: the field the gate judged; the phone types only into it (M2, L3)
 
 
 @dataclass
@@ -628,7 +635,7 @@ class Gatekeeper:
         self.grants: list[Grant] = []
         self.ceiling = "auto"
         self.perm_defaults: dict[str, str] = {}  # the owner's signed (or tightened) permission-dialog defaults
-        self.accuracy_choice: tuple | None = None  # (window id, precise|approximate): the OCR'd dialog's card tapped
+        self.accuracy_choice: tuple | None = None  # ("<window id>|<title>", precise|approximate): the card tapped
         self.armed: tuple | None = None  # (binding, card): recorded once that tap's gesture completes
         self.never: dict | None = None  # {issued, duration_ms, allow_money}
         self.tokens = float(self.r.limits["act_burst"])
@@ -803,6 +810,13 @@ class Gatekeeper:
     # --- admit ------------------------------------------------------------------------
 
     def admit(self, method: str, params: dict, screen: Screen) -> Admission:
+        self._judged_field = ""
+        a = self._admit(method, params, screen)
+        if a.decision in ("allow", "ask"):
+            a.field_ref = self._judged_field
+        return a
+
+    def _admit(self, method: str, params: dict, screen: Screen) -> Admission:
         now = self.now()
         self._expire(now)
         params = params or {}
@@ -831,7 +845,13 @@ class Gatekeeper:
         if method != "wake_unlock" and (dialog := self.owner_dialog(screen)):
             return self._refuse("needs_owner_dialog", "builtin:owner_dialog", dialog, method, params)
         j = self.judge(method, params, screen)
+        self._judged_field = j.field_ref
         if j.refuse:
+            if self.pending and j.refuse[1] == "builtin:own_window":
+                # A gesture that would land on the phone's own prompt while it waits for the owner: wait, don't give
+                # up (Phase 5 item 1).
+                return self._refuse("gate_prompt_open", "builtin:prompt_open",
+                                    "Waiting for the owner to answer a prompt on the phone.", method, params, j.package)
             return self._refuse(*j.refuse, method, params, package=j.package)
         if self.suspended:
             return self._refuse("gate_rate_limited", "builtin:suspended",
@@ -887,7 +907,7 @@ class Gatekeeper:
         if mode != "ask" and self._task_covers(risk, params, j.package, screen):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
         if mode != "ask" and self.everyday and self.level(risk) == "tap" and risk.kind not in ("permission",
-                                                                                             "uninstall"):
+                                                                                             "uninstall", "call"):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
         # Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         # (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -942,6 +962,9 @@ class Gatekeeper:
         if not task or not text:
             return self._refuse("gate_denied", "builtin:task_request", "A task grant needs the task id and its "
                                 "request text.", method, params)
+        if self.suspended:  # paused after repeated denials: no task prompt either (review M5)
+            return self._refuse("gate_rate_limited", "builtin:suspended",
+                                "Paused on the phone after repeated denials. The owner can resume.", method, params)
         digest = sha256(text)
         bind = sha256(f"gk1-task|{task}|{digest}")
         g = self.task_grants.get(task)
@@ -990,7 +1013,8 @@ class Gatekeeper:
         kinds = {"other", "fill"}
         for kind, extra in (("send", ["share", "message", "text", "reply", "forward", "email", "tell"]),
                             ("share", ["share", "send", "forward"]), ("post", ["share"]),
-                            ("delete", ["unsubscribe", "clear", "remove", "empty", "uninstall"])):
+                            ("delete", ["unsubscribe", "clear", "remove", "empty", "uninstall"]),
+                            ("call", ["call", "dial", "phone", "ring"])):
             if any_phrase(toks, self.r.w.get(kind, []) + extra):
                 kinds.add(kind)
         return kinds
@@ -1001,7 +1025,7 @@ class Gatekeeper:
         cards and passwords in a browser or web page, OTP or card fields, permission grants); a simple on-phone
         Allow/Deny for everyday-but-consequential ones (messages and shares to others, posts, deletes, native
         autofill, unrecognized Settings changes, menus the server worries about). Low-risk actions never get here."""
-        if risk.money or (risk.kind == "fill" and risk.grant is None) or risk.kind == "settings":
+        if risk.money or (risk.kind == "fill" and risk.grant is None) or risk.kind in ("settings", "call_code"):
             return "fingerprint"  # a Settings change the phone didn't recognize fails closed (D2): never a tap
         return "tap"
 
@@ -1229,6 +1253,11 @@ class Gatekeeper:
         if j.refuse:
             self.permits.pop(adm.permit or "", None)
             return self._refuse(*j.refuse, adm.method, adm.params, j.package)
+        if j.field_ref != adm.field_ref:  # focus moved to another field since the check (review M2, L3)
+            self.permits.pop(adm.permit or "", None)
+            return self._refuse("gate_screen_changed", "builtin:field_changed",
+                                "The focused field changed before typing. Look again.", adm.method, adm.params,
+                                j.package)
         if adm.strict:
             if binding(adm.method, adm.params, j.money_fp if adm.money else j.strict_fp) != adm.binding:
                 self.permits.pop(adm.permit or "", None)
@@ -1320,10 +1349,15 @@ class Gatekeeper:
                 return m.group(1).strip()
         return None
 
+    GRANT_ROLES = ("allow", "deny", "deny_forever", "one_time", "foreground", "always")
+
     def with_ocr(self, screen: Screen) -> Screen:
-        """The screen with the hidden permission dialog rebuilt from the phone's OCR: the title as its message, each
-        line that reads exactly as a button as a clickable node (its box padded), the rest as text. The dialog's
-        root is clickable, so a tap anywhere else in it (a button OCR missed, a low-confidence line) asks."""
+        """The screen with the hidden permission dialog rebuilt from the phone's OCR. Only the dialog card counts
+        (review H1, M3): the title is the permission-style title nearest above the Allow/Deny buttons, and lines
+        outside the card (that title down to the last button of the button stack) are dropped. Precise/Approximate
+        count only between the title and the buttons. Any doubt (no title, more than one permission-style title on
+        screen, no buttons under it) marks the dialog `ocr_unsure`: every grant on it asks. Each button line is a
+        clickable node (its box padded), the rest text; the root is clickable, so any other tap in it asks."""
         w = self._ocr_window(screen)
         if w is None:
             self.accuracy_choice = None  # the dialog is gone: its card choice with it
@@ -1336,31 +1370,78 @@ class Gatekeeper:
                        key=lambda b: (b["bounds"][1], b["bounds"][0]))
         pad = o["pad"]
         start = re.compile(o["title_start"])
-        title, taking = [], False
-        nodes = []
-        if self.accuracy_choice and self.accuracy_choice[0] != w.id:
+        texts = [" ".join(str(b["text"]).split()) for b in lines]
+        roles = [self.text_role(t) for t in texts]
+        bounds = [tuple(int(v) for v in b["bounds"]) for b in lines]
+        # Every permission-style title on screen: a line starting like one, plus its wrapped lines up to the '?'.
+        blocks, used = [], set()
+        for k in range(len(lines)):
+            if k in used or roles[k] is not None or not start.search(texts[k]):
+                continue
+            idx, j = [k], k
+            while not texts[j].endswith("?") and len(idx) < o["title_lines"] and j + 1 < len(lines) \
+                    and roles[j + 1] is None:
+                j += 1
+                idx.append(j)
+            text = " ".join(texts[i] for i in idx)
+            if self.perm_app(text) is None:
+                continue
+            used.update(idx)
+            blocks.append({"idx": idx, "text": text, "top": min(bounds[i][1] for i in idx),
+                           "bottom": max(bounds[i][3] for i in idx)})
+        buttons = [i for i in range(len(lines)) if roles[i] in self.GRANT_ROLES]
+
+        def below(b):
+            return sorted((i for i in buttons if bounds[i][1] >= b["bottom"]), key=lambda i: bounds[i][1])
+
+        with_buttons = [b for b in blocks if below(b)]
+        chosen = max(with_buttons, key=lambda b: b["top"]) if with_buttons else None
+        unsure = len(blocks) != 1 or chosen is None
+        keep = None
+        card_top, first_button_top = None, None
+        if chosen is not None:
+            stack = []
+            for b in below(chosen):
+                if not stack:
+                    stack.append(b)
+                    continue
+                last = bounds[stack[-1]]
+                height = max(1, last[3] - last[1])
+                if bounds[b][1] - last[3] <= o["button_gap_lines"] * height:
+                    stack.append(b)
+                else:
+                    break
+            box = [bounds[i] for i in chosen["idx"] + stack]
+            left, right = min(b[0] for b in box) - pad, max(b[2] for b in box) + pad
+            top, bottom = chosen["top"] - pad, max(b[3] for b in box) + pad
+            card_top, first_button_top = chosen["bottom"], bounds[stack[0]][1]
+            if not unsure:  # in doubt every grant asks anyway: keep every line, so the prompt names the button
+                keep = (left, top, right, bottom)
+        message = chosen["text"] if chosen else (" ".join(texts[i] for i in range(len(lines)) if roles[i] is None)
+                                                 or "?")
+        key = f"{w.id}|{message}"
+        if self.accuracy_choice and self.accuracy_choice[0] != key:
             self.accuracy_choice = None  # another dialog: assume Precise again
-        choice = self.accuracy_choice
-        for b in lines:
-            text = " ".join(str(b["text"]).split())
-            role = self.text_role(text)
-            l, t, r, bt = (int(v) for v in b["bounds"])
-            if role is not None:
-                taking = False
+        choice = None if unsure else self.accuracy_choice
+        nodes = []
+        for i in range(len(lines)):
+            l, t, r, bt = bounds[i]
+            if keep is not None and not (l >= keep[0] and r <= keep[2] and t >= keep[1] and bt <= keep[3]):
+                continue
+            text, role = texts[i], roles[i]
+            card_role = role in ("precise", "approximate")
+            in_card = chosen is not None and t >= card_top and bt <= first_button_top
+            if role is not None and (not card_role or in_card or chosen is None):
                 checked = None
-                if role in ("precise", "approximate"):  # OCR can't see the radio: Android pre-selects Precise
+                if card_role:  # OCR can't see the radio: Android pre-selects Precise
                     checked = role == (choice[1] if choice else "precise")
                 nodes.append(Node(text=text, id="ocr", cls="OCRText", bounds=(l - pad, t - pad, r + pad, bt + pad),
                                   clickable=True, checked=checked))
                 continue
-            if not title and start.search(text):
-                taking = True
-            if taking and len(title) < o["title_lines"]:
-                title.append(text)
-                taking = not text.endswith("?")
             nodes.append(Node(text=text, cls="OCRText", bounds=(l, t, r, bt)))
-        message = " ".join(title) or " ".join(n.text for n in nodes if not n.clickable) or "?"
         nodes.insert(0, Node(text=message, id="permission_message", cls="OCRText"))
+        if unsure:
+            nodes.insert(1, Node(id="ocr_unsure", cls="OCRText"))
         root = Node(cls="OCRDialog", bounds=w.bounds, clickable=True, children=nodes)
         event_pkg = str(screen.event.get("package") or "")
         pkg = w.package or (event_pkg if re.search(self.r.s["permission_packages"], event_pkg)
@@ -1373,8 +1454,12 @@ class Gatekeeper:
         t = hit_test(self.r, screen, float(adm.params.get("x", -1)), float(adm.params.get("y", -1)))
         if t is None or t.window.root is None or t.window.root.cls != "OCRDialog":
             return None
+        if any(c.id == "ocr_unsure" for c in t.window.root.children):
+            return None
+        message = next((c.text for c in t.window.root.children if c.id == "permission_message"), "")
         role = self._perm_role(t)
-        return (t.window.id, role) if role in ("precise", "approximate") else None
+        # Keyed by the window and its title: the same window with another question starts from Precise again (M1).
+        return (f"{t.window.id}|{message}", role) if role in ("precise", "approximate") else None
 
     # --- the judge: what the action touches and how risky it is ---------------------------
 
@@ -1536,6 +1621,12 @@ class Gatekeeper:
             if self._session_app_asks(w, screen, title):
                 return ("allow", "")
             return ("ask", page) if self._changing_tap(t, label) else ("none", "")
+        if (has_phrase(title, "notifications") or has_phrase(title, "notification")) and self._changing_tap(t, label):
+            # Notification switches for a blocked app (a bank's alerts) or for OpenMob itself ask (review L1).
+            protected = [tokens(v) for k, v in screen.labels.items() if self.r.blocked(k) or k in self.r.own] + \
+                [tokens(x) for x in self.r.d["uninstall"]["own_labels"]]
+            if any(p and (has_phrase(label, " ".join(p)) or has_phrase(title, " ".join(p))) for p in protected):
+                return ("ask", page)
         if any_phrase(title, s["everyday"]) or any_phrase(label, s["everyday"]):
             return ("allow", "")
         return ("ask", page) if self._changing_tap(t, label) else ("none", "")
@@ -1599,6 +1690,12 @@ class Gatekeeper:
         if role == "always":
             return ("gate_permission_choice", "permission:always",
                     "Never \"Allow all the time\": tap \"While using the app\" (or \"Only this time\") instead.")
+        if any(n.id == "ocr_unsure" for n in walk(w.root, [])):
+            # The OCR couldn't pin down which question the dialog asks (no title, or more than one permission-style
+            # title on screen, e.g. one an app drew above the real dialog): any grant asks (review H1).
+            return Risk("permission", "permission:ocr_unsure", always=True,
+                        wording=f"Allow {name}'s permission request? The phone couldn't tell for sure which "
+                                "permission it is: check the dialog.")
         what = "precise location" if role == "precise" else kind.replace("_", " ")
         wording = f"Allow {name} to use your {what}?"
         if role == "precise":
@@ -1695,6 +1792,58 @@ class Gatekeeper:
                 return Risk("other", "id:submit")
         return None
 
+    # --- phone calls (review H2) ----------------------------------------------------------------
+
+    def call_app(self, package: str) -> bool:
+        """A dialer, contacts app or in-call screen: its call buttons place calls."""
+        return package in self.r.d["calls"]["packages"]
+
+    @staticmethod
+    def mmi(text: str) -> bool:
+        """An MMI/USSD code (call forwarding `**21*…#`, settings codes): any * or #, plain or percent-encoded."""
+        return "*" in text or "#" in text or "%23" in text or "%2a" in text.lower()
+
+    def _dialed_number(self, w: Window) -> str:
+        rx = re.compile(self.r.d["calls"]["number_ids"])
+        nodes = walk(w.root, [])
+        n = next((n for n in nodes if rx.search(n.id or "") and n.text), None) or \
+            next((n for n in nodes if (n.editable or "EditText" in (n.cls or "")) and n.text), None)
+        return n.text.strip() if n else ""
+
+    @staticmethod
+    def _call_code_risk(number: str, app: str) -> Risk:
+        return Risk("call_code", "call:mmi", always=True,
+                    wording=f"Allow dialing the code “{number[:40]}” in {app}? Codes with * or # can change phone "
+                            "settings, such as forwarding your calls.")
+
+    def _call_risk(self, t: Target, label: list[str], ids: list[str], screen: Screen) -> Risk | None:
+        """A tap that places a call: in a dialer, contacts app or in-call screen, a label or id that says call or
+        dial (not end call, call history…), or the dialpad's * and # keys; in any app, a button labelled exactly
+        Call, or voice/video call. A number with * or # asks with the screen lock."""
+        c = self.r.d["calls"]
+        w = t.window
+        app = self.label(screen, w.package)
+        if any_phrase(label, c["safe_words"]) or any(re.search(c["safe_ids"], i) for i in ids):
+            return None
+        if self.call_app(w.package):
+            raw = [f"{n.text}{n.desc}".strip() for n in (t.pressed, t.hit) if n is not None]
+            code_key = any(x in ("*", "#") for x in raw) or any(re.search(c["code_keys"], i) for i in ids) or \
+                (len(label) == 1 and label[0] in ("pound", "star"))
+            if code_key:
+                return self._call_code_risk(self._dialed_number(w) + next((x for x in raw if x in ("*", "#")), ""),
+                                            app)
+            if not (any_phrase(label, c["words"]) or any(re.search(c["ids"], i) for i in ids)):
+                return None
+            number = self._dialed_number(w) or t.shown()
+            if self.mmi(number):
+                return self._call_code_risk(number, app)
+            return Risk("call", "call:dial", wording="Allow placing a call" +
+                        (f" to “{number[:40]}”" if number else "") + f" from {app}?")
+        if label == ["call"] or any_phrase(label, c["any_app_words"]) or any(re.search(c["any_app_ids"], i)
+                                                                            for i in ids):
+            return Risk("call", "call:button", wording=f"Allow starting a call (“{t.shown()[:40]}”) in {app}?")
+        return None
+
     def _judge_point(self, method: str, x: float, y: float, screen: Screen) -> Judgement:
         r = self.r
         t = hit_test(r, screen, x, y)
@@ -1725,6 +1874,11 @@ class Gatekeeper:
 
         if re.compile(r.s["permission_packages"]).search(w.package or "") and any(
                 n.id.endswith("permission_message") and n.text for n in walk(w.root, [])):
+            # The question is part of what an approval binds: the same button under another question (content
+            # swapped in place) needs a new approval (review M1).
+            msg = next(n.text for n in walk(w.root, []) if n.id.endswith("permission_message") and n.text)
+            msg = "|msg:" + " ".join(tokens(msg))
+            j.fp, j.strict_fp, j.money_fp = j.fp + msg, j.strict_fp + msg, j.money_fp + msg
             res = self._permission_dialog(w, t, screen)
             if isinstance(res, tuple):
                 j.refuse = res
@@ -1793,6 +1947,10 @@ class Gatekeeper:
                 re.compile(r.surf["notification_action_ids"]).search(pressed.id or "") or "Button" in pressed.cls):
             j.risk = Risk("other", "notification_action", wording=wording())
             return j
+        call = self._call_risk(t, label, ids, screen)
+        if call is not None:
+            j.risk = call
+            return j
         risk = self._word_risk(label, ids, w.package, j.payment, priced=priced(screen, w))
         if risk is not None and risk.kind == "send" and not risk.money and shares_link(r, w) and \
                 is_self(r, row_label(t), screen):
@@ -1859,12 +2017,14 @@ class Gatekeeper:
         return j
 
     @staticmethod
-    def _focus_unread(screen: Screen) -> tuple | None:
-        """The phone has an input focus it couldn't read: typing or ENTER would go somewhere unjudged."""
+    def _focus_unread(screen: Screen) -> tuple:
+        """No field the gate can judge has focus: typing, ENTER and DELETE are refused by rule (review M2). A focus it
+        couldn't read (R1) says so; no focus at all says to tap the field."""
         if screen.focus_expected:
             return ("gate_screen_unstable", "builtin:focus_unread",
                     "The field that has focus couldn't be read. Look again.")
-        return None
+        return ("gate_screen_unstable", "builtin:no_field",
+                "No text field the phone can judge has focus. Tap the field first, then look again.")
 
     def _judge_typing(self, text: str, screen: Screen) -> Judgement:
         r = self.r
@@ -1879,7 +2039,7 @@ class Gatekeeper:
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}/{int(node.password)}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)), changing=True,
                       money_fp=fp + "/" + ",".join(map(str, node.bounds)) + "|$" + ",".join(money_amounts(w, None)),
-                      app=self._app_window(w))
+                      app=self._app_window(w), field_ref=field_ref(w, node))
         if refusal := self._surface_refusal(w, None):
             j.refuse = refusal
             return j
@@ -1894,7 +2054,9 @@ class Gatekeeper:
         j.payment = payment_context(r, screen)
         about = f"{node.id} {node.hint}"
         app = self.label(screen, w.package)
-        if re.compile(r.d["payment_field"]).search(about):
+        if self.call_app(w.package) and self.mmi(text):
+            j.risk = self._call_code_risk(node.text + text, app)  # some dialers run a code once its # is typed (H2)
+        elif re.compile(r.d["payment_field"]).search(about):
             j.risk = Risk("fill", "card_field", always=True, wording=f"Allow typing into the card field in {app}?")
         elif re.compile(r.d["otp_field"]).search(about):
             j.risk = Risk("fill", "otp_field", always=True, wording=f"Allow typing a code into {app}?")
@@ -1911,7 +2073,7 @@ class Gatekeeper:
         fp = f"{w.id}|{w.package}|{node.id}/{node.hint}/{node.cls}"
         j = Judgement(package=w.package, fp=fp, strict_fp=fp + "/" + ",".join(map(str, node.bounds)),
                       money_fp=fp + "/" + ",".join(map(str, node.bounds)) + "|$" + ",".join(money_amounts(w, None)),
-                      changing=name == "ENTER", app=self._app_window(w))
+                      changing=name == "ENTER", app=self._app_window(w), field_ref=field_ref(w, node))
         if refusal := self._surface_refusal(w, None):
             j.refuse = refusal
             return j
@@ -1925,9 +2087,16 @@ class Gatekeeper:
                 url = "https://" + url
             uj = self._judge_url(url, screen, "key")
             uj.fp, uj.strict_fp, uj.changing = fp + "|" + uj.fp, j.strict_fp + "|" + uj.strict_fp, True
+            uj.field_ref = j.field_ref
             return uj
         j.payment = payment_context(r, screen)
         app = self.label(screen, w.package)
+        if self.call_app(w.package):  # ENTER in a dialer's number field places the call (review H2)
+            number = node.text.strip()
+            j.risk = self._call_code_risk(number, app) if self.mmi(number) else Risk(
+                "call", "call:enter",
+                wording="Allow placing a call" + (f" to “{number[:40]}”" if number else "") + f" from {app}?")
+            return j
         search = any(re.compile(r.d["search_field"]).search(v or "") for v in (node.id, node.cls, node.hint, node.desc))
         if j.payment:
             j.risk = Risk("pay", "enter:payment", money="terminal", grant=w.package,
@@ -1975,6 +2144,9 @@ class Gatekeeper:
                 return j
         if scheme == "tel" and handler and not r.is_cat("dialer", handler):
             j.refuse = ("gate_denied", "builtin:tel_handler", "tel: links only open the dialer.")
+        elif scheme == "tel" and self.mmi(url.split(":", 1)[-1]):
+            # A code with * or # (call forwarding…): some dialers run codes they're handed, so it asks first (H2).
+            j.risk = self._call_code_risk(url.split(":", 1)[-1], self.label(screen, handler or "the dialer"))
         return j
 
 
