@@ -99,6 +99,22 @@ class ReviewCFixesTest {
         assertFalse(gk.promptOpen)
     }
 
+    @Test fun installsAskUnlessTheTaskNamesTheApp() {
+        val page = SCREENS.getValue("play_store_flashlight_get").windows[0]
+        val get = walk(page.root).first { it.text == "Get" }
+        assertEquals("rating, badge and count lines are skipped", "Torchlight: Flashlight Pro", gk.storeTitle(page, get))
+        assertTrue(gk.namesApp("get the Torchlight flashlight", "Torchlight: Flashlight Pro"))
+        assertFalse("generic words don't name an app", gk.namesApp("install a pro app", "Torchlight: Flashlight Pro"))
+        assertFalse("whole words only", gk.namesApp("chessboard", "Chess - Play and Learn"))
+        assertTrue(gk.namesApp("install chess and play 5 moves", "Chess - Play and Learn"))
+        val unnamed = tap(540, 860, "play_store_chess", mapOf("task" to "t1", "task_text" to "install a flashlight"))
+        assertEquals("install", unnamed.kind)
+        assertEquals("tap", unnamed.level)
+        gk.cancel(unnamed.approvalId)
+        clock.elapsed += 2000
+        assertTrue(tap(540, 860, "play_store_chess", mapOf("task" to "t1", "task_text" to "install chess")).allowed)
+    }
+
     @Test fun phase5OwnWindowWhileAPromptWaitsSaysWait() {
         assertEquals("builtin:own_window", tap(540, 1875, "own_prompt").rule)
         assertEquals("ask", tap(990, 2250, "whatsapp_chat").decision)

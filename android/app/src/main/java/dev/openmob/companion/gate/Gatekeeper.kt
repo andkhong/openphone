@@ -37,6 +37,8 @@ class Judgement(
     var wording: String = "",
     /** type_text, ENTER, DELETE: the field the gate judged (window, bounds, id, class); only it may get the text. */
     var field: String = "",
+    /** A Play Store Install/Get tap: the app's title on the page ("" if it can't be told); null: not an install. */
+    var installTitle: String? = null,
 )
 
 class GrantOffer(val kind: String, val binding: String, val durationMs: Long, val confirmTwice: Boolean) {
@@ -425,6 +427,16 @@ class Gatekeeper(
         taskGrants[params["task"]?.toString().orEmpty()]?.let { g -> if (j.app && j.pkg.isNotEmpty() && g.first.isEmpty()) g.first = j.pkg }
         val mode = mode(params["mode"] as? String)
         var risk = j.risk
+        // A free install the task's own text doesn't name asks (owner, 2026-10-09): a screen, an ad or a guessed
+        // package can't pick what gets installed. A priced install stays money.
+        if (j.installTitle != null && risk?.money == null) {
+            val request = listOf(params["task_text"], params["task"]).joinToString(" ") { it?.toString().orEmpty() }
+            if (!namesApp(request, j.installTitle.orEmpty())) {
+                val name = j.installTitle.orEmpty().ifEmpty { "an app" }
+                risk = Risk("install", "install:unnamed", always = true,
+                    wording = "Allow installing “$name” from the Play Store? The request doesn't name this app.")
+            }
+        }
         val hint = params["hint"]?.toString()?.trim().orEmpty()
         if (risk == null && hint.isNotEmpty() && mode != "never") risk = Risk("other", "server_hint", wording = j.wording.ifEmpty { wording(method, params, j, screen) })
         if (mode == "ask" && j.changing && risk == null) risk = Risk("step", "mode:ask", wording = wording(method, params, j, screen))
@@ -445,7 +457,7 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call")) return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call", "install")) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
         // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -1312,6 +1324,30 @@ class Gatekeeper(
         return null
     }
 
+    // --- Play Store installs (owner, 2026-10-09) --------------------------------------------------------------
+
+    private val installRules = rules.d["install"].obj()
+
+    /** The app's name on a Play Store page: the topmost text above the install button that isn't a button, rating,
+     *  count or badge ("" when it can't be told). Mirrors the server's gate.store_title. */
+    fun storeTitle(w: GWindow, button: GNode?): String {
+        val skip = rules.rx(installRules.str("title_skip"))
+        val top = button?.bounds?.get(1)
+        return walk(w.root).filter { n ->
+            val t = n.text.trim()
+            t.length >= 2 && !skip.containsMatchIn(t) && (top == null || n.bounds[3] <= top)
+        }.minWithOrNull(compareBy({ it.bounds[1] }, { it.bounds[0] }))?.text?.trim().orEmpty()
+    }
+
+    /** The request names the store page's app: one of its title's distinctive words is a word of the request. */
+    fun namesApp(request: String, title: String): Boolean {
+        val generic = installRules["generic"].strings().toSet()
+        val word = Regex("[a-z0-9]+")
+        val words = word.findAll(title.lowercase()).map { it.value }.filter { it.length >= 3 && it !in generic }.toSet()
+        val asked = word.findAll(request.lowercase()).map { it.value }.toSet()
+        return words.any { it in asked }
+    }
+
     // --- phone calls (review H2) ----------------------------------------------------------------------------
 
     private val callRules = rules.d["calls"].obj()
@@ -1336,26 +1372,39 @@ class Gatekeeper(
     /** A tap that places a call: in a dialer, contacts app or in-call screen, a label or id that says call or dial
      *  (not end call, call history…), or the dialpad's * and # keys; in any app, a button labelled exactly Call, or
      *  voice/video call. A number with * or # asks with the screen lock. */
-    private fun callRisk(t: GTarget, label: List<String>, ids: List<String>, screen: GScreen): Risk? {
-        val w = t.window
+    private fun callRisk(t: GTarget, label: List<String>, ids: List<String>, screen: GScreen, x: Double, y: Double): Risk? {
+        callJudge(t.window, label, ids, listOfNotNull(t.pressed, t.hit).map { "${it.text}${it.desc}".trim() }, t.shown(), screen)
+            ?.let { return it }
+        // The hit test follows the last child that contains the point, but a view drawn above its siblings by
+        // elevation (Google Phone's dialpad over a full-screen layer) isn't always last: any clickable node under the
+        // point that places a call counts (seen on the emulator, review C).
+        for (n in walk(t.window.root)) {
+            if (!n.clicks || !n.contains(x, y) || n === t.pressed) continue
+            val lbl = GateText.tokens(walk(n, limit = 40).flatMap { listOf(it.text, it.desc) }.filter { it.isNotEmpty() }.joinToString(" "))
+            val shown = walk(n, limit = 40).firstOrNull { it.text.isNotEmpty() || it.desc.isNotEmpty() }?.let { it.text.ifEmpty { it.desc }.trim() }.orEmpty()
+            callJudge(t.window, lbl, listOf(n.id).filter { it.isNotEmpty() }, listOf("${n.text}${n.desc}".trim()), shown, screen)?.let { return it }
+        }
+        return null
+    }
+
+    private fun callJudge(w: GWindow, label: List<String>, ids: List<String>, raw: List<String>, shown: String, screen: GScreen): Risk? {
         val app = label(screen, w.pkg)
         val safe = has(label, callRules["safe_words"].strings()) || ids.any { rules.rx(callRules.str("safe_ids")).containsMatchIn(it) }
         if (safe) return null
         if (callApp(w.pkg)) {
-            val raw = listOfNotNull(t.pressed, t.hit).map { "${it.text}${it.desc}".trim() }
             val codeKey = raw.any { it == "*" || it == "#" } || ids.any { rules.rx(callRules.str("code_keys")).containsMatchIn(it) } ||
                 (label.size == 1 && label[0] in setOf("pound", "star"))
             if (codeKey) return callCodeRisk(dialedNumber(w) + raw.firstOrNull { it == "*" || it == "#" }.orEmpty(), app)
             val call = has(label, callRules["words"].strings()) || ids.any { rules.rx(callRules.str("ids")).containsMatchIn(it) }
             if (!call) return null
-            val number = dialedNumber(w).ifEmpty { t.shown() }
+            val number = dialedNumber(w).ifEmpty { shown }
             if (mmi(number)) return callCodeRisk(number, app)
             return Risk("call", "call:dial", wording = "Allow placing a call" +
                 (if (number.isNotEmpty()) " to “${number.take(40)}”" else "") + " from $app?")
         }
         val anyApp = label == listOf("call") || has(label, callRules["any_app_words"].strings()) ||
             ids.any { rules.rx(callRules.str("any_app_ids")).containsMatchIn(it) }
-        return if (anyApp) Risk("call", "call:button", wording = "Allow starting a call (“${t.shown().take(40)}”) in $app?") else null
+        return if (anyApp) Risk("call", "call:button", wording = "Allow starting a call (“${shown.take(40)}”) in $app?") else null
     }
 
     private fun sliderAt(t: GTarget): Boolean {
@@ -1461,7 +1510,10 @@ class Gatekeeper(
             j.risk = Risk("other", "notification_action", wording = wording())
             return j
         }
-        callRisk(t, label, ids, screen)?.let { j.risk = it; return j }
+        callRisk(t, label, ids, screen, x, y)?.let { j.risk = it; return j }
+        if (w.pkg in installRules["packages"].strings() && rules.rx(installRules.str("words")).containsMatchIn(shown)) {
+            j.installTitle = storeTitle(w, pressed)
+        }
         var risk = wordRisk(label, ids, w.pkg, j.payment, GateScreen.priced(screen, w))
         // A message to yourself ("Note to self", your own chat): nobody else receives it.
         // An in-app share list's "Send" next to your own name, while a public link is shared.

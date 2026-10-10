@@ -709,6 +709,9 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
     A number with `*` or `#` (MMI/USSD), the dialpad's `*`/`#` keys, typing such a code into a dialer, or a `tel:`
     link with one asks with the screen lock (kind `call_code`, refused under Don't ask). "Don't confirm everyday
     actions" never covers calls; a task grant whose request says call/dial/phone covers kind `call` only.
+    Any clickable node under the tap point counts, not only the hit path: on the API 35 emulator Google Phone's
+    Call button sits in an earlier sibling than a full-screen layer, so the path never reached it (a call was placed
+    unasked until this was added). The same hit-test limit still applies to the other risk rules (money, send…): not yet addressed.
     Coverage is by package and label: other OEM dialers, single-tap calls from a Favorites tile or a Recents row
     without a call label, and calls from apps whose button isn't labelled Call are not covered.
   - **No judged field (M2, L3):** typing, ENTER and DELETE with no field the gate can judge are refused
@@ -722,6 +725,13 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   - **Notifications (L1):** a switch on a notifications page naming a blocked app or OpenMob asks.
   - **Overlays (L2):** the approval screen hides other apps' overlays (API 31+).
   - **Phase 5 item 1:** a gesture onto OpenMob's own prompt while it waits returns `gate_prompt_open` (wait).
+- **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
+  mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
+  `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
+  letters from its title (the topmost text above the button that isn't a button, rating, count or badge; generic
+  words such as app, free, game, play, learn, pro, com don't count) appears as a whole word in the request. Otherwise
+  it asks at tap level (kind `install`, `install:unnamed`), is never covered by a task grant or "everyday", and is
+  refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.
 - **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
   for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
   for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window

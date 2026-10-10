@@ -111,6 +111,14 @@
     "_persistent_doc": "Dangerous kinds whose dialog offers no one-time option: the default 'once' doesn't stretch to a lasting Allow; it asks unless the owner signed persistent_grants: allow.",
     "persistent_ask": ["contacts", "sms", "phone", "calendar", "body_sensors", "nearby_devices"]
   },
+  "install": {
+    "_doc": "Play Store installs (owner, 2026-10-09; mirrors the server's gate.is_install, store_title and names_app). A tap on Install/Get in the store runs unasked only when the task's own text names the app on the page: a distinctive word of its title (the topmost text above the button that isn't a button, rating, count or badge; 3+ letters, not generic) is a word of the request. Otherwise it asks at tap level (kind install), is never covered by a task grant or 'everyday', and is refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.",
+    "packages": ["com.android.vending"],
+    "words": "(?i)^\\s*(install|get|instalar|installieren|installer|installa)\\b",
+    "title_skip": "(?i)^(install|open|uninstall|update|cancel|more|search|get|share|wishlist|play|buy|contains ads|in-app purchases|\\d[\\d.,]*\\s*[kmb+]*.*|[\\d.]+\\s*★?.*)$",
+    "generic": ["app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
+                "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"]
+  },
   "calls": {
     "_doc": "Placing a phone call (review H2). In these packages (the main dialers, contacts apps and in-call screens), a tap whose label or id says call or dial, ENTER in their number field, places a call: it asks at tap level. In any app, a button labelled exactly Call, or voice/video call, asks too. A number containing * or # is an MMI/USSD code (call forwarding, settings changes): dialing it, typing it, tapping the dialpad's * or # key there, or opening a tel: link with it asks with the screen lock.",
     "packages": ["com.google.android.dialer", "com.samsung.android.dialer", "com.android.dialer",

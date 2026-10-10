@@ -8713,7 +8713,7 @@
   ]
  },
  {
-  "name": "a free Play Store install doesn't ask; a priced one is money",
+  "name": "a free Play Store install the task names doesn't ask; a priced one is money",
   "tags": [
    "friction",
    "money"
@@ -8724,7 +8724,9 @@
      "method": "tap",
      "params": {
       "x": 540,
-      "y": 860
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
      }
     },
     "screen": "play_store_chess",
@@ -8737,7 +8739,9 @@
      "method": "tap",
      "params": {
       "x": 540,
-      "y": 860
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
      }
     },
     "screen": "play_store_paid",
@@ -8745,6 +8749,167 @@
      "decision": "ask",
      "code": "gate_needs_approval",
      "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an install the task's text doesn't name asks (owner, 2026-10-09); none at all (a drive session) asks",
+  "tags": [
+   "install"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install a flashlight app"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "level": "tap",
+     "rule": "risk:install:unnamed"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unnamed"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_flashlight_get",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t2",
+      "task_text": "get the Torchlight flashlight"
+     }
+    },
+    "screen": "play_store_flashlight_get",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unnamed install isn't covered by Don't confirm everyday actions, and is refused under Don't ask",
+  "tags": [
+   "install",
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "share a video"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:install:unnamed"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
     }
    }
   ]
@@ -9352,6 +9517,26 @@
      "kind": "call_code",
      "level": "fingerprint",
      "rule": "risk:call:mmi"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2231
+     }
+    },
+    "screen": "dialer_google_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "level": "tap",
+     "rule": "risk:call:dial"
     }
    },
    {

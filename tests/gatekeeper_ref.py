@@ -527,6 +527,7 @@ class Judgement:
     money_fp: str = ""  # strict_fp plus the currency amounts a money commit is about (any change voids a permit)
     wording: str = ""  # how a prompt names this action from what the phone sees (a deep link names its page)
     field_ref: str = ""  # type_text, ENTER, DELETE: the field the gate judged (window, bounds, id, class)
+    install_title: str | None = None  # a Play Store Install/Get tap: the page's app title; None: not an install
 
 
 @dataclass
@@ -883,6 +884,13 @@ class Gatekeeper:
         self.note_task_app(params, j.package, j.app)
         mode = self.mode(params.get("mode"))
         risk = j.risk
+        # A free install the task's own text doesn't name asks (owner, 2026-10-09); a priced one stays money.
+        if j.install_title is not None and not (risk is not None and risk.money):
+            request = f"{params.get('task_text') or ''} {params.get('task') or ''}"
+            if not self.names_app(request, j.install_title):
+                name = j.install_title or "an app"
+                risk = Risk("install", "install:unnamed", always=True,
+                            wording=f"Allow installing “{name}” from the Play Store? The request doesn't name this app.")
         hint = str(params.get("hint") or "").strip()
         if risk is None and hint and mode != "never":
             risk = Risk("other", "server_hint", wording=self._wording(method, params, j, screen))
@@ -907,7 +915,8 @@ class Gatekeeper:
         if mode != "ask" and self._task_covers(risk, params, j.package, screen):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
         if mode != "ask" and self.everyday and self.level(risk) == "tap" and risk.kind not in ("permission",
-                                                                                             "uninstall", "call"):
+                                                                                             "uninstall", "call",
+                                                                                             "install"):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
         # Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         # (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -1792,6 +1801,23 @@ class Gatekeeper:
                 return Risk("other", "id:submit")
         return None
 
+    # --- Play Store installs (owner, 2026-10-09) -----------------------------------------------------
+
+    def store_title(self, w: Window, button: Node | None) -> str:
+        """The app's name on a Play Store page: the topmost text above the install button that isn't a button,
+        rating, count or badge ("" when it can't be told). Mirrors the server's gate.store_title."""
+        skip = re.compile(self.r.d["install"]["title_skip"])
+        top = button.bounds[1] if button is not None else None
+        texts = [n for n in walk(w.root, []) if len(n.text.strip()) >= 2 and not skip.search(n.text.strip())
+                 and (top is None or n.bounds[3] <= top)]
+        return min(texts, key=lambda n: (n.bounds[1], n.bounds[0])).text.strip() if texts else ""
+
+    def names_app(self, request: str, title: str) -> bool:
+        """The request names the store page's app: one of its title's distinctive words is a word of the request."""
+        generic = set(self.r.d["install"]["generic"])
+        words = {x for x in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(x) >= 3 and x not in generic}
+        return bool(words & set(re.findall(r"[a-z0-9]+", (request or "").lower())))
+
     # --- phone calls (review H2) ----------------------------------------------------------------
 
     def call_app(self, package: str) -> bool:
@@ -1816,17 +1842,35 @@ class Gatekeeper:
                     wording=f"Allow dialing the code “{number[:40]}” in {app}? Codes with * or # can change phone "
                             "settings, such as forwarding your calls.")
 
-    def _call_risk(self, t: Target, label: list[str], ids: list[str], screen: Screen) -> Risk | None:
+    def _call_risk(self, t: Target, label: list[str], ids: list[str], screen: Screen, x: float, y: float) -> Risk | None:
         """A tap that places a call: in a dialer, contacts app or in-call screen, a label or id that says call or
         dial (not end call, call history…), or the dialpad's * and # keys; in any app, a button labelled exactly
         Call, or voice/video call. A number with * or # asks with the screen lock."""
+        raw = [f"{n.text}{n.desc}".strip() for n in (t.pressed, t.hit) if n is not None]
+        risk = self._call_judge(t.window, label, ids, raw, t.shown(), screen)
+        if risk is not None:
+            return risk
+        # The hit test follows the last child that contains the point, but a view drawn above its siblings by
+        # elevation (Google Phone's dialpad over a full-screen layer) isn't always last: any clickable node under the
+        # point that places a call counts (seen on the emulator, review C).
+        for n in walk(t.window.root, []):
+            if not (n.clickable or n.long_clickable) or not n.contains(x, y) or n is t.pressed:
+                continue
+            sub = walk(n, [], 40)
+            lbl = tokens(" ".join(v for m in sub for v in (m.text, m.desc) if v))
+            shown = next(((m.text or m.desc).strip() for m in sub if m.text or m.desc), "")
+            risk = self._call_judge(t.window, lbl, [n.id] if n.id else [], [f"{n.text}{n.desc}".strip()], shown, screen)
+            if risk is not None:
+                return risk
+        return None
+
+    def _call_judge(self, w: Window, label: list[str], ids: list[str], raw: list[str], shown: str,
+                    screen: Screen) -> Risk | None:
         c = self.r.d["calls"]
-        w = t.window
         app = self.label(screen, w.package)
         if any_phrase(label, c["safe_words"]) or any(re.search(c["safe_ids"], i) for i in ids):
             return None
         if self.call_app(w.package):
-            raw = [f"{n.text}{n.desc}".strip() for n in (t.pressed, t.hit) if n is not None]
             code_key = any(x in ("*", "#") for x in raw) or any(re.search(c["code_keys"], i) for i in ids) or \
                 (len(label) == 1 and label[0] in ("pound", "star"))
             if code_key:
@@ -1834,14 +1878,14 @@ class Gatekeeper:
                                             app)
             if not (any_phrase(label, c["words"]) or any(re.search(c["ids"], i) for i in ids)):
                 return None
-            number = self._dialed_number(w) or t.shown()
+            number = self._dialed_number(w) or shown
             if self.mmi(number):
                 return self._call_code_risk(number, app)
             return Risk("call", "call:dial", wording="Allow placing a call" +
                         (f" to “{number[:40]}”" if number else "") + f" from {app}?")
         if label == ["call"] or any_phrase(label, c["any_app_words"]) or any(re.search(c["any_app_ids"], i)
                                                                             for i in ids):
-            return Risk("call", "call:button", wording=f"Allow starting a call (“{t.shown()[:40]}”) in {app}?")
+            return Risk("call", "call:button", wording=f"Allow starting a call (“{shown[:40]}”) in {app}?")
         return None
 
     def _judge_point(self, method: str, x: float, y: float, screen: Screen) -> Judgement:
@@ -1947,10 +1991,13 @@ class Gatekeeper:
                 re.compile(r.surf["notification_action_ids"]).search(pressed.id or "") or "Button" in pressed.cls):
             j.risk = Risk("other", "notification_action", wording=wording())
             return j
-        call = self._call_risk(t, label, ids, screen)
+        call = self._call_risk(t, label, ids, screen, x, y)
         if call is not None:
             j.risk = call
             return j
+        ins = r.d["install"]
+        if w.package in ins["packages"] and re.search(ins["words"], shown):
+            j.install_title = self.store_title(w, pressed)
         risk = self._word_risk(label, ids, w.package, j.payment, priced=priced(screen, w))
         if risk is not None and risk.kind == "send" and not risk.money and shares_link(r, w) and \
                 is_self(r, row_label(t), screen):

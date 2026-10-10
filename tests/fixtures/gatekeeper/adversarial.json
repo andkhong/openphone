@@ -994,6 +994,29 @@
   ]
  },
  {
+  "name": "install an app the task doesn't name",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "check the weather"
+     }
+    },
+    "screen": "play_store_flashlight_get",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   }
+  ]
+ },
+ {
   "name": "M2: type with no judged field",
   "tags": [],
   "steps": [
