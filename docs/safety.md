@@ -53,7 +53,9 @@ server-side behaviour above.
 
 **Every call is checked on the phone first**, against the screen as the phone sees it (what is really under
 the tap, not what the model says is there), and re-checked right before the gesture, typing or launch.
-Unknown methods are refused.
+Unknown methods are refused. A tap is judged by every clickable or labeled control under the point, whatever
+order the app draws them in, and the strictest verdict wins (a "Buy now" drawn above another layer still asks); a
+tap where a blocked app's window lies under the one on top is refused.
 
 **Refused in every mode, on the phone:**
 - **Blocked apps**: banking, payments, wallets, crypto, password managers and authenticators, and OpenMob
@@ -80,8 +82,9 @@ title; any other install asks at tap level, isn't covered by a task approval or 
 is refused under Don't ask; with no request text, as in a drive session, it always asks; a paid install asks as a
 purchase), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
 ENTER in their number field, a "Call", voice-call or video-call button in any app; a `tel:` link only opens the
-dialer and isn't a call), **dialing a code with `*` or `#`** (MMI/USSD such as `**21*…#` call forwarding: dialing it,
-typing it into a dialer, its dialpad keys, or a `tel:` link with one, all with the screen lock),
+dialer and isn't a call), **dialing a code with `*` or `#`** (MMI/USSD such as `**21*…#` call forwarding), with the
+screen lock and one prompt, at the dialing (owner, 2026-10-10): the Call button or ENTER on such a number, the
+dialpad's `#` key or typed text completing one; a `tel:` link carrying a code only opens the dialer, like any `tel:` link,
 unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
 manual date and time, Build number (turning on developer options), the VPN consent dialog, pairing a new
 Bluetooth device, app-info actions other than Force stop and Clear cache,
@@ -340,7 +343,7 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   `view` (shows something; opening it sends, buys and changes nothing: the only class the fast path may open
   without the main model), `draft` (a compose screen with content filled in: a text message, an email, a number
   in the dialer; nothing is sent until a tap, which is judged exactly as today: on a gatekeeper phone the dialer's
-  Call tap asks, and a number with `*` or `#` asks with the screen lock), `action` (would commit on
+  Call tap asks, and dialing a number with `*` or `#` asks with the screen lock), `action` (would commit on
   landing: asks the owner before opening, bound to the exact link, and is refused under Don't ask; no entry has
   this class today). The catalog uses only `https`, `market`, `sms`, `mailto` and `tel` links, never custom app
   schemes. Search terms, numbers and message bodies in a link are the user's words: they reach the phone and the

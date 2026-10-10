@@ -707,8 +707,8 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 
 For a risky action (a money commit, a send/post/delete, autofill or saved credentials, a share target, an
 unrecognized Settings change, an unlabeled tap in a shopping app, typing into an OTP or card field, ENTER in a
-chat or a checkout, placing a phone call (kind `call`; a number or `tel:` link with `*` or `#`, an MMI/USSD code,
-is kind `call_code` and takes the screen lock), a Play Store install the call's `task_text` doesn't name (kind
+chat or a checkout, placing a phone call (kind `call`; dialing a number with `*` or `#`, an MMI/USSD code, is kind
+`call_code` and takes the screen lock; a `tel:` link only opens the dialer), a Play Store install the call's `task_text` doesn't name (kind
 `install`), every changing act in `ask` mode) the phone replies at once:
 
 ```json

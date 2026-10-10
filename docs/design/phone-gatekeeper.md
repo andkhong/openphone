@@ -706,12 +706,14 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   - **Calls (H2):** `rules.json` `calls`. In the dialers, contacts apps and in-call screens listed by package
     (Google, Samsung, AOSP), a tap whose label or id says call or dial (not End call, Call history…) and ENTER in
     their number field ask at tap level (kind `call`); a Call, voice-call or video-call button in any app does too.
-    A number with `*` or `#` (MMI/USSD), the dialpad's `*`/`#` keys, typing such a code into a dialer, or a `tel:`
-    link with one asks with the screen lock (kind `call_code`, refused under Don't ask). "Don't confirm everyday
+    Dialing a number with `*` or `#` (MMI/USSD) asks with the screen lock (kind `call_code`, refused under Don't
+    ask). Owner, 2026-10-10: one prompt, at the dialing: the Call button or ENTER on such a number, the dialpad's
+    `#` key or typed text completing a code (`calls.code_complete`: starts with `*` or `#`, a later `#`); a `tel:`
+    link carrying a code only opens the dialer, like any `tel:` link, and the `*` key alone never asks. "Don't confirm everyday
     actions" never covers calls; a task grant whose request says call/dial/phone covers kind `call` only.
     Any clickable node under the tap point counts, not only the hit path: on the API 35 emulator Google Phone's
     Call button sits in an earlier sibling than a full-screen layer, so the path never reached it (a call was placed
-    unasked until this was added). The same hit-test limit still applies to the other risk rules (money, send…): not yet addressed.
+    unasked until this was added). Generalised to every risk rule on 2026-10-10 (below).
     Coverage is by package and label: other OEM dialers, single-tap calls from a Favorites tile or a Recents row
     without a call label, and calls from apps whose button isn't labelled Call are not covered.
   - **No judged field (M2, L3):** typing, ENTER and DELETE with no field the gate can judge are refused
@@ -725,6 +727,20 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   - **Notifications (L1):** a switch on a notifications page naming a blocked app or OpenMob asks.
   - **Overlays (L2):** the approval screen hides other apps' overlays (API 31+).
   - **Phase 5 item 1:** a gesture onto OpenMob's own prompt while it waits returns `gate_prompt_open` (wait).
+- **The hit test, for every risk kind (2026-10-10):** the hit path follows the last child that contains the point,
+  but a view drawn above its siblings by elevation isn't always last. A tap (and a swipe judged as a tap) is now
+  judged on the hit path **and** on every clickable or labeled node under the point (`GateScreen.targetsAt`,
+  `targets_at`; at most 60), and the strictest verdict wins: refuse > ask with the screen lock > ask with a tap >
+  allow (a Play Store install counts as a tap-level ask; on a tie the hit path's verdict stays). A blocked app's
+  application window under the hit window at the point refuses (`builtin:sensitive_apps`).
+  - **False asks, measured on the reference engine** (every call step of the shared fixtures, before and after):
+    0 of 622 curated scenario and adversarial steps changed; 7 of 924 fuzz steps (4 random screens) became stricter,
+    each a real risky node or a blocked window under the point. The full evil-server suite on the API 35 emulator
+    (2026-10-10): 158 checks passed, 0 failed, the friction group still one prompt per honest checkout. The new
+    `hittest` group (the shop stand-in's `LayeredActivity`) asks for a Buy now drawn above a later layer; the old
+    hit path missed it.
+  - Not covered: real swipes (scrolls) still judge their two end points by the hit path only; a non-touchable
+    overlay window the phone can't see at all.
 - **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
   mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
   `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
