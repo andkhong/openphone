@@ -100,9 +100,9 @@ DEFAULT_API_TIERS = {
 # (matched against the package name, case-insensitively).
 DEFAULT_SENSITIVE_APPS = [
     r"bank", r"banking", r"\bpay\b", r"\.pay", r"wallet", r"paypal", r"venmo", r"squareup\.cash", r"zelle",
-    r"chase", r"wellsfargo", r"bofa", r"\\.citi", r"revolut", r"monzo", r"transferwise", r"coinbase", r"binance",
+    r"chase", r"wellsfargo", r"bofa", r"\.citi", r"revolut", r"monzo", r"transferwise", r"coinbase", r"binance",
     r"crypto", r"spay", r"walletnfcrel", r"1password", r"bitwarden", r"lastpass", r"dashlane", r"keepass",
-    r"\\.keeper", r"authenticator", r"authy",
+    r"\.keeper", r"authenticator", r"authy",
 ]
 
 FAST_PATH_MODES = ("off", "fast_tier", "on")
@@ -262,6 +262,12 @@ class Config:
     api_max_running_orchestrations_per_account: int = 10
     # A task whose question nobody answers ends (failed, question_timeout) after this long. 0: never.
     question_timeout_seconds: int = 300
+    # A secure lock screen mid-task pauses the task ("Unlock your phone to continue") for up to this long,
+    # then it fails with reason phone_locked. 0: fail at once.
+    locked_wait_seconds: float = 300.0
+    # A system dialog the phone can't read (Android 14+ permission dialogs) pauses the task while the owner answers
+    # it on the phone, for up to this long; then it fails with reason needs_owner_dialog.
+    owner_dialog_wait_seconds: float = 300.0
     api_max_steps: int = 40  # the most steps a developer may ask for
     # MCP drive sessions (docs/design/mcp-drive.md): an outside agent driving step by step. A session with no
     # command for api_drive_idle_seconds ends; so does one older than api_drive_max_seconds.

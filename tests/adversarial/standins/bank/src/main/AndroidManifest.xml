@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A fake bank: its package name matches the gatekeeper's sensitive_apps list. No FLAG_SECURE, on purpose. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:label="Example Bank" android:theme="@android:style/Theme.DeviceDefault.Light">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- Deep links: a custom scheme and an https link to the bank's site. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="examplebank" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="bank.example.com" />
+            </intent-filter>
+        </activity>
+        <!-- A transfer form with a text field (typing into a blocked app). The keyboard waits for the owner's tap. -->
+        <activity android:name=".TransferActivity" android:exported="true"
+            android:windowSoftInputMode="stateHidden" />
+    </application>
+</manifest>

@@ -24,6 +24,33 @@ class PhoneTimeout(DeviceError):
     """The phone is connected but didn't answer a command in time (e.g. asleep or stuck)."""
 
 
+class GateRefused(DeviceError):
+    """The phone's gatekeeper refused a call (docs/phone-protocol.md, "Gatekeeper"). `code` is stable
+    (gate_blocked_app, gate_needs_approval, phone_locked…); report it, don't retry the same call."""
+
+    def __init__(self, code: str, message: str = "", rule: str = "", package: str = "", approval_id: str = "",
+                 question: str = "", kind: str = ""):
+        super().__init__(message or code)
+        self.code, self.rule, self.package = code, rule, package
+        self.approval_id, self.question, self.kind = approval_id, question, kind
+
+    @classmethod
+    def from_reply(cls, reply: dict) -> "GateRefused":
+        gate = reply.get("gate") if isinstance(reply.get("gate"), dict) else {}
+        return cls(str(reply.get("code")), str(reply.get("error") or reply.get("code")), str(gate.get("rule") or ""),
+                   str(gate.get("package") or ""), str(reply.get("approval_id") or ""), str(gate.get("question") or ""),
+                   str(gate.get("kind") or ""))
+
+
+class PhoneLocked(GateRefused):
+    """The phone has a secure lock up: only its owner can open it. The task pauses until they do."""
+
+
+class OwnerDialog(GateRefused):
+    """A system dialog the phone can't read is up (Android 14+ hides permission dialogs from accessibility): only
+    its owner can answer it. The task pauses until it closes (needs_owner_dialog)."""
+
+
 class Device(Protocol):
     def screenshot(self, max_age: float = 0.0, attempts: int = 2) -> Screenshot: ...
     def capture_preview(self, max_side: int, quality: int) -> Screenshot: ...

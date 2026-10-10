@@ -255,6 +255,7 @@ class V1Service:
                 "instruction": info["request"], "created": info["created"], "started": info["started"],
                 "finished": info["finished"], "steps": info["steps"], "question": clean_text(info["question"]),
                 "permission_mode": meta.get("permission_mode"),
+                "prompts_count": info.get("prompts_count"),
                 "outcome": ({"success": info["success"], "summary": clean_text(info["summary"]),
                              "reason": info.get("reason")}
                             if info["status"] in FINAL_STATUSES else None),
@@ -785,6 +786,14 @@ class V1Service:
         if info["status"] == "needs_confirmation":
             if approve is None:
                 raise BadRequest('This task needs a confirmation: send {"approve": true} or {"approve": false}.')
+            session = self.manager.get(meta["session_id"])
+            details = (session.coordinator.question_details if session else None) or {}
+            if approve and details.get("approver") == "phone":
+                # A gatekeeper phone owns this approval: only its owner, on that phone, can say yes. No key can.
+                self.ledger.audit("task.approve_refused", p.account_id, p.id, meta["device_id"], task_id,
+                                  outcome="approval_on_phone")
+                raise Conflict("This approval can only be given on the phone, with its screen lock. You can "
+                               'still decline with {"approve": false}.', code="approval_on_phone")
             if approve and not p.confirm_approve:
                 # The calling model may have read the very screen text that asks for this purchase.
                 self.ledger.audit("task.approve_refused", p.account_id, p.id, meta["device_id"], task_id)

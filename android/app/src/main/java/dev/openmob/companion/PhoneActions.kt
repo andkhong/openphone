@@ -33,6 +33,10 @@ import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Base64
 import android.view.Display
+import android.view.ViewConfiguration
+import dev.openmob.companion.gate.Admission
+import dev.openmob.companion.gate.GateHost
+import dev.openmob.companion.gate.GateScreen
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityNodeInfo.AccessibilityAction
 import android.view.accessibility.AccessibilityWindowInfo
@@ -46,14 +50,36 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 
+/** The gatekeeper refused the call right before its side effect (GateHost.reverify): sent back with its code. */
+class GateRefusal(val admission: Admission) : RuntimeException(admission.message)
+
 class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     private val pm: PackageManager get() = service.packageManager
-    private val gestureLock = Any()
+    /** What the gatekeeper admitted for this call; re-checked right before each side effect (D8). */
+    private var admission: Admission? = null
+
+    /** Re-check the admitted action on the screen as it is now (throws [GateRefusal]). */
+    private fun gate() {
+        GateHost.reverify(service, admission)?.let { throw GateRefusal(it) }
+    }
 
     /** Runs one protocol call. Called on a background thread (never the main thread); may block up to the
      *  method's timeout. Returns a value org.json can serialize as `result`; throws on failure. */
-    fun handle(method: String, params: JSONObject): Any? = when (method) {
+    fun handle(method: String, params: JSONObject, admitted: Admission? = null): Any? {
+        admission = admitted
+        return run(method, params)
+    }
+
+    /** A read the gatekeeper redacted: a blocked app is visible in some window, so a black frame or no elements. */
+    fun redacted(method: String, params: JSONObject): Any? = when (method) {
+        "screenshot" -> blackFrame(params.optInt("max_side", MAX_SIDE).coerceIn(MIN_SIDE, MAX_SIDE),
+            params.optInt("quality", JPEG_QUALITY).coerceIn(MIN_QUALITY, 100)).let { if (params.optBoolean("binary")) it else it.toJson() }
+        "wait_for" -> redactedWait(0L)
+        else -> JSONArray()
+    }
+
+    private fun run(method: String, params: JSONObject): Any? = when (method) {
         "screenshot" -> {
             // The dashboard's live view asks for smaller frames, as raw bytes; the agent sends no params.
             val frame = screenshot(
@@ -73,7 +99,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
         "long_press" -> {
             val (x, y) = point(params.reqInt("x"), params.reqInt("y"))
-            gesture(Path().apply { moveTo(x, y) }, params.optLong("duration_ms", 800))
+            // Always a real long press: a "long press" too short to be one is a tap (judged as one by the gate anyway).
+            gesture(Path().apply { moveTo(x, y) },
+                    max(params.optLong("duration_ms", 800), ViewConfiguration.getLongPressTimeout() + 100L))
         }
         "swipe" -> {
             val (x1, y1) = point(params.reqInt("x1"), params.reqInt("y1"))
@@ -115,11 +143,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             // The system allows one capture per ~333 ms. Wait out exactly the rest of that window
             // instead of getting refused and sleeping a fixed retry delay: back-to-back live-view
             // frames then arrive every ~1/3 s rather than every ~1/2 s.
-            val wait = lastCaptureAt + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+            val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
             if (wait > 0) SystemClock.sleep(wait)
             val requested = SystemClock.uptimeMillis()
             val outcome = captureOnce()
-            if (outcome.result != null) lastCaptureAt = requested
+            if (outcome.result != null) CaptureClock.at = requested
             outcome.result?.let { result ->
                 return result.hardwareBuffer.use { buffer ->
                     // A hardware bitmap lives in GPU memory and can't be scaled/compressed directly;
@@ -148,7 +176,6 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         throw IllegalStateException("Screenshot failed: the system rate-limited capture, try again")
     }
 
-    @Volatile private var lastCaptureAt = 0L // uptime of the last successful capture request
 
     private class Capture(val result: AccessibilityService.ScreenshotResult?, val error: Int)
 
@@ -166,6 +193,57 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             })
         if (!latch.await(10, TimeUnit.SECONDS)) throw IllegalStateException("Screenshot timed out")
         return capture
+    }
+
+    /** The gatekeeper's prompt picture: the screen around device point (x, y) with a crosshair on it, as JPEG.
+     *  Null when the screen can't be captured (the prompt then shows only its words). */
+    /** The whole screen as a software bitmap (the caller recycles it), for on-device OCR; null if it can't be
+     *  captured. */
+    fun screenBitmap(): Bitmap? {
+        var result: AccessibilityService.ScreenshotResult? = null
+        for (attempt in 0 until SCREENSHOT_ATTEMPTS) { // another capture (a screenshot call) may have just run
+            val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+            if (wait > 0) SystemClock.sleep(wait)
+            val outcome = captureOnce()
+            result = outcome.result
+            if (result != null || outcome.error != AccessibilityService.ERROR_TAKE_SCREENSHOT_INTERVAL_TIME_SHORT) break
+            SystemClock.sleep(RATE_LIMIT_RETRY_MS * 4)
+        }
+        if (result == null) return null
+        CaptureClock.at = SystemClock.uptimeMillis()
+        return result.hardwareBuffer.use { buffer ->
+            val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+            try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() }
+        }
+    }
+
+    fun crop(x: Int, y: Int): ByteArray? {
+        val wait = CaptureClock.at + MIN_CAPTURE_INTERVAL_MS - SystemClock.uptimeMillis()
+        if (wait > 0) SystemClock.sleep(wait)
+        val result = captureOnce().result ?: return null
+        CaptureClock.at = SystemClock.uptimeMillis()
+        return result.hardwareBuffer.use { buffer ->
+            val hw = Bitmap.wrapHardwareBuffer(buffer, result.colorSpace) ?: return null
+            val full = try { hw.copy(Bitmap.Config.ARGB_8888, false) } finally { hw.recycle() } ?: return null
+            val cw = min(CROP_W, full.width)
+            val ch = min(CROP_H, full.height)
+            val left = (x - cw / 2).coerceIn(0, full.width - cw)
+            val top = (y - ch / 2).coerceIn(0, full.height - ch)
+            val part = Bitmap.createBitmap(full, left, top, cw, ch).copy(Bitmap.Config.ARGB_8888, true)
+            full.recycle()
+            val paint = android.graphics.Paint().apply { color = Color.RED; strokeWidth = 5f; style = android.graphics.Paint.Style.STROKE }
+            android.graphics.Canvas(part).apply {
+                val cx = (x - left).toFloat()
+                val cy = (y - top).toFloat()
+                drawCircle(cx, cy, 36f, paint)
+                drawLine(cx - 60, cy, cx + 60, cy, paint)
+                drawLine(cx, cy - 60, cx, cy + 60, paint)
+            }
+            val out = ByteArrayOutputStream()
+            part.compress(Bitmap.CompressFormat.JPEG, 80, out)
+            part.recycle()
+            out.toByteArray()
+        }
     }
 
     private fun blackFrame(maxSide: Int, quality: Int): Frame {
@@ -222,9 +300,15 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     // --- wait_for --------------------------------------------------------------------------------
 
-    /** The elements a wait may look at: exactly what ui_elements would answer now. Null: the read is
-     *  withheld (a gatekeeper build redacts it), so the wait ends without looking. */
-    private fun waitElements(): List<WaitElement>? = WaitElement.parse(uiElements())
+    /** The elements a wait may look at: exactly what ui_elements would answer now, checked against the
+     *  gatekeeper before and after the read (like ConnectionService does for ui_elements). Null: a protected
+     *  app is visible, so the wait ends without a verdict (a "disappeared" would leak a bit about it). */
+    private fun waitElements(): List<WaitElement>? =
+        if (GateHost.refreshProtected(service)) null else WaitElement.parse(uiElements()).takeUnless { GateHost.refreshProtected(service) }
+
+    /** A wait the gatekeeper withheld (a protected app is visible): nothing about the screen, not even a verdict. */
+    private fun redactedWait(waited: Long): JSONObject = JSONObject().put("met", false).put("redacted", true)
+        .put("waited_ms", waited).put("seen", "").put("package", JSONObject.NULL)
 
     /** Read-only: returns as soon as [cond] holds on this phone's element list, or at [timeoutMs]. The list is
      *  read again on each window or content change (at most every WAIT_FOR_READ_MS) and at least every
@@ -243,8 +327,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             if (fresh) {
                 readStamp = stamp
                 readAt = now
-                els = waitElements() ?: return JSONObject().put("met", false).put("redacted", true)
-                    .put("waited_ms", now - start).put("seen", "").put("package", JSONObject.NULL)
+                els = waitElements() ?: return redactedWait(now - start)
             }
             val pkg = currentApp()
             val current = els ?: emptyList()
@@ -265,6 +348,15 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** Never errors: any failure yields []. */
     private fun uiElements(): JSONArray {
         val out = JSONArray()
+        // A permission dialog Android hides from accessibility: its text as the phone's OCR reads it (class OCRText),
+        // first, so the agent can target "Only this time" (the gatekeeper judges taps on the same reading).
+        runCatching { GateHost.ocrNodes(service) }.getOrNull()?.forEach { n ->
+            out.put(JSONObject().put("text", n.text).put("desc", "")
+                .put("resource_id", if (n.id == "permission_message") "ocr_permission_message" else "")
+                .put("cls", "OCRText").put("clickable", n.clickable)
+                .put("checked", n.checked ?: JSONObject.NULL)
+                .put("bounds", JSONArray().put(n.bounds[0]).put(n.bounds[1]).put(n.bounds[2]).put(n.bounds[3])))
+        }
         try {
             val deadline = SystemClock.uptimeMillis() + UI_DEADLINE_MS
             val windows = service.windows
@@ -325,8 +417,10 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return JSONObject()
             .put("text", text)
             .put("desc", desc)
-            .put("resource_id", node.viewIdResourceName.orEmpty().substringAfterLast('/'))
-            .put("cls", node.className?.toString().orEmpty().substringAfterLast('.'))
+            // The phone's own OCR marks (ocr_permission_message, OCRText) never come from an app's tree: an app or a web
+            // page (Chrome passes HTML ids through) can't pass for a permission dialog the phone read.
+            .put("resource_id", node.viewIdResourceName.orEmpty().substringAfterLast('/').let { if (it in OCR_MARKS) "" else it })
+            .put("cls", node.className?.toString().orEmpty().substringAfterLast('.').let { if (it in OCR_MARKS) "View" else it })
             .put("clickable", clickable)
             .put("checked", if (node.isCheckable) node.isChecked else JSONObject.NULL)
             .put("bounds", JSONArray().put(r.left).put(r.top).put(r.right).put(r.bottom))
@@ -347,6 +441,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     /** Never errors. Skips the notification shade and our own overlay, per the spec. */
     private fun currentApp(): String? {
+        // A hidden permission dialog the phone identified and read (OCR) is the permission controller's window, even
+        // though Android names no package for it.
+        runCatching { GateHost.ocrDialogPackage(service) }.getOrNull()?.let { return it }
         val ignored = setOf("com.android.systemui", service.packageName)
         val fromWindow = runCatching { service.rootInActiveWindow?.packageName?.toString() }.getOrNull()
         return ForegroundApp.pick(fromWindow, service.currentPackage, service.currentPackageAt, service.windowChangeAt, ignored)
@@ -393,12 +490,14 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                 else "$pkg has no launchable activity")
         // A bound accessibility service is exempt from background activity-start restrictions.
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+        gate()
         service.startActivity(intent)
         return null
     }
 
     private fun openUrl(url: String): Any? {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        gate()
         try {
             service.startActivity(intent) // ACTION_VIEW on tel: opens the dialer; it never places a call
         } catch (_: ActivityNotFoundException) {
@@ -426,9 +525,14 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                 else -> intent.putExtra(SettingsPages.EXTRA_APP_PACKAGE, req.pkg)
             }
         }
+        // Only a system app answers, and only a Settings package (Samsung hands Battery and Storage to Device care,
+        // which counts): never a third-party app or the chooser. The intent is pinned to it (review L5).
         @Suppress("DEPRECATION") // int-flags overload; the Flags variant is API 33+
-        val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        val handler = pm.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY or PackageManager.MATCH_SYSTEM_ONLY)
+            ?.activityInfo?.packageName?.takeIf { GateHost.isSettingsPackage(it) }
             ?: throw IllegalStateException("This phone has no ${req.page.title} Settings page. Navigate there instead.")
+        intent.setPackage(handler)
+        gate()
         try {
             service.startActivity(intent)
         } catch (_: ActivityNotFoundException) {
@@ -464,6 +568,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     /** Dispatches one stroke and blocks until it completes. Serialized: a new gesture would cancel one
      *  still in flight. */
     private fun gesture(path: Path, durationMs: Long): Any? = synchronized(gestureLock) {
+        gate() // under the gesture lock, right before the stroke
         val duration = durationMs.coerceIn(1, GestureDescription.getMaxGestureDuration())
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
@@ -482,13 +587,16 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         }
         if (!latch.await(duration + 5_000, TimeUnit.MILLISECONDS)) throw IllegalStateException("Gesture timed out")
         if (!completed) throw IllegalStateException("Gesture was cancelled")
+        GateHost.completed(admission) // only now does the gate record a location-card choice (review B1)
         null
     }
 
     // --- text input ------------------------------------------------------------------------------
 
     private fun typeText(text: String, replace: Boolean = false): Any? {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
+        gate()
+        // Resolved after the re-check, and only the field the gate judged (review M2, L3).
+        val node = judgedField() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         // Defense in depth: the server should never ask, but a password is never typed for anyone.
         if (node.isPassword) throw IllegalStateException("I don't type passwords. Please type it yourself.")
         val old = currentText(node)
@@ -531,7 +639,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
 
     /** Backspace: removes the selection, or the code point before the cursor. */
     private fun deleteBackward(): Any? {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field. Tap the field first.")
+        val node = judgedField() ?: throw IllegalStateException("No focused text field. Tap the field first.")
         val old = currentText(node)
         var (start, end) = selection(node, old) ?: (old.length to old.length)
         if (start == end) {
@@ -581,13 +689,31 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         return min(a, b).coerceAtMost(text.length) to max(a, b).coerceAtMost(text.length)
     }
 
-    /** The focused text input in any window (custom inputs may not report isEditable). */
+    /** The focused text input the gate judged: found after the gate's re-check, and refused unless it is the same
+     *  field (window, bounds, id, class) the gate saw (review M2, L3). The gate refuses typing when it sees no field,
+     *  so a field this wider search finds but the gate didn't is never typed into. */
+    private fun judgedField(): AccessibilityNodeInfo? {
+        val node = focusedEditable() ?: return null
+        val want = admission?.field ?: return node
+        val r = Rect().also(node::getBoundsInScreen)
+        val got = GateScreen.fieldRef(node.windowId, intArrayOf(r.left, r.top, r.right, r.bottom),
+            node.viewIdResourceName.orEmpty(), node.className?.toString().orEmpty())
+        if (got != want) {
+            throw GateRefusal(Admission("refuse", code = "gate_screen_changed", rule = "builtin:field_changed",
+                message = "The focused field changed before typing. Look again.", method = admission?.method.orEmpty(),
+                params = admission?.params.orEmpty()))
+        }
+        return node
+    }
+
+    /** The focused text input in any window (custom inputs may not report isEditable). The tree search stays within
+     *  the gate's own read limits (GateScreens: 1,500 nodes, depth 60). */
     private fun focusedEditable(): AccessibilityNodeInfo? {
         service.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (acceptsText(it)) return it }
         val roots = listOfNotNull(service.rootInActiveWindow) + service.windows.mapNotNull { it.root }
         for (root in roots) {
             root.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)?.let { if (acceptsText(it)) return it }
-            findFocusedEditable(root)?.let { return it }
+            findFocusedEditable(root, 0, intArrayOf(FIELD_SEARCH_NODES))?.let { return it }
         }
         return null
     }
@@ -595,10 +721,11 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private fun acceptsText(node: AccessibilityNodeInfo): Boolean = node.isEditable ||
         node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SET_TEXT || it.id == AccessibilityNodeInfo.ACTION_PASTE }
 
-    private fun findFocusedEditable(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
+    private fun findFocusedEditable(node: AccessibilityNodeInfo, depth: Int, left: IntArray): AccessibilityNodeInfo? {
+        if (left[0]-- <= 0 || depth > FIELD_SEARCH_DEPTH) return null
         if (node.isFocused && acceptsText(node)) return node
         for (i in 0 until node.childCount) {
-            node.getChild(i)?.let(::findFocusedEditable)?.let { return it }
+            node.getChild(i)?.let { findFocusedEditable(it, depth + 1, left) }?.let { return it }
         }
         return null
     }
@@ -612,8 +739,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
             "HOME" -> global(AccessibilityService.GLOBAL_ACTION_HOME, name)
             "APP_SWITCH" -> global(AccessibilityService.GLOBAL_ACTION_RECENTS, name)
             "POWER" -> global(AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN, name)
-            "ENTER" -> imeEnter()
-            "DELETE" -> deleteBackward()
+            "ENTER" -> { gate(); imeEnter() }
+            "DELETE" -> { gate(); deleteBackward() }
             "WAKEUP" -> wakeScreen()
             "VOLUME_UP", "VOLUME_DOWN" -> service.getSystemService(AudioManager::class.java).adjustStreamVolume(
                 AudioManager.STREAM_MUSIC,
@@ -632,7 +759,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     }
 
     private fun imeEnter() {
-        val node = focusedEditable() ?: throw IllegalStateException("No focused text field to press ENTER in")
+        val node = judgedField() ?: throw IllegalStateException("No focused text field to press ENTER in")
         if (!node.performAction(AccessibilityAction.ACTION_IME_ENTER.id)) {
             throw IllegalStateException("The focused field does not support ENTER (ACTION_IME_ENTER failed)")
         }
@@ -693,6 +820,12 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
     private fun JSONObject.reqArray(name: String): JSONArray = param(name).getJSONArray(name)
 
     private companion object {
+        /** One gesture at a time across calls (each call has its own PhoneActions). */
+        val gestureLock = Any()
+        const val FIELD_SEARCH_NODES = 1500 // the gate's own read limits (GateScreens.MAX_NODES, MAX_DEPTH)
+        const val FIELD_SEARCH_DEPTH = 60
+        const val CROP_W = 900
+        const val CROP_H = 600
         const val MAX_SIDE = 1280
         const val JPEG_QUALITY = 80
         const val MIN_SIDE = 160 // floor for the live view's max_side param
@@ -716,5 +849,9 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         val SUPPORTED_KEYS = listOf("BACK", "HOME", "APP_SWITCH", "ENTER", "DELETE", "WAKEUP", "POWER",
             "VOLUME_UP", "VOLUME_DOWN")
         val UNSUPPORTED_KEYS = setOf("TAB", "MENU", "SEARCH", "ESCAPE")
+        val OCR_MARKS = setOf("ocr_permission_message", "OCRText", "OCRDialog")
     }
 }
+
+/** Uptime of the last successful capture request, shared by every PhoneActions (the system limits the service). */
+internal object CaptureClock { @Volatile var at = 0L }

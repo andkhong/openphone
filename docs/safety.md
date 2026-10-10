@@ -43,6 +43,131 @@ the app and reconnect, which registers the key. Apps older than action-bound app
 the same way until they update. (Local token mode has no keys, so nothing changes there: an app
 phone's screen-lock yes is accepted as before, and a phone over USB is approved from the dashboard.)
 
+## The phone enforces it too (gatekeeper)
+
+Every rule above runs on the server. A phone whose app has the **gatekeeper** (current apps; the hello lists the
+`gatekeeper` capability) enforces its own policy as well, so even a compromised server can at most
+*request* an action. The design is docs/design/phone-gatekeeper.md (Phase 1); the
+messages are in the phone protocol (docs/phone-protocol.md, §9). Older apps keep the
+server-side behaviour above.
+
+**Every call is checked on the phone first**, against the screen as the phone sees it (what is really under
+the tap, not what the model says is there), and re-checked right before the gesture, typing or launch.
+Unknown methods are refused. A tap is judged by every clickable or labeled control under the point, whatever
+order the app draws them in, and the strictest verdict wins (a "Buy now" drawn above another layer still asks); a
+tap where a blocked app's window lies under the one on top is refused.
+
+**Refused in every mode, on the phone:**
+- **Blocked apps**: banking, payments, wallets, crypto, password managers and authenticators, and OpenMob
+  itself. Launching them, links into them, acting in them and their app-info page are refused; screenshots
+  are black, the element list is empty and the live view sends no frames while one (or an app the phone
+  can't identify yet) is visible anywhere on screen.
+- **Security-critical Settings**: screen lock and security, accounts and users, accessibility, notification
+  access and special app access, default apps, developer options and wireless debugging, VPN and Private DNS,
+  language and region, and **enabling a keyboard**. Recognized by page title, activity and package across
+  AOSP, Pixel, Samsung and Xiaomi Settings and Google account settings.
+- **Password fields** (never typed into), and `javascript:`, `intent:`, `file:`, `content:`, `data:` text.
+- **Links** other than `https`/`http` (checked against the app Android would open them in), `tel` (the dialer
+  only), `geo`, `mailto`, `sms` and `market`.
+- **Taps into OpenMob's own screens, the system's biometric prompt and the lock screen**, and **installing
+  apps** through the package installer (APK installs, Install/Update in the installer). Uninstalling OpenMob or
+  a blocked-category app is refused too.
+
+**Asked on the phone, with its own words and screen lock:** money commits ("Buy now", "Place your order",
+"Pay", "Subscribe"), sends, posts and deletes, autofill and saved passwords or cards, share-sheet targets,
+notification action buttons, typing into OTP or card fields, ENTER in a chat or a checkout or a web form,
+"slide to pay", **installing an app the request doesn't name** (owner, 2026-10-09: a free Play Store
+install runs unasked only when the task's own words name the app on the store page, by a distinctive word of its
+title; any other install asks at tap level, isn't covered by a task approval or "Don't confirm everyday actions", and
+is refused under Don't ask; with no request text, as in a drive session, it always asks; a paid install asks as a
+purchase), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
+ENTER in their number field, a "Call", voice-call or video-call button in any app; a `tel:` link only opens the
+dialer and isn't a call), **dialing a code with `*` or `#`** (MMI/USSD such as `**21*…#` call forwarding), with the
+screen lock and one prompt, at the dialing (owner, 2026-10-10): the Call button or ENTER on such a number, the
+dialpad's `#` key or typed text completing one; a `tel:` link carrying a code only opens the dialer, like any `tel:` link,
+unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
+manual date and time, Build number (turning on developer options), the VPN consent dialog, pairing a new
+Bluetooth device, app-info actions other than Force stop and Clear cache,
+any change on a Settings page the phone doesn't recognize, and a permission dialog for an app other than the
+one the task is using. Swipes that are really taps and long presses are judged as taps. Steps on the way
+("Add to cart", "Proceed to checkout", search, scrolling, everyday Settings such as Wi-Fi, Bluetooth, dark mode
+or Do Not Disturb) never ask.
+
+- **The prompt is the phone's.** It says what the phone sees ("Allow tapping “Buy now” in Amazon?") with a
+  crop of the target; the server's words appear only as a labeled "Server says" line. The phone ignores
+  server-worded approval requests for actions.
+- **One yes, one action.** The screen-lock signature covers exactly that call and the target under it, for
+  60 seconds, once. A changed screen voids it. "Buy now" then "Place your order" in the same app and task
+  within 3 minutes is **one** prompt.
+- **Only on that phone.** API keys and the dashboard can decline, never approve (`409 approval_on_phone`).
+- **"Always allow this"** (off by default) also grants that kind for 7 days (purchases: 24 hours, after a
+  second confirmation), per app (a share: per target; a Settings page: that page; never for autofill in
+  browsers). Grants are signed with the screen lock and listed on the phone.
+- **Task approval** (on by default, owner-switchable with `task_approval`), just in time: nothing is asked at
+  task start. The first step that would need a tap (sending, sharing to someone else, deleting) asks for the
+  whole task instead, worded from the request itself with that step as the detail ("Agent wants to: … Allow the
+  steps this needs? Next: tap Send in Messenger"). A task with no such step sees no prompt. Approved, the task's
+  non-money risky steps run without more prompts for up to 30 minutes or 25 steps; purchases, browser autofill
+  and permission dialogs still ask, and hard denies still refuse. Declining stops the task. A request you typed
+  or said on the phone itself needs no task prompt. "Subscribe" or "Join" count as money only with a price on
+  or near the control, or a Google Play billing sheet.
+- **The mode is the phone's.** The phone takes the tighter of the task's mode and its owner's signed ceiling
+  (default **Ask for risky**). **Don't ask** and **"Also allow purchases"** count only when the owner approved
+  them on that phone; under Don't ask, purchases (unless allowed), autofill and anything else that would ask
+  are refused instead. Every expiry runs on the phone's monotonic clock: setting the date back extends
+  nothing, and time left carries across a reboot (failing closed if it can't be read).
+- **Limits and Stop.** At most 5 actions a second and 6 prompts per 10 minutes; 3 denials in 10 minutes pause
+  agents until the owner taps Resume. Stop (in the app or the notification) drops every approval, prompt and
+  Don't-ask window on the phone at once.
+- **Refusals are reported, not retried.** The agent is told why, with a stable code
+  (`gate_blocked_app`, `gate_denied_page`, …), and picks another way or stops.
+
+**What the gatekeeper doesn't stop yet (Phase 1):** reading screens of apps that aren't blocked and
+non-risky actions at any time (sessions come in Phase 2); quick-settings toggles and the notification shade;
+icon-only sends with obfuscated ids in languages other than English; and a blocked app opened from the
+launcher or recents (everything inside it is still refused and blacked out).
+
+## How OpenMob decides what's risky
+
+By owner request, risk is judged by **consequences**, not keywords, on the phone (the gatekeeper) and on the
+server alike. An action is risky if **any** of these applies; money and the hard denies keep their own rules.
+
+| Factor | Low risk: no prompt | Risky: asks (or covered by a task approval) |
+|---|---|---|
+| Content | A public link or text with a link ("Copy link", sharing a YouTube URL) | Private content: photos, videos, files, contacts, location |
+| Recipient | You, **only when sharing a public link**: a share target named "Note to self", "Saved messages", "Message yourself", or your own account's name ("Ann Lee (You)"); or the clipboard. A chat's title never counts (anyone can name a group "Note to self"), and messages you type are never exempt | Anyone else, or a recipient the phone can't tell |
+| Visibility | Private (a DM, save, copy) | Public (post, publish, comment) |
+| Reversibility | Toggles and undoable steps: like, subscribe and unsubscribe, follow, save, watch later, add to cart | Permanent: deleting messages, photos, files or accounts |
+| Money | — | Any price or currency amount, or a Google Play billing sheet: the money rule (asks at the final commit unless "Also allow purchases") |
+
+Unknown factors fail closed: if the phone can't tell who receives something or what is shared, it asks (or the
+task approval covers it). "Subscribe" and "Join" are money with a price on or near them, on a payment screen, or in a shopping, payment or other money app; otherwise (YouTube) they are free toggles. The server's own
+classifier can no longer make the phone ask on its own: only concrete words or rules do.
+
+## Three confirmation levels
+
+Owner principle: a fingerprint is for money and dangerous requests, never for basic app flow.
+
+1. **None:** low-risk steps (above), navigation and menus.
+2. **A tap on the phone:** messages and shares to others, posts, deleting your content, filling a saved login in
+   an app. OpenMob shows its own Allow / Deny, worded by the phone, with no
+   fingerprint. The security basis: it is OpenMob's own window, and the gatekeeper never lets an agent tap
+   OpenMob's windows (`builtin:own_window`); Allow ignores touches through overlays; and the tap is signed with a
+   separate key that doesn't need the screen lock and only ever signs tap-level prompts (`gk1|tap|…`), so it
+   can't approve anything that needs a fingerprint. While a prompt is up, and for a second after it closes, the
+   phone performs no agent gesture, and Allow ignores taps for half a second after the prompt appears.
+3. **Your fingerprint or PIN:** purchases (a price, a billing sheet) and dangerous steps: saved cards or
+   passwords on a web page, OTP and card fields, and any change on a Settings page the phone doesn't recognize
+   (never covered by a task approval or "Don't confirm everyday actions"). A permission dialog that asks (another
+   app's request, a grant wider than your setting) is a tap, never covered by a task approval or "everyday".
+
+Hard denies are unchanged. **"Don't confirm everyday actions"** (off by default; turning it on is approved on
+the phone with your fingerprint, turning it off is immediate) makes level 2 run without a tap; money still asks
+unless "Also allow purchases". A task request that says "…don't ask me" has an effect only through this setting:
+the phone can't tell such a request from a forged one, so the words alone change nothing. With the setting on,
+tasks don't need a task approval either; otherwise the task approval is a tap-level prompt, shown at the first
+step that needs one.
+
 ## Phones and their connections
 
 - **One live connection per phone.** If a second connection logs in as the same phone, the older
@@ -188,20 +313,27 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   keyboards, date and time, unknown sources…) are **refused in every mode**, including the way into
   them. Everyday pages (Wi-Fi, Bluetooth, display and dark mode, sound, battery, location, per-app
   notifications) never ask. Pairing a new Bluetooth device and changes on pages OpenMob doesn't
-  recognise ask. On an app's info page, Force stop and Clear cache run; Uninstall, Disable and Clear
-  storage ask; anything on a blocked app's info page is refused.
+  recognise ask. On an app's info page, Force stop and Clear cache run; Disable and Clear storage are a
+  delete (a tap); Uninstall opens the system's confirmation, and its OK is a delete (a tap) for the app it names
+  (an app the phone can't name asks and isn't covered by a task approval or "everyday"). A task approval whose
+  request says uninstall/remove/delete covers it, as does "Don't confirm everyday actions". Anything on a
+  blocked app's or OpenMob's info page is refused.
 - **Settings deep links** (`open_settings_page`, [design](design/deep-links.md)): a phone whose app can
   open Settings pages directly does so only from its own fixed table of pages (Display, Wi-Fi, Bluetooth,
   Sound, Battery, Location, Notifications, Apps, Storage, Airplane mode, Date & time, and an app's App info
   and notification pages); the server sends a key, never an intent, and no key exists for a
-  security-critical page. Everyday pages open without asking. Date & time is judged by the same word lists
-  as a tap (refused by default, since "date & time" is on the refuse list; if the owner takes it off, it
-  asks, and is refused under Don't ask). An app's own pages are refused for blocked apps and for OpenMob
+  security-critical page. Everyday pages open without asking. Date & time: the server refuses it by default
+  ("date & time" is on the server's refuse list; if the owner takes it off there, it asks, and is refused under
+  Don't ask); a gatekeeper phone judges it on its own table and asks with the screen lock (refused under Don't
+  ask). An app's own pages are refused for blocked apps and for OpenMob
   itself. Ask every step asks before each deep link; Plan first needs the plan. A phone without the page
   says so and the agent navigates instead. A request that plainly names one page ("Open Settings and go to
   Display"; "open Chrome's notification settings and tell me whether they're allowed", the app by its exact
   installed name, never a guess) opens it as the task's first action without a model decision
   (`deep_links_fast`), through the same checks: nothing opens this way that the model's own call couldn't.
+  On a gatekeeper phone the call is judged again on the phone
+  (everyday pages open, Date & time asks with the screen lock, a blocked app's pages and unknown keys are
+  refused).
 - **In-app links** (`open_link`, [design](design/app-links.md)): a server-side catalog of destinations inside
   common apps (a YouTube, Maps, Play Store, Spotify, Amazon or Google search, Maps directions, an app's Play Store
   page, a WhatsApp chat by number, the Gmail inbox, a Calendar day) that open from one link, plus the agent's own
@@ -210,7 +342,8 @@ the API and MCP (`permission_mode`), or set a phone's default in its settings.
   catalog skips an ask that getting there by hand would have triggered. Each entry has a side-effect class:
   `view` (shows something; opening it sends, buys and changes nothing: the only class the fast path may open
   without the main model), `draft` (a compose screen with content filled in: a text message, an email, a number
-  in the dialer; nothing is sent until a tap, which is judged exactly as today), `action` (would commit on
+  in the dialer; nothing is sent until a tap, which is judged exactly as today: on a gatekeeper phone the dialer's
+  Call tap asks, and dialing a number with `*` or `#` asks with the screen lock), `action` (would commit on
   landing: asks the owner before opening, bound to the exact link, and is refused under Don't ask; no entry has
   this class today). The catalog uses only `https`, `market`, `sms`, `mailto` and `tel` links, never custom app
   schemes. Search terms, numbers and message bodies in a link are the user's words: they reach the phone and the
@@ -324,8 +457,33 @@ Typed text that goes through the clipboard (some fields only accept a paste) doe
 app marks it sensitive (kept out of the clipboard preview on Android 13+) and puts the owner's
 previous clipboard back, or clears it.
 
-These are server-side checks. The [phone gatekeeper design](design/phone-gatekeeper.md) moves the
-same rules onto the phone itself.
+These are server-side checks. On phones with the gatekeeper the phone runs the same rules itself
+([above](#the-phone-enforces-it-too-gatekeeper); [design](design/phone-gatekeeper.md)).
+
+**Android permission dialogs** ("Allow Kalshi to access this device's location?") are answered by rule at
+observation time, before any model sees the screen, and recorded as a fast step (`handled_by:
+"permission_rule"`), by the owner's `permission_prompts` settings: location, camera, microphone, contacts,
+photos and media, phone, SMS, calendar, nearby devices, physical activity and body sensors each `once`
+(default, owner decision: "Only this time", or the narrowest grant the dialog offers, with no prompt), `ask`
+(the owner is asked on the phone), `while_using` or `deny` (only "Don't allow" goes through); location accuracy
+`approximate` (default: the Approximate card is chosen before granting) or `precise`; notifications `allow`
+(default) or `deny`. These apply to the app the task is using. **"Allow all the time" is never chosen** (the
+phone refuses it with `gate_permission_choice`; if it's the only grant offered, the request is denied). A
+request from an app other than the task's asks (a tap); under Don't ask anything that would ask is denied.
+Allowing more is a loosening: it needs the phone's screen-lock approval, and on gatekeeper phones the phone
+keeps these settings as signed policy and enforces them itself (a per-app "Always allow for <app>" on its
+prompt is a signed grant); asking more is free. **On Android 14 and later** the system hides permission
+dialogs from accessibility services; the phone reads them from its own screenshot with on-device OCR (offline)
+and applies the same rules, so a compromised server can't grant a permission to another app without the
+owner, can never grant background location, and can't get past a `deny` setting. A low-confidence or
+unfamiliar dialog asks. A dialog whose window has no package counts only with a permission-controller event no
+older than the window and an "Allow X to" title in the OCR; otherwise it stays an unknown window (refused and
+blacked out). **Owner-accepted residual:** camera and microphone follow "Only this time" with no prompt like the
+other types, so a compromised server could get one-time foreground mic or camera access in the app the task
+operates; the only signal is Android's privacy indicator. Safety Center and default-app screens (and a permission dialog when OCR is
+unavailable) still pause the task until the owner answers them on the phone ("Kalshi is asking for location:
+answer on your phone", also on the dashboard's live view); if nobody answers within
+`owner_dialog_wait_seconds` (5 minutes), the task ends with reason `needs_owner_dialog`.
 
 ### The drive level (an outside agent at the controls)
 
@@ -369,6 +527,11 @@ approval when it's on.
   password or biometric lock is left alone: the task is refused with `409 phone_locked` (a step
   waits for the owner to unlock it), and OpenMob never enters a PIN, pattern, password or
   fingerprint.
+- **The screen stays on while the agent works**, and only then (the app holds it on during active work and
+  lets go as soon as the task ends). If a secure lock comes up mid-task anyway, the task **pauses** with
+  "Unlock your phone to continue" on the phone and in the task's events, and carries on when the owner
+  unlocks, for up to `locked_wait_seconds` (default 5 minutes); then it fails with reason `phone_locked`. The
+  agent never taps or swipes at a lock screen.
 
 ## Untrusted content
 

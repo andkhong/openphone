@@ -98,7 +98,10 @@ DEFAULT_SETTINGS_EVERYDAY = [
     "location", "notifications", "app notifications", "flashlight", "auto-rotate", "night light",
 ]
 # asked even on an everyday page: pairing a new Bluetooth device.
-DEFAULT_SETTINGS_ASK = ["pair new device", "pair a new device", "pair new", "pair"]
+# "Allow all the time" grants background location (or another background permission): it asks even on a page
+# whose title makes it everyday ("Location"). Security review 2026-10-09.
+DEFAULT_SETTINGS_ASK = ["pair new device", "pair a new device", "pair new", "pair", "allow all the time",
+                        "allow all the time (background)"]
 APP_INFO_MARKERS = ("app info", "force stop")
 APP_INFO_ALLOWED = ("force stop", "clear cache")
 APP_INFO_ASK = ("uninstall", "disable", "clear storage", "clear data", "uninstall updates")
@@ -122,8 +125,8 @@ DEFAULT_TERMINAL_WORDS = ["place order", "place your order", "confirm purchase",
                           "pay now", "confirm", "confirm order", "confirm payment"]
 DEFAULT_START_FLOW_WORDS = ["buy now", "buy", "subscribe", "book", "top up", "recharge", "donate"]
 FOLLOWUP_SECONDS = 180
-# Android runtime permission dialogs (agent/permission_dialogs.py): the owner's answer per type, tightest first.
-# Never "Allow all the time", whatever the setting.
+# Android runtime permission dialogs (agent/permission_dialogs.py; the phone's gatekeeper enforces the same,
+# rules.json "permission_dialog"). Values tightest first. Never "Allow all the time", whatever the setting.
 PERMISSION_TYPES = ("location", "camera", "microphone", "contacts", "photos", "phone", "sms", "calendar",
                     "nearby_devices", "physical_activity", "body_sensors")
 # Owner decision: the task's own app gets "Only this time" with no prompt (the narrowest grant that lets the task
@@ -132,6 +135,13 @@ PERMISSION_TYPES = ("location", "camera", "microphone", "contacts", "photos", "p
 # offers no one-time option, ask (default) or allow its lasting grant.
 PERMISSION_DEFAULTS = {"notifications": "allow", "location_accuracy": "approximate", "persistent_grants": "ask",
                        **{k: "once" for k in PERMISSION_TYPES}}
+PERMISSION_QUESTIONS = {
+    "once": "Let agents allow {what} \"only this time\" in permission dialogs without asking?",
+    "while_using": "Let agents allow {what} \"while using the app\" in permission dialogs without asking?",
+    "ask": "Ask you again before agents allow {what}?",
+    "allow": "Let agents allow {what} in permission dialogs without asking?",
+    "precise": "Let agents give apps your precise location without asking?",
+}
 
 
 def permission_values(kind: str) -> tuple:
@@ -172,7 +182,8 @@ def looser(a: str, b: str) -> bool:
 
 def default_settings() -> dict:
     return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
-            "never_money": False}
+            "never_money": False, "permission_prompts": dict(PERMISSION_DEFAULTS), "task_approval": True,
+            "everyday": False}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -189,6 +200,14 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
         s["never_until"] = float(until) if isinstance(until, (int, float)) and until > now else None
         # Purchases without asking last only as long as the never window they were allowed with.
         s["never_money"] = bool(s["never_until"]) and settings.get("never_money") is True
+        # Android's runtime permission dialogs (agent/permission_dialogs.py): the owner's defaults per type.
+        if isinstance(settings.get("everyday"), bool):
+            s["everyday"] = settings["everyday"]
+        if isinstance(settings.get("task_approval"), bool):
+            s["task_approval"] = settings["task_approval"]
+        prompts = settings.get("permission_prompts") if isinstance(settings.get("permission_prompts"), dict) else {}
+        s["permission_prompts"] = {k: (prompts.get(k) if prompts.get(k) in permission_values(k) else v)
+                                   for k, v in PERMISSION_DEFAULTS.items()}
         s["trusted"] = [e for e in (settings.get("trusted") or [])
                         if isinstance(e, dict) and (e.get("expires_at") or 0) > now]
     if s["default_mode"] == "never" and not s["never_until"]:
@@ -209,6 +228,8 @@ def public(settings: dict, now: float | None = None) -> dict:
     s = normalize(settings, now)
     return {"default_mode": s["default_mode"], "ceiling": effective_ceiling(s, now), "standing_ceiling": s["ceiling"],
             "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
+            "permission_prompts": s["permission_prompts"], "task_approval": s["task_approval"],
+            "everyday": s["everyday"],
             "modes": list(MODES)}
 
 
@@ -292,6 +313,32 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
             raise PermissionsInvalid(f"never must be one of: {', '.join(NEVER_DURATIONS)} or off.")
     if allow_money is False:
         new["never_money"] = False
+    if patch.get("everyday") is not None:
+        if not isinstance(patch["everyday"], bool):
+            raise PermissionsInvalid("everyday is true or false.")
+        if patch["everyday"] and not cur["everyday"]:
+            loosens.append("everyday:on")  # stop confirming everyday actions: the phone approves (fingerprint)
+        new["everyday"] = patch["everyday"]
+    if patch.get("task_approval") is not None:
+        if not isinstance(patch["task_approval"], bool):
+            raise PermissionsInvalid("task_approval is true or false.")
+        if patch["task_approval"] and not cur["task_approval"]:
+            loosens.append("task_approval:on")  # one approval covering a task's steps: the phone approves
+        new["task_approval"] = patch["task_approval"]
+    if patch.get("permission_prompts") is not None:
+        prompts = patch["permission_prompts"]
+        if not isinstance(prompts, dict):
+            raise PermissionsInvalid("permission_prompts is an object: {type: setting}.")
+        new["permission_prompts"] = dict(cur["permission_prompts"])
+        for kind, value in prompts.items():
+            if kind not in PERMISSION_DEFAULTS:
+                raise PermissionsInvalid(f"Unknown permission type {kind!r}. One of: {', '.join(PERMISSION_DEFAULTS)}.")
+            values = permission_values(kind)
+            if value not in values:
+                raise PermissionsInvalid(f"{kind} is one of: {', '.join(values)}.")
+            if values.index(value) > values.index(cur["permission_prompts"][kind]):
+                loosens.append(f"permission:{kind}:{value}")  # loosening: the phone's screen lock
+            new["permission_prompts"][kind] = value
     if "trusted" in patch and patch["trusted"] is not None:
         if not isinstance(patch["trusted"], list) or len(patch["trusted"]) > MAX_ENTRIES:
             raise PermissionsInvalid(f"trusted is a list of at most {MAX_ENTRIES} entries.")
@@ -335,6 +382,14 @@ def describe_loosening(loosens: list[str]) -> str:
                          else f"Allow agents to act without asking on this phone for {span}?")
         elif kind == "ceiling":
             parts.append(f"Allow the {LABELS[rest]} mode on this phone?")
+        elif kind == "everyday":
+            parts.append("Stop confirming everyday actions (messages, shares, posts, deletes)? Purchases and "
+                         "dangerous actions still need your fingerprint.")
+        elif kind == "task_approval":
+            parts.append("Let one approval of a task cover the risky steps it needs (purchases still ask)?")
+        elif kind == "permission":
+            which, _, value = rest.partition(":")
+            parts.append(PERMISSION_QUESTIONS.get(value, "Change {what} prompts?").format(what=which.replace("_", " ")))
         elif kind == "trusted":
             target, _, kinds = rest.rpartition(":")
             parts.append(f"Let agents {'/'.join(kinds.split(','))} in {target} without asking?")

@@ -74,6 +74,9 @@ class PermissionsIn(BaseModel):
     trusted: list[dict] | None = None  # the whole new list: [{app | category, kinds, expires_at}]
     never: Literal["1h", "24h", "7d", "off"] | None = None
     allow_money: bool | None = None  # "Also allow purchases" with never (off by default; the phone approves)
+    task_approval: bool | None = None  # one phone approval per task covers its non-money risky steps
+    everyday: bool | None = None  # don't confirm everyday actions (turning it on is approved on the phone)
+    permission_prompts: dict[str, str] | None = None  # Android permission dialogs: {type: setting} (loosening asks)
 
 
 class Credentials(BaseModel):
@@ -154,6 +157,11 @@ class FailureWindow:
 
 
 def client_ip(request) -> str:
+    """The visitor's address. On Fly every request arrives from Fly's proxy, so per-IP limits would lump everyone
+    together (one visitor could lock out sign-in for all): Fly's own Fly-Client-IP header is used there. It's
+    trusted only when FLY_APP_NAME is set, i.e. behind Fly's proxy, which overwrites any value a client sends."""
+    if os.environ.get("FLY_APP_NAME") and (fly := request.headers.get("fly-client-ip", "").strip()):
+        return fly
     return request.client.host if request.client else "?"
 
 
@@ -784,7 +792,10 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
         # confirm_on_phone: only the phone may approve the pending risky action (the dashboard hides its buttons)
         on_phone = getattr(manager, "confirm_on_phone", None)
         settings = manager.permission_settings(s.info.id) if hasattr(manager, "permission_settings") else None
+        # A system dialog the phone can't read is waiting for the owner (owner_dialog): the live view says so.
+        owner_dialog = getattr(s.driver, "owner_dialog", None)
         return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s)),
+                "owner_dialog": owner_dialog if isinstance(owner_dialog, str) else None,
                 "permissions": perm.public(settings) if settings else None}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
@@ -1053,6 +1064,12 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                 elif kind == "approval":  # the owner approved or denied a risky action, with screen lock
                     await run_in_threadpool(manager.resolve_approval, session, message.get("id"),
                                             message.get("approved") is True, message)
+                elif kind == "gate_event":  # the phone's own approval prompt: pending, approved, denied, expired
+                    await run_in_threadpool(manager.gate_event, session, message)
+                elif kind == "owner_dialog":  # a system dialog the phone can't read waits for the owner, or closed
+                    await run_in_threadpool(manager.owner_dialog, session, message)
+                elif kind == "device_lock":  # a secure lock came up mid-task, or the owner unlocked
+                    await run_in_threadpool(manager.device_lock, session, message)
                 elif kind == "permissions_off":  # "Turn off" in the never banner: an unsigned tightening
                     await run_in_threadpool(manager.phone_turned_off_never, session)
                 elif kind == "command" and str(message.get("text", "")).strip():

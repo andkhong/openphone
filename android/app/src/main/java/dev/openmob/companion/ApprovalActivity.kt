@@ -19,6 +19,7 @@ import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.CheckBox
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -34,7 +35,7 @@ import android.widget.Toast
  * Kinds (docs/phone-protocol.md): a risky action, a step (ask-every-step mode), a plan (plan-first
  * mode) or a mode_change (agents would ask less on this phone). "Always allow this" (off by default)
  * also grants the offered trusted entry; for payments it asks a second time. It is signed too. A
- * mode_change that also allows purchases ("Also allow purchases" with Never ask) asks a second time
+ * mode_change that also allows purchases ("Also allow purchases" with Don't ask) asks a second time
  * as well, before the screen lock.
  */
 class ApprovalActivity : Activity() {
@@ -54,6 +55,7 @@ class ApprovalActivity : Activity() {
     private lateinit var questionText: TextView
     private lateinit var actionText: TextView
     private lateinit var requesterText: TextView
+    private lateinit var cropView: ImageView
     private lateinit var statusText: TextView
     private lateinit var approveButton: Button
     private lateinit var denyButton: Button
@@ -61,6 +63,8 @@ class ApprovalActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // No other app's overlay may cover part of the question while the owner answers (review L2; API 31+).
+        if (android.os.Build.VERSION.SDK_INT >= 31) window.setHideOverlayWindows(true)
         requestWindowFeature(Window.FEATURE_NO_TITLE)
         setContentView(buildContent())
         open(intent)
@@ -84,6 +88,22 @@ class ApprovalActivity : Activity() {
         super.onPause()
     }
 
+    /** A gate prompt the system interrupted (request id, "always" ticked): shown again when the screen is back. */
+    private var resumeAuth: Pair<String, Boolean>? = null
+
+    /** When this screen last gained focus: Allow ignores taps for a moment after (B1: a tap admitted just before the
+     *  prompt appeared must not land on it). */
+    private var focusedAt = Long.MAX_VALUE
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        focusedAt = if (hasFocus) android.os.SystemClock.uptimeMillis() else Long.MAX_VALUE
+        val (id, always) = resumeAuth ?: return
+        if (!hasFocus || prompt != null) return
+        resumeAuth = null
+        Approvals.get(id)?.takeIf { it.gate && id == requestId }?.let { authenticate(it, always) }
+    }
+
     override fun onDestroy() {
         prompt?.cancel()
         prompt = null
@@ -103,6 +123,8 @@ class ApprovalActivity : Activity() {
         Approvals.get(requestId)?.let { shown = it }
         val request = shown
         val open = Approvals.get(requestId) != null
+        // The owner sees this gate prompt now: only prompts actually shown count toward the prompt limit.
+        if (open && request?.gate == true && !isFinishing) dev.openmob.companion.gate.GateHost.markShown(requestId)
         questionText.text = request?.shownQuestion ?: getString(R.string.approval_gone)
         val kind = request?.kind ?: "action"
         labelText.text = getString(when (kind) {
@@ -113,15 +135,23 @@ class ApprovalActivity : Activity() {
         })
         explainText.text = getString(when {
             request?.allowsMoney == true -> R.string.approval_explain_mode_money
+            request?.gate == true -> R.string.gate_explain
             kind == "mode_change" -> R.string.approval_explain_mode
             kind == "plan" -> R.string.approval_explain_plan
             else -> R.string.approval_explain
         })
         val always = request?.always
         alwaysBox.visibility = if (always != null && open) View.VISIBLE else View.GONE
-        if (always != null) alwaysBox.text = "${getString(R.string.approval_always)}\n${always.text}"
-        requesterText.text = request?.let { getString(R.string.approval_requester, it.requester) }.orEmpty()
-        requesterText.visibility = if (request == null) View.GONE else View.VISIBLE
+        if (always != null) alwaysBox.text = (if (always.kind == "permission") getString(R.string.gate_always_for, appLabel(always.app))
+            else getString(R.string.approval_always)) + "\n${always.text}"
+        requesterText.text = request?.let {
+            if (it.gate) (if (it.serverSays.isEmpty()) "" else getString(R.string.gate_server_says, it.serverSays))
+            else getString(R.string.approval_requester, it.requester)
+        }.orEmpty()
+        val crop = request?.crop?.let { android.graphics.BitmapFactory.decodeByteArray(it, 0, it.size) }
+        cropView.setImageBitmap(crop)
+        cropView.visibility = if (crop == null) View.GONE else View.VISIBLE
+        requesterText.visibility = if (requesterText.text.isNullOrEmpty()) View.GONE else View.VISIBLE
         // What exactly will happen, built here from the action's own fields (what the signature binds).
         val line = request?.actionLine.orEmpty()
         actionText.text = if (line.isEmpty()) "" else getString(R.string.approval_action, line)
@@ -150,7 +180,9 @@ class ApprovalActivity : Activity() {
     private fun onApprove() {
         val request = Approvals.get(requestId) ?: return render()
         blocker(request)?.let { return showStatus(it) }
-        // Never ask including purchases: a second, explicit yes for the money part before the screen lock.
+        if (request.gate && android.os.SystemClock.uptimeMillis() - focusedAt < 500) return // too soon after it appeared
+        if (request.gate && request.level == "tap") return approveWithTap(request)
+        // Don't ask including purchases: a second, explicit yes for the money part before the screen lock.
         if (request.allowsMoney) {
             AlertDialog.Builder(this)
                 .setTitle(R.string.approval_money_confirm_title)
@@ -177,6 +209,22 @@ class ApprovalActivity : Activity() {
         authenticate(request, alwaysBox.isChecked && always != null)
     }
 
+    /** A tap-level gate prompt (three confirmation levels): the owner's tap on Allow, in this window, signed with the
+     *  tap key. No screen lock: agents can't tap OpenMob's windows (the gate refuses them, builtin:own_window), and
+     *  Approve ignores touches through overlays. */
+    private fun approveWithTap(request: Approvals.Request) {
+        val grantAlways = alwaysBox.isChecked && request.always != null
+        val message = dev.openmob.companion.gate.GateHost.approvalMessage(request.id, grantAlways)
+        val signature = message?.let { TapKeys.sign(it) }
+        if (message == null || signature == null || !dev.openmob.companion.gate.GateHost.approve(request.id, message, signature)) {
+            showStatus(getString(if (message == null) R.string.approval_gone else R.string.approval_not_confirmed))
+            return
+        }
+        Approvals.answerGate(this, request.id, true)
+        Toast.makeText(this, R.string.approval_sent_approved, Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
     private fun authenticate(request: Approvals.Request, grantAlways: Boolean) {
         val lock = getSystemService(BiometricManager::class.java)?.canAuthenticate(APPROVERS)
         if (lock != BiometricManager.BIOMETRIC_SUCCESS) {
@@ -187,8 +235,11 @@ class ApprovalActivity : Activity() {
         val cancel = CancellationSignal().also { prompt = it }
         // The approval key only signs once this prompt is passed: that signature is what the server
         // trusts, so nothing else on the phone (or holding its device key) can approve.
-        val signer = ApprovalKeys.signer()
-        if (signer == null && request.signatureRequired) {
+        // Gate prompts are verified on this phone alone (GateHost), so the key is made here if the phone never got
+        // one: developer-token pairing doesn't create it (only account pairing and its hello do).
+        val signer = ApprovalKeys.signer() ?: if (request.gate && ApprovalKeys.publicKey() != null) ApprovalKeys.signer() else null
+        if (signer == null && (request.signatureRequired || request.gate)) {
+            // A gate permit is minted only from the screen-lock signature: there is no unsigned fallback (D5).
             // Without the key there is nothing the server would accept: never send an unsigned yes.
             showStatus(getString(R.string.approval_no_key))
             return
@@ -208,6 +259,21 @@ class ApprovalActivity : Activity() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult?) {
                     if (prompt === cancel) prompt = null
                     val unlocked = result?.cryptoObject?.signature
+                    if (request.gate) {
+                        // Sign the gatekeeper's own message (this device, this prompt, this exact action and crop),
+                        // which it verifies before minting the one-shot permit.
+                        val message = dev.openmob.companion.gate.GateHost.approvalMessage(request.id, grantAlways)
+                        val signature = if (unlocked == null || message == null) null
+                        else runCatching { ApprovalKeys.signRaw(unlocked, message) }.getOrNull()
+                        if (signature == null || !dev.openmob.companion.gate.GateHost.approve(request.id, message!!, signature)) {
+                            showStatus(getString(if (message == null) R.string.approval_gone else R.string.approval_not_confirmed))
+                            return
+                        }
+                        Approvals.answerGate(this@ApprovalActivity, request.id, true)
+                        Toast.makeText(this@ApprovalActivity, R.string.approval_sent_approved, Toast.LENGTH_SHORT).show()
+                        finish()
+                        return
+                    }
                     if (unlocked == null) {
                         // No approval key: only a server that doesn't require signatures (token/dev mode)
                         // takes an unsigned yes; accounts mode refused this above.
@@ -228,7 +294,21 @@ class ApprovalActivity : Activity() {
 
                 override fun onAuthenticationError(errorCode: Int, errString: CharSequence?) {
                     if (prompt === cancel) prompt = null
-                    if (!isDestroyed) showStatus(getString(R.string.approval_not_confirmed))
+                    if (isDestroyed) return
+                    if (request.gate) {
+                        when (PromptOutcome.classify(errorCode)) {
+                            // The owner cancelled the screen lock themselves: that's their no.
+                            PromptOutcome.Kind.DECLINED -> return send(approved = false)
+                            // The system interrupted it (a notification, a call, the screen going off): keep the
+                            // request and bring the prompt back once this screen has focus again.
+                            PromptOutcome.Kind.INTERRUPTED -> {
+                                resumeAuth = request.id to grantAlways
+                                showStatus(getString(R.string.gate_prompt_interrupted))
+                                return
+                            }
+                        }
+                    }
+                    showStatus(getString(R.string.approval_not_confirmed))
                 }
                 // onAuthenticationFailed (one wrong finger) needs nothing: the prompt stays up.
             }
@@ -240,7 +320,14 @@ class ApprovalActivity : Activity() {
     }
 
     private fun send(approved: Boolean, signature: String? = null, timestamp: Long = 0, always: Boolean = false) {
+        val request = Approvals.get(requestId)
         if (Approvals.answer(this, requestId, approved, signature, timestamp, always)) {
+            // A permission change the owner just signed becomes this phone's own policy (the gatekeeper enforces
+            // the ceiling and `never`; the server's copy is only for its dashboard).
+            if (approved && signature != null && request?.kind == "mode_change") {
+                dev.openmob.companion.gate.GateHost.applyModeChange(request.id, request.taskId, request.action,
+                                                                    timestamp, always, signature)
+            }
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,
             ).show()
@@ -251,6 +338,11 @@ class ApprovalActivity : Activity() {
         showStatus(getString(if (Approvals.get(requestId) != null) R.string.approval_offline else R.string.approval_gone))
         render()
     }
+
+    @Suppress("DEPRECATION")
+    private fun appLabel(pkg: String): String =
+        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+            .getOrDefault(pkg)
 
     private fun showStatus(message: String) {
         statusText.text = message
@@ -269,6 +361,9 @@ class ApprovalActivity : Activity() {
         card.addView(labelText)
         questionText = text("", 20f, getColor(R.color.om_text), bold = true)
         card.addView(questionText, margins(top = 6))
+        // The gatekeeper's crop of the target (with a crosshair): what exactly would be tapped, item and price.
+        cropView = ImageView(this).apply { adjustViewBounds = true; visibility = View.GONE }
+        card.addView(cropView, margins(top = 10, width = ViewGroup.LayoutParams.MATCH_PARENT))
         actionText = text("", 15f, getColor(R.color.om_text))
         card.addView(actionText, margins(top = 8))
         requesterText = text("", 14f, getColor(R.color.om_text_secondary))

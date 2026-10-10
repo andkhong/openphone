@@ -115,7 +115,8 @@ Errors: `400` for a wrong, used, expired or voided code (with `detail`), `429` a
 | `device.model` | string | `Build.MODEL` |
 | `device.manufacturer` | string | `Build.MANUFACTURER` |
 | `device.android` | string | `Build.VERSION.RELEASE` |
-| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url", "wait_for", "open_settings"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. |
+| `device.capabilities` | string[], optional | Optional methods this app answers, e.g. `["wait_idle", "resolve_url", "wait_for", "open_settings"]`. The server only calls an optional method the hello lists, so older apps (which send none) keep working. `"gatekeeper"`: the app enforces policy itself (§9); `"device_lock"`: it pushes `device_lock` messages. |
+| `device.policy_hash` | string, optional | Gatekeeper apps: a short hash of the built-in rules and the owner's signed policy this phone enforces. |
 
 **`result`**: exactly one per `call`, with the same `id`.
 ```json
@@ -646,3 +647,201 @@ Calls are never replayed. A read (`screenshot`, `ui_elements`, `current_app`, �
 asked again on the new connection; an action (`tap`, `type_text`, `launch_app`, …) that was cut off is
 reported to the agent as "may or may not have happened" and never repeated. Live-view calls don't
 wait for a reconnect.
+
+## 9. Gatekeeper (phone-side policy)
+
+An app whose hello lists `"gatekeeper"` in `device.capabilities` enforces policy itself
+(docs/design/phone-gatekeeper.md, Phase 1). A compromised server can then at most *request*: the phone refuses
+forbidden calls and asks its owner, with its own wording and the screen lock, for risky ones. The server keeps
+all its own checks as defense in depth. Apps without the capability keep today's behaviour (§3.3, §8).
+
+### 9.1 Every call goes through the gate first
+
+Methods fall into three classes (the built-in rule file `gatekeeper/rules.json` in the APK): **meta**
+(`device_state`, `wait_idle`, always allowed), **read** (`screenshot`, `ui_elements`, `wait_for`, `current_app`,
+`launchable_packages`, `app_labels`, `resolve_url`, `stream_*`: allowed, but `screenshot` is a black frame,
+`ui_elements` is `[]` and `wait_for` answers `{"met": false, "redacted": true}` while a blocked app is visible in any
+window; `wait_for` checks again on every read during the wait, so it never evaluates a protected app's text) and **act** (`tap`, `long_press`, `swipe`,
+`type_text`, `key`, `launch_app`, `open_url`, `open_settings`, `wake_unlock`). Anything else is refused with `gate_unknown_method`.
+`open_settings` (§4.17) is judged like opening that Settings page: everyday pages are allowed, `date_time` asks (kind
+`settings`, the screen lock; refused under `never`), an app page for a blocked app or OpenMob is `gate_blocked_app`, an
+unknown key is `gate_denied_page`, and so is any key whose action or title the hard-deny list names, in every mode.
+Act calls are re-checked right before the side effect (the target under the point must still be the same).
+
+Act calls may carry three extra params, which the gate reads and which never relax anything:
+
+| Param | Meaning |
+|---|---|
+| `mode` | The task's permission mode. The phone uses the tighter of it and its owner's **signed** ceiling (and `never` window): a claim of `never`, `trusted` or `allow_money` without the owner's signature gets `auto`. |
+| `task` | The task id (a purchase's one follow-up commit is covered only within the same task and app). |
+| `hint` | The server's own caution ("the agent thinks this pays"): turns an allowed action into a prompt, never the reverse. |
+
+### 9.2 Refusals
+
+A refused call gets `ok:false` with a stable `code`, the reason in `error`, and `gate`:
+
+```json
+{"type": "result", "id": "…", "ok": false, "code": "gate_blocked_app",
+ "error": "Blocked on the phone: com.chase.sig.android is a sensitive app. Don't open it another way; call done.",
+ "gate": {"rule": "builtin:sensitive_apps", "package": "com.chase.sig.android", "ms": 6}}
+```
+
+| Code | Meaning | Server |
+|---|---|---|
+| `gate_blocked_app` | A blocked app (banking, payments, wallets, password managers, authenticators, OpenMob itself): launching it, a link into it, acting in it, or its app-info page | Report to the agent; don't retry |
+| `gate_denied_page` | A security-critical Settings page, the keyguard or a system approval prompt, OpenMob's own windows, installing an app (`builtin:installer`), uninstalling OpenMob or a blocked app (`builtin:uninstall_protected`) | Report; don't retry |
+| `gate_denied` | A dangerous link scheme or typed text (`javascript:`, `intent:`, …), a non-dialer `tel:` handler, a declined prompt, or something that would ask while agents act without asking (`never`) | Report; don't retry |
+| `gate_password_field` | Typing into a password field | Report; ask the owner to type it |
+| `gate_needs_approval` | The phone is asking its owner (below) | Wait for `gate_event` |
+| `gate_prompt_open` | Another prompt is still open on the phone (also a gesture that would land on the phone's own prompt while it waits, which otherwise gets `gate_denied_page`/`builtin:own_window`) | Wait for it to be answered |
+| `gate_rate_limited` | More than 5 actions/s (burst 15), more than 6 prompts the owner was shown in 10 minutes (refused calls and prompts never shown don't count, and the same action asked again reuses the open prompt; `error` says how long to wait), or paused after 3 denials in 10 minutes until the owner taps Resume | Report; slow down |
+| `gate_screen_changed` | The target changed between the check and the gesture (or during the prompt); for typing, ENTER and DELETE, focus moved to another field (`builtin:field_changed`) | Report to the agent; never retried automatically |
+| `gate_screen_unstable` | The screen didn't settle within a second for a risky action; or typing, ENTER or DELETE with no focused field the phone can judge (`builtin:no_field`, `builtin:focus_unread`) | Report; look again (tap the field first) |
+| `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
+| `needs_owner_dialog` | A system dialog the phone can't read or OCR-classify is up (Safety Center, default-app pickers; a permission dialog only when on-device OCR is unavailable); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
+| `gate_permission_choice` | A permission-dialog choice the owner's settings never allow: "Allow all the time"; a grant the owner set to Don't allow; a grant while Precise is selected and the owner allows approximate only. `error` says what to tap instead | Tap what `error` says ("Only this time", "Don't allow", "Approximate" first) |
+| `gate_unavailable` | OpenMob's accessibility service is off, so the phone can't see the screen: every act is refused | Report; the owner turns it on |
+| `gate_no_session`, `gate_policy_invalid` | Reserved (Phase 2) | Report |
+
+### 9.3 Approvals on the phone
+
+For a risky action (a money commit, a send/post/delete, autofill or saved credentials, a share target, an
+unrecognized Settings change, an unlabeled tap in a shopping app, typing into an OTP or card field, ENTER in a
+chat or a checkout, placing a phone call (kind `call`; dialing a number with `*` or `#`, an MMI/USSD code, is kind
+`call_code` and takes the screen lock; a `tel:` link only opens the dialer), a Play Store install the call's `task_text` doesn't name (kind
+`install`), every changing act in `ask` mode) the phone replies at once:
+
+```json
+{"type": "result", "id": "…", "ok": false, "code": "gate_needs_approval", "approval_id": "3f…",
+ "error": "Waiting for the owner's approval on the phone.",
+ "gate": {"rule": "risk:words:buy now", "kind": "pay", "question": "Allow tapping “Buy now” in Amazon?", "ms": 9}}
+```
+
+and shows its own prompt: its wording and a crop of the target, with the server's `hint` only as a labeled
+"Server says" line. Approving takes the screen lock; the auth-bound approval key signs
+`gk1|<device id>|<approval id>|<action binding>|crop:<sha256 of the crop>[|grant:<grant>]`, the phone verifies it
+and mints a **one-shot permit for exactly that call** (method, params and the target's fingerprint) for 60 s on
+its monotonic clock. Then it tells the server:
+
+```json
+{"type": "gate_event", "approval_id": "3f…", "state": "approved"}
+```
+
+`state` is `pending`, `approved`, `denied` or `expired` (2 minutes, or Stop). Only the owner's explicit no
+(Deny, or cancelling the screen lock themselves) is `denied`; a prompt the system interrupted (a notification or
+call taking focus, the screen turning off, the sensor timing out) stays pending and comes back, and one that
+ends without a decision is `expired`. The server reports `expired` to the agent as `gate_no_answer` ("the owner
+made no decision"), never as a decline, and only denials count toward the 3-denials pause. The server re-sends the identical
+call **once per approval id**; a replayed `gate_event` does nothing. On `denied` or `expired` it tells the agent
+"not approved" and sends nothing. An approved "Buy now" (a flow-starting money word) also covers one terminal
+commit ("Place your order") in the same app and task within 3 minutes, so a purchase is one prompt.
+
+While the phone is asking, the task is `needs_confirmation` (the dashboard shows "Waiting for your approval on
+the phone…"). `POST /v1/tasks/{id}/answer` with `approve:true` returns **409 `approval_on_phone`** for every key;
+`approve:false` declines. Gatekeeper phones **ignore `approval_request`** for actions (a server-worded prompt
+behind the screen lock would be phishing); only `mode_change` requests are taken, and the phone words those
+from the signed change itself. Approval happens only on the acting phone; the owner's other phones get a plain
+notice.
+
+### 9.4 The lock screen mid-task
+
+While the agent works the app keeps the screen on (a 1-pixel accessibility overlay with `FLAG_KEEP_SCREEN_ON`,
+removed as soon as work stops). If the phone locks anyway, a swipe-only lock is woken and dismissed; a secure
+lock makes the phone send
+
+```json
+{"type": "device_lock", "locked": true, "secure": true}
+```
+
+and show "Unlock your phone to continue". Act calls get `phone_locked` meanwhile. When the owner unlocks, it
+sends `{"type": "device_lock", "locked": false}`. The server pauses the task for up to `locked_wait_seconds`
+(default 300), then lets the agent look again; if the phone stays locked, the task fails with reason
+`phone_locked`. The agent never taps or swipes at a lock screen.
+
+### 9.5 System dialogs the phone can't read
+
+On Android 14 and later the system hides runtime permission dialogs (and Safety Center and default-apps
+screens) from accessibility services: the phone sees the window, but not what's in it (or only the window-state
+event's package and text). Gestures still reach it and screenshots capture it.
+
+**Permission dialogs are read with on-device OCR** (ML Kit text recognition, the bundled Latin model: offline,
+no network). When the top application window has no readable tree (Android 15 on Samsung lists it with no package
+and sends no event for it), the phone takes its own screenshot and reads it. It counts as a permission dialog when
+the window names the permission controller, or when the OCR shows an "Allow X to …" title together with either a
+fresh window-state event from `com.android.permissioncontroller`, `com.google.android.permissioncontroller` or
+`com.samsung.android.permissioncontroller`, or a "Don't allow" button. Otherwise it stays an unknown window (black,
+acts refused). Of the reading:
+the title ("Allow Kalshi to access this device's location?", English, Spanish and German wording) gives the
+requesting app and the permission; lines that read exactly as a button ("While using the app", "Only this
+time", "Allow", "Don't allow", "Allow all the time", "Precise", "Approximate") become buttons. `ui_elements`
+lists them first, class `OCRText` with bounds (the title with `resource_id: "ocr_permission_message"`), and the
+live view shows the dialog normally. A tap on it is judged on that reading like a readable dialog (docs/safety.md):
+the task's app gets "Only this time" (or the narrowest grant offered), notifications and "Approximate" with no
+prompt; "Allow all the time" never (`gate_permission_choice`); another app's request, a tap off every recognized
+button, low-confidence text (below 0.5) or an unknown wording asks (a tap-level prompt; refused under Don't
+ask). OCR can't see which location card is selected: the phone assumes Precise (Android's pre-selection) until
+a tap on Approximate in that dialog goes through.
+
+**Other hidden system surfaces** (Safety Center, default-app pickers), and a permission dialog when OCR isn't
+available, are never tapped blindly. Act calls get `needs_owner_dialog`, the phone
+shows "Kalshi is asking for location: choose on your phone, then the task continues" (or "A system dialog needs
+your answer") in a notification, and tells the server:
+
+```json
+{"type": "owner_dialog", "open": true, "message": "Kalshi is asking for location: choose on your phone, then the task continues."}
+```
+
+and `{"type": "owner_dialog", "open": false}` once the dialog is gone. The server pauses the task (its events
+show the same message) for up to `owner_dialog_wait_seconds` (default 300), then lets the agent look again; if
+it's never answered, the task fails with reason `needs_owner_dialog`. While it's open the dashboard's live view
+says "<App> is asking for <permission>: answer on your phone" (`owner_dialog` in the device status). Reads are
+not blacked out for an identified system dialog; a window with no package from any source still is.
+
+A tap where the phone sees no window under the point is refused as `gate_screen_unstable` (`builtin:no_window`).
+
+### 9.6 Live screens
+
+Screens whose numbers change all the time (odds, prices, timers) don't block actions. The phone recognizes "the
+same element" by its id, class, bounds and window with numbers blanked ("DUN · 42%" = "DUN · 47%"); a risky
+action waits for *its target* to hold still for 150 ms, not the whole screen; and the launch-race wait counts
+window changes, not content updates. A money commit is the exception: its permit binds the currency amounts on
+the button and on the window's total, cost, price, amount and payout lines, and any change voids it
+(`gate_screen_changed`, rule `builtin:price_changed`): the owner is asked again. Choosing a side or outcome
+("DUN", "Yes") doesn't ask; the commit ("Submit", "Place order", "Swipe to buy") does. Ticker-style labels
+("YES 63¢", "AAPL +1.2%") never count as an unrecognized language: that rule looks at the script and at
+ordinary lower-case words only.
+
+### 9.7 Task approval (just in time)
+
+By owner request, a task can be approved once instead of step by step, and only when it needs it. Nothing is
+asked at task start. To phones whose hello lists `"task_grant"`, the server adds the task's request to every act
+call: `task` (id), `task_text` (the request, up to 300 characters) and `task_source` (who asked). The first step
+that would need a tap-level confirmation and whose kind the request names (a send for "send Bob the link", a
+delete for "delete old photos") gets the task prompt instead of a per-step one, worded from the request with
+that step as the detail ("Agent wants to: send Bob the channel link on Messenger. Allow the steps this needs?
+Next: Allow tapping “Send” in Messenger?"); it replies `gate_needs_approval` with `kind: "task"`. Approving it
+grants the task and permits that step (the server re-sends it). A task with no such step sees no prompt at all;
+a fingerprint-level step keeps its own fingerprint prompt (never covered by the grant). A request typed or
+spoken on the phone itself is granted without a prompt (`rule: task_grant:own_request`). The `task_grant`
+method still exists (it asks up front) but the server no longer calls it.
+
+The grant is bound to the task id and the request text's digest (another text for the same id asks again), and
+lasts until the task ends, 30 minutes on the monotonic clock, or 25 risky steps, whichever comes first. Under it,
+an act call carrying that `task` runs its non-money risky steps without more prompts (send, post, share, delete,
+menus, unlabeled taps, ENTER, unrecognized non-security Settings pages, native-app autofill). Still asked: money
+commits (unless "Also allow purchases"), browser or WebView autofill and runtime permission dialogs. Still
+refused: every hard deny. Declining the task prompt stops the task (`task_declined`); an unanswered one is
+not a denial and ends it with `task_no_answer`. The server sends `task_text` in Ask for risky, Trusted apps and
+Plan first, not in Ask every step or Don't ask, and not when the owner turned `task_approval` off (then each
+risky step asks on its own); turning it back on is a loosening approved on the phone.
+
+### 9.8 Consequence-based risk and confirmation levels
+
+A gate ask (`gate_needs_approval`) has a confirmation level the phone chooses: `tap` (OpenMob's own Allow /
+Deny, signed with a tap key that needs no screen lock, message `gk1|tap|<device>|<approval id>|<binding>`) or
+`fingerprint` (the screen-lock key, message `gk1|<device>|<approval id>|<binding>…`). Each key verifies only its
+own level. Low-risk actions (a link to yourself, copy, toggles such as like or subscribe) don't ask at all; see
+docs/safety.md, "How OpenMob decides what's risky". The owner's signed "Don't confirm everyday actions"
+(`everyday` in the permission settings; the `permissions` push carries `everyday: false` as a tightening) lets
+tap-level actions run unconfirmed. The task approval (§9.7) is a tap-level prompt and isn't asked at all with
+that setting on. The server sends `hint` only for concrete risky words or rules, never for its classifier alone.

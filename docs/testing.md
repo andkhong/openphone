@@ -82,3 +82,51 @@ the app's protocol (`FakePhone` in `tests/test_remote.py`), a fake device (`Fake
 `tests/conftest.py`) and a scripted model client in place of an AI provider. They're internal test
 helpers, not a supported API, but from a source checkout you can use them to run a local server with
 fake phones for experiments. `pytest tests/test_api_v1.py` shows how they fit together.
+
+### Gatekeeper suite on an emulator (evil server)
+
+`tests/adversarial/evil_server.py` plays a compromised server against the real app on an emulator, and
+plays the owner over adb (it approves and denies the phone's prompts and types the PIN). It covers
+unknown methods, OpenMob and installer launches, dangerous links and typed text, ten security-critical
+Settings pages and Build number, a bank app while it loads and once open (taps never reach it, reads
+are black or empty, no live-view frames), password and OTP fields, a keyboard/autofill tap over a
+WebView form, runtime permission dialogs, the phone-owned approval for "Buy now", that any other
+action voids an approval, the purchase follow-up, a deep WebView "Place order", prompt flooding,
+keep-awake by polling, and the friction of an honest checkout. Phase 5 added `open_settings` page keys (unknown,
+security, app pages for the bank and OpenMob, malformed packages, date_time), `type_text` with `replace` (password,
+OTP and a field in the bank; an insert's permit can't be spent on a replace), `open_url` schemes (custom ones refused;
+tel:, sms:, mailto:, market: open their handler; an https link whose verified handler is the bank is refused), a window
+hidden from accessibility (reads black, acts refused, BACK allowed), the methods B7 never called (wait_for over the
+bank, task_grant, HOME, APP_SWITCH, wake_unlock), and Don't ask turned on through the signed mode_change prompt. The
+results are in [gatekeeper-b7-results.md](research/gatekeeper-b7-results.md) (B7) and
+[gatekeeper-phase5-results.md](research/gatekeeper-phase5-results.md) (Phase 5, with the onboarding checklist).
+
+Setup, on an Apple Silicon Mac (other hosts: the matching system image):
+
+```sh
+sdkmanager emulator "system-images;android-35;google_apis;arm64-v8a"
+avdmanager create avd -n gk_b7 -k "system-images;android-35;google_apis;arm64-v8a" -d pixel_6
+emulator -avd gk_b7 -no-window -no-audio -no-snapshot-save -gpu swiftshader_indirect &
+(cd android && ./gradlew assembleDebug)
+android/gradlew -p tests/adversarial/standins assembleDebug   # com.example.bank, .shop, .login
+adb -s emulator-5554 install -r android/app/build/outputs/apk/debug/app-debug.apk   # and the three stand-ins
+adb -s emulator-5554 shell locksettings set-pin 1234
+adb -s emulator-5554 shell settings put secure enabled_accessibility_services \
+    dev.openmob.companion/.OpenMobAccessibilityService
+```
+
+Pair the app once with **Use a developer token instead**: server `http://10.0.2.2:8911`, any token
+(say `b7evil`). Then run:
+
+```sh
+python tests/adversarial/evil_server.py --serial emulator-5554 --port 8911 --token b7evil \
+    --pin 1234 --restart --out /tmp/evil-evidence
+```
+
+`--groups` picks some of the groups; `--restart` restarts the app before each group (fresh rate
+limits and denial counts) and presses Connect. Evidence (screenshots, the prompts' layouts, the live
+view's raw H.264, `results.json`) goes to `--out`. Every adb call names the device with `--serial`:
+never run it against your own phone. Two harness details: the gate prompt is hidden from accessibility
+services and screenshots, so the suite finds its buttons with `dumpsys activity`; and `uiautomator dump`
+unbinds OpenMob's accessibility service (the suite turns it back on), so it's used only where no
+approval is about to be re-sent.

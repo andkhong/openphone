@@ -227,6 +227,9 @@
   .mode-never.on { background: var(--warn-soft); }
   .mode-never .t { font-size: 14px; font-weight: 500; }
   .mode-never .d { font-size: 12px; color: var(--muted); grid-column: 1 / -1; line-height: 1.35; }
+  .mode-legend { display: grid; gap: 4px; padding: 6px 12px; }
+  .mode-legend .d { font-size: 12px; color: var(--muted); line-height: 1.35; }
+  .mode-legend .money { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; margin-top: 4px; }
   .mode-never .spans { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
   .mode-never .money { grid-column: 1 / -1; display: flex; gap: 8px; align-items: flex-start; font-size: 13px; }
   .mode-never .money input { margin-top: 2px; }
@@ -1375,6 +1378,21 @@ function renderModeMenu() {
     box.append(money);
     if (neverMoney) box.append(el("span", "money-warn", "Agents could buy, pay and subscribe on this phone without asking until Don't ask ends. Your phone asks you to confirm this separately."));
   }
+  // Three confirmation levels: what asks with a tap, what needs a fingerprint, what's never allowed.
+  const legend = el("div", "mode-legend");
+  legend.append(
+    el("span", "d", "No prompt: low-risk steps (a link shared with yourself, copy, like, subscribe, save, menus)."),
+    el("span", "d", "A tap on the phone: messages and shares to others, posts, deletes, filling a saved login in an app."),
+    el("span", "d", "Your fingerprint or PIN: purchases and dangerous steps (saved cards or passwords on a web page, codes, app permissions)."),
+    el("span", "d", "Never: banking and password apps, security settings, password fields."));
+  const everyday = el("label", "money");
+  const evCheck = document.createElement("input");
+  evCheck.type = "checkbox";
+  evCheck.checked = !!(perms && perms.everyday);
+  evCheck.onchange = () => changePerms({ everyday: evCheck.checked }, () => renderModeMenu());
+  everyday.append(evCheck, el("span", "", "Don't confirm everyday actions (sharing, messaging, posting, deleting)"));
+  legend.append(everyday);
+  if (!(perms && perms.everyday)) legend.append(el("span", "d", "Turning this on needs your approval on the phone. Purchases still ask."));
   const status = el("div", "mode-status");
   if (modeStatus) status.append(el("span", `pill ${modeStatus.startsWith("Approve") ? "dotted warn live" : "bad"}`, modeStatus));
   const foot = el("div", "mode-foot");
@@ -1384,7 +1402,7 @@ function renderModeMenu() {
   settings.type = "button";
   settings.onclick = () => { closeModeMenu(); openPerms(); };
   foot.append(settings);
-  menu.replaceChildren(head, ...rows, el("hr"), box, status, foot);
+  menu.replaceChildren(head, ...rows, el("hr"), box, el("hr"), legend, status, foot);
   menu.scrollTop = scrollTop;
   if (focused) {
     const again = menu.querySelector(`[data-mode="${focused}"]`);
@@ -1878,6 +1896,12 @@ const screenReason = (message) => (message || "screen unavailable").replace(/^\w
 let frameTime = 0;          // X-Frame-Time of the polled frame on screen; the server sends a newer one
 let screenSocketAfter = 0;  // after a failed socket, poll until this time, then try the socket again
 
+// "Kalshi is asking for location: choose on your phone, then the task continues." -> the live view's card text.
+function ownerDialogText(message) {
+  const m = /^(.+?) is asking for (.+?):/.exec(message || "");
+  return m ? `${m[1]} is asking for ${m[2]}: answer on your phone.` : "A system dialog needs your answer: answer on your phone.";
+}
+
 // Show notices beside the view, never on top of a received frame. The approval screen is hidden.
 function renderScreenState() {
   const offline = !last || (last.device && last.device.online === false);
@@ -1887,17 +1911,20 @@ function renderScreenState() {
   // The phone's approval screen keeps itself out of screenshots and video on purpose (so neither the
   // agent nor a server can see or work it), which shows here as a black picture: say what's going on.
   const approving = !!deviceId && confirming && !offline && !reconnecting;
+  // A system dialog (a permission request) waits for the owner's answer on the phone: say so beside the picture.
+  const dialogText = last && last.owner_dialog ? ownerDialogText(last.owner_dialog) : "";
   const cover = !deviceId || !hasFrame || approving;
   const message = !deviceId ? "No phone connected yet." : reconnecting ? "Reconnecting to your phone…" : offline && !hasFrame ? "Phone offline. Open the OpenMob app and tap Connect."
     : approving ? "Waiting for your approval on the phone. The approval screen is hidden from the live view for your security."
-    : screenError ? screenError : "Connecting to the screen…";
+    : dialogText ? dialogText : screenError ? screenError : "Connecting to the screen…";
   $("phoneScreen").classList.toggle("blank", cover);
   $("screenOverlay").hidden = !cover;
   $("screenMsg").textContent = message;
   const notice = $("screenNotice");
-  notice.hidden = cover || (!screenError && !reconnecting && !offline);
+  notice.hidden = cover || (!dialogText && !screenError && !reconnecting && !offline);
   notice.textContent = reconnecting ? "Reconnecting… Showing the last received frame."
     : offline ? "Phone offline. Showing the last received frame."
+    : dialogText ? dialogText
     : screenError ? `${screenError} Showing the last received frame.` : "";
   const badge = $("liveBadge");
   const [text, cls] = !deviceId ? ["No phone", ""] : reconnecting ? ["Reconnecting", "warn dotted live"] : offline ? ["Offline", "bad dotted"]

@@ -142,7 +142,38 @@ A task needs the phone **awake and unlocked**:
 - A **swipe-only** lock (no PIN) is dismissed automatically, and OpenMob wakes the screen if needed.
 
 For a phone that agents use often, set the screen timeout to a few minutes so it doesn't lock in
-the middle of your work.
+the middle of your work. The app also keeps the screen on while an agent is working (only then).
+If the phone locks anyway, a task **pauses** with "Unlock your phone to continue" and carries on once
+you unlock it.
+
+**Test-phone tip:** on Samsung phones turn off **Settings › Display › Accidental touch protection**,
+and keep the phone **face-up** during tasks: face-down or in a pocket, the proximity sensor can turn the
+screen off and lock it mid-task.
+
+### Permission dialogs ("Allow Chess.com to …?")
+
+When an app asks for a permission during a task, OpenMob answers by your settings, without the AI. Set them on
+the dashboard's **Your phones** page under **Permission prompts** (or `permission_prompts` in the phone's
+permission settings):
+
+| Permission | Settings | Default |
+|---|---|---|
+| Location, camera, microphone, contacts, photos and media, phone, SMS, calendar, nearby devices | **Ask me** · **Only this time** · **While using the app** · **Don't allow** | Ask me |
+| Location accuracy | **Approximate** · **Precise** | Approximate (OpenMob picks the Approximate card first) |
+| Notifications | **Don't allow** · **Allow** | Don't allow |
+
+- **Ask me** asks you on the phone ("Allow **Kalshi** to use your **location**?"). A yes picks **Only this
+  time**, else **While using the app**. Tick **Always allow for Kalshi** on that prompt to keep that answer for
+  that app.
+- OpenMob **never** picks **Allow all the time** on its own; if that's the only way to grant, you're asked.
+- Allowing more (Only this time, While using the app, Precise, Allow) needs your approval on the phone with its
+  screen lock; asking more applies at once.
+- A request from an app other than the one the task is using is always asked about.
+- Under **Don't ask**, nobody can be asked: anything set to Ask me is denied; Only this time and While using the
+  app still apply.
+- **Android 14 and later:** the system doesn't let OpenMob read permission dialogs, so these settings can't be
+  applied there. The task pauses and your phone shows "**Kalshi** is asking for **location**: choose on your
+  phone, then the task continues"; answer the dialog yourself and the task carries on.
 
 ## While an agent works
 

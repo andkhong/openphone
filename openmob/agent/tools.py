@@ -421,5 +421,10 @@ MODE_NOTES = {
 }
 
 
+RISK_NOTE = ("\nLow-risk actions (sharing a link with yourself, copying, liking, subscribing, saving, menus) run "
+             "without asking; the phone decides what needs the owner's confirmation. Don't ask the owner to confirm "
+             "them yourself.\n")
+
+
 def mode_notes(mode: str) -> str:
-    return MODE_NOTES.get(mode, "")
+    return MODE_NOTES.get(mode, "") + (RISK_NOTE if mode in ("auto", "trusted", "plan") else "")

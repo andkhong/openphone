@@ -338,3 +338,27 @@ def test_the_dashboard_offers_also_allow_purchases_off_by_default(hosted):
     assert "Also allow purchases" in page and "allow_money: true" in page
     assert "let neverMoney = false;" in page  # unchecked by default, and reset after each request
     assert "including purchases" in page  # the chip and banner say so while it's on
+
+
+def test_permission_prompt_defaults_from_the_dashboard(hosted):
+    """Tightening a permission-dialog default applies at once (and goes to the phone); allowing more waits for
+    the phone's screen lock."""
+    h = hosted
+    dev = h.ids.a1
+    assert settings_of(h, dev)["permission_prompts"]["location"] == "once"
+    r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json={"permission_prompts": {"camera": "deny"}})
+    assert r.status_code == 200 and r.json()["settings"]["permission_prompts"]["camera"] == "deny"
+    assert wait_for(lambda: any((m.get("permission_prompts") or {}).get("camera") == "deny"
+                                for m in h.pa1.permission_pushes))
+    r = h.alice.patch(f"/api/devices/app-{dev}/permissions",
+                      json={"permission_prompts": {"location": "while_using", "location_accuracy": "precise"}})
+    assert r.status_code == 202
+    assert wait_for(lambda: any(q.get("kind") == "mode_change" for q in h.pa1.approval_requests))
+    request = next(q for q in h.pa1.approval_requests if q["kind"] == "mode_change")
+    assert "precise location" in request["question"]
+    assert settings_of(h, dev)["permission_prompts"]["location"] == "once"
+    h.pa1.send(signed(h.signers.a1, request))
+    assert wait_for(lambda: settings_of(h, dev)["permission_prompts"]["location"] == "while_using")
+    r = h.alice.patch(f"/api/devices/app-{dev}/permissions", json={"permission_prompts": {"location": "always"}})
+    assert r.status_code == 400
+    assert "Permission prompts" in h.alice.get("/phones").text

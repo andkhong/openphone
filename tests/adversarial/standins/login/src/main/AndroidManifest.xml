@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A login form: a native username + password form, and a WebView login page (for autofill into a WebView). -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <application android:label="Example Login" android:theme="@android:style/Theme.DeviceDefault.Light">
+        <activity android:name=".MainActivity" android:exported="true"
+            android:windowSoftInputMode="stateHidden|adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".WebLoginActivity" android:exported="true"
+            android:windowSoftInputMode="adjustResize" />
+        <activity android:name=".LocationActivity" android:exported="true" />
+        <!-- Security review C, H1: a fake permission title drawn by the app above a real contacts dialog. -->
+        <activity android:name=".SpoofActivity" android:exported="true" />
+        <!-- A window hidden from accessibility services (Android 14+): the gatekeeper's unknown_window case. -->
+        <activity android:name=".HiddenActivity" android:exported="true" />
+    </application>
+</manifest>

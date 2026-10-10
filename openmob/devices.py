@@ -13,6 +13,8 @@ from . import permissions as perm
 from .config import Config
 from .phone.adb import AdbError, PhoneDriver
 from .phone.approval_keys import action_digest
+
+NO_ANSWER = "no answer"  # a phone prompt that ended without the owner deciding (not a denial)
 from .phone.apps import DEFAULT_LABEL_CACHE
 from .phone.base import Device, DeviceError
 from .phone.remote import PhoneLink, RemoteDriver
@@ -78,6 +80,11 @@ class DeviceManager:
         self.phone_stop_listeners: list = []
         # open approval id → {session (the acting phone), task_id, question, who, sent (phones asked)}
         self.approvals: dict[str, dict] = {}
+        # Gatekeeper phones own approval (docs/design/phone-gatekeeper.md, 2.8): (session id, approval id) -> the
+        # phone's last gate_event state, and the ids already acted on (a yes re-sends the call at most once).
+        self.gate_states: dict[tuple[str, str], str] = {}
+        self.gate_answered: set[tuple[str, str]] = set()
+        self.gate_timeout = 130.0  # seconds: the phone expires a prompt after 2 min
         # Every open socket per phone (session id → links). Exactly one is live (session.link); any
         # other is closed as soon as a newer one attaches, and unpair / re-pair close them all.
         self.links: dict[str, set[PhoneLink]] = {}
@@ -293,6 +300,10 @@ class DeviceManager:
         if who and started and session.coordinator.current_task == task_id:
             session.controller = (task_id, who["name"])  # the API task just started
             self._post(session, {"type": "event", "kind": "controller", "message": who["name"]})
+        approval = data.get("approval") if isinstance(data.get("approval"), dict) else {}
+        if entry["kind"] == "question" and data.get("confirm") and approval.get("approver") == "phone":
+            self._gate_question(session, task_id, approval)  # the phone asks its owner itself: no approval_request
+            return
         if entry["kind"] == "question" and data.get("confirm") and (who is None or who["human"]):
             self._ask_owner(session, task_id, entry["message"], who, data.get("approval"))
 
@@ -311,6 +322,8 @@ class DeviceManager:
             return False  # fail closed
 
     def _approval_targets(self, acting: Session) -> list[Session]:
+        if getattr(acting.driver, "gatekeeper", False):
+            return [acting] if acting.link else []  # D10: only the acting phone, until cross-device trust ships
         return [s for s in list(self.sessions.values())
                 if s.link and s.account_id == acting.account_id and self._may_answer(s, acting)]
 
@@ -465,6 +478,80 @@ class DeviceManager:
             acting.coordinator.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
             acting.coordinator.answer(task_id, "no")
 
+    # --- gatekeeper phones: the phone asks its owner itself -------------------------------
+
+    def _gate_question(self, session: Session, task_id: str, approval: dict) -> None:
+        """The agent waits on the phone's own prompt (gate_needs_approval). Nothing is sent to the phone: it is
+        already asking. The owner's other phones get a notice without an Approve button (D10)."""
+        approval_id = str(approval.get("approval_id") or "")
+        key = (session.info.id, approval_id)
+        for other in list(self.sessions.values()):
+            if other is not session and other.link and other.account_id == session.account_id:
+                self._post(other, {"type": "event", "kind": "status",
+                                   "message": f"{session.info.model} needs your approval on that phone."})
+        state = self.gate_states.get(key)
+        if state is not None:  # the phone answered before the question went up
+            self._answer_gate(session, task_id, approval_id, state)
+            return
+
+        def expire() -> None:
+            self._answer_gate(session, task_id, approval_id, "expired")
+        timer = threading.Timer(self.gate_timeout, expire)
+        timer.daemon = True
+        timer.start()
+
+    def gate_event(self, session: Session, message: dict) -> None:
+        """The phone's prompt changed state (pending | approved | denied | expired). Only the acting phone's own
+        events count, and each approval id is acted on once (a replayed event does nothing)."""
+        approval_id = str(message.get("approval_id") or "")
+        state = str(message.get("state") or "")
+        if not approval_id or state not in ("pending", "approved", "denied", "expired"):
+            return
+        key = (session.info.id, approval_id)
+        if state == "pending":
+            return
+        self.gate_states[key] = state
+        while len(self.gate_states) > 500:
+            self.gate_states.pop(next(iter(self.gate_states)))
+        c = session.coordinator
+        details = c.question_details or {}
+        if details.get("approver") == "phone" and details.get("approval_id") == approval_id and c.current_task:
+            self._answer_gate(session, c.current_task, approval_id, state)
+
+    def _answer_gate(self, session: Session, task_id: str, approval_id: str, state: str) -> None:
+        key = (session.info.id, approval_id)
+        c = session.coordinator
+        details = c.question_details or {}
+        if key in self.gate_answered or details.get("approval_id") != approval_id:
+            return
+        self.gate_answered.add(key)
+        if len(self.gate_answered) > 1000:
+            self.gate_answered.clear()
+        if state == "approved":
+            c.answer(task_id, "yes")
+        elif state == "expired":
+            # Nobody decided (the prompt timed out, or the system interrupted it and it was never answered): not a no.
+            c.event("status", "No answer on the phone in time, so I won't do it.", task=task_id)
+            c.answer(task_id, NO_ANSWER)
+        else:
+            c.answer(task_id, "no")
+            if state == "denied":
+                self.phone_stopped(session, [task_id], "denied")
+
+    def owner_dialog(self, session: Session, message: dict) -> None:
+        """A system dialog the phone can't read is waiting for the owner (the task pauses), or it closed."""
+        if hasattr(session.driver, "on_owner_dialog"):
+            session.driver.on_owner_dialog(message)
+
+    def device_lock(self, session: Session, message: dict) -> None:
+        """The phone locked mid-task (a secure lock: only the owner can open it), or the owner unlocked it."""
+        driver = session.driver
+        if hasattr(driver, "on_device_lock"):
+            driver.on_device_lock(message)
+        if session.coordinator.current_task:
+            session.coordinator.event("status", "Unlock your phone to continue." if message.get("locked")
+                                      else "The phone is unlocked. Carrying on.")
+
     # --- the owner stopping work from the phone ----------------------------------------
 
     def phone_stop_targets(self, session: Session) -> list[str]:
@@ -579,7 +666,8 @@ class DeviceManager:
                   "who": {"name": requester, "human": True}, "sent": set(), "kind": "mode_change", "details": {},
                   "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
                                                                           if k in ("default_mode", "ceiling", "never",
-                                                                                   "allow_money")}}}
+                                                                                   "allow_money", "permission_prompts",
+                                                                                   "everyday")}}}
         with self._approvals_lock:
             older = [(a, r) for a, r in self.approvals.items()
                      if r.get("kind") == "mode_change" and r["session"] is session]
@@ -646,7 +734,10 @@ class DeviceManager:
         settings = self.permission_settings(session.info.id)
         self._post(session, {"type": "permissions", "default_mode": settings["default_mode"],
                              "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"],
-                             "never_money": settings["never_money"]})
+                             "never_money": settings["never_money"],
+                             # The phone takes only the tightenings from this (its loosenings are signed on it).
+                             "permission_prompts": settings.get("permission_prompts") or {},
+                             "everyday": bool(settings.get("everyday"))})
 
     def phone_turned_off_never(self, session: Session) -> None:
         """"Turn off" on the phone: back to auto. A tightening, so it needs no signature."""
@@ -660,6 +751,7 @@ class DeviceManager:
         coordinator.device_model = info.model
         coordinator.question_timeout = float(getattr(self.cfg, "question_timeout_seconds", 300) or 0)
         coordinator.permissions_for = lambda mode, sid=info.id: self.task_permissions(sid, mode)
+        coordinator.requester_for = lambda task_id: (self._requester(task_id) or {}).get("name")
         cache = Path(DEFAULT_LABEL_CACHE).with_name(f"labels-{info.id}.json")
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:

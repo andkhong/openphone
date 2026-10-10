@@ -14,13 +14,15 @@ import time
 import uuid
 
 from .adb import Screenshot, UIElement
-from .base import CachedScreenshots, DeviceError, PhoneTimeout
+from .base import CachedScreenshots, DeviceError, GateRefused, OwnerDialog, PhoneLocked, PhoneTimeout
 from .protocol import METHODS, decode_element, decode_screenshot
 
 # Calls that only read, so one cut off by a dropped connection can be asked again after the
 # phone reconnects. Anything that acts (tap, type, launch…) is never repeated: it may have happened.
 REPEATABLE = {"screenshot", "ui_elements", "current_app", "launchable_packages", "app_labels", "wake_unlock", "wait_idle",
               "resolve_url", "wait_for"}
+# Calls the phone's gatekeeper judges as actions (they carry the task's mode, task id and the server's hint).
+GATED = {"tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "open_settings"}
 
 
 class PhoneLink:
@@ -88,6 +90,13 @@ class PhoneLink:
         finally:
             self._pending.pop(call_id, None)
         if not reply.get("ok"):
+            code = reply.get("code")
+            if code == "phone_locked":
+                raise PhoneLocked.from_reply(reply)
+            if code == "needs_owner_dialog":
+                raise OwnerDialog.from_reply(reply)
+            if isinstance(code, str) and code:  # the gatekeeper refused it, with a stable code
+                raise GateRefused.from_reply(reply)
             raise DeviceError(reply.get("error") or f"{method} failed on the phone")
         return reply.get("result")
 
@@ -131,6 +140,90 @@ class RemoteDriver(CachedScreenshots):
         self._init_screenshot_cache()
         self._reconnect = threading.Condition()
         self._wait_until: float | None = None  # monotonic deadline while the phone may come back
+        # Gatekeeper phones (hello capability "gatekeeper", docs/phone-protocol.md): the phone owns approval.
+        self.gate_mode: str | None = None  # the task's permission mode, sent with each act call (it can only tighten)
+        self.gate_task: str = ""
+        self.gate_task_text: str = ""  # the task's request, for the phone's just-in-time task prompt
+        self.gate_task_source: str = ""  # who asked (shown as "Server says")  # the task id, sent with act calls (a purchase flow's permit is per task)
+        self._gate_hint: str = ""  # the server's own caution for the next act call (Agent._guard)
+        # (GateRefused) -> bool: wait for the owner's answer on the phone (the agent sets it). True: re-send once.
+        self.gate_approver = None
+        # (PhoneLocked) -> bool: pause until the owner unlocks (the agent sets it). True: unlocked in time.
+        self.lock_waiter = None
+        # (OwnerDialog) -> bool: pause until the owner answers a system dialog the phone can't read. True: it closed.
+        self.dialog_waiter = None
+        self.owner_dialog: str | None = None  # the open dialog's message, as the phone pushed it (owner_dialog)
+        self.lock_state: dict | None = None  # {"locked", "secure"} as the phone last pushed it (device_lock)
+        self._lock_changed = threading.Condition()
+
+    @property
+    def gatekeeper(self) -> bool:
+        """The phone enforces the gatekeeper: refusals come back with codes, and it asks its owner itself."""
+        return "gatekeeper" in self.capabilities
+
+    def task_grant(self, task: str, text: str, source: str) -> bool:
+        """Task approval: ask the owner, on the phone, to approve this task once (the phone words the prompt from the
+        request). True: granted. Raises GateRefused (gate_denied: declined; gate_no_answer) otherwise. False: this
+        phone's app can't (no "task_grant" capability)."""
+        if not self.gatekeeper or "task_grant" not in self.capabilities:
+            return False
+        result = self._call("task_grant", task=task, text=text, source=source) or {}
+        return bool(result.get("granted"))
+
+    def gate_hint(self, text: str) -> None:
+        """The server's checks found the next act risky: the phone asks (one prompt covering both detectors)."""
+        self._gate_hint = " ".join((text or "").split())[:200]
+
+    def on_device_lock(self, message: dict) -> None:
+        """The phone pushed its lock state (device_lock): a secure lock mid-task, or the owner unlocked."""
+        with self._lock_changed:
+            self.lock_state = {"locked": bool(message.get("locked")), "secure": bool(message.get("secure", True))}
+            self._lock_changed.notify_all()
+
+    def on_owner_dialog(self, message: dict) -> None:
+        """The phone pushed owner_dialog: a system dialog it can't read is waiting for the owner, or it closed."""
+        with self._lock_changed:
+            self.owner_dialog = str(message.get("message") or "A system dialog needs your answer on the phone.") \
+                if message.get("open") else None
+            self._lock_changed.notify_all()
+
+    def wait_owner_dialog(self, timeout: float) -> bool:
+        """Block until the phone says the dialog closed (True), or `timeout`."""
+        deadline = time.monotonic() + timeout
+        with self._lock_changed:
+            while self.owner_dialog is not None:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._lock_changed.wait(min(remaining, 2.0))
+        return True
+
+    @property
+    def locked(self) -> bool:
+        # Any lock the phone reports mid-task pauses the task: a secure one only the owner can open, and a swipe one
+        # after the owner pressed power (the phone doesn't wake and unlock behind their back).
+        state = self.lock_state
+        return bool(state and state["locked"])
+
+    def wait_unlocked(self, timeout: float) -> bool:
+        """Block until the phone says it's unlocked (or, for a phone that doesn't push, device_state says so)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            with self._lock_changed:
+                if self.lock_state is not None and not self.locked:
+                    return True
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._lock_changed.wait(min(remaining, 2.0))
+            if self.lock_state is None or "device_lock" not in self.capabilities:
+                try:
+                    state = self.device_state()
+                except DeviceError:
+                    state = None
+                if state is not None and not (state["locked"] and state["secure"]):
+                    self.on_device_lock({"locked": False})
+                    return True
 
     def attach(self, link: PhoneLink) -> None:
         """Swap in a new connection after the phone reconnects; calls waiting for it go ahead."""
@@ -160,6 +253,51 @@ class RemoteDriver(CachedScreenshots):
             return self.link
 
     def _call(self, method: str, _wait: bool = True, **params):
+        """One call on the phone. On a gatekeeper phone an act call carries the task's mode (and the server's
+        hint); `gate_needs_approval` waits for the owner's answer on the phone and then re-sends the identical
+        call once; `phone_locked` pauses until the owner unlocks (the call is not repeated: the screen moved)."""
+        if self.gatekeeper and method in GATED:
+            if self.gate_mode:
+                params["mode"] = self.gate_mode
+            if self.gate_task:
+                params["task"] = self.gate_task
+            if self.gate_task_text and "task_grant" in self.capabilities:
+                params["task_text"], params["task_source"] = self.gate_task_text[:300], self.gate_task_source[:60]
+            if self._gate_hint:
+                params["hint"], self._gate_hint = self._gate_hint, ""
+        try:
+            return self._call_once(method, _wait, **params)
+        except OwnerDialog as exc:
+            if self.dialog_waiter is None:
+                raise
+            if self.owner_dialog is None:
+                self.on_owner_dialog({"open": True, "message": str(exc)})
+            if self.dialog_waiter(exc):
+                raise DeviceError("A system dialog was up, so this didn't happen. The owner answered it: look at "
+                                  "the screen again before acting.") from None
+            raise
+        except PhoneLocked as exc:
+            if self.lock_waiter is None:
+                raise
+            self.on_device_lock({"locked": True, "secure": True})
+            if self.lock_waiter(exc):
+                raise DeviceError("The phone locked before this ran, so it didn't happen. It's unlocked now: look at "
+                                  "the screen again before acting.") from None
+            raise
+        except GateRefused as exc:
+            if exc.code != "gate_needs_approval" or self.gate_approver is None:
+                raise
+            verdict = self.gate_approver(exc)
+            if verdict is True or verdict == "yes":
+                return self._call_once(method, _wait, **params)  # at most once per approval
+            if verdict == "no_answer":
+                raise GateRefused("gate_no_answer", "The owner didn't answer the phone's prompt in time, so this "
+                                  "didn't happen (they made no decision). Don't retry it now; call done or ask them.",
+                                  exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
+            raise GateRefused("gate_denied", "The owner declined this on the phone. Don't do it; pick another "
+                              "approach or call done.", exc.rule, exc.package, exc.approval_id, kind=exc.kind) from None
+
+    def _call_once(self, method: str, _wait: bool = True, **params):
         """One call on the phone. While it's reconnecting, wait for it (`_wait`, the agent's calls)."""
         while True:
             link = self._usable_link(_wait)

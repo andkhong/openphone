@@ -84,16 +84,18 @@ def test_risky_tap_needs_confirmation(tmp_path):
     assert result["is_error"] and "did not approve" in result["content"][0]["text"]
 
 
-def test_ask_user_yes_pre_approves_next_risky_tap(tmp_path):
-    io = RecordingIO(answers=["yes please"])
+def test_an_answer_to_ask_user_never_approves_the_next_risky_tap(tmp_path):
+    # Security review 2026-10-09: an API caller can answer ask_user in plain text, so a "yes" there skipped the
+    # owner's approval of the next risky action, purchases included. Only the owner's approval prompt approves.
+    io = RecordingIO(answers=["yes please", "no"])
     agent, _, driver = make_agent([
         [tool_use("ask_user", "a", question="Send the message?")],
         [tool_use("tap", "b", x=10, y=10, target="Send button")],
-        [tool_use("done", "c", summary="Sent.", success=True)],
+        [tool_use("done", "c", summary="Not sent.", success=False)],
     ], io=io, tmp_path=tmp_path)
-    agent.run("text mom hi")
-    assert io.questions == ["Send the message?"]
-    assert ("tap", 20, 20) in driver.actions
+    agent.run("open my messages")
+    assert io.questions[0] == "Send the message?" and len(io.questions) == 2  # the owner was asked as well
+    assert ("tap", 20, 20) not in driver.actions
 
 
 def test_unknown_app_tells_model_to_use_drawer(tmp_path):

@@ -22,6 +22,9 @@
   .phones .meta { color: var(--muted); font-size: 13px; }
   .phones li.empty { color: var(--muted); font-size: 14px; }
   .note { margin-top: 14px; font-size: 13px; color: var(--muted); }
+  .prompts { margin-top: 28px; }
+  .prompts .grid { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(150px, 1.4fr); gap: 8px 14px; align-items: center; margin: 12px 0; }
+  .prompts select { width: 100%; }
   .head-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 </style>
 </head>
@@ -42,6 +45,15 @@
     <ul class="phones" id="phones" aria-live="polite"><li class="empty">Loading…</li></ul>
     <p class="error" id="err" role="alert"></p>
     <p class="note">Each pairing and removal is recorded in your account's log (Developer › Logs).</p>
+    <section class="prompts" aria-labelledby="promptsTitle">
+      <h2 id="promptsTitle">Permission prompts</h2>
+      <p class="note">When the app a task is using asks for a permission ("Allow Kalshi to use your location?"), the agent answers by these settings with no prompt: by default "Only this time" (or the narrowest grant the dialog offers), notifications allowed, location approximate. Never "Allow all the time". Another app's request asks you on the phone. Allowing more (While using the app, Precise) needs your approval on that phone, with its screen lock; tightening is immediate.</p>
+      <label class="note" for="promptPhone">Phone</label>
+      <select id="promptPhone"><option value="">Choose an online phone…</option></select>
+      <div class="grid" id="promptRows"></div>
+      <button class="btn btn-primary" type="button" id="promptSave" hidden>Save</button>
+      <p class="note" id="promptMsg" role="status"></p>
+    </section>
   </div>
 </main>
 <script>
@@ -104,8 +116,74 @@ async function load() {
     }) : [el("li", "empty", "No phones paired yet.")]));
   } catch (e) { $("err").textContent = e.message; }
 }
+const PROMPT_TYPES = [
+  ["notifications", "Notifications", [["deny", "Don't allow"], ["allow", "Allow"]]],
+  ["location", "Location", null], ["location_accuracy", "Location accuracy", [["approximate", "Approximate"], ["precise", "Precise"]]],
+  ["camera", "Camera", null], ["microphone", "Microphone", null], ["contacts", "Contacts", null],
+  ["photos", "Photos and media", null], ["phone", "Phone calls", null], ["sms", "Text messages", null],
+  ["calendar", "Calendar", null], ["nearby_devices", "Nearby devices", null],
+  ["physical_activity", "Physical activity", null], ["body_sensors", "Body sensors", null],
+];
+const GRANTS = [["ask", "Ask me"], ["once", "Only this time"], ["while_using", "While using the app"], ["deny", "Don't allow"]];
+let promptSettings = null;
+
+async function loadPrompts() {
+  const id = $("promptPhone").value;
+  $("promptRows").replaceChildren();
+  $("promptSave").hidden = true;
+  $("promptMsg").textContent = "";
+  if (!id) return;
+  try {
+    const view = await api(`/api/devices/${encodeURIComponent(id)}/permissions`);
+    promptSettings = view.permission_prompts || {};
+    for (const [key, label, options] of PROMPT_TYPES) {
+      const sel = el("select");
+      sel.id = `prompt-${key}`;
+      for (const [value, text] of options || GRANTS) sel.append(Object.assign(el("option", "", text), { value }));
+      sel.value = promptSettings[key] || (options ? options[0][0] : "once");
+      const lab = el("label", "", label);
+      lab.htmlFor = sel.id;
+      $("promptRows").append(lab, sel);
+    }
+    $("promptSave").hidden = false;
+  } catch (e) { $("promptMsg").textContent = e.message; }
+}
+
+async function savePrompts() {
+  const id = $("promptPhone").value;
+  const changed = {};
+  for (const [key] of PROMPT_TYPES) {
+    const v = $(`prompt-${key}`).value;
+    if (v !== promptSettings[key]) changed[key] = v;
+  }
+  if (!Object.keys(changed).length) { $("promptMsg").textContent = "Nothing changed."; return; }
+  try {
+    const res = await fetch(`/api/devices/${encodeURIComponent(id)}/permissions`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ permission_prompts: changed }) });
+    const body = await res.json().catch(() => ({}));
+    if (res.status === 202) $("promptMsg").textContent = "Approve this on the phone, with its screen lock. It applies once you do.";
+    else if (res.ok) { $("promptMsg").textContent = "Saved."; promptSettings = body.settings?.permission_prompts || promptSettings; }
+    else $("promptMsg").textContent = body.detail || res.statusText;
+  } catch (e) { $("promptMsg").textContent = e.message; }
+}
+
+async function promptPhones() {
+  try {
+    const online = (await api("/api/devices")).filter((d) => d.connection === "app" && d.online);
+    const sel = $("promptPhone");
+    const keep = sel.value;
+    sel.replaceChildren(Object.assign(el("option", "", online.length ? "Choose an online phone…" : "No phone online"), { value: "" }),
+      ...online.map((d) => Object.assign(el("option", "", d.name || d.model), { value: d.id })));
+    if (online.some((d) => d.id === keep)) sel.value = keep;
+    else if (keep) loadPrompts();
+  } catch (e) { /* the list above shows the error */ }
+}
+$("promptPhone").onchange = loadPrompts;
+$("promptSave").onclick = savePrompts;
+
 load();
-setInterval(load, 5000);
+promptPhones();
+setInterval(() => { load(); promptPhones(); }, 5000);
 </script>
 </body>
 </html>

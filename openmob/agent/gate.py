@@ -167,6 +167,68 @@ SAFE_SCHEMES = {"http", "https", "mailto", "tel", "geo", "sms", "smsto", "market
 DANGEROUS_SCHEMES = ("javascript", "vbscript", "intent", "file", "content", "data", "android-app", "jar")
 
 
+PRICE_ONLY_MONEY = ("subscribe", "join")  # money only with a price nearby (YouTube's Subscribe is free)
+
+# Installing from the Play Store (owner, 2026-10-09): a free install runs unasked only when the request names the app
+# on the store page; any other install asks, and is refused under Don't ask. A screen, an ad or a guessed package id
+# can't pick what gets installed.
+INSTALL_WORDS = re.compile(r"^\s*(install|get|instalar|installieren|installer|installa)\b", re.I)
+_TITLE_SKIP = re.compile(r"^(install|open|uninstall|update|cancel|more|search|get|share|wishlist|play|buy|"
+                         r"contains ads|in-app purchases|\d[\d.,]*\s*[kmb+]*.*|[\d.]+\s*★?.*)$", re.I)
+_GENERIC = {"app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
+            "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"}
+
+
+def is_install(text: str) -> bool:
+    """A Play Store install button's words ("Install", "Get")."""
+    return bool(INSTALL_WORDS.search(text or ""))
+
+
+def store_title(elements: list, button=None) -> str:
+    """The app's name on a Play Store page: the topmost text above the install button that isn't a button,
+    rating, count or badge. Empty when it can't be told."""
+    top = button.bounds[1] if button is not None else None
+    texts = [e for e in elements if e.text and len(e.text.strip()) >= 2 and not _TITLE_SKIP.match(e.text.strip())
+             and (top is None or e.bounds[3] <= top)]
+    return min(texts, key=lambda e: (e.bounds[1], e.bounds[0])).text.strip() if texts else ""
+
+
+def names_app(request: str, title: str) -> bool:
+    """The request names the store page's app: one of its title's distinctive words is a word of the request."""
+    words = {w for w in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(w) >= 3 and w not in _GENERIC}
+    asked = set(re.findall(r"[a-z0-9]+", (request or "").lower()))
+    return bool(words & asked)
+SELF_NAMES = ["note to self", "notes to self", "message yourself", "saved messages"]
+LINK = re.compile(r"(?i)https?://|www\.|youtu\.be/|\b[a-z0-9-]+\.(?:com|be|org|net|io|tv|app|co)/")
+
+
+def is_self_label(text: str, owner: list[str] | None = None) -> bool:
+    """An app's self chat or the owner's own name (with an optional "(You)"). Nothing else ending in "you"."""
+    toks = re.findall(r"[a-z0-9]+", (text or "").lower())
+    if not toks:
+        return False
+    if any(toks == re.findall(r"[a-z0-9]+", s) for s in SELF_NAMES):
+        return True
+    names = [re.findall(r"[a-z0-9]+", n.lower()) for n in owner or [] if n]
+    return any(n and (toks == n or toks == n + ["you"]) for n in names)
+
+
+def to_self(target: str, obs, owner: list[str] | None = None) -> bool:
+    """Only a public-link share: the target itself is you (a share target) while a link is on screen. A chat's
+    title never counts (anyone can name a group "Note to self")."""
+    elements = getattr(obs, "elements", None) or []
+    return is_self_label(target, owner) and any(LINK.search(f"{e.text} {e.desc}") for e in elements)
+
+
+VOLATILE = re.compile(r"\d+(?:[.,:]\d+)*")
+
+
+def volatile(text: str | None) -> str:
+    """A label with its volatile numbers blanked (odds, prices, counts, times): the same element across reads of a
+    live screen. The phone's gatekeeper blanks numbers the same way for its target fingerprints."""
+    return VOLATILE.sub("#", text or "")
+
+
 def readable_id(resource_id: str) -> str:
     """A resource id as words: "buy_now_button" -> "buy now button", "sendButton" -> "send Button"."""
     rid = (resource_id or "").rsplit("/", 1)[-1]

@@ -1,0 +1,10334 @@
+[
+ {
+  "name": "meta calls always pass",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "device_state",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "wait_idle",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "unknown methods are refused",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "run_shell",
+     "params": {}
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unknown_method"
+    }
+   }
+  ]
+ },
+ {
+  "name": "reads of a blocked app are blacked out",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "add to cart, search and scrolling don't ask",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 500,
+      "y": 170
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 2200,
+      "x2": 540,
+      "y2": 700,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_search",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.amazon.mShop.android.shopping"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://example.com/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "everyday settings don't ask",
+  "tags": [
+   "friction",
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_main",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_internet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_internet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_bluetooth",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a purchase is one prompt: Buy now asks, Place your order is covered",
+  "tags": [
+   "friction",
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "allow",
+     "rule": "permit:purchase_flow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "terminal"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase follow-up ends after 3 minutes",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 181000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase follow-up ends at an app switch",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 300,
+      "y": 160
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a new flow-starting word always asks again",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit is one-shot",
+  "tags": [
+   "permits",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit expires after 60 s on the monotonic clock",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "advance_ms": 61000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a badly signed approval mints nothing",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unanswered prompt expires after 2 minutes",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "advance_ms": 121000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permit dies if the target changed before the gesture",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed"
+    },
+    "reverify_screen": "amazon_checkout"
+   }
+  ]
+ },
+ {
+  "name": "a non-risky tap whose target became risky is stopped",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1610
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed"
+    },
+    "reverify_screen": "amazon_checkout"
+   }
+  ]
+ },
+ {
+  "name": "a risky action needs a quiet screen",
+  "tags": [
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    },
+    "reverify_screen": "whatsapp_chat_busy"
+   }
+  ]
+ },
+ {
+  "name": "an instruction typed on the phone exempts one send",
+  "tags": [
+   "friction"
+  ],
+  "steps": [
+   {
+    "instruction": "Send hi to Mom on WhatsApp"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "requested"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a requested purchase still asks",
+  "tags": [],
+  "steps": [
+   {
+    "instruction": "buy the usb c cable"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "always allow sends in WhatsApp",
+  "tags": [
+   "grants"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "grant"
+    }
+   },
+   {
+    "advance_ms": 604801000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a grant survives a reboot with its remaining time",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 86400000
+   },
+   {
+    "reboot": {
+     "saved": true,
+     "elapsed_after": 5000
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow",
+     "rule": "grant"
+    }
+   },
+   {
+    "advance_ms": 518400000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a grant without saved remaining time expires at reboot",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "reboot": {
+     "saved": false,
+     "elapsed_after": 5000
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "setting the wall clock back extends nothing",
+  "tags": [
+   "grants",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "advance_ms": 604801000
+   },
+   {
+    "set_wall_ms": 1000000000000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "ask mode asks for every changing act, not scrolls or BACK",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "ask",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "ask",
+      "x1": 540,
+      "y1": 2200,
+      "x2": 540,
+      "y2": 700,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "never without a signature is auto",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "allow_money": true,
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "signed never runs risky actions but refuses money",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:money"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "amazon_autofill",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:autofill"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:settings_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "signed never with allow purchases runs purchases",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000,
+     "allow_money": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_security",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "never ends on the monotonic clock and is capped at 24 h",
+  "tags": [
+   "modes",
+   "clock"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 2592000000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "advance_ms": 86401000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a requested mode can only tighten the ceiling",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "ceiling",
+     "mode": "ask"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "trusted",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step"
+    }
+   }
+  ]
+ },
+ {
+  "name": "stop drops never at once",
+  "tags": [
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "stop": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "settings deep links: everyday pages open, date & time asks, blocked apps' pages and unknown keys are refused",
+  "tags": [
+   "settings",
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "wifi"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_notifications",
+      "package": "com.android.chrome"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details",
+      "package": "com.amazon.mShop.android.shopping"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "date_time"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details",
+      "package": "com.chase.sig.android"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_notifications",
+      "package": "dev.openmob.companion"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "app_details"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_package"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "accessibility"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_unknown_page"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "page": "android.settings.ACCESSIBILITY_SETTINGS"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:settings_unknown_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "settings deep links under Don't ask and Ask every step",
+  "tags": [
+   "settings",
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "never",
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "never",
+      "page": "date_time"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:settings_page"
+    }
+   },
+   {
+    "call": {
+     "method": "open_settings",
+     "params": {
+      "mode": "ask",
+      "page": "display"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "step",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "blocked apps: launching, tapping and links",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.chase.sig.android"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://www.chase.com/"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "dev.openmob.companion"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.google.android.packageinstaller"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "URL schemes and resolved targets",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "intent://scan/#Intent;scheme=zxing;end"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:url_scheme"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "upi://pay?pa=x@y"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "javascript:alert(1)"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:5551234"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:*21*5551234%23"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:tel_handler"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "market://details?id=com.chess"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "https://www.amazon.com/dp/B0"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "typing: passwords, OTPs, schemes",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hunter2"
+     }
+    },
+    "screen": "login_form",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_password_field"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "javascript:x"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:typed_scheme"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "usb c cable"
+     }
+    },
+    "screen": "chrome_search",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "ENTER rules",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_url_js",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "chrome_url_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "web_checkout_enter",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Settings tiers",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1320
+     }
+    },
+    "screen": "settings_main",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_security",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_dev",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_keyboards",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "samsung_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_datetime",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_bluetooth",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_system",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   }
+  ]
+ },
+ {
+  "name": "app info: force stop yes, clear storage asks, a blocked app's info refused",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "settings_app_info_amazon",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_app_info_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "permission dialogs: the task's app follows the settings, another app asks",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 100,
+      "y": 1900
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "permission_dialog_session",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1550
+     }
+    },
+    "screen": "permission_dialog_session",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1550
+     }
+    },
+    "screen": "permission_dialog_other",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "surfaces: OpenMob, keyguard, biometric prompt",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 700,
+      "y": 1650
+     }
+    },
+    "screen": "openmob_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_window"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 200,
+      "y": 1570
+     }
+    },
+    "screen": "keyguard_secure",
+    "expect": {
+     "decision": "refuse",
+     "code": "phone_locked"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 2000,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 250
+     }
+    },
+    "screen": "keyguard_swipe",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "wake_unlock",
+     "params": {}
+    },
+    "screen": "keyguard_secure",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 200,
+      "y": 2150
+     }
+    },
+    "screen": "biometric_prompt",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:prompt_surface"
+    }
+   }
+  ]
+ },
+ {
+  "name": "swipes and long presses are judged as taps",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1720,
+      "x2": 560,
+      "y2": 1725,
+      "duration_ms": 300
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1720,
+      "x2": 540,
+      "y2": 900,
+      "duration_ms": 60
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a long press on Buy now asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "duration_ms": 50,
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "slide to pay asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 60,
+      "y1": 1660,
+      "x2": 1000,
+      "y2": 1660,
+      "duration_ms": 400
+     }
+    },
+    "screen": "slide_to_pay",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "unlabeled taps in shopping apps ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 1000,
+      "y": 2340
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "rule": "risk:unlabeled"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1850
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "autofill and share sheets ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "amazon_autofill",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share"
+    }
+   }
+  ]
+ },
+ {
+  "name": "non-English shopping screens ask",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1860
+     }
+    },
+    "screen": "german_shop",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:language"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a server hint only adds caution",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "hint": "the agent thinks this pays",
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:server_hint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "deleting in Gmail asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 170
+     }
+    },
+    "screen": "gmail_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   }
+  ]
+ },
+ {
+  "name": "prompt rate limit: 6 asks per 10 minutes",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "resume": true
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:prompt_rate"
+    }
+   },
+   {
+    "advance_ms": 600000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "three denials suspend until the owner resumes",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:suspended"
+    }
+   },
+   {
+    "resume": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "act rate limit: burst 15",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:act_rate"
+    }
+   },
+   {
+    "advance_ms": 1000
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ],
+  "call_ms": 0
+ },
+ {
+  "name": "location by default: Approximate, then Only this time, no prompt",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Samsung's permission controller is read the same way",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "location_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "location_samsung",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_samsung",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "signed defaults: while using and precise",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location_accuracy",
+     "value": "precise"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "default once: only this time passes, while using asks",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a pre-selected Precise is not granted against an approximate setting",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a permission button the phone doesn't recognize asks",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_oem_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1100
+     }
+    },
+    "screen": "location_oem_unknown",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unsigned default changes nothing",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "never Allow all the time, whatever the setting",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_always_only",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:always"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_always_only",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Don't ask: only this time still passes, a wider grant is refused, deny wins",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:permission:camera"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "camera",
+     "value": "deny"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:camera:deny"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "camera_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "notifications: allowed by default, the owner's deny wins",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "notifications",
+     "value": "deny"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice"
+    }
+   }
+  ]
+ },
+ {
+  "name": "another app's location request asks even with a loose default",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "location",
+     "value": "while_using"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_other_app",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:other_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Always allow for Kalshi: a per-app override",
+  "tags": [
+   "permissions",
+   "grants"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid",
+    "grant": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "location_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "typing and ENTER into a focus the phone couldn't read are refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "focus_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "focus_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "otp_focus_unread",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a system dialog the phone can't read pauses for the owner",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1500
+     }
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "wake_unlock",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "hidden_permission_dialog",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "hidden_permission_samsung",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a touch where the phone sees no window is refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2000
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:no_window"
+    }
+   },
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "x": 540,
+      "y": 2000,
+      "duration_ms": 800
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 200
+     }
+    },
+    "screen": "partial_window",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "without the accessibility service every act is refused",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 200
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "launch_app",
+     "params": {
+      "package": "com.example.app"
+     }
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_unavailable"
+    }
+   },
+   {
+    "call": {
+     "method": "device_state",
+     "params": {}
+    },
+    "screen": "no_accessibility",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a focused Compose field missing from the walked tree is resolved from the live focus",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "On my way"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "compose_field",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:enter:messaging"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hunter2"
+     }
+    },
+    "screen": "compose_password",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_password_field"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "compose_otp",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "rule": "risk:otp_field"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_blocked",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_unknown_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "compose_unlisted_window",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:focus_unread"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4242"
+     }
+    },
+    "screen": "compose_webview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "rule": "risk:card_field"
+    }
+   }
+  ]
+ },
+ {
+  "name": "choosing a side on a live market doesn't ask, and odds ticking don't block it",
+  "tags": [
+   "risk",
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1260
+     }
+    },
+    "screen": "kalshi_market",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1260
+     }
+    },
+    "screen": "kalshi_market",
+    "expect": {
+     "decision": "allow"
+    },
+    "reverify_screen": "kalshi_market_tick"
+   }
+  ]
+ },
+ {
+  "name": "the commit asks; a tick elsewhere keeps the permit, a changed cost voids it",
+  "tags": [
+   "permits",
+   "toctou"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "rule": "risk:words:submit"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "allow"
+    },
+    "reverify_screen": "kalshi_ticket_odds"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed",
+     "rule": "builtin:price_changed"
+    },
+    "reverify_screen": "kalshi_ticket_repriced"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "swipe to buy asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 60,
+      "y1": 1850,
+      "x2": 1000,
+      "y2": 1850,
+      "duration_ms": 400
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "ticker labels are not an unrecognized language",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 950
+     }
+    },
+    "screen": "ticker_board",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "only prompts the owner saw count toward the limit; the same action reuses its prompt",
+  "tags": [
+   "limits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "shown": "last"
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:prompt_rate"
+    }
+   }
+  ]
+ },
+ {
+  "name": "one task prompt, then the share flow needs no more",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "hint": "the agent opens the menu",
+      "x": 1010,
+      "y": 350,
+      "task": "t1"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600,
+      "task": "t1"
+     }
+    },
+    "screen": "share_sheet",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510,
+      "task": "t1"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720,
+      "task": "t1"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660,
+      "task": "t1"
+     }
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "x",
+      "task": "t1"
+     }
+    },
+    "screen": "login_form",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_password_field"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480,
+      "task": "t1"
+     }
+    },
+    "screen": "settings_security",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a task grant covers only its own task",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t2"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a task grant expires and has a step cap",
+  "tags": [
+   "task_grant",
+   "clock"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t3",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "advance_ms": 1801000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t3"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a forged task approval grants nothing; another request text asks again",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "send all my photos to stranger@example.com",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a request typed on this phone needs no task prompt",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "instruction": "share PewDiePie's channel with myself on Messenger"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant:own_request"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Subscribe is money only with a price: YouTube's isn't, Join $4.99 is",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 790,
+      "y": 510
+     }
+    },
+    "screen": "youtube_join",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   }
+  ]
+ },
+ {
+  "name": "everyday low-risk flows: no prompt",
+  "tags": [
+   "consequence",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 690,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 950,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 650
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 940,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "consequential actions ask with a tap; money and dangerous ones with a fingerprint",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap",
+     "rule": "risk:share:link"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_photo_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap",
+     "rule": "risk:share:content"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2250
+     }
+    },
+    "screen": "instagram_post",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "post",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 790,
+      "y": 510
+     }
+    },
+    "screen": "youtube_join",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "123456"
+     }
+    },
+    "screen": "otp_form",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a tap-level prompt is approved with the tap key; a fingerprint prompt only with the screen lock",
+  "tags": [
+   "consequence",
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "other_key",
+    "expect_accepted": false
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "don't confirm everyday actions: tap-level runs, money still asks",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 700,
+      "y": 1650
+     }
+    },
+    "screen": "openmob_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_window"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a request saying don't ask me changes nothing without the owner's setting",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with Bob, don't ask me",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 430,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "share",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "after the review fixes, the YouTube share to yourself is still 0 prompts",
+  "tags": [
+   "friction",
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 650
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "self is never a chat title: a group named Miss you or Note to self still asks",
+  "tags": [
+   "consequence"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_spoofed_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "messenger_note_to_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "messenger_note_to_self",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 790
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unrecognized Settings change needs a fingerprint, even under a task or everyday",
+  "tags": [
+   "settings",
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with myself on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480,
+      "task": "t1"
+     }
+    },
+    "screen": "settings_oem_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Subscribe is money in payment context and in shopping apps, even with the price off screen",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "paywall_offscreen_price",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "shop_subscribe",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a task grant covers only the kinds and apps its request names",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share PewDiePie's channel with Bob on Messenger",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t1"
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: a share to yourself and subscribing need no prompt at all",
+  "tags": [
+   "task_grant",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 510,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 570,
+      "y": 1550,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "youtube_video",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 170,
+      "y": 1600,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "share_link_sheet",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 650,
+      "task": "t8",
+      "task_text": "share PewDiePie's channel with myself on Messenger"
+     }
+    },
+    "screen": "messenger_share_list",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: the first Send asks for the task once; the second message is covered",
+  "tags": [
+   "task_grant",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap",
+     "rule": "risk:task:words:send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "delete everything"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: money keeps its own fingerprint prompt at the commit",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1260,
+      "task": "t7",
+      "task_text": "place a $5 bet on Dun"
+     }
+    },
+    "screen": "kalshi_market",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660,
+      "task": "t7",
+      "task_text": "place a $5 bet on Dun"
+     }
+    },
+    "screen": "kalshi_ticket",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: a forged task approval is ignored; out-of-scope steps ask on their own",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "bad",
+    "expect_accepted": false
+   },
+   {
+    "approve": "last",
+    "sig": "other_key",
+    "expect_accepted": false
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 970,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "photo_viewer",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "just in time: a request typed on the phone needs no prompt",
+  "tags": [
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "instruction": "send Bob the channel link on Messenger"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250,
+      "task": "t9",
+      "task_text": "send Bob the channel link on Messenger"
+     }
+    },
+    "screen": "messenger_friend",
+    "expect": {
+     "decision": "allow",
+     "rule": "task_grant:own_request"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unreadable app window: taps refused, reads blacked out, no live view",
+  "tags": [
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "loading_unknown",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a tap the phone couldn't read to the end asks",
+  "tags": [
+   "risk"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1650
+     }
+    },
+    "screen": "deep_truncated",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "other",
+     "rule": "risk:truncated"
+    }
+   }
+  ]
+ },
+ {
+  "name": "any other action voids an approval",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 300,
+      "y": 160
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an approved Buy now that never ran starts no purchase flow",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase flow ends at a cart or checkout tap",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase flow ends at BACK",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "the purchase flow survives 2 other actions, not 3",
+  "tags": [
+   "permits"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 440
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 440
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "allow",
+     "rule": "permit:purchase_flow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 440
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 440
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 440
+     }
+    },
+    "screen": "amazon_product",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "amazon_checkout",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a fill grant binds to the focused field's app, never an in-app web page",
+  "tags": [
+   "grants"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "grant",
+     "kind": "fill",
+     "binding": "com.example.app",
+     "duration_ms": 86400000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "native_autofill",
+    "expect": {
+     "decision": "allow",
+     "rule": "grant"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1770
+     }
+    },
+    "screen": "inapp_webview_autofill",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "fill"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Build number and the VPN consent dialog ask",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_about",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_about",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 790,
+      "y": 1650
+     }
+    },
+    "screen": "vpn_consent",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   }
+  ]
+ },
+ {
+  "name": "another app's permission dialog asks even when it shares a word with the task's app",
+  "tags": [
+   "settings"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 560
+     }
+    },
+    "screen": "contacts_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1550
+     }
+    },
+    "screen": "permission_dialog_contacts_word",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: the Kalshi location dialog: Approximate, then Only this time, no prompt",
+  "tags": [
+   "permissions",
+   "ocr",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: wider grants and Precise ask; Don't allow passes; a tap off the buttons asks",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1100
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: notifications allowed for the task's app",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_notifications",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: Samsung's and the Spanish dialog read the same way",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_samsung",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location_es",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_es",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: another app's request asks (a tap), and is refused under Don't ask",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:other_app"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: never Allow all the time",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_location_always",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:always"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: low confidence or an unknown wording asks",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_blurry",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "advance_ms": 2000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_unknown_no_pkg",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_unknown_no_pkg",
+    "expect": {
+     "decision": "redact"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: a stale permission event over a newer window is not a dialog: unknown, blacked out",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_stale_event",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:unknown_window"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_stale_event",
+    "expect": {
+     "decision": "redact"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: the real Samsung notification dialog (Android 15, no window package, no event): shown, Allow tapped",
+  "tags": [
+   "permissions",
+   "ocr",
+   "real_device"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 600
+     }
+    },
+    "screen": "chess_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "ui_elements",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "stream_start",
+     "params": {}
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 538,
+      "y": 1895
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 541,
+      "y": 2045
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR: a refused Approximate tap isn't recorded: Only this time is still refused (B1)",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 280,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:location_accuracy"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_prompt_open",
+     "rule": "builtin:prompt_cooldown"
+    }
+   },
+   {
+    "advance_ms": 2000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ],
+  "call_ms": 200
+ },
+ {
+  "name": "OCR: without OCR the dialog still pauses for the owner; reads show it",
+  "tags": [
+   "permissions",
+   "ocr"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_unavailable",
+    "expect": {
+     "decision": "refuse",
+     "code": "needs_owner_dialog"
+    }
+   },
+   {
+    "call": {
+     "method": "screenshot",
+     "params": {}
+    },
+    "screen": "ocr_unavailable",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling an app: one tap-level prompt at the confirmation; Cancel is free",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap",
+     "rule": "risk:uninstall:installer"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 620,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling under a request that names it: the one prompt is the task prompt",
+  "tags": [
+   "uninstall",
+   "task_grant"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400,
+      "task": "u1",
+      "task_text": "uninstall chess.com"
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "level": "tap",
+     "rule": "risk:task:uninstall:installer"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400,
+      "task": "u1",
+      "task_text": "uninstall chess.com"
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling with Don't confirm everyday actions: no prompt",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "allow",
+     "rule": "everyday"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_unknown",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "uninstall",
+     "level": "tap",
+     "rule": "risk:uninstall:unknown"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling via app info: Uninstall opens the confirmation, which asks; Clear storage asks",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 900
+     }
+    },
+    "screen": "settings_app_info_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "level": "tap",
+     "rule": "risk:uninstall:app_info"
+    }
+   }
+  ]
+ },
+ {
+  "name": "uninstalling a bank app or OpenMob is refused",
+  "tags": [
+   "uninstall"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "uninstall_openmob",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_openmob",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:uninstall_protected"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_info_chase",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "installing an APK is still refused",
+  "tags": [
+   "uninstall",
+   "hard_deny"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 1400
+     }
+    },
+    "screen": "install_apk",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:installer"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 620,
+      "y": 1400
+     }
+    },
+    "screen": "install_apk",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:installer"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a lasting grant of a dangerous kind asks; the owner can sign persistent_grants: allow",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:contacts"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "nearby_kalshi_allow_only",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:nearby_devices"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "camera_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "permission_default",
+     "perm": "persistent_grants",
+     "value": "allow"
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "a free Play Store install the task names doesn't ask; a priced one is money",
+  "tags": [
+   "friction",
+   "money"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_paid",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an install the task's text doesn't name asks (owner, 2026-10-09); none at all (a drive session) asks",
+  "tags": [
+   "install"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install a flashlight app"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "level": "tap",
+     "rule": "risk:install:unnamed"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unnamed"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_flashlight_get",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t2",
+      "task_text": "get the Torchlight flashlight"
+     }
+    },
+    "screen": "play_store_flashlight_get",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "an unnamed install isn't covered by Don't confirm everyday actions, and is refused under Don't ask",
+  "tags": [
+   "install",
+   "modes"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "share a video"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 860
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:install:unnamed"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "BACK dismisses a permission dialog in every mode, never asked",
+  "tags": [
+   "permissions"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "notifications_kalshi",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "location_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "location_other_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "contacts_kalshi_allow_only",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "ask",
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "mode": "never",
+      "name": "BACK"
+     }
+    },
+    "screen": "samsung_notifications_real",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR H1: a permission-style title the app drew above the real dialog makes every grant ask",
+  "tags": [
+   "permissions",
+   "ocr",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_camera",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:camera"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_camera",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_camera_spoof",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "level": "tap",
+     "rule": "risk:permission:ocr_unsure"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_camera_spoof",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:ocr_unsure"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1765
+     }
+    },
+    "screen": "ocr_camera_spoof",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_camera_spoof_below",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:ocr_unsure"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_contacts_spoof",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:ocr_unsure"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR M3: an app-drawn Approximate outside the card is no card choice",
+  "tags": [
+   "permissions",
+   "ocr",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 550,
+      "y": 2275
+     }
+    },
+    "screen": "ocr_location_fake_approx",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:unknown"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "advance_ms": 2000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_fake_approx",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_permission_choice",
+     "rule": "permission:location_accuracy"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 800,
+      "y": 1285
+     }
+    },
+    "screen": "ocr_location_fake_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1635
+     }
+    },
+    "screen": "ocr_location_fake_approx",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "OCR M1: an approval binds the dialog's question; the same button under another question asks again",
+  "tags": [
+   "permissions",
+   "ocr",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_location_other",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:other_app"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1505
+     }
+    },
+    "screen": "ocr_contacts_other_swap",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "permission",
+     "rule": "risk:permission:other_app"
+    }
+   }
+  ]
+ },
+ {
+  "name": "M2: typing, ENTER and DELETE with no field the gate can judge are refused",
+  "tags": [
+   "hard_deny",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:no_field"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:no_field"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "DELETE"
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_unstable",
+     "rule": "builtin:no_field"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "BACK"
+     }
+    },
+    "screen": "kalshi_app",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "form_a",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "M2/L3: focus moving to another field before the text lands is refused",
+  "tags": [
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "hello"
+     }
+    },
+    "screen": "form_a",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed",
+     "rule": "builtin:field_changed"
+    },
+    "reverify_screen": "form_b"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "DELETE"
+     }
+    },
+    "screen": "form_a",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_screen_changed",
+     "rule": "builtin:field_changed"
+    },
+    "reverify_screen": "form_b"
+   }
+  ]
+ },
+ {
+  "name": "H2: placing a call asks; an MMI code asks with the screen lock; the dialer opening doesn't",
+  "tags": [
+   "calls",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:5551234"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "level": "tap",
+     "rule": "risk:call:dial"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 270,
+      "y": 2250
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 870,
+      "y": 1775
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 870,
+      "y": 1775
+     }
+    },
+    "screen": "dialer_google_code",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint",
+     "rule": "risk:call:mmi"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google_code",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint",
+     "rule": "risk:call:mmi"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google_mmi",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint",
+     "rule": "risk:call:mmi"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2231
+     }
+    },
+    "screen": "dialer_google_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "level": "tap",
+     "rule": "risk:call:dial"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_samsung",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_aosp",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "incall_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 190,
+      "y": 1775
+     }
+    },
+    "screen": "incall_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 860,
+      "y": 160
+     }
+    },
+    "screen": "whatsapp_header",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "rule": "risk:call:button"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 980,
+      "y": 160
+     }
+    },
+    "screen": "whatsapp_header",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "rule": "risk:call:button"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H2: typing a code or pressing ENTER in the dialer",
+  "tags": [
+   "calls",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "5551234"
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "*#06#"
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call",
+     "rule": "risk:call:enter"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "ENTER"
+     }
+    },
+    "screen": "dialer_google_mmi",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call_code",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "open_url",
+     "params": {
+      "url": "tel:**21*5551234%23"
+     }
+    },
+    "screen": "launcher",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "H2: Don't confirm everyday actions doesn't cover calls; Don't ask refuses codes",
+  "tags": [
+   "calls",
+   "modes",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "everyday",
+     "on": true
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "call"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "never",
+      "x": 540,
+      "y": 2075
+     }
+    },
+    "screen": "dialer_google_mmi",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:call:mmi"
+    }
+   }
+  ]
+ },
+ {
+  "name": "M4: Samsung's Device care is judged as Settings",
+  "tags": [
+   "settings",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "devicecare_home",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "devicecare_home",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "devicecare_background_limits",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   }
+  ]
+ },
+ {
+  "name": "M5: no task prompt while paused after 3 denials",
+  "tags": [
+   "limits",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t0",
+      "text": "share video 0",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t1",
+      "text": "share video 1",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t2",
+      "text": "share video 2",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   },
+   {
+    "deny": "last"
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t9",
+      "text": "share video 9",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_rate_limited",
+     "rule": "builtin:suspended"
+    }
+   },
+   {
+    "resume": true
+   },
+   {
+    "call": {
+     "method": "task_grant",
+     "params": {
+      "task": "t9",
+      "text": "share video 9",
+      "source": "Dashboard"
+     }
+    },
+    "screen": "youtube_channel",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task"
+    }
+   }
+  ]
+ },
+ {
+  "name": "L1: notification switches for a blocked app or OpenMob ask; others don't",
+  "tags": [
+   "settings",
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "settings_app_notifications_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 620
+     }
+    },
+    "screen": "settings_app_notifications_list",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 760
+     }
+    },
+    "screen": "settings_app_notifications_list",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "Phase 5 item 1: a gesture onto the phone's own prompt while it waits says wait (gate_prompt_open)",
+  "tags": [
+   "review_c"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1875
+     }
+    },
+    "screen": "own_prompt",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_window"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 990,
+      "y": 2250
+     }
+    },
+    "screen": "whatsapp_chat",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1875
+     }
+    },
+    "screen": "own_prompt",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_prompt_open",
+     "rule": "builtin:prompt_open"
+    }
+   }
+  ]
+ },
+ {
+  "name": "hit test: a risky control drawn above a later full-screen layer is still judged",
+  "tags": [
+   "hit_test"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1720
+     }
+    },
+    "screen": "hit_buy_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "start"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1660
+     }
+    },
+    "screen": "hit_place_order_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "money": "terminal"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 980,
+      "y": 2250
+     }
+    },
+    "screen": "hit_send_toolbar",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 480
+     }
+    },
+    "screen": "hit_settings_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "settings",
+     "level": "fingerprint"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 900,
+      "y": 2200
+     }
+    },
+    "screen": "hit_delete_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "check the weather"
+     }
+    },
+    "screen": "hit_install_layered",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1750
+     }
+    },
+    "screen": "hit_overlay_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app",
+     "rule": "builtin:sensitive_apps"
+    }
+   }
+  ]
+ },
+ {
+  "name": "hit test: ordinary taps on layered screens don't start asking",
+  "tags": [
+   "hit_test",
+   "friction"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1050
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 340
+     }
+    },
+    "screen": "hit_benign_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1560
+     }
+    },
+    "screen": "hit_buy_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 400,
+      "y": 2250
+     }
+    },
+    "screen": "hit_send_toolbar",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install the torchlight app"
+     }
+    },
+    "screen": "hit_install_layered",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 300
+     }
+    },
+    "screen": "hit_overlay_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app"
+    }
+   }
+  ]
+ }
+]

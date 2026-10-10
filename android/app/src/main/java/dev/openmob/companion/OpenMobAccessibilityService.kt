@@ -19,6 +19,46 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     /** Foreground app, from window changes. Keyboards and system overlays are ignored. */
     @Volatile var currentPackage: String? = null
+    /** Its activity class (e.g. com.android.settings.SubSettings). */
+    @Volatile var currentActivity: String? = null
+    /** The last window-state event from another app: its package and text (GScreen.eventPackage/eventText). */
+    @Volatile var lastEventPackage: String = ""
+    @Volatile var lastEventText: String = ""
+    /** When that event arrived (uptime ms), and when each window id was first seen: a permission-controller event
+     *  identifies a hidden window only if it isn't older than the window (GScreen.eventAt, GWindow.since). */
+    @Volatile var lastEventAt: Long = 0L
+    val windowSince = java.util.concurrent.ConcurrentHashMap<Int, Long>()
+
+    private fun noteWindows() {
+        val now = SystemClock.uptimeMillis()
+        val ids = runCatching { windows.map { it.id } }.getOrDefault(emptyList())
+        for (id in ids) windowSince.putIfAbsent(id, now)
+        windowSince.keys.retainAll(ids.toSet())
+    }
+    private var keepAwake: android.view.View? = null
+
+    /**
+     * Keep the screen on while the agent works (the lock screen appearing mid-task stalls it): a 1-pixel,
+     * untouchable accessibility overlay with FLAG_KEEP_SCREEN_ON. Held only while there is active work
+     * ([ScreenKeeper]) and removed as soon as it goes idle. Main thread only.
+     */
+    fun keepScreenOn(on: Boolean) {
+        val wm = getSystemService(android.view.WindowManager::class.java)
+        if (on && keepAwake == null) {
+            val view = android.view.View(this)
+            val lp = android.view.WindowManager.LayoutParams(
+                1, 1, android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                android.graphics.PixelFormat.TRANSLUCENT,
+            ).apply { gravity = android.view.Gravity.TOP or android.view.Gravity.START }
+            if (runCatching { wm.addView(view, lp) }.isSuccess) keepAwake = view
+        } else if (!on) {
+            keepAwake?.let { runCatching { wm.removeView(it) } }
+            keepAwake = null
+        }
+    }
     /** Uptime when [currentPackage] was noted, and of the last window change: a remembered app older than the
      *  last window change may be the previous one (ForegroundApp). */
     @Volatile var currentPackageAt: Long = 0L
@@ -30,9 +70,14 @@ class OpenMobAccessibilityService : AccessibilityService() {
      *  old enough (PhoneActions.waitIdle). */
     @Volatile var lastChangeAt: Long = 0L
         private set
+    /** Uptime of the last window change (a window or pane appeared or went): content updating inside a window,
+     *  such as live odds, doesn't count. The gate's launch-race wait uses this, not [lastChangeAt]. */
+    @Volatile var lastWindowChangeAt: Long = 0L
+        private set
 
     override fun onServiceConnected() {
         instance = this
+        PermissionOcr.warmUp() // permission dialogs Android 14+ hides are read with OCR: have the model ready
         AppState.notifyListeners()
         if (AppState.returnAfterAccessibility) {
             // The owner just turned us on from the app's setup screen: take them back to it.
@@ -48,6 +93,22 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         noteChange(event)
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) noteWindows()
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Android 14+ hides some system dialogs' trees, but their state events (package, text) still arrive.
+            event.packageName?.toString()?.takeIf { it != packageName }?.let {
+                lastEventPackage = it
+                lastEventText = event.text.joinToString(" ") { t -> t?.toString().orEmpty() }.trim()
+                lastEventAt = SystemClock.uptimeMillis()
+            }
+        }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            // A blocked app may have just come up: the live view stops sending frames at once (StreamGate).
+            dev.openmob.companion.gate.GateHost.refreshProtected(this)
+            dev.openmob.companion.gate.GateHost.refreshOwnerDialog(this) // a hidden system dialog came or went
+        }
         if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) && event.packageName?.toString() != packageName) {
             windowChangeAt = SystemClock.uptimeMillis()
@@ -57,6 +118,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
         // Activities only: IME and dialog windows would otherwise look like "the current app".
         if (cls.endsWith("Activity") || cls.contains(".activities.")) {
             event.packageName?.toString()?.let { currentPackage = it; currentPackageAt = SystemClock.uptimeMillis() }
+            currentActivity = cls // the gatekeeper recognizes Settings pages by their activity too
         }
     }
 
@@ -70,7 +132,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> if (pkg == SYSTEM_UI) return
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> Unit
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> lastWindowChangeAt = SystemClock.uptimeMillis()
             else -> return
         }
         lastChangeAt = SystemClock.uptimeMillis()
@@ -79,6 +141,7 @@ class OpenMobAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {}
 
     override fun onUnbind(intent: Intent?): Boolean {
+        keepScreenOn(false)
         instance = null
         AppState.notifyListeners()
         return super.onUnbind(intent)

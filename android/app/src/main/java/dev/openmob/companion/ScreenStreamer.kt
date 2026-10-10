@@ -33,6 +33,8 @@ class ScreenStreamer(
     private val projection: MediaProjection,
     private val sink: Sink,
     private val onStopped: () -> Unit,
+    /** A blocked or unidentified app is on screen now: no frame goes out (StreamGate). */
+    private val protectedNow: () -> Boolean = { false },
 ) {
     interface Sink {
         /** Send one packet: [header] is {"type": "video", "key", "config", "pts"}. */
@@ -83,7 +85,7 @@ class ScreenStreamer(
             side -= 160
             encodedSize(side).let { w = it.first; h = it.second }
         }
-        fun format(highProfile: Boolean) = MediaFormat.createVideoFormat(MIME, w, h).apply {
+        fun format(highProfile: Boolean, prependHeaders: Boolean = true) = MediaFormat.createVideoFormat(MIME, w, h).apply {
             setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
             setInteger(MediaFormat.KEY_BIT_RATE, target)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps.coerceIn(5, 60))
@@ -96,7 +98,8 @@ class ScreenStreamer(
             setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0) // B-frames add a frame of delay
             setInteger(MediaFormat.KEY_LATENCY, 1) // hand out each frame as soon as it's encoded
             setInteger(MediaFormat.KEY_PRIORITY, 0) // realtime
-            setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1) // SPS/PPS before each keyframe
+            // SPS/PPS before each keyframe. Optional: the server also prepends the codec config it caches.
+            if (prependHeaders) setInteger(MediaFormat.KEY_PREPEND_HEADER_TO_SYNC_FRAMES, 1)
             // VBR: a still screen costs almost nothing and a change (a keyframe of text) can take the
             // bits it needs. CBR evens every frame out, so keyframes and scrolling text come out soft.
             val modes = caps.encoderCapabilities
@@ -119,7 +122,14 @@ class ScreenStreamer(
         } catch (e: Exception) {
             // Some encoders list High but refuse the combination: the defaults always work.
             encoder.reset()
-            encoder.configure(format(highProfile = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            try {
+                encoder.configure(format(highProfile = false), null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+            } catch (e: Exception) {
+                // Some software encoders (the emulator's c2.android.avc) reject the prepend-headers key.
+                encoder.reset()
+                encoder.configure(format(highProfile = false, prependHeaders = false), null, null,
+                                  MediaCodec.CONFIGURE_FLAG_ENCODE)
+            }
         }
         val surface: Surface = encoder.createInputSurface()
         encoder.start()
@@ -176,9 +186,16 @@ class ScreenStreamer(
         var dropping = false // upload fell behind: skip frames until a keyframe
         var lastDrop = 0L
         var lastRaise = SystemClock.uptimeMillis()
+        val gate = StreamGate<Pair<JSONObject, ByteArray>>()
         try {
             while (codec === encoder) {
                 val index = encoder.dequeueOutputBuffer(info, 50_000)
+                val protectedScreen = protectedNow()
+                for ((h, b) in gate.flush(SystemClock.uptimeMillis(), protectedScreen)) sink.send(h, b)
+                if (gate.needKey && !protectedScreen && !keyRequested) {
+                    keyRequested = true
+                    requestSync(encoder) // the protected app is gone: restart from a fresh keyframe
+                }
                 val queued = sink.queuedBytes()
                 val now = SystemClock.uptimeMillis()
                 // Recovered for a while: step the bitrate back up towards the target.
@@ -216,7 +233,7 @@ class ScreenStreamer(
                     keyRequested = false
                 }
                 val header = JSONObject().put("type", "video").put("key", key).put("config", config).put("pts", pts)
-                sink.send(header, bytes)
+                for ((h, b) in gate.offer(SystemClock.uptimeMillis(), header to bytes, key, config, protectedNow())) sink.send(h, b)
             }
         } catch (e: IllegalStateException) {
             // The encoder was stopped under us: the stream is over.

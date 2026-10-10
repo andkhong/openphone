@@ -1,0 +1,7 @@
+dev.openmob.companion/dev.openmob.companion.ApprovalActivity
+dev.openmob.companion	'APPROVAL NEEDED'	''		[106,529][974,572]
+dev.openmob.companion	'Allow tapping “Buy now” in Example Shop?'	''		[106,588][974,731]
+dev.openmob.companion	'This phone stopped the agent to ask you. The question and the picture come from what this phone sees, not from the server. Approving needs your screen lock and allows this one action only.'	''		[106,1367][974,1553]
+dev.openmob.companion	'Always allow this&#10;for 24 hours, OpenMob (or a compromised server) could pay for anything in Example Shop without asking'	''		[106,1585][974,1763]
+dev.openmob.companion	'Deny'	''		[106,1810][527,1936]
+dev.openmob.companion	'Approve'	''		[553,1810][974,1936]

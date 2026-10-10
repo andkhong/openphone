@@ -1,6 +1,6 @@
 # Phone as gatekeeper: on-device policy enforcement
 
-Status: reviewed and approved (3 review rounds), 2026-10-05. Branch `feature/agent-platform`.
+Status: reviewed and approved (3 review rounds), 2026-10-05. **Phase 1 implemented** (branch `gatekeeper-p1`): see "Phase 1 as built" at the end for what differs from this text.
 Decisions are marked **Decision:** and numbered (D1, D2, …). Changes from review 1 are listed at the end.
 
 ## 1. Problem and threat model
@@ -44,7 +44,7 @@ Every safety control runs on the server today, and the phone obeys any `call` on
 | Class | Methods | Gate |
 |---|---|---|
 | meta | `device_state`, `wait_idle` | Always allowed: no screen data, on the fast path |
-| read | `screenshot`, `ui_elements`, `stream_*`, `current_app`, `launchable_packages`, `app_labels` | Session (Phase 2). A black frame or `[]` whenever a blocked app is visible in *any* window (split screen, PiP, bubble) |
+| read | `screenshot`, `ui_elements`, `wait_for`, `stream_*`, `current_app`, `launchable_packages`, `app_labels` | Session (Phase 2). A black frame or `[]` whenever a blocked app is visible in *any* window (split screen, PiP, bubble); `wait_for` then answers `{met: false, redacted: true}`, also when one appears mid-wait |
 | act | `tap`, `long_press`, `swipe`, `type_text`, `key`, `launch_app`, `open_url`, `wake_unlock` | Full order (§2.3) |
 
 ### 2.2 Inputs the phone uses
@@ -518,3 +518,243 @@ Failing a friction criterion means tuning the word classes, the categories or th
 | S3 | Accepted: gatekeeper phones ignore `approval_request` (D9) |
 | S4 | Accepted: grant wording states what it allows, the checkbox is off by default, `pay` needs a second confirm (D20); D4, D6 and `plan` state what isn't bound |
 | S5 | Accepted: pairing a new Bluetooth device asks; connecting to an already-paired device stays on the allowlist |
+
+## Phase 1 as built
+
+Code: `android/app/src/main/java/dev/openmob/companion/gate/` (engine `Gatekeeper.kt`, screen model `GateModel.kt`,
+Android glue `GateScreens.kt` and `GateHost.kt`, permission changes `ModeChange.kt`), the rule file
+`android/app/src/main/resources/gatekeeper/rules.json`, and on the server `phone/remote.py` (`GateRefused`, the
+re-send), `devices.py` (`gate_event`, `device_lock`, D10), `agent/loop.py` and `platform/service.py`
+(`approval_on_phone`). Protocol: docs/phone-protocol.md §9.
+
+**Testing approach.** One JSON rule file, read by the Kotlin engine and by a Python reference engine
+(`tests/gatekeeper_ref.py`); shared fixtures (`tests/fixtures/gatekeeper/`: screens, scenarios, attacks) run in
+both JUnit (`GateScenarioTest`) and pytest (`test_gatekeeper_conformance.py`), and a differential fuzz fixture
+(`fuzz.json`: 400 random screens and calls with the reference engine's answers) runs through the Kotlin engine.
+That catches drift on the fixtures and the fuzzed space; it can't prove the two agree everywhere. The
+adversarial suite (`test_gatekeeper_adversarial.py`) puts a fake compromised server in front of a simulated
+gatekeeper phone running the reference engine over raw protocol messages; every attack is also a fixture the
+Kotlin engine runs. The pure Android pieces (tree reading, live-view gating, keep-awake) have JVM tests. §8's
+emulator suite (`tests/adversarial/evil_server.py`, stand-in apps in `tests/adversarial/standins`,
+docs/testing.md) passed 61 of 61 checks on Android 15 after four fixes (release gate B7, results in
+docs/research/gatekeeper-b7-results.md). It found the launch race below (a tap judged on a window list that
+hadn't caught up landed in a starting blocked app) and that token-paired phones couldn't approve. On Android
+14+ the permission controller (runtime dialogs, Safety Center, default apps) is hidden from OpenMob's service,
+so those taps fail closed and the permission-dialog rules only apply on older or OEM builds. There are no
+captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
+
+**Where it differs from the text above:**
+- **Settings, unrecognized pages:** only *changing* taps ask (a switch or checkbox, or a change word such as
+  Turn on, Allow, Reset); plain navigation into a sub-page doesn't. Pages are recognized by window title, the
+  headers at the top that aren't rows, and the activity class (accessibility doesn't expose fragment classes).
+- **Resource ids** are matched as whole words of the id (`sendButton` → send, but not `sender_name`), and
+  `checkout` in an id counts as pre-commit like the word (D4).
+- **Delete** asks wherever it appears, not only in a confirmation dialog.
+- **Requested (D6):** only instructions typed or spoken in the app count; each credits one send, post or
+  delete for 30 minutes, not bound to an app (sessions are Phase 2).
+- **Purchase follow-up** is bound to the call's `task` param, which the server asserts (the app and the
+  3-minute limit are the phone's).
+- **`plan` is enforced as `auto`** on the phone, and the server skips its plan approval on gatekeeper phones
+  (plan permits are Phase 2).
+- **Policy changes:** Phase 1 has no `policy_proposal`. The server's `mode_change` approval request plays that
+  role: the phone words it from the signed change (the server's question is only "Server says"), and the one
+  screen-lock signature (the server's approval format over the change's digest) is kept as the record's proof
+  and re-verified on load. Trusted *category* entries aren't enforced as allows (the phone keeps asking);
+  trusted app entries use the D20 default durations rather than the server's expiry; `never` is capped at
+  24 hours. The 30-day test-phone `never` (D21) and MDM (D18) aren't implemented.
+- **Keys:** the auth-bound approval key also signs policy records (no separate policy key); the policy file is
+  app-private and every record's signature is checked on load, but the file isn't separately encrypted.
+- **Crop:** its hash is in the signed message; the permit is bound to method, params and target fingerprint,
+  since a re-sent call can't reproduce the crop.
+- **Reverify:** for risky or payment-context decisions it needs the same fingerprint and a quiet screen
+  (waiting up to 1 s); for other allowed actions it re-judges the current target and refuses only if that is
+  now risky or refused (fewer spurious refusals from animations). Before that, every admitted tap, long press
+  and swipe waits (within the same second) for the window list to settle: 250 ms with no change, and some
+  listed window having focus (an app's launch screen isn't listed at all). If nothing has focus by then it's
+  refused, `gate_screen_unstable` (B7).
+- **`never` and the always-ask class** also covers typing into OTP and card fields, and an unlabeled tap in
+  payment context counts as money.
+- **Denials that suspend** are the owner's denials of prompts (not the gate's refusals); a notification offers
+  Resume.
+- **New:** code `phone_locked` (act calls while a secure lock is up, checked before the keyguard hard deny) and
+  the `device_lock` message; the app keeps the screen on only while working (owner report).
+- **Review round 1 additions:** a window whose tree can't be read refuses taps and blacks out reads; nodes
+  under the touched point are always read in full, and a branch that still can't be read asks; any other
+  admitted action voids outstanding permits; the purchase follow-up starts only when the approved tap runs and
+  ends at cart/checkout words, BACK/HOME/recents, launches, links or after 3 other actions; fill grants bind
+  to the focused field's app (never a browser or WebView field); the live view drops every frame while a
+  protected app is visible (250 ms hold-back, restart from a keyframe); keep-awake holds only after admitted
+  actions and for at most 10 minutes after the owner last used the phone; a screen-off mid-task pauses rather
+  than unlocking; Build number and the VPN consent dialog ask; permission-change prompts are limited to 2 an
+  hour; gate prompt ids start with `gk` and the legacy path refuses them.
+- **Permission dialogs (owner request, after review round 1):** the session app's runtime permission dialogs
+  follow the owner's settings rather than the D2 "never asks" for the session's app: per type `ask` (default)
+  | `once` | `while_using` | `deny`, location accuracy `approximate` (default) | `precise`, notifications `deny`
+  (default) | `allow`, kept as signed `permission_default` records (tightening unsigned), with per-app
+  overrides as signed `permission` grants from the prompt's "Always allow for <app>". "Allow all the time"
+  always asks; denying and Approximate never do.
+- **After the B7 emulator run:** Android 14+ hides permission dialogs, Safety Center and default-apps screens
+  from accessibility. The phone detects such a dialog (an application window with no readable tree, plus the
+  window-state event's package or the window's own package) and refuses acts with `needs_owner_dialog`; the
+  task pauses until the owner answers it (`owner_dialog`), so the per-permission defaults apply only on Android
+  11–13. A tap where no window is under the point is refused (`builtin:no_window`), and every act is refused
+  with `gate_unavailable` while the accessibility service is unbound. Not done: checking the screenshot for a
+  dialog (the detection uses windows and events only).
+- **Live screens (real-device report, Kalshi):** target identity and fingerprints blank numbers; D5 stillness
+  is target-scoped (the target's normalized fingerprint unchanged over 150 ms) and the launch-race wait counts
+  window changes only; transient unreadable windows are re-read for up to 0.6 s before refusing; money-commit
+  permits bind the currency amounts (button plus total/cost/price/amount/payout lines) and any change re-asks;
+  only prompts actually shown count toward the 6-per-10-minutes limit, and re-asking the same action reuses
+  the open prompt; the language rule uses script and lower-case words, not dictionary misses on tickers;
+  "Submit" is a terminal money word in money apps (now including prediction markets and trading apps). A
+  Compose text field missing from the walked tree is resolved from findFocus.
+- **Decision D23 (task approval, by owner request, 2026-10-06):** at task start the phone asks once, worded
+  from the task's request text with its source on the "Server says" line, and signs a task grant bound to the task
+  id and the request text's digest (30 minutes on the monotonic clock, at most 25 risky steps, in-memory, cleared
+  by Stop). Under it, non-money risky steps of that task run without prompts; money commits (unless "Also allow
+  purchases"), browser/WebView autofill and permission dialogs still ask; hard denies still refuse. Requests
+  typed on the phone are granted without a prompt. Not offered in `ask` or `never`; `plan` uses it. Trade-off:
+  inside an approved task a compromised server chooses the steps (recipients, texts) within the approved
+  request's wording, which the phone can't check; the owner accepted this for friction. "Subscribe"/"Join" are
+  money only with a price nearby or a Play billing sheet.
+- **Decision D24 (consequence-based risk, by owner request, 2026-10-06):** risk is judged by content (public link
+  vs private content), recipient (self vs others, unknown = others), visibility (private vs public),
+  reversibility (toggles vs permanent) and money, instead of keywords, in both engines and the server's `_guard`.
+  A link shared or sent to yourself, copying, like/subscribe/save are no prompt; Subscribe/Join are money only
+  with a price nearby. Self is recognized by "Note to self"-style labels, "(You)", and the owner's names the
+  phone knows (the paired account email); no contacts profile is read. The server's classifier no longer hints
+  the phone on its own.
+- **Decision D25 (three confirmation levels, owner principle, 2026-10-06):** none / tap / fingerprint. Tap-level
+  asks are OpenMob's own Allow/Deny with no screen lock, signed by a separate non-auth Keystore key in a
+  separate domain (`gk1|tap|…`); the security basis is that agents can't tap OpenMob's windows and Allow filters
+  obscured touches. Fingerprint: money, browser/web autofill, OTP/card fields, permission grants. "Don't confirm
+  everyday actions" (signed, loosening via the phone) skips tap-level asks and the task prompt; the task
+  approval itself is tap-level. This relaxes D5's "screen lock for every gated action" for tap-level actions:
+  a malicious app on the phone (out of scope) or an accessibility overlay that defeats
+  filterTouchesWhenObscured could approve tap-level asks.
+- **Review of D23–D25:** reverify refuses every act while a prompt is pending and for 1 s after one closes
+  (the approved action's permit excepted), and Allow ignores taps for 500 ms after its window gains focus;
+  unrecognized Settings changes are fingerprint-level (never covered by a task grant or "everyday"); the "self"
+  exemption applies only to public-link shares (share-sheet targets, and an in-app share list's Send next to
+  your own name while a link is shown), never to chat titles or typed messages, and the "ends with you" rule is
+  gone; Subscribe/Join are money in payment context and money-category apps too; a task grant covers only the
+  kinds of risky step its request names and the task's first app plus apps the request names.
+- **D23 revised (just-in-time task approval, owner feedback, 2026-10-06):** no prompt at task start. Act calls
+  carry `task_text`/`task_source`; the first tap-level step whose kind the request names gets the task prompt
+  (worded from the request, "Next: <step>") instead of a per-step prompt, and approving it mints the same scoped
+  grant plus a permit for that step. Tasks with no tap-level step: 0 prompts; fingerprint steps keep their own
+  prompt. A `task_text` that doesn't match the grant's digest isn't covered. The phone trusts `task_text` only
+  as the wording the owner approves (it can't verify the server's request); the grant's scope comes from it.
+- **Decision D26 (permission dialogs on Android 14+, owner direction, 2026-10-06):** pausing for the owner went
+  against the MVP. The phone reads the hidden permission-controller window with on-device OCR (ML Kit text
+  recognition v2, bundled Latin model, arm64 only: the APK grows from about 4.4 MB to 24 MB) and rebuilds it as
+  a tree both engines judge the same way (`withOcr`/`with_ocr`): title → message, exact button texts → padded
+  clickable nodes, the dialog root clickable so any other tap asks; lines below confidence 0.5 are dropped.
+  Policy (both readable and OCR'd dialogs): the task's app may take what the owner's settings allow with no
+  prompt (default, owner decision: "Only this time" or the narrowest grant offered, notifications Allow,
+  Approximate); "Allow all the time" is refused (`gate_permission_choice`); `deny` refuses any grant; a grant while
+  Precise is selected (OCR: assumed until an Approximate tap goes through) is refused unless the owner allows
+  precise; another app's request, unknown buttons and unknown wording ask at tap level (refused under Don't
+  ask). Permission asks moved from fingerprint to tap level (D25 amended) and are never covered by a task grant
+  or "everyday". `needs_owner_dialog` remains for Safety Center, default-app pickers and OCR failure. Reads of an
+  identified system dialog are no longer blacked out; a window with no package from any source still is.
+  Trade-off: OCR misreads fail toward asking, but a dialog drawn by a malicious app to look like the permission
+  controller is out of scope. (Since the Samsung fix below, a window with no package and no tree also counts when
+  the OCR shows an "Allow X to" title and a "Don't allow" line, without any package or event: review C, L6, not
+  yet addressed.)
+- **Review of D26:** B1: the Precise/Approximate choice OCR can't see is recorded only after every reverify check
+  passed and the gesture's `onCompleted` fired (`completed()`); a refused card tap, or a new dialog window id,
+  resets it to the assumed Precise. Hardening: a window with no package is a permission dialog only if the
+  permission-controller event is no older than the window's first sighting (1.5 s slack, `event_slack_ms`) and the
+  OCR shows an "Allow X to" title; otherwise it stays `unknown_window` for acts and reads (the live view checks a
+  cached background OCR, black until it's read). B2 (owner decision, accepted residual): camera and microphone
+  stay silent under "Only this time" for the task's app; a compromised server could get one-time foreground mic
+  or camera access in the app the task operates, and the only signal is Android's privacy indicator.
+- **Real-device fix (Samsung SM-S948U1, Android 15/16; reproduced on an API 35 emulator):** the hidden
+  permission dialog's window has no root and no package, and Android sends no permission-controller event to a
+  non-tool accessibility service (the last event is the requesting app's). The phone only OCR'd a package-less
+  window when such an event had arrived, so it never read the dialog and reads stayed black. Now any top
+  application window with no package and no readable tree is OCR'd, and it counts as a permission dialog when the
+  OCR shows an "Allow X to …" title (one line or two in a row) and either a fresh permission-controller event or a
+  "Don't allow" button. Readings are tied to the window id; the model is warmed up when the service starts (cold:
+  3.5 s); captures share one rate-limit clock and retry. A dialog naming the app shorter than its label ("Chess" for
+  "Chess.com") counts as the task's app only if that app's window is right underneath. Logcat tag `OpenMobGate`
+  records identification, OCR timing and the shown/black decision (only the dialog's title as screen text).
+  Emulator end to end: screenshots and the live-view gate show the dialog about 0.5 s after it appears; the
+  agent's tap on "Allow" goes through with no prompt and grants the permission.
+- **D26, the OCR title rule (security review C, 2026-10-09, H1/M1/M3):** the OCR reads the whole screen, the
+  requesting app's own text through the scrim included, so an app could draw a benign "Allow X to send you
+  notifications?" above a real contacts or microphone dialog and have Allow judged as notifications. Now only the
+  dialog card counts (`withOcr`/`with_ocr`, `ocr.button_gap_lines` in `rules.json`):
+  - every permission-style title on screen is found (a line starting like a title, with its wrapped lines up to
+    the "?", that names an app);
+  - the dialog's title is the one nearest above the Allow/Deny buttons; the card runs from it down to the last
+    button of the contiguous button stack (gaps of at most 4 button heights), and lines outside it are dropped;
+  - Precise/Approximate count only between the title and the buttons, so app-drawn "Approximate" text is never
+    the card (M3); the remembered card choice is keyed by the window **and** its title;
+  - **fail closed:** no title, or more than one permission-style title anywhere on screen, marks the dialog
+    `ocr_unsure`: "Don't allow" and Approximate still pass; every grant asks at tap level
+    (`permission:ocr_unsure`), and is refused under Don't ask;
+  - a permission-dialog tap's binding includes the dialog's question, so an approval for one question never
+    covers the same button under another (content swapped in place, M1);
+  - the re-check right before an act always takes a fresh screenshot and OCR (never the 1.5 s cache), and the
+    cache is dropped after every gesture (M1). Estimated cost: one extra capture and recognition (the capture
+    alone waits out the system's 333 ms limit) on each act while a hidden dialog is up; not measured yet.
+  Residual: an app that hides the real title (it can't: the card is drawn over it) or a dialog whose title OCR
+  misses entirely (then `ocr_unsure`: asks). Not tested on a real device.
+- **Security review C, the other phone-side fixes (2026-10-09):**
+  - **Calls (H2):** `rules.json` `calls`. In the dialers, contacts apps and in-call screens listed by package
+    (Google, Samsung, AOSP), a tap whose label or id says call or dial (not End call, Call history…) and ENTER in
+    their number field ask at tap level (kind `call`); a Call, voice-call or video-call button in any app does too.
+    Dialing a number with `*` or `#` (MMI/USSD) asks with the screen lock (kind `call_code`, refused under Don't
+    ask). Owner, 2026-10-10: one prompt, at the dialing: the Call button or ENTER on such a number, the dialpad's
+    `#` key or typed text completing a code (`calls.code_complete`: starts with `*` or `#`, a later `#`); a `tel:`
+    link carrying a code only opens the dialer, like any `tel:` link, and the `*` key alone never asks. "Don't confirm everyday
+    actions" never covers calls; a task grant whose request says call/dial/phone covers kind `call` only.
+    Any clickable node under the tap point counts, not only the hit path: on the API 35 emulator Google Phone's
+    Call button sits in an earlier sibling than a full-screen layer, so the path never reached it (a call was placed
+    unasked until this was added). Generalised to every risk rule on 2026-10-10 (below).
+    Coverage is by package and label: other OEM dialers, single-tap calls from a Favorites tile or a Recents row
+    without a call label, and calls from apps whose button isn't labelled Call are not covered.
+  - **No judged field (M2, L3):** typing, ENTER and DELETE with no field the gate can judge are refused
+    (`builtin:no_field`). The admission carries the judged field (window, bounds, id, class); reverify refuses if
+    focus moved (`builtin:field_changed`), and PhoneActions resolves the field after the re-check and types only
+    into that one. Its own search keeps to the gate's limits (1,500 nodes, depth 60).
+  - **Samsung Device care (M4)** (`com.samsung.android.lool`, `sm`, `sm_cn`, `sm.devicesecurity`) is a Settings
+    package; "device protection" and "auto blocker" are refused. `open_settings` resolves system apps only, must
+    land on a Settings package, and is pinned to it (L5).
+  - **Paused (M5):** no task prompt while the phone is paused after 3 denials.
+  - **Notifications (L1):** a switch on a notifications page naming a blocked app or OpenMob asks.
+  - **Overlays (L2):** the approval screen hides other apps' overlays (API 31+).
+  - **Phase 5 item 1:** a gesture onto OpenMob's own prompt while it waits returns `gate_prompt_open` (wait).
+- **The hit test, for every risk kind (2026-10-10):** the hit path follows the last child that contains the point,
+  but a view drawn above its siblings by elevation isn't always last. A tap (and a swipe judged as a tap) is now
+  judged on the hit path **and** on every clickable or labeled node under the point (`GateScreen.targetsAt`,
+  `targets_at`; at most 60), and the strictest verdict wins: refuse > ask with the screen lock > ask with a tap >
+  allow (a Play Store install counts as a tap-level ask; on a tie the hit path's verdict stays). A blocked app's
+  application window under the hit window at the point refuses (`builtin:sensitive_apps`).
+  - **False asks, measured on the reference engine** (every call step of the shared fixtures, before and after):
+    0 of 622 curated scenario and adversarial steps changed; 7 of 924 fuzz steps (4 random screens) became stricter,
+    each a real risky node or a blocked window under the point. The full evil-server suite on the API 35 emulator
+    (2026-10-10): 158 checks passed, 0 failed, the friction group still one prompt per honest checkout. The new
+    `hittest` group (the shop stand-in's `LayeredActivity`) asks for a Buy now drawn above a later layer; the old
+    hit path missed it.
+  - Not covered: real swipes (scrolls) still judge their two end points by the hit path only; a non-touchable
+    overlay window the phone can't see at all.
+- **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
+  mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
+  `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
+  letters from its title (the topmost text above the button that isn't a button, rating, count or badge; generic
+  words such as app, free, game, play, learn, pro, com don't count) appears as a whole word in the request. Otherwise
+  it asks at tap level (kind `install`, `install:unnamed`), is never covered by a task grant or "everyday", and is
+  refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.
+- **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
+  for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
+  for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window
+  is up); OpenMob or a blocked app is refused (`builtin:uninstall_protected`); an app it can't name asks (kind
+  `uninstall`, never covered by a task grant or "everyday"). App info: Uninstall itself is free (the confirmation
+  asks), Disable and Clear storage are delete-kind tap level (no longer fingerprint). A task grant covers an
+  uninstall when its request names uninstall/remove/delete and the app.
+- **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
+  the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
+  session/proposal prompt limits (Phase 2).

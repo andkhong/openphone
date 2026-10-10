@@ -58,6 +58,14 @@ def free_port() -> int:
         return s.getsockname()[1]
 
 
+class PhoneReply(Exception):
+    """Raised by a FakePhone handler to send this exact result (e.g. a gatekeeper refusal with its code)."""
+
+    def __init__(self, reply: dict):
+        super().__init__(reply.get("error", ""))
+        self.reply = reply
+
+
 class FakePhone:
     """Speaks the phone side of the protocol in a background thread, backed by FakeDriver."""
 
@@ -150,6 +158,8 @@ class FakePhone:
                             continue
                         try:
                             reply = {"ok": True, "result": self.handle(msg["method"], msg["params"])}
+                        except PhoneReply as exc:
+                            reply = exc.reply
                         except Exception as exc:
                             reply = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
                         await ws.send(json.dumps({"type": "result", "id": msg["id"], **reply}))

@@ -65,7 +65,7 @@ path recognises.
 | `youtube.channel` | a channel | `youtube.com/@handle` | handle | view | | |
 | `maps.directions` | a Google Maps route | `google.com/maps/dir/?api=1&destination=…&origin=…&travelmode=…` | destination, origin?, mode? | view | yes | the preview; Start is the next tap |
 | `maps.search` | Google Maps results | `google.com/maps/search/?api=1&query=` | q | view | yes | |
-| `play_store.app` | an app's store page | `market://details?id=` | package | view | | Install is the next tap: free installs don't ask (owner decision); paid ones ask as a purchase |
+| `play_store.app` | an app's store page | `market://details?id=` | package | view | | Install is the next tap: a free install the request names doesn't ask, any other asks (owner, 2026-10-09); paid ones ask as a purchase |
 | `play_store.search` | Play Store results | `market://search?c=apps&q=` | q | view | yes | |
 | `chrome.open` | a web page | the address itself (http/https only) | url | view | yes | the default browser, or the app that claims the address |
 | `spotify.search` | Spotify results | `open.spotify.com/search/` | q | view | yes | playing is the next tap |
@@ -177,8 +177,9 @@ The side-effect classes (also in docs/safety.md):
 
 What a link can't do that a tap can't either: open OpenMob itself or a sensitive app (blocked at the handler, and
 again on the phone), reach a security-critical Settings page (no catalog entry; `intent:` is refused), install
-anything (the Play Store page opens; Install is a tap: free installs don't ask by the owner's decision, paid ones
-ask as a purchase), place a call (`tel:` opens the dialer only), or send anything (`whatsapp.chat` carries no text
+anything (the Play Store page opens; Install is a tap: a free install runs unasked only when the request names the
+app on the page, otherwise it asks, owner decision 2026-10-09; paid ones ask as a purchase), place a call (`tel:`
+opens the dialer only, and the Call tap asks on a gatekeeper phone), or send anything (`whatsapp.chat` carries no text
 on purpose; drafts need the Send tap).
 
 **User content.** Search terms, places, numbers and message bodies in a link are the user's words. They go to the

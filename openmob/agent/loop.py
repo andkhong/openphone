@@ -18,7 +18,7 @@ from urllib.parse import quote
 from ..config import Config
 from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
-from ..phone.base import DeviceError
+from ..phone.base import DeviceError, GateRefused, OwnerDialog, PhoneLocked
 from ..phone.apps import NOT_LAUNCHABLE, AppResolver
 from ..usage import Usage
 from ..vision import ocr
@@ -55,6 +55,8 @@ INSTALL_BUTTON = re.compile(r"install|update|get|install on (this )?(phone|devic
 INSTALLED_BUTTON = "Open|Play"  # what the Play Store's button turns into once an install is done
 INSTALL_TAP_GRACE_S = 5.0  # an enabled Install button still there after this long: the tap didn't start one
 BLOCKED_APP_MESSAGE = "This app is blocked for API tasks on this phone (its owner can allow it)."
+LOCKED_MESSAGE = "The phone stayed locked, so I stopped. Unlock it and ask again."
+DIALOG_MESSAGE = "A system dialog on the phone wasn't answered, so I stopped. Answer it and ask again."
 REFUSED = "Not allowed on this phone: {why} Don't try it another way; carry on without it or call done."
 # Tools that change something on the phone (ask mode asks before each; plan mode needs the plan first).
 CHANGING = {"tap_element", "tap", "long_press", "type_text", "swipe", "launch_app", "open_url", "press_key",
@@ -103,6 +105,7 @@ class AgentResult:
     done_via: str | None = None  # who said the task was done: "vision" (the main model) | "classifier" (internal)
     prompts: int = 0  # approval prompts the owner saw (permission telemetry)
     mode: str | None = None  # the permission mode the task ran in
+    reason: str | None = None  # why it failed, when it's not the model's call (phone_locked)
 
 
 class Observation:
@@ -168,7 +171,6 @@ class _TaskState:
     cancel: threading.Event
     auto_waited: float = 0.0
     treeless_misses: dict[str, int] = field(default_factory=dict)
-    approved: bool = False  # the user just said yes to an ask_user question
     max_steps: int = 0
     blocked: Callable[[str], bool] | None = None  # packages this task may not touch (API safety)
     step_index: int = 0  # tool calls executed so far (the steps table's idx)
@@ -192,11 +194,14 @@ class _TaskState:
     money_followup: dict | None = None  # {package, at}: one follow-up commit tap after an approved payment
     plan: list[dict] | None = None  # plan mode: the approved steps ({text, app, used})
     step_approved: bool = False  # ask mode: the owner approved the action now running
+    locked_out: bool = False  # the phone stayed locked past locked_wait_seconds
+    task_outcome: str | None = None  # task_declined / task_no_answer: the owner didn't approve the task
+    dialog_out: bool = False  # a system dialog only the owner can answer stayed open past owner_dialog_wait_seconds
+    app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
     prompts: int = 0
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
     tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
-    app_in_front: str | None = None  # the last app seen in front (not a permission dialog): "the task's app"
     unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
     dialogs_given_up: set = field(default_factory=set)  # permission dialogs BACK didn't close: (package, message)
     # Replaying a stored path (config.replay_paths, agent/replay.py):
@@ -307,7 +312,14 @@ class Agent:
         if drive is not None:  # no model, no fast path, no replay: the outside agent is all of those
             state.fast = False
             self._task_variant = "drive"
-            result = self._drive(state, drive, go_home)
+            # The phone judges each act at this session's mode (capped at trusted), and its own prompts wait here
+            # and reach the outside agent as needs_approval. Without this a gatekeeper phone saw no mode and judged
+            # at its own ceiling (Don't ask during an owner's window): security review 2026-10-09, H1.
+            self._gate_setup(state, task_grant=False)
+            try:
+                result = self._drive(state, drive, go_home)
+            finally:
+                self._gate_setup(None)
             result.usage = self.usage
             result.timings = self.timer.task_totals()
             result.prompts = state.prompts
@@ -317,7 +329,17 @@ class Agent:
         if self._replay_on() and replay.eligible(task, self.config.confirm_keywords):
             state.replay = self.paths.get(replay.goal_key(task)) or None
         self._task_variant = self._variant(state.fast)
-        result = self._run(state, go_home, isolated)
+        self._gate_setup(state)
+        try:
+            result = self._run(state, go_home, isolated)
+        finally:
+            self._gate_setup(None)
+        if state.locked_out and not result.success:
+            result.reason = "phone_locked"
+        elif state.dialog_out and not result.success:
+            result.reason = "needs_owner_dialog"
+        elif state.task_outcome and not result.success:
+            result.reason = state.task_outcome
         result.usage = self.usage
         result.timings = self.timer.task_totals()
         result.fast_steps = state.fast_steps
@@ -397,6 +419,19 @@ class Agent:
         for step in range(1, state.max_steps + 1):
             if state.cancel.is_set():
                 return AgentResult(False, "Stopped.", step - 1)
+            if getattr(self.driver, "locked", False) and not state.locked_out:
+                if self._lock_wait(state):  # a secure lock came up between steps: pause, then look again
+                    obs = self._observe_settled(state)
+            if state.locked_out:
+                return AgentResult(False, LOCKED_MESSAGE, step - 1)
+            if getattr(self.driver, "owner_dialog", None) and not state.dialog_out:
+                if self._dialog_wait(state):  # a system dialog only the owner can answer: pause, then look again
+                    obs = self._observe_settled(state)
+            if state.dialog_out:
+                return AgentResult(False, DIALOG_MESSAGE, step - 1)
+            if state.task_outcome:
+                return AgentResult(False, "The owner declined this task on the phone." if state.task_outcome ==
+                                   "task_declined" else "Nobody approved this task on the phone in time.", step - 1)
             if self._is_blocked(state, obs.package):
                 return AgentResult(False, BLOCKED_APP_MESSAGE, step - 1)
             obs = self._dismiss_dialogs(state, obs, messages)
@@ -449,8 +484,8 @@ class Agent:
             early: dict[str, Outcome] = {}  # tool calls already run while the reply streamed (vision_stream)
 
             def act_early(call) -> None:
-                if any(o.done for o in early.values()) or state.cancel.is_set():
-                    return  # the loop below marks it skipped
+                if early or state.cancel.is_set():
+                    return  # one action per turn: the loop below marks the rest not run
                 early[call.id] = self._act(call, obs, state)
 
             # Streaming actions run each call as it arrives, with no look in between: one-per-turn only.
@@ -483,7 +518,13 @@ class Agent:
             seen = obs  # the screen the model decided on: its indices and coordinates refer to it
             ran: Outcome | None = None  # the previous action in this turn (batch > 1)
             stop: str | None = None  # why the rest of this turn is skipped
+            acted = False  # an action of this reply already ran
             for n, tool_use in enumerate(tool_uses):
+                if batch <= 1 and acted and not stop:
+                    # One action per turn (the default): the next call was decided on a screen the first action may
+                    # have changed, so it doesn't run (security review 2026-10-09: a tap, TAB and type in one reply
+                    # typed into a password field the checks never saw).
+                    stop = "only one action runs per turn."
                 if batch > 1 and ran is not None and not stop:
                     stop = self._batch_stop(tool_use, n, batch)
                     if not stop:  # look before the next action, without asking the model
@@ -494,6 +535,7 @@ class Agent:
                         obs = fresh
                 if tool_use.id in early and not finished:
                     outcome = early[tool_use.id]
+                    acted = True
                 elif stop:
                     outcome = Outcome(f"Not run: {stop} Look at the new screen and decide again.", is_error=True)
                 elif finished or state.cancel.is_set():
@@ -501,6 +543,7 @@ class Agent:
                 else:
                     prompts = state.prompts
                     outcome = self._act(tool_use, seen, state)
+                    acted = True
                     if batch > 1:
                         ran = outcome
                         if outcome.is_error:
@@ -592,7 +635,8 @@ class Agent:
                             {"timings": result.timings, "jev": self.judge is not None})
                 channel.steps += 1
                 refused = result.is_error and (result.text.startswith("Not allowed on this phone")
-                                               or result.text.startswith(BLOCKED_APP_MESSAGE))
+                                               or result.text.startswith(BLOCKED_APP_MESSAGE)
+                                               or result.text.startswith("Refused on the phone"))
                 outcome = {"text": result.text, "is_error": result.is_error, "refused": refused}
                 command.outcome = outcome  # known now, whatever happens next (close() keeps it)
                 if result.done:
@@ -1058,16 +1102,31 @@ class Agent:
     # --- actions ---------------------------------------------------------
 
     def _execute(self, name: str, args: dict, obs: Observation, state: _TaskState, fast_step: bool = False,
-                 done_via: str = "vision", source: str | None = None, note: str | None = None) -> Outcome:
+                 done_via: str = "vision", handled_by: str | None = None, source: str | None = None,
+                 note: str | None = None) -> Outcome:
         started = time.monotonic()
         try:
             with self.timer.phase("action"):
                 try:
                     outcome = self._dispatch(name, args, obs, state)
                 except DeviceError as exc:
+                    # "The phone can't see what's there" (gate_screen_unstable): wait for it to be readable first.
                     if getattr(exc, "code", None) not in UNREADABLE_CODES:
                         raise
                     outcome = self._when_readable(name, args, obs, state, exc)
+        except OwnerDialog:
+            state.dialog_out = True  # the dialog stayed open past owner_dialog_wait_seconds (the wait happened)
+            outcome = Outcome(DIALOG_MESSAGE, is_error=True)
+        except PhoneLocked:
+            state.locked_out = True  # stayed locked past locked_wait_seconds (the wait already happened)
+            outcome = Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
+        except GateRefused as exc:
+            # The phone refused it: report with its stable code, and don't retry the same call.
+            if exc.kind == "task" and exc.code in ("gate_denied", "gate_no_answer"):
+                state.task_outcome = "task_declined" if exc.code == "gate_denied" else "task_no_answer"
+            self.io.event("status", f"Refused on the phone ({exc.code}): {exc}")
+            outcome = Outcome(f"Refused on the phone ({exc.code}): {exc} Don't retry this; pick another approach "
+                              "or call done.", is_error=True, settle=0)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         if note and not outcome.is_error:
@@ -1081,7 +1140,7 @@ class Agent:
             state.acted_on = obs
         if name != plan.TOOL:  # a plan isn't an action on the phone
             state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
-        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, source)
+        self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, handled_by, source)
         if self._replay_on() and not outcome.is_error and source in (None, replay.SOURCE, plan.SOURCE):
             step = replay.recordable(name, args, obs.package, obs.elements, outcome.launched)
             if step is not None:
@@ -1103,7 +1162,7 @@ class Agent:
         self._step_tokens = step
 
     def _record_step(self, state: _TaskState, name: str, args: dict, obs: Observation, outcome: Outcome, seconds: float,
-                     fast_step: bool = False, source: str | None = None) -> None:
+                     fast_step: bool = False, handled_by: str | None = None, source: str | None = None) -> None:
         """One structured row per tool call, for IOs that keep them (the Coordinator → steps table).
         Text only: typed text is always redacted (we can't tell a password field), and no screenshot."""
         record = getattr(self.io, "record_step", None)
@@ -1144,6 +1203,7 @@ class Agent:
                 "model": self.task_model, "jev": self.judge is not None, **(outcome.timings or {}),
                 "settle_idle": state.settle_idle, "variant": self._task_variant, "fast": fast_step,
                 "done_via": outcome.done_via, **(outcome.tokens or {}),
+                **({"handled_by": handled_by} if handled_by else {}),
                 **({"source": source} if source else {}),
                 **(outcome.wait or state.settle_wait or {}),
             }
@@ -1153,6 +1213,9 @@ class Agent:
 
     def _dispatch(self, name: str, args: dict, obs: Observation, state: _TaskState) -> Outcome:
         state.step_approved = False
+        if name in ("tap", "tap_element", "long_press", "swipe", "scroll") and (
+                locked := self._keyguard_check(state, obs)):
+            return locked  # never a gesture at the lock screen
         # Nothing is done inside an app this task may not touch (the loop ends a task that finds one in front;
         # a drive session goes dark instead): only BACK and HOME, the loop's own way out of one, are accepted.
         if name in MOVES_SCREEN and self._is_blocked(state, obs.package) and not (
@@ -1163,9 +1226,11 @@ class Agent:
         # a password field, and dangerous URLs typed into an address bar.
         if name == "open_url" and (why := gate.url_refusal(gate.web_url(str(args.get("url", ""))))):
             return self._refuse(str(args.get("url", ""))[:80], why)
-        if name == "type_text" and (refused := self._typing_refusal(str(args.get("text", "")),
-                                                                    self._field(state, obs), obs, state)):
-            return refused
+        if name == "type_text":
+            if not obs.elements and (refused := self._unseen_field_refusal(state, obs)):
+                return refused
+            if refused := self._typing_refusal(str(args.get("text", "")), self._field(state, obs), obs, state):
+                return refused
         if name in CHANGING:
             if self._needs_plan(state) and not (name == "press_key" and args.get("key") != "ENTER"):
                 return Outcome("Plan first: call propose_plan with a short numbered plan for the owner to approve "
@@ -1342,8 +1407,9 @@ class Agent:
             return self._wait_until(args, obs, state)
 
         if name == "ask_user":
+            # An answer is information, never approval: the API caller can answer ask_user in plain text, and only
+            # the owner's own approval prompt approves an action (security review 2026-10-09).
             answer = self.timer.timed("wait", self.io.ask, args["question"]).strip()
-            state.approved = is_yes(answer)
             return Outcome(f"User answered: {answer or '(no answer)'}", settle=0)
 
         if name == "done":
@@ -1454,17 +1520,15 @@ class Agent:
                 return self._refuse(shown, "this Settings page asks the owner first, and nobody can be asked "
                                            "while agents act without asking.")
             state.risky = True
-            if not state.approved:
-                action = self._action("open_settings", obs.package, typed=f"{key} {package or ''}".strip())
-                answer = self._ask_owner(state, f"I'm about to open {shown}. Should I go ahead?",
-                                         {"kind": "action", "action_kind": "settings", "package": obs.package,
-                                          "action": action, "digest": action_digest(action)})
-                if not is_yes(answer):
-                    return Outcome(f"The user did not approve opening {shown} (they said {answer!r}). Don't do "
-                                   "it. Pick another approach or call done.", is_error=True, settle=0)
-                if refused := self._approval_mismatch(action_digest(action), None, f"open {shown}"):
-                    return refused
-            state.approved = False
+            action = self._action("open_settings", obs.package, typed=f"{key} {package or ''}".strip())
+            answer = self._ask_owner(state, f"I'm about to open {shown}. Should I go ahead?",
+                                     {"kind": "action", "action_kind": "settings", "package": obs.package,
+                                      "action": action, "digest": action_digest(action)})
+            if not is_yes(answer):
+                return Outcome(f"The user did not approve opening {shown} (they said {answer!r}). Don't do "
+                               "it. Pick another approach or call done.", is_error=True, settle=0)
+            if refused := self._approval_mismatch(action_digest(action), None, f"open {shown}"):
+                return refused
         state.money_followup = None  # leaving the app ends a payment's follow-up
         try:
             opened = self.driver.open_settings(key, package) or {}
@@ -1611,18 +1675,16 @@ class Agent:
                 return self._refuse(link.label, "this link acts as soon as it opens, so it asks the owner first, and "
                                                 "nobody can be asked while agents act without asking.")
             state.risky = True
-            if not state.approved:
-                action = self._action("open_url", obs.package, typed=url)
-                answer = self._ask_owner(state, f"I'm about to open {link.label}, which acts as soon as it opens. "
-                                                "Should I go ahead?",
-                                         {"kind": "action", "action_kind": "link", "package": obs.package,
-                                          "action": action, "digest": action_digest(action)})
-                if not is_yes(answer):
-                    return Outcome(f"The user did not approve opening {link.label} (they said {answer!r}). Don't do "
-                                   "it. Pick another approach or call done.", is_error=True, settle=0)
-                if refused := self._approval_mismatch(action_digest(action), None, f"open {link.label}"):
-                    return refused
-            state.approved = False
+            action = self._action("open_url", obs.package, typed=url)
+            answer = self._ask_owner(state, f"I'm about to open {link.label}, which acts as soon as it opens. "
+                                            "Should I go ahead?",
+                                     {"kind": "action", "action_kind": "link", "package": obs.package,
+                                      "action": action, "digest": action_digest(action)})
+            if not is_yes(answer):
+                return Outcome(f"The user did not approve opening {link.label} (they said {answer!r}). Don't do "
+                               "it. Pick another approach or call done.", is_error=True, settle=0)
+            if refused := self._approval_mismatch(action_digest(action), None, f"open {link.label}"):
+                return refused
         return self._open_destination(url, obs, state, app_links.APPS[link.app], label=link.label, shown=link.label)
 
     def _open_destination(self, url: str, obs: Observation, state: _TaskState, app: app_links.App | None, *,
@@ -1853,7 +1915,8 @@ class Agent:
         self.io.event("status", f"Permission dialog ({dialog.kind}, {app}): dismissed with Back.")
         closed = False
         for attempt in range(2):
-            outcome = self._execute("press_key", {"key": "BACK"}, obs, state, fast_step=True, source="auto_dialog",
+            outcome = self._execute("press_key", {"key": "BACK"}, obs, state, fast_step=True,
+                                    handled_by="permission_rule", source="auto_dialog",
                                     note=text if attempt == 0 else f"{text} (Back again: the first didn't close it.)")
             state.fast_steps += 1
             if outcome.is_error:
@@ -2003,6 +2066,15 @@ class Agent:
         hint_hits = self._keyword_hits(gate.strip_skips(extra, cfg.confirm_skip_phrases)) if extra else []
         hits = real_hits + [h for h in hint_hits if h not in real_hits]
         money = gate.words(gate.strip_skips(caution, cfg.confirm_skip_phrases), cfg.money_keywords)
+        # Consequence-based risk (by owner request; the phone's gatekeeper decides the same way):
+        # - Subscribe / Join are reversible, and money only with a price nearby;
+        if not gate.money_context(obs.elements) and not gate.is_money_app(package):
+            money = [m for m in money if m not in gate.PRICE_ONLY_MONEY]
+            hits = [h for h in hits if h not in gate.PRICE_ONLY_MONEY]
+            real_hits = [h for h in real_hits if h not in gate.PRICE_ONLY_MONEY]
+        # - a public link shared to yourself (a share target that is you while a link is on screen) is low risk.
+        if not money and gate.to_self(desc, obs, self._owner_names()) and not credential:
+            hits, real_hits, hint_hits = [], [], []
         unlabeled_money = unlabeled and gate.is_money_app(package)
         if money_forced or (unlabeled_money and gate.payment_context(obs.elements)):
             money = money or ["payment"]
@@ -2033,9 +2105,19 @@ class Agent:
                 requested = requested and asked >= 0.5
             except JevError as exc:
                 self.io.event("error", str(exc))
+        # A Play Store install the request doesn't name asks (and is refused under Don't ask): owner, 2026-10-09.
+        install = package == PLAY_STORE and gate.is_install(desc or extra) and not money
+        unnamed_install = install and not gate.names_app(state.task, gate.store_title(obs.elements, element))
+        if unnamed_install:
+            risky, requested = True, False
+            if mode == "never" or cfg.confirm_actions == "never":
+                return self._refuse(shown, "installing an app the request doesn't name asks the owner first, and "
+                                           "nobody can be asked while agents act without asking.")
         if risky:
             state.risky = True
         kind = "settings" if tier == "ask" else (gate.kind_of(hits, money, credential) or kind_hint)
+        if unnamed_install:
+            kind = "install"
         share = gate.is_share(hits)
         settings = state.perms.current_settings()
         if mode == "never" or cfg.confirm_actions == "never":
@@ -2049,16 +2131,20 @@ class Agent:
             return None  # the owner just approved this very action
         if not risky:
             return None
-        if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
+        # "Don't confirm everyday actions" (signed on the phone): only money and dangerous actions are confirmed.
+        if mode != "ask" and settings.get("everyday") and not money and not credential and tier != "ask" and (
+                not unnamed_install):
             return None
-        if state.approved:
-            state.approved = False
+        if self._covered(state, mode, desc, hits, money, kind, share, requested, package, settings):
             return None
         context = gate.money_context(obs.elements) if money else ""
         where = f" in {self._app_label(package)}" if package and not gate.is_launcher(package) else ""
         what = label if label is not None else (repr(desc) if desc else shown)
         question = f"I'm about to {verb} {what}{where}{f' ({context})' if context else ''}. Should I go ahead?"
-        details = {"kind": "action", "action_kind": kind, "package": package}
+        details = {"kind": "action", "action_kind": kind, "package": package,
+                   # Only concrete words or rules make the phone ask; the classifier's unease alone doesn't (a
+                   # fingerprint is for money and dangerous actions, never basic app flow).
+                   "hint_ok": bool(hits or money or credential or force or unlabeled_money or tier == "ask")}
         digest = None
         if action is not None:
             digest = action_digest(action)
@@ -2189,6 +2275,22 @@ class Agent:
         if state.acted_on is obs:  # e.g. the tap that focused it, this same step
             return state.tapped_field
         return gate.focused_field(obs.elements) or state.tapped_field
+
+    def _unseen_field_refusal(self, state: _TaskState, obs: Observation) -> Outcome | None:
+        """Typing on a screen whose element tree wasn't read (ui_tree auto stops reading a treeless app after two
+        looks): read it now, so the password and code checks judge the field that will get the text. A tree
+        that still has nothing in it means the field can't be seen, so nothing is typed (security review
+        2026-10-09: a login form shown after a game's splash was typed into unseen)."""
+        try:
+            fresh = self.driver.ui_elements()
+        except Exception:
+            fresh = []
+        if not fresh:
+            return self._refuse("a field nobody can see", "the screen can't be read, so the field the text would go "
+                                                          "to can't be checked. Tap a field you can see first.")
+        state.treeless_misses[obs.package or ""] = 0  # readable after all: keep reading it
+        obs.elements = fresh
+        return None
 
     def _typing_refusal(self, text: str, field: UIElement | None, obs: Observation,
                         state: _TaskState | None = None) -> Outcome | None:
@@ -2339,9 +2441,160 @@ class Agent:
             offer["target"] = " ".join(target.split()).lower()[:80]
         return offer
 
+    # --- gatekeeper phones (docs/design/phone-gatekeeper.md) and the lock screen ---------------------
+
+    @property
+    def _gatekeeper(self) -> bool:
+        return bool(getattr(self.driver, "gatekeeper", False))
+
+    def _gate_setup(self, state: _TaskState | None, task_grant: bool = True) -> None:
+        """Wire the driver to this task: its mode goes with each act call (the phone takes the tighter of it and
+        its owner's ceiling), the phone's own prompts wait here, and a secure lock pauses the task.
+        `task_grant=False` (a drive session): no whole-task approval; the phone judges every act on its own, since
+        an outside agent, not this request, decides the steps."""
+        self._gate_state = state
+        if not hasattr(self.driver, "gate_approver"):
+            return
+        self.driver.gate_mode = state.perms.mode() if state else None
+        self.driver.gate_task = str(getattr(self.io, "current_task", "") or "") if state else ""
+        # Task approval, just in time: the phone asks for the whole task at the first step that needs a tap, worded
+        # from this request (and not at all when no step does). Not in Ask every step.
+        task_ok = task_grant and state is not None and state.perms.mode() in ("auto", "trusted", "plan")
+        try:
+            if task_ok and (state.perms.current_settings() or {}).get("task_approval") is False:
+                task_ok = False
+        except Exception:
+            pass
+        source = getattr(self.io, "task_source", None)
+        self.driver.gate_task_text = state.task if task_ok else ""
+        self.driver.gate_task_source = (source() if callable(source) else "An agent") if task_ok else ""
+        self.driver.gate_approver = self._gate_approval if state else None
+        self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
+        if hasattr(self.driver, "dialog_waiter"):
+            self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
+
+    def _owner_names(self) -> list[str]:
+        """The owner's own names ("self" recipients): the paired account's email, if the IO knows it."""
+        names = getattr(self.io, "owner_names", None)
+        try:
+            return list(names() if callable(names) else names or [])
+        except Exception:
+            return []
+
+    def _task_approval(self, state: _TaskState) -> AgentResult | None:
+        """Task approval (by owner request): on a gatekeeper phone, in Ask for risky / Trusted / Plan first, ask the
+        owner once, on the phone, to approve this task; its non-money risky steps then run without more prompts.
+        Declined: the task stops (task_declined). Not asked in Ask every step or Don't ask, or when turned off."""
+        task_grant = getattr(self.driver, "task_grant", None)
+        if task_grant is None or not self._gatekeeper or state.perms.mode() not in ("auto", "trusted", "plan"):
+            return None
+        try:
+            if (state.perms.current_settings() or {}).get("task_approval") is False:
+                return None
+        except Exception:
+            pass
+        source = getattr(self.io, "task_source", None)
+        try:
+            granted = task_grant(str(getattr(self.io, "current_task", "") or ""), state.task,
+                                 source() if callable(source) else "An agent")
+        except GateRefused as exc:
+            if exc.code in ("gate_denied", "gate_no_answer"):
+                state.task_outcome = "task_declined" if exc.code == "gate_denied" else "task_no_answer"
+                return AgentResult(False, "The owner declined this task on the phone." if exc.code == "gate_denied"
+                                   else "Nobody approved this task on the phone in time, so I didn't start.", 0)
+            self.io.event("status", f"No task approval ({exc.code}): risky steps will ask one by one.")
+            return None
+        except DeviceError:
+            return None
+        if granted:
+            self.io.event("status", "Task approved on the phone: its steps run without more prompts (purchases "
+                                    "still ask).")
+        return None
+
+    def _gate_approval(self, refusal) -> str:
+        """The phone asked its owner (gate_needs_approval): the task waits for that answer, worded by the phone.
+        The API and dashboard can decline it, never approve it (approval_on_phone)."""
+        state = self._gate_state
+        if state is None:
+            return False
+        question = refusal.question or "Approve this action on your phone?"
+        what = "of this task " if refusal.kind == "task" else ""
+        answer = self._ask_owner(state, f"Waiting for your approval {what}on the phone: {question}",
+                                 {"kind": "gate", "approver": "phone", "approval_id": refusal.approval_id,
+                                  "package": refusal.package, "action_kind": refusal.kind})
+        if is_yes(answer):
+            return "yes"
+        # "no answer": the prompt ended without a decision (timed out, or interrupted and never answered).
+        return "no_answer" if answer.strip().lower() == "no answer" else "no"
+
+    def _dialog_wait(self, state: _TaskState | None) -> bool:
+        """A system dialog the phone can't read is up (Android 14+ permission dialogs): the task pauses with the
+        phone's message ("Kalshi is asking for location: choose on your phone…") until the owner answers it (True)
+        or owner_dialog_wait_seconds pass (False: the task ends with reason needs_owner_dialog). Never tapped."""
+        wait = float(getattr(self.config, "owner_dialog_wait_seconds", 0) or 0)
+        waiter = getattr(self.driver, "wait_owner_dialog", None)
+        message = getattr(self.driver, "owner_dialog", None) or "A system dialog needs your answer on the phone."
+        self.io.event("status", message)
+        closed = False
+        if waiter is not None and wait > 0:
+            deadline = time.monotonic() + wait
+            while not closed and time.monotonic() < deadline and not (state and state.cancel.is_set()):
+                closed = self.timer.timed("wait", waiter, min(5.0, deadline - time.monotonic()))
+        if closed:
+            self.io.event("status", "The dialog was answered on the phone. Carrying on.")
+            return True
+        if state is not None:
+            state.dialog_out = True
+        return False
+
+    def _lock_wait(self, state: _TaskState | None) -> bool:
+        """A secure lock screen came up mid-task: pause with "Unlock your phone to continue" until the owner
+        unlocks it (True), or locked_wait_seconds pass (False: the task ends with reason phone_locked). The agent
+        never taps or swipes at the lock screen itself."""
+        wait = float(getattr(self.config, "locked_wait_seconds", 0) or 0)
+        waiter = getattr(self.driver, "wait_unlocked", None)
+        self.io.event("status", "Unlock your phone to continue.")
+        unlocked = False
+        if waiter is not None and wait > 0:
+            deadline = time.monotonic() + wait
+            while not unlocked and time.monotonic() < deadline and not (state and state.cancel.is_set()):
+                unlocked = self.timer.timed("wait", waiter, min(5.0, deadline - time.monotonic()))
+        if unlocked:
+            self.io.event("status", "The phone is unlocked. Carrying on.")
+            return True
+        if state is not None:
+            state.locked_out = True
+        return False
+
+    def _keyguard_check(self, state: _TaskState, obs: Observation) -> Outcome | None:
+        """Before a tap or swipe: never at the lock screen. A swipe-only lock is woken and dismissed by the phone
+        (wake_unlock); a secure one pauses the task as phone_locked."""
+        if not (getattr(self.driver, "locked", False) or obs.package == "com.android.systemui"):
+            return None
+        try:
+            lock = self.driver.device_state() if hasattr(self.driver, "device_state") else None
+        except DeviceError:
+            lock = None
+        if not lock or not lock.get("locked"):
+            return None
+        if not lock.get("secure") and not getattr(self.driver, "locked", False):  # not after the owner's power press
+            self.driver.wake_unlock()
+            return Outcome("The lock screen was up; the phone dismissed it. Look at the screen again.", is_error=True)
+        if self._lock_wait(state):
+            return Outcome("The phone was locked; it's unlocked now. Look at the screen again before acting.",
+                           is_error=True)
+        return Outcome("The phone stayed locked, so the task stopped. Unlock it and ask again.", is_error=True)
+
     def _ask_owner(self, state: _TaskState, question: str, details: dict) -> str:
         """One approval prompt (the owner's screen lock, on an app phone). Counts it, and records its
-        decision and how long the owner took, for the prompt budget (`openmob prompts`)."""
+        decision and how long the owner took, for the prompt budget (`openmob prompts`).
+
+        On a gatekeeper phone the phone owns approval (D9): the server's checks only add caution. Instead of an
+        approval_request, the next act call carries a hint; the phone asks once, covering both detectors."""
+        if self._gatekeeper and details.get("kind") in ("action", "step", "plan"):
+            if details.get("kind") == "action" and details.get("hint_ok", True):
+                self.driver.gate_hint(question)
+            return "yes"  # not a yes from anyone: the phone decides, and asks its owner if it must
         confirm = getattr(self.io, "confirm", None)
         started = time.monotonic()
         if confirm is None:
@@ -2356,6 +2609,7 @@ class Agent:
         state.prompts += 1
         low = answer.strip().lower()
         decision = ("always" if is_yes(answer) and "always" in low else "approved" if is_yes(answer)
+                    else "no_answer" if low == "no answer"
                     else "denied" if not low or low.split()[0] in DECLINE_WORDS else "changes")
         record = getattr(self.io, "record_prompt", None)
         if record is not None:
@@ -2541,8 +2795,10 @@ class Agent:
 
     @staticmethod
     def _identity(element: UIElement) -> tuple:
-        """What makes two reads of the screen the same element, wherever it is (_recheck_target)."""
-        return element.text, element.desc, element.resource_id, element.cls
+        """What makes two reads of the screen the same element, wherever it is (_recheck_target). Volatile numbers
+        (live odds, prices, counts, times) are blanked: "DUN · 42%" and "DUN · 47%" are the same button. A money
+        commit approved on the phone is still bound to its exact amounts (the phone's permit, the approval digest)."""
+        return gate.volatile(element.text), gate.volatile(element.desc), element.resource_id, element.cls
 
     def _recheck_target(self, element: UIElement) -> UIElement | Outcome:
         """Just before a tap_element: re-read the elements and return where to tap, or refuse.
@@ -2562,7 +2818,7 @@ class Agent:
         if not fresh:
             return element  # nothing to compare with (a tree that's briefly empty): tap as decided
         identity = self._identity(element)
-        if any((el.text, el.desc, el.resource_id, el.cls, el.bounds) == identity + (element.bounds,) for el in fresh):
+        if any(self._identity(el) == identity and el.bounds == element.bounds for el in fresh):
             return element
         refused = Outcome(f"Didn't tap [{element.index}] {element.label!r}: the screen changed and it is no longer "
                           "where it was. Look at the new screen.", is_error=True, settle=0)
