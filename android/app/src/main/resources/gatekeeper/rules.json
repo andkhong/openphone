@@ -2,7 +2,7 @@
   "_doc": "The gatekeeper's built-in policy (docs/design/phone-gatekeeper.md, Phase 1). One file, read by the Android app (GateRules.kt) and by the Python reference implementation the tests use (tests/gatekeeper_ref.py). Regexes use only syntax Java and Python share; a leading (?i) is the only inline flag. Word lists are matched on whole normalized words (NFKD, diacritics stripped, lower-cased).",
   "version": 1,
   "methods": {
-    "meta": ["device_state", "wait_idle"],
+    "meta": ["device_state", "wait_idle", "gate_cancel"],
     "read": ["screenshot", "ui_elements", "wait_for", "current_app", "launchable_packages", "app_labels", "resolve_url",
              "stream_start", "stream_stop", "stream_keyframe"],
     "act": ["tap", "long_press", "swipe", "type_text", "key", "launch_app", "open_url", "open_settings", "wake_unlock"],
@@ -61,6 +61,7 @@
   "slider_class": "(?i)SeekBar|Slider|RangeBar",
   "scroller_class": "(?i)RecyclerView|ScrollView|ListView|GridView|ViewPager|WebView",
   "payment_field": "(?i)card.?number|cc.?num|credit.?card|cvv|cvc|security.?code|expir|iban|card.?holder|cc.?exp|cc.?csc",
+  "sensitive_numbers": {"_doc": "Card numbers and SSNs in typed text and links (SensitiveNumbers.kt, openmob/agent/sensitive.py). Where the field or screen matches ssn_label, 9 bare digits and test SSNs such as 000-12-3456 count too.", "ssn_label": "(?i)(^|[^a-z])ssn([^a-z]|$)|social.?security"},
   "otp_field": "(?i)otp|one.?time|verification.?code|sms.?code|2fa|auth.?code|passcode|pin.?code",
   "search_field": "(?i)search|query|SearchView",
   "url_bar": "(?i)url_bar|url_field|urlbar|omnibox|location_bar|address_bar|mozac_browser_toolbar_edit|search_or_type_url|url_edit",
@@ -112,12 +113,22 @@
     "persistent_ask": ["contacts", "sms", "phone", "calendar", "body_sensors", "nearby_devices"]
   },
   "install": {
-    "_doc": "Play Store installs (owner, 2026-10-09; mirrors the server's gate.is_install, store_title and names_app). A tap on Install/Get in the store runs unasked only when the task's own text names the app on the page: a distinctive word of its title (the topmost text above the button that isn't a button, rating, count or badge; 3+ letters, not generic) is a word of the request. Otherwise it asks at tap level (kind install), is never covered by a task grant or 'everyday', and is refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.",
+    "_doc": "Play Store installs (owner, 2026-10-09; mirrors the server's gate.is_install, store_title and names_app). A tap on Install/Get in the store runs unasked only when the task's own text names the app on the page: a distinctive word of its title's name part (the topmost text above the button that isn't a button, rating, count or badge, up to a ' - ', ': ' or ' | ' tagline; 3+ letters, not generic, not a common English word or maker's name from `stop`) is a word of the request. Otherwise it asks at tap level (kind install), is never covered by a task grant or 'everyday', and is refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.",
     "packages": ["com.android.vending"],
     "words": "(?i)^\\s*(install|get|instalar|installieren|installer|installa)\\b",
     "title_skip": "(?i)^(install|open|uninstall|update|cancel|more|search|get|share|wishlist|play|buy|contains ads|in-app purchases|\\d[\\d.,]*\\s*[kmb+]*.*|[\\d.]+\\s*★?.*)$",
     "generic": ["app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
-                "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"]
+                "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"],
+    "stop": ["this", "that", "these", "those", "there", "here", "then", "than", "them", "they", "their", "your",
+             "you", "yours", "our", "out", "from", "into", "onto", "over", "under", "about", "after", "before",
+             "again", "all", "any", "some", "one", "two", "three", "not", "but", "now", "just", "only", "also",
+             "very", "more", "most", "can", "will", "would", "could", "should", "what", "when", "where", "which",
+             "who", "why", "how", "its", "get", "got", "tap", "click", "open", "install", "download", "update",
+             "use", "run", "start", "stop", "find", "search", "show", "see", "look", "make", "take", "send", "set",
+             "turn", "let", "put", "try", "want", "need", "please", "like", "love", "time", "day", "today", "way",
+             "home", "back", "next", "first", "last", "top", "list", "check", "phone", "tell", "help", "good",
+             "great", "fast", "easy", "simple", "smart", "super", "ultra", "plus", "max", "mini", "google",
+             "samsung", "galaxy", "microsoft", "meta", "apple"]
   },
   "calls": {
     "_doc": "Placing a phone call (review H2). In these packages (the main dialers, contacts apps and in-call screens), a tap whose label or id says call or dial, ENTER in their number field, places a call: it asks at tap level. In any app, a button labelled exactly Call, or voice/video call, asks too. A number containing * or # is an MMI/USSD code (call forwarding, settings changes): dialing it asks with the screen lock (see _code_doc).",

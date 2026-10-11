@@ -319,7 +319,7 @@ object GateHost {
 
     /** The prompt is on the owner's screen (ApprovalActivity): it counts toward the prompt limit now. */
     fun markShown(id: String) { gate?.markShown(id) }
-    fun cancel(id: String) = gk().cancel(id)
+    fun cancel(id: String): Boolean = id.startsWith("gk") && gate?.cancel(id) == true
 
     private fun onEvent(id: String, state: String) {
         sink?.invoke(JSONObject().put("type", "gate_event").put("approval_id", id).put("state", state))

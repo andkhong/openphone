@@ -81,6 +81,8 @@ def describe(el: UIElement) -> str:
         parts.append("on" if el.checked else "off")
     if is_text_field(el):
         parts.append("text field")
+    if not el.enabled:
+        parts.append("disabled")  # greyed out: a tap does nothing (Samsung's Light/Dark under power saving)
     parts.append("tappable" if el.clickable else "label")
     return " ".join(parts)
 
@@ -92,8 +94,9 @@ def screen_table(package: str | None, elements: list[UIElement]) -> dict:
 
 def targets(elements: list[UIElement]) -> dict[str, dict[str, str]]:
     """Compatible elements per targeted operation: anything labeled can be tapped (a label inside a
-    row taps the row), only text fields can be typed into. Covered elements and password fields never."""
-    tap = {str(el.index): describe(el) for el in elements if labeled(el) and not el.covered}
+    row taps the row), only text fields can be typed into. Covered or greyed-out elements and password fields
+    never."""
+    tap = {str(el.index): describe(el) for el in elements if labeled(el) and not el.covered and el.enabled}
     fields = {str(el.index): describe(el) for el in elements if is_text_field(el) and not el.covered and not el.password}
     return {"TAP": tap, "TYPE_TEXT": fields}
 

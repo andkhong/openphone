@@ -457,7 +457,7 @@ class Gatekeeper(
         }
         if (mode != "ask" && taskCovers(risk, params, j.pkg, screen)) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "task_grant", method = method, params = params, pkg = j.pkg, plain = plain)
-        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call", "install")) return Admission("allow", strict = true, binding = bind,
+        if (mode != "ask" && everyday && level(risk) == "tap" && risk.kind !in setOf("permission", "uninstall", "call", "install", "sensitive_number")) return Admission("allow", strict = true, binding = bind,
             kind = risk.kind, rule = "everyday", method = method, params = params, pkg = j.pkg, plain = plain)
         // Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         // (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -573,7 +573,7 @@ class Gatekeeper(
         if (now() >= g.expires || g.used >= lim("task_grant_steps")) return false
         val text = params["task_text"]?.toString().orEmpty().split(WS).filter { it.isNotEmpty() }.joinToString(" ").take(300)
         if (text.isNotEmpty() && GateText.sha256(text) != g.digest) return false // the grant was for another request
-        if (risk.kind == "task" || risk.kind == "step" || level(risk) != "tap" || risk.kind !in g.kinds) return false
+        if (risk.kind == "task" || risk.kind == "step" || risk.kind == "sensitive_number" || level(risk) != "tap" || risk.kind !in g.kinds) return false
         var app = if (pkg.isNotEmpty() && screen.windows.any { it.pkg == pkg && appWindow(it) }) pkg else lastApp
         if (risk.reason.startsWith("uninstall:")) app = risk.grant.orEmpty() // an uninstall counts as the app it removes
         val label = GateText.tokens(screen.labels[app].orEmpty())
@@ -1339,11 +1339,14 @@ class Gatekeeper(
         }.minWithOrNull(compareBy({ it.bounds[1] }, { it.bounds[0] }))?.text?.trim().orEmpty()
     }
 
-    /** The request names the store page's app: one of its title's distinctive words is a word of the request. */
+    /** The request names the store page's app: a distinctive word of its title's name part (before any tagline) is
+     *  a word of the request; generic words, common English words ("this", "tap") and makers' names (install.stop)
+     *  count for nothing. */
     fun namesApp(request: String, title: String): Boolean {
-        val generic = installRules["generic"].strings().toSet()
+        val generic = installRules["generic"].strings().toSet() + installRules["stop"].strings()
         val word = Regex("[a-z0-9]+")
-        val words = word.findAll(title.lowercase()).map { it.value }.filter { it.length >= 3 && it !in generic }.toSet()
+        val name = title.split(TAGLINE, limit = 2)[0] // up to a tagline ("Chess - Play and Learn")
+        val words = word.findAll(name.lowercase()).map { it.value }.filter { it.length >= 3 && it !in generic }.toSet()
         val asked = word.findAll(request.lowercase()).map { it.value }.toSet()
         return words.any { it in asked }
     }
@@ -1414,6 +1417,18 @@ class Gatekeeper(
     private fun sliderAt(t: GTarget): Boolean {
         val rx = rules.rxKey("slider_class")
         return listOfNotNull(t.pressed, t.hit).any { rx.containsMatchIn(it.cls) }
+    }
+
+    /** A slider or seekbar anywhere under (x, y) in [w], whatever the drawing order: a drag starting there moves it. */
+    private fun sliderUnder(w: GWindow, x: Double, y: Double): Boolean {
+        val rx = rules.rxKey("slider_class")
+        var seen = 0
+        fun visit(n: GNode): Boolean {
+            if (++seen > 2000) return false
+            if (rx.containsMatchIn(n.cls)) return true
+            return n.children.any { it.contains(x, y) && visit(it) }
+        }
+        return w.root?.let { it.contains(x, y) && visit(it) } == true
     }
 
     /** A tap, judged by every clickable or labeled node under the point, not only the hit path (review C follow-up):
@@ -1589,11 +1604,19 @@ class Gatekeeper(
             app = start != null && appWindow(start.window))
         for (t in ends) if (t != null) surfaceRefusal(t.window)?.let { j.refuse = it; return j }
         j.payment = GateScreen.paymentContext(rules, screen)
+        // A scroll (mostly vertical, starting inside a list or web page): the content under the finger moves, it isn't
+        // pressed, so its words ("Donate" in a page, a row's "Delete") don't make it risky. What a drag can still
+        // move is: a slider or seekbar anywhere under the start (not only on the hit path), or a control whose words
+        // say to slide or swipe it ("Swipe up to pay"). Any other swipe is judged at both ends as before.
+        val scroll = start != null && Math.abs(y2 - y1) >= 2 * Math.abs(x2 - x1) &&
+            start.path.any { rules.rxKey("scroller_class").containsMatchIn(it.cls) }
         for (t in ends) {
             if (t == null) continue
             val label = t.labelTokens()
-            val slider = sliderAt(t) || has(label, rules.w.getValue("slide"))
-            var risk = wordRisk(label, t.ids(), t.window.pkg, j.payment)
+            val slider = sliderAt(t) || has(label, rules.w.getValue("slide")) ||
+                (t === start && sliderUnder(t.window, x1, y1)) ||
+                (scroll && ("slide" in label || "swipe" in label))
+            var risk = if (scroll) null else wordRisk(label, t.ids(), t.window.pkg, j.payment)
             if (risk == null && slider) {
                 val money = j.payment || has(GateText.stripPhrases(label, rules.w.getValue("pre_commit")),
                     rules.w.getValue("flow_start") + rules.w.getValue("terminal"))
@@ -1638,8 +1661,21 @@ class Gatekeeper(
         if (callApp(w.pkg) && (completesCode(text) || completesCode(node.text + text))) {
             // Some dialers run a code as soon as its last # is typed (review H2).
             j.risk = callCodeRisk(node.text + text, app)
+        } else if (rules.isCat("browser", w.pkg) && (rules.rxKey("url_bar").containsMatchIn(node.id) || GateText.looksLikeUrl(node.text))
+            && GateText.looksLikeUrl(text) && SensitiveNumbers.inUrl(text, rules.ssnLabel) != null) {
+            // No data out through links (F3): a link carrying a card number or SSN is never typed into the address bar.
+            j.refuse = Triple("gate_denied", "builtin:sensitive_link", "That link carries " +
+                SensitiveNumbers.describe(SensitiveNumbers.inUrl(text, rules.ssnLabel)) + "; links never carry them out.")
         } else if (rules.rxKey("payment_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "card_field", always = true, wording = "Allow typing into the card field in $app?")
+        } else if (SensitiveNumbers.find(text, ssnContext = rules.ssnLabel.containsMatchIn("$about ${node.desc}") ||
+                rules.ssnLabel.containsMatchIn(GateScreen.screenText(screen))) != null) {
+            // A card number or SSN in any field (F2): asks at tap level, every time. Never covered by a task approval,
+            // "everyday" or a grant; refused under Don't ask (always).
+            val what = SensitiveNumbers.describe(SensitiveNumbers.find(text, ssnContext = true))
+            val field = node.hint.ifEmpty { node.desc }.take(40)
+            j.risk = Risk("sensitive_number", "sensitive_number", always = true,
+                wording = "Allow typing $what" + (if (field.isNotEmpty()) " into “$field”" else "") + " in $app?")
         } else if (rules.rxKey("otp_field").containsMatchIn(about)) {
             j.risk = Risk("fill", "otp_field", always = true, wording = "Allow typing a code into $app?")
         }
@@ -1713,6 +1749,12 @@ class Gatekeeper(
                 "${scheme ?: "that"}: links aren't opened by agents (only https, http, tel, geo, mailto, sms and market).")
             return j
         }
+        SensitiveNumbers.inUrl(url, rules.ssnLabel)?.let { kind ->
+            // No data out through links (F3): open_url, or ENTER on an address bar holding it. Refused, never asked.
+            j.refuse = Triple("gate_denied", "builtin:sensitive_link",
+                "That link carries ${SensitiveNumbers.describe(kind)}; links never carry them out.")
+            return j
+        }
         for (pkg in if (handler.isNotEmpty()) listOf(handler) else candidates) {
             if (pkg in rules.own || rules.blocked(pkg)) {
                 j.refuse = Triple("gate_blocked_app", "builtin:sensitive_apps", "Blocked on the phone: that link opens $pkg, a sensitive app. Call done.")
@@ -1737,6 +1779,7 @@ class Gatekeeper(
         /** Well over the accessibility service's notificationTimeout (100 ms), the event delay the list lags by. */
         const val SETTLE_MS = 250L
         val GESTURES = setOf("tap", "long_press", "swipe")
+        private val TAGLINE = Regex("\\s[-\u2013\u2014|]\\s|:\\s")
         /** The buttons that answer a permission dialog (the location card's Precise/Approximate aren't among them). */
         val GRANT_ROLES = setOf("allow", "deny", "deny_forever", "one_time", "foreground", "always")
 

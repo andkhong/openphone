@@ -12,6 +12,7 @@ import time
 from collections import OrderedDict, deque
 
 from .agent import Agent
+from .agent import sensitive
 from .agent.loop import DECLINE_WORDS, is_yes
 from .phone.base import DeviceError, PhoneTimeout
 from .usage import Usage
@@ -57,7 +58,7 @@ class ConsoleIO:
             return ""
 
     def event(self, kind: str, message: str) -> None:
-        print(format_event(kind, message), flush=True)
+        print(format_event(kind, sensitive.redact(message)), flush=True)
 
 
 class Coordinator:
@@ -338,6 +339,9 @@ class Coordinator:
         """Log one entry. `task` defaults to the running task; `data` carries structured details
         for the dashboard (e.g. {"final": True, "steps": 4} on a task's outcome, token counts)."""
         task_id = self.current_task if task is _CURRENT else task
+        # Every outward copy (the feed, /v1/tasks/{id}/events, webhooks' task, the history, the console) starts here:
+        # a card number or SSN in any message (a summary, a thought, the request in "Working on: …") is redacted.
+        message = sensitive.redact(message)
         entry = {"seq": next(self._seq), "time": time.time(), "kind": kind, "message": message, "task": task_id}
         if data:
             entry["data"] = data

@@ -1,0 +1,344 @@
+{
+ "texts": [
+  {
+   "text": "4111 1111 1111 1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111111111111111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111-1111-1111-1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111 1111 1111 1111 12/29 123",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "card: 4111111111111111 exp 12/29",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "5555555555554444",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "378282246310005",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "3782 822463 10005",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "6011111111111117",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "2223003122003222",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "４１１１１１１１１１１１１１１１",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111 1111 1111 1112",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "1111111111111117",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "+4915123456789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "+1 415 555 2671",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "415-555-2671",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "(415) 555-2671",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "555-123-4567 555-987-6543",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "2026-10-10",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "10/10/2026",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "Order 112-1234567-1234567",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "1760000000000",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "-122.41941550000001",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "1Z999AA10123456784",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "4242",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123-45-6789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "SSN 123-45-6789.",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "000-12-3456",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "000-12-3456",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "666-12-3456",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "900-12-3456",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123-00-6789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123-45-0000",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123456789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123456789",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "123 45 6789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123 45 6789",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "123-45 6789",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "1234-56-7890",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "123",
+   "ssn_context": false,
+   "card_field": true,
+   "expect": "card"
+  },
+  {
+   "text": "12/29",
+   "ssn_context": false,
+   "card_field": true,
+   "expect": "card"
+  },
+  {
+   "text": "12",
+   "ssn_context": false,
+   "card_field": true,
+   "expect": null
+  },
+  {
+   "text": "John Smith",
+   "ssn_context": false,
+   "card_field": true,
+   "expect": null
+  }
+ ],
+ "urls": [
+  {
+   "url": "http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123",
+   "expect": "card"
+  },
+  {
+   "url": "http://10.0.2.2:8799/collect?card=4111111111111111&exp=1229&cvv=123",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c?card=4111%201111%201111%201111",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c?card=4111%2B1111%2B1111%2B1111",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c?card=4111+1111+1111+1111",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c?c=4111%25201111%25201111%25201111",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c?c=%34%31%31%31%31%31%31%31%31%31%31%31%31%31%31%31",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/c#4111-1111-1111-1111",
+   "expect": "card"
+  },
+  {
+   "url": "https://4111111111111111.evil.example/",
+   "expect": "card"
+  },
+  {
+   "url": "http://x.example/apply?ssn=000123456",
+   "expect": "ssn"
+  },
+  {
+   "url": "http://x.example/apply?social_security=000-12-3456",
+   "expect": "ssn"
+  },
+  {
+   "url": "http://x.example/a?id=123-45-6789",
+   "expect": "ssn"
+  },
+  {
+   "url": "http://x.example/a?id=000-12-3456",
+   "expect": null
+  },
+  {
+   "url": "https://maps.example/@37.7749295,-122.41941550000001,15z",
+   "expect": null
+  },
+  {
+   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+   "expect": null
+  },
+  {
+   "url": "https://x.example/?t=1760000000000",
+   "expect": null
+  },
+  {
+   "url": "tel:+4915123456789",
+   "expect": null
+  },
+  {
+   "url": "tel:5551234",
+   "expect": null
+  },
+  {
+   "url": "https://shop.example/order/112-1234567-1234567",
+   "expect": null
+  },
+  {
+   "url": "https://x.example/%E2%82",
+   "expect": null
+  }
+ ]
+}

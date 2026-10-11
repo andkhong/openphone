@@ -331,7 +331,7 @@ class ConnectionService : Service() {
                 .put("video", streamer?.alive == true)
                 // Optional methods this app answers (older apps send none; the server falls back).
                 .put("capabilities", JSONArray().put("wait_idle").put("resolve_url").put("wait_for").put("open_settings")
-                    .put("approval_digest").put("gatekeeper").put("device_lock").put("task_grant"))
+                    .put("approval_digest").put("gatekeeper").put("device_lock").put("task_grant").put("gate_cancel"))
                 // Which built-in rules and owner policy this phone enforces (the dashboard shows "Phone protection: on").
                 .put("policy_hash", GateHost.policyHash())
                 .put("gatekeeper_rules", GateHost.rulesVersion)
@@ -362,6 +362,11 @@ class ConnectionService : Service() {
                 }
                 if (method == "task_grant") { // admitted: the owner approved this task (or typed it on this phone)
                     send(reply.put("ok", true).put("result", JSONObject().put("granted", true).put("rule", admission.rule)))
+                    return@execute
+                }
+                if (method == "gate_cancel") { // the server withdraws one of this phone's prompts (its task stopped)
+                    val cancelled = GateHost.cancel(params.optString("approval_id"))
+                    send(reply.put("ok", true).put("result", JSONObject().put("cancelled", cancelled)))
                     return@execute
                 }
                 if (method == "device_state") { // no accessibility needed: is the phone usable right now?

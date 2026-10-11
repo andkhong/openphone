@@ -16,6 +16,7 @@ from ..config import Config
 from ..permissions import (APP_INFO_ALLOWED, APP_INFO_ASK, APP_INFO_MARKERS, BROWSER_PACKAGE, KIND_WORDS,
                            SETTINGS_CHANGE_WORDS, SETTINGS_PACKAGE)
 from ..phone.adb import UIElement
+from . import sensitive
 
 TITLE_BAND = 0.16  # the top of the screen, where a Settings page's title sits
 LAUNCHER = re.compile(r"launcher|\.home$|trebuchet|lawnchair|nexuslauncher", re.IGNORECASE)
@@ -177,6 +178,18 @@ _TITLE_SKIP = re.compile(r"^(install|open|uninstall|update|cancel|more|search|ge
                          r"contains ads|in-app purchases|\d[\d.,]*\s*[kmb+]*.*|[\d.]+\s*★?.*)$", re.I)
 _GENERIC = {"app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
             "mobile", "pro", "lite", "com", "net", "org", "official", "new", "best", "android"}
+# Common English words and makers' names: a request's "tap this" or "install it" names no app (rules.json install.stop).
+_STOP = {"this", "that", "these", "those", "there", "here", "then", "than", "them", "they", "their", "your", "you",
+         "yours", "our", "out", "from", "into", "onto", "over", "under", "about", "after", "before", "again", "all",
+         "any", "some", "one", "two", "three", "not", "but", "now", "just", "only", "also", "very", "more", "most",
+         "can", "will", "would", "could", "should", "what", "when", "where", "which", "who", "why", "how", "its",
+         "get", "got", "tap", "click", "open", "install", "download", "update", "use", "run", "start", "stop",
+         "find", "search", "show", "see", "look", "make", "take", "send", "set", "turn", "let", "put", "try", "want",
+         "need", "please", "like", "love", "time", "day", "today", "way", "home", "back", "next", "first", "last",
+         "top", "list", "check", "phone", "tell", "help", "good", "great", "fast", "easy", "simple", "smart",
+         "super", "ultra", "plus", "max", "mini", "google", "samsung", "galaxy", "microsoft", "meta", "apple"}
+# The name part of a store title: up to its tagline ("Spotify: Music and Podcasts", "Chess - Play and Learn").
+_TAGLINE = re.compile(r"\s[-\u2013\u2014|]\s|:\s")
 
 
 def is_install(text: str) -> bool:
@@ -194,8 +207,11 @@ def store_title(elements: list, button=None) -> str:
 
 
 def names_app(request: str, title: str) -> bool:
-    """The request names the store page's app: one of its title's distinctive words is a word of the request."""
-    words = {w for w in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(w) >= 3 and w not in _GENERIC}
+    """The request names the store page's app: a distinctive word of its title's name part (before any tagline) is a
+    word of the request. Generic words, common English words ("this", "tap", "install") and makers' names count for
+    nothing, so "tap this" names no app and "install a music app" doesn't name "Spotify: Music and Podcasts"."""
+    name = _TAGLINE.split(title or "", 1)[0]
+    words = {w for w in re.findall(r"[a-z0-9]+", name.lower()) if len(w) >= 3 and w not in _GENERIC and w not in _STOP}
     asked = set(re.findall(r"[a-z0-9]+", (request or "").lower()))
     return bool(words & asked)
 SELF_NAMES = ["note to self", "notes to self", "message yourself", "saved messages"]
@@ -400,4 +416,13 @@ def url_refusal(url: str) -> str | None:
     if scheme not in SAFE_SCHEMES:
         return (f"{scheme}: links go straight into apps, so only web links (https://) and tel, mailto, sms, "
                 "geo and market links are opened.")
+    return carries_sensitive(url)
+
+
+def carries_sensitive(url: str) -> str | None:
+    """No data out through links (F3): a link (or a link's parameters) carrying a card number or SSN anywhere, decoded,
+    would hand it to whoever runs the site. Refused in every mode, never asked."""
+    if kind := sensitive.in_url(url):
+        return (f"this link carries {sensitive.describe(kind)}, and opening it would send that to whoever runs the "
+                "site, so it's never opened.")
     return None

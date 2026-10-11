@@ -124,6 +124,7 @@ class Rules:
         self.surf = data["surfaces"]
         self.limits = data["limits"]
         self.lexicon = set(data["language"]["lexicon"].split())
+        self.ssn_label = re.compile(data["sensitive_numbers"]["ssn_label"])
 
     @classmethod
     def load(cls) -> "Rules":
@@ -506,6 +507,96 @@ def looks_like_url(text: str | None) -> bool:
     if not text or " " in text:
         return False
     return url_scheme(text) is not None or bool(re.match(r"(www\.)?[\w-]+(\.[\w-]+)+(/|$|:\d)", text))
+
+
+# --- sensitive numbers (SensitiveNumbers.kt): card numbers and SSNs in typed text and links (F2, F3) -------------
+
+_SN_RUN = re.compile(r"(?<![0-9+])(?<![0-9]\.)[0-9](?:[ +\-]?[0-9])*")
+_SN_SEP = re.compile(r"[ +\-]")
+_SN_SSN = re.compile(r"(?<![0-9\-])([0-9]{3})([ \-]?)([0-9]{2})\2([0-9]{4})(?![0-9])")
+
+
+def luhn(digits: str) -> bool:
+    total = 0
+    for i, ch in enumerate(reversed(digits)):
+        d = int(ch)
+        if i % 2 == 1:
+            d = d * 2 - 9 if d * 2 > 9 else d * 2
+        total += d
+    return total % 10 == 0
+
+
+def has_card(text: str) -> bool:
+    for m in _SN_RUN.finditer(text):
+        groups = _SN_SEP.split(m.group())
+        total = 0
+        for k, g in enumerate(groups):
+            total += len(g)
+            if total > 19 or (k > 0 and len(groups[0]) != 4):
+                break
+            if total < 13:
+                continue
+            digits = "".join(groups[:k + 1])
+            if digits[0] in "23456" and luhn(digits):
+                return True
+            break
+    return False
+
+
+def has_ssn(text: str, labeled: bool) -> bool:
+    for m in _SN_SSN.finditer(text):
+        area, sep, group, serial = m.groups()
+        if labeled or (sep == "-" and area not in ("000", "666") and area[0] != "9" and group != "00"
+                       and serial != "0000"):
+            return True
+    return False
+
+
+def find_sensitive(text: str | None, ssn_context: bool = False, card_field: bool = False) -> str | None:
+    t = unicodedata.normalize("NFKC", text or "")
+    if has_card(t):
+        return "card"
+    if has_ssn(t, ssn_context):
+        return "ssn"
+    if card_field and len(re.findall(r"[0-9]", t)) >= 3:
+        return "card"
+    return None
+
+
+def _unquote(s: str) -> str:
+    """Valid %XX runs become UTF-8 (malformed bytes replaced); everything else stays."""
+    out, i = [], 0
+    hexd = "0123456789abcdefABCDEF"
+    while i < len(s):
+        if s[i] == "%" and i + 2 < len(s) and s[i + 1] in hexd and s[i + 2] in hexd:
+            buf = bytearray()
+            while i + 2 < len(s) and s[i] == "%" and s[i + 1] in hexd and s[i + 2] in hexd:
+                buf.append(int(s[i + 1:i + 3], 16))
+                i += 3
+            out.append(buf.decode("utf-8", "replace"))
+        else:
+            out.append(s[i])
+            i += 1
+    return "".join(out)
+
+
+def decode_url(url: str | None) -> str:
+    text = url or ""
+    for _ in range(3):
+        decoded = _unquote(text)
+        if decoded == text:
+            break
+        text = decoded
+    return unicodedata.normalize("NFKC", text)
+
+
+def sensitive_in_url(url: str | None, ssn_label: re.Pattern) -> str | None:
+    text = decode_url(url)
+    return find_sensitive(text, ssn_context=bool(ssn_label.search(text)))
+
+
+def describe_sensitive(kind: str | None) -> str:
+    return {"card": "a card number", "ssn": "a Social Security number"}.get(kind or "", "a sensitive number")
 
 
 def binding(method: str, params: dict, fp: str) -> str:
@@ -936,7 +1027,8 @@ class Gatekeeper:
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="task_grant", **base)
         if mode != "ask" and self.everyday and self.level(risk) == "tap" and risk.kind not in ("permission",
                                                                                              "uninstall", "call",
-                                                                                             "install"):
+                                                                                             "install",
+                                                                                             "sensitive_number"):
             return Admission("allow", strict=True, binding=bind, kind=risk.kind, rule="everyday", **base)
         # Task approval, just in time: the first step that needs a tap-level confirmation asks for the task instead
         # (worded from the request, with this step as the detail). A request typed on this phone needs no prompt.
@@ -1074,7 +1166,7 @@ class Gatekeeper:
         text = " ".join(str(params.get("task_text") or "").split())[:300]
         if text and sha256(text) != g["digest"]:
             return False  # the grant was for another request
-        if risk.kind in ("task", "step") or self.level(risk) != "tap" or risk.kind not in g["kinds"]:
+        if risk.kind in ("task", "step", "sensitive_number") or self.level(risk) != "tap" or risk.kind not in g["kinds"]:
             return False
         app = package if package and (screen is None or any(
             w.package == package and self._app_window(w) for w in screen.windows)) else self.last_app
@@ -1834,8 +1926,9 @@ class Gatekeeper:
 
     def names_app(self, request: str, title: str) -> bool:
         """The request names the store page's app: one of its title's distinctive words is a word of the request."""
-        generic = set(self.r.d["install"]["generic"])
-        words = {x for x in re.findall(r"[a-z0-9]+", (title or "").lower()) if len(x) >= 3 and x not in generic}
+        generic = set(self.r.d["install"]["generic"]) | set(self.r.d["install"]["stop"])
+        name = re.split(r"\s[-\u2013\u2014|]\s|:\s", title or "", maxsplit=1)[0]  # up to a tagline
+        words = {x for x in re.findall(r"[a-z0-9]+", name.lower()) if len(x) >= 3 and x not in generic}
         return bool(words & set(re.findall(r"[a-z0-9]+", (request or "").lower())))
 
     # --- phone calls (review H2) ----------------------------------------------------------------
@@ -2082,6 +2175,21 @@ class Gatekeeper:
         j.risk = risk
         return j
 
+    def _slider_under(self, w: Window, x: float, y: float) -> bool:
+        """A slider or seekbar anywhere under (x, y) in the window, whatever the drawing order."""
+        rx = re.compile(self.r.d["slider_class"])
+        seen = [0]
+
+        def visit(n) -> bool:
+            seen[0] += 1
+            if seen[0] > 2000:
+                return False
+            if rx.search(n.cls or ""):
+                return True
+            return any(c.contains(x, y) and visit(c) for c in n.children)
+
+        return w.root is not None and w.root.contains(x, y) and visit(w.root)
+
     def _judge_swipe(self, x1, y1, x2, y2, screen: Screen) -> Judgement:
         r = self.r
         start = hit_test(r, screen, x1, y1)
@@ -2100,13 +2208,20 @@ class Gatekeeper:
                 j.refuse = refusal
                 return j
         j.payment = payment_context(r, screen)
+        # A scroll (mostly vertical, starting inside a list or web page): the content under the finger moves, it isn't
+        # pressed, so its words don't make it risky; a slider under the start, or a control whose words say to slide or
+        # swipe it, still asks (Gatekeeper.judgeSwipe).
+        scroll = start is not None and abs(y2 - y1) >= 2 * abs(x2 - x1) and \
+            any(re.search(r.d["scroller_class"], n.cls or "") for n in start.path)
         for t in (start, end):
             if t is None:
                 continue
             label = t.label_tokens()
             slider = any(re.compile(r.d["slider_class"]).search(n.cls or "") for n in (t.pressed, t.hit) if n) \
-                or any_phrase(label, r.w["slide"])
-            risk = self._word_risk(label, t.ids(), t.window.package, j.payment)
+                or any_phrase(label, r.w["slide"]) \
+                or (t is start and self._slider_under(t.window, x1, y1)) \
+                or (scroll and ("slide" in label or "swipe" in label))
+            risk = None if scroll else self._word_risk(label, t.ids(), t.window.package, j.payment)
             if risk is None and slider:
                 money = j.payment or any_phrase(strip_phrases(label, r.w["pre_commit"]),
                                                 r.w["flow_start"] + r.w["terminal"])
@@ -2160,8 +2275,22 @@ class Gatekeeper:
         app = self.label(screen, w.package)
         if self.call_app(w.package) and (self.completes_code(text) or self.completes_code(node.text + text)):
             j.risk = self._call_code_risk(node.text + text, app)  # some dialers run a code once its # is typed (H2)
+        elif r.is_cat("browser", w.package) and (re.compile(r.d["url_bar"]).search(node.id or "")
+                                                  or looks_like_url(node.text)) \
+                and looks_like_url(text) and sensitive_in_url(text, r.ssn_label) is not None:
+            # No data out through links (F3): a link carrying a card number or SSN is never typed into the address bar.
+            j.refuse = ("gate_denied", "builtin:sensitive_link", "That link carries "
+                        + describe_sensitive(sensitive_in_url(text, r.ssn_label)) + "; links never carry them out.")
         elif re.compile(r.d["payment_field"]).search(about):
             j.risk = Risk("fill", "card_field", always=True, wording=f"Allow typing into the card field in {app}?")
+        elif find_sensitive(text, ssn_context=bool(r.ssn_label.search(f"{about} {node.desc}"))
+                            or bool(r.ssn_label.search(screen_text(screen)))) is not None:
+            # A card number or SSN in any field (F2): asks at tap level, every time; never covered by a task approval,
+            # "everyday" or a grant; refused under Don't ask.
+            what = describe_sensitive(find_sensitive(text, ssn_context=True))
+            fld = (node.hint or node.desc)[:40]
+            j.risk = Risk("sensitive_number", "sensitive_number", always=True,
+                          wording=f"Allow typing {what}" + (f" into “{fld}”" if fld else "") + f" in {app}?")
         elif re.compile(r.d["otp_field"]).search(about):
             j.risk = Risk("fill", "otp_field", always=True, wording=f"Allow typing a code into {app}?")
         return j
@@ -2236,6 +2365,11 @@ class Gatekeeper:
             j.refuse = ("gate_denied", "builtin:url_scheme",
                         f"{scheme or 'that'}: links aren't opened by agents (only https, http, tel, geo, mailto, "
                         "sms and market).")
+            return j
+        if (kind := sensitive_in_url(url, r.ssn_label)) is not None:
+            # No data out through links (F3): open_url, or ENTER on an address bar holding it. Refused, never asked.
+            j.refuse = ("gate_denied", "builtin:sensitive_link",
+                        f"That link carries {describe_sensitive(kind)}; links never carry them out.")
             return j
         targets = [handler] if handler else candidates
         for pkg in targets:

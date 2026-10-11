@@ -17286,5 +17286,947 @@
    "com.samsung.android.lool": "Device care",
    "com.example.shop": "Example Shop"
   }
+ },
+ "wiki_page": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.view.View",
+         "bounds": [
+          0,
+          200,
+          1080,
+          2400
+         ],
+         "children": [
+          {
+           "text": "Proud host of Wikipedia and other free knowledge projects",
+           "desc": "",
+           "id": "",
+           "cls": "android.widget.TextView",
+           "bounds": [
+            40,
+            220,
+            1040,
+            300
+           ],
+           "children": []
+          },
+          {
+           "text": "Donate now",
+           "desc": "",
+           "id": "",
+           "cls": "android.widget.Button",
+           "bounds": [
+            40,
+            320,
+            400,
+            400
+           ],
+           "children": [],
+           "clickable": true
+          },
+          {
+           "text": "The Golden Gate Bridge is a suspension bridge",
+           "desc": "",
+           "id": "",
+           "cls": "android.widget.TextView",
+           "bounds": [
+            40,
+            1700,
+            1040,
+            1900
+           ],
+           "children": []
+          }
+         ],
+         "clickable": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "seekbar_layered": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "androidx.recyclerview.widget.RecyclerView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "",
+         "desc": "Tip amount",
+         "id": "",
+         "cls": "android.widget.SeekBar",
+         "bounds": [
+          40,
+          1700,
+          1040,
+          1800
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.FrameLayout",
+         "bounds": [
+          0,
+          1500,
+          1080,
+          2000
+         ],
+         "children": []
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "swipe_up_pay": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.ScrollView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "Total $20.00",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          400,
+          1040,
+          480
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "Swipe up to pay $20.00",
+         "id": "",
+         "cls": "android.view.View",
+         "bounds": [
+          40,
+          1900,
+          1040,
+          2100
+         ],
+         "children": [],
+         "clickable": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "list_row_delete": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.example.shop",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "androidx.recyclerview.widget.RecyclerView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.LinearLayout",
+         "bounds": [
+          0,
+          600,
+          1080,
+          760
+         ],
+         "children": [
+          {
+           "text": "Delete draft",
+           "desc": "",
+           "id": "",
+           "cls": "android.widget.TextView",
+           "bounds": [
+            40,
+            620,
+            800,
+            700
+           ],
+           "children": []
+          }
+         ],
+         "clickable": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "store_tap_titans": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.vending",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "Tap Titans 2: Clicker RPG",
+       "desc": "",
+       "id": "",
+       "cls": "android.widget.TextView",
+       "bounds": [
+        40,
+        300,
+        1040,
+        400
+       ],
+       "children": []
+      },
+      {
+       "text": "Install",
+       "desc": "",
+       "id": "com.android.vending:id/install_button",
+       "cls": "android.widget.Button",
+       "bounds": [
+        40,
+        800,
+        1040,
+        920
+       ],
+       "children": [],
+       "clickable": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "web_name_on_card": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "Payment",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          220,
+          1040,
+          300
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.EditText",
+         "bounds": [
+          40,
+          700,
+          1040,
+          800
+         ],
+         "children": [],
+         "hint": "Name on card",
+         "editable": true,
+         "focused": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "web_ssn_form": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "Apply for the Platinum card",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          220,
+          1040,
+          300
+         ],
+         "children": []
+        },
+        {
+         "text": "Social Security number",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          600,
+          1040,
+          680
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.EditText",
+         "bounds": [
+          40,
+          700,
+          1040,
+          800
+         ],
+         "children": [],
+         "hint": "",
+         "editable": true,
+         "focused": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "web_plain_form": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "",
+       "cls": "android.webkit.WebView",
+       "bounds": [
+        0,
+        200,
+        1080,
+        2400
+       ],
+       "children": [
+        {
+         "text": "Contact us",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.TextView",
+         "bounds": [
+          40,
+          220,
+          1040,
+          300
+         ],
+         "children": []
+        },
+        {
+         "text": "",
+         "desc": "",
+         "id": "",
+         "cls": "android.widget.EditText",
+         "bounds": [
+          40,
+          700,
+          1040,
+          800
+         ],
+         "children": [],
+         "hint": "Reference",
+         "editable": true,
+         "focused": true
+        }
+       ]
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "chrome_url_focus": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "",
+       "desc": "",
+       "id": "com.android.chrome:id/url_bar",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        100,
+        100,
+        1000,
+        200
+       ],
+       "children": [],
+       "hint": "Search or type URL",
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
+ },
+ "chrome_url_card": {
+  "windows": [
+   {
+    "id": 1,
+    "type": "application",
+    "layer": 1,
+    "package": "com.android.chrome",
+    "title": "",
+    "bounds": [
+     0,
+     0,
+     1080,
+     2400
+    ],
+    "root": {
+     "text": "",
+     "desc": "",
+     "id": "",
+     "cls": "android.widget.FrameLayout",
+     "bounds": [
+      0,
+      0,
+      1080,
+      2400
+     ],
+     "children": [
+      {
+       "text": "http://10.0.2.2:8799/collect?card=4111111111111111&cvv=123",
+       "desc": "",
+       "id": "com.android.chrome:id/url_bar",
+       "cls": "android.widget.EditText",
+       "bounds": [
+        100,
+        100,
+        1000,
+        200
+       ],
+       "children": [],
+       "editable": true,
+       "focused": true
+      }
+     ]
+    }
+   }
+  ],
+  "labels": {
+   "com.amazon.mShop.android.shopping": "Amazon",
+   "com.whatsapp": "WhatsApp",
+   "com.chase.sig.android": "Chase",
+   "com.android.chrome": "Chrome",
+   "com.android.settings": "Settings",
+   "dev.openmob.companion": "OpenMob",
+   "com.chess": "Chess.com",
+   "com.google.android.gm": "Gmail",
+   "com.google.android.contacts": "Contacts",
+   "com.example.app": "Example",
+   "com.kalshi": "Kalshi",
+   "com.google.android.apps.messaging": "Messages",
+   "com.kalshi.mobile": "Kalshi",
+   "com.google.android.youtube": "YouTube",
+   "com.facebook.orca": "Messenger",
+   "com.google.android.apps.nexuslauncher": "Pixel Launcher",
+   "com.android.vending": "Google Play Store",
+   "com.google.android.dialer": "Phone",
+   "com.samsung.android.dialer": "Phone",
+   "com.android.dialer": "Phone",
+   "com.samsung.android.lool": "Device care",
+   "com.example.shop": "Example Shop"
+  }
  }
 }

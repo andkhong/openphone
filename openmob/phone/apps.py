@@ -6,6 +6,7 @@ import json
 import os
 import re
 import threading
+import time
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +26,9 @@ GENERIC_TOKENS = {
 }
 
 FUZZY_THRESHOLD = 85
+# How long the phone's app list is trusted before it's read again (an app installed or removed meanwhile). A name
+# that matches nothing reads it again at once (AppResolver.find).
+PACKAGES_TTL_S = 120.0
 ARCHIVED_NOTE = "archived: reinstall from the Play Store"
 # What a phone says when a listed package can't be opened: Android 15 keeps an archived (offloaded) app listed with
 # no launchable activity; adb's monkey says the same of a package with no launcher entry.
@@ -100,6 +104,7 @@ class AppResolver:
         self.label_cache = label_cache
         self.llm_picker = llm_picker
         self._packages: list[str] | None = None
+        self._packages_at = 0.0  # monotonic time of the last read
         # Listed but not openable (Android 15 archived apps, or a launch that found no launcher activity): they
         # resolve, so "Chess" still names com.chess, but list_apps and launch_app treat them as not installed.
         self.archived: set[str] = set()
@@ -155,13 +160,23 @@ class AppResolver:
         return sorted(apps, key=lambda a: -max(_score(q, normalize(a[0])), _score(q, package_words(a[1]))))
 
     def packages(self, refresh: bool = False) -> list[str]:
-        if self._packages is None or refresh:
+        if self._packages is None or refresh or time.monotonic() - self._packages_at > PACKAGES_TTL_S:
             self._packages = self.driver.launchable_packages()
+            self._packages_at = time.monotonic()
             # An archived app the phone still lists stays marked (a newer phone app leaves archived apps out); one it
             # no longer lists is forgotten. A reinstalled one is unmarked by its next successful launch.
             listed = set(self._packages)
             self.archived = {p for p in self.archived if p in listed}
         return self._packages
+
+    def find(self, name: str) -> Resolution | None:
+        """resolve, reading the phone's app list again when nothing matches: an app installed since the list was
+        read (2026-10-10: Wikipedia, installed that day, didn't resolve for open_settings_page app_details)."""
+        found = self.resolve(name)
+        if found is None and normalize(name):
+            self.packages(refresh=True)
+            found = self.resolve(name)
+        return found
 
     def resolve(self, name: str) -> Resolution | None:
         query = normalize(name)

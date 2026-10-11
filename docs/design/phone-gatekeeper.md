@@ -114,9 +114,9 @@ Three limits on the allowlist:
 | Tap in an **autofill, inline-suggestion or Credential Manager** surface: the IME window, the current autofill service's windows (`AutofillManager`), `com.android.credentialmanager`, the GMS credential sheet | "Fill your saved card or password into *site/app*?" | Ask, always |
 | Share sheet / chooser (`com.android.intentresolver`, Quick Share, Nearby Share) target | "Share to *target*?" | Ask |
 | Notification action buttons in systemui | Ask | Ask |
-| `type_text` | Password field: refuse. OTP, card or CVV field: ask. Text starting with `javascript:`, `intent:`, `file:` or `content:`: refuse | |
+| `type_text` | Password field: refuse. OTP, card or CVV field: ask. A card number or SSN in any other field: ask (`sensitive_number`, tap level, never covered). Text starting with `javascript:`, `intent:`, `file:` or `content:`, or a link carrying a card number or SSN typed into a browser's address bar: refuse | |
 | `key ENTER` | Ask in messaging, email and social apps; in any browser or WebView form field (unless it looks like search: id or hint "search", class `SearchView`); and in payment context. **In a browser URL bar** (focused field in a browser whose text parses as a URL), run the full `open_url` scheme and target checks on the text | Ask, or as `open_url` |
-| `launch_app`, `open_url` | Resolve the target first. Blocked, payment-category or hard-denied target: refuse. Schemes allowed: `https`/`http` (browser or verified app link, target checked), `tel` (dialer only), `geo`, `mailto`, `sms`, `market`. Everything else is refused (`intent:`, `upi:`, `bitcoin:`, custom schemes into payment apps) | Refuse or allow |
+| `launch_app`, `open_url` | Resolve the target first. Blocked, payment-category or hard-denied target: refuse. A link carrying a card number or SSN (decoded; `builtin:sensitive_link`): refuse. Schemes allowed: `https`/`http` (browser or verified app link, target checked), `tel` (dialer only), `geo`, `mailto`, `sms`, `market`. Everything else is refused (`intent:`, `upi:`, `bitcoin:`, custom schemes into payment apps) | Refuse or allow |
 
 **Decision D4 (ask only at commit points, revised for friction):** Words come in two classes.
 - **Commit words** perform an irreversible step. Money commits come in two kinds:
@@ -739,8 +739,17 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
     (2026-10-10): 158 checks passed, 0 failed, the friction group still one prompt per honest checkout. The new
     `hittest` group (the shop stand-in's `LayeredActivity`) asks for a Buy now drawn above a later layer; the old
     hit path missed it.
-  - Not covered: real swipes (scrolls) still judge their two end points by the hit path only; a non-touchable
-    overlay window the phone can't see at all.
+  - Not covered: a non-touchable overlay window the phone can't see at all.
+- **Scrolls (review of 2026-10-10):** a real phone asked "Allow sliding 'Proud host of Wikipedia and other free
+  knowledge projects' in Chrome?" for a plain scroll down a Wikipedia page: a swipe's end points were judged by the
+  words of the clickable node under each (up to 40 nodes of its subtree), the same as a tap, so page text and links
+  ("Donate") under the finger counted. A scroll doesn't press what it starts on. Now a swipe that is mostly vertical
+  (|dy| ≥ 2|dx|) and starts inside a list or page (`scroller_class` on the start's hit path) isn't judged by words;
+  it asks only for what a drag can move: a slider or seekbar **anywhere under the start point** (before: only on
+  the hit path, so one under a later layer was missed), a "slide to"/"swipe to" label, or a control whose own words
+  say slide or swipe ("Swipe up to pay"). Sideways swipes and swipes outside lists are judged as before (a list
+  row's "Delete" still asks on a sideways swipe). Measured on the reference engine: 0 curated steps changed; 4 of
+  1108 fuzz steps changed (2 scroll asks became the server hint's ask, 1 allow became a slider ask, 1 knock-on).
 - **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
   mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
   `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
@@ -755,6 +764,18 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   `uninstall`, never covered by a task grant or "everyday"). App info: Uninstall itself is free (the confirmation
   asks), Disable and Clear storage are delete-kind tap level (no longer fingerprint). A task grant covers an
   uninstall when its request names uninstall/remove/delete and the app.
+- **Financial safeguards (abuse series 2026-10-10, F2 and F3):** `SensitiveNumbers.kt`, mirrored by
+  `openmob/agent/sensitive.py` and `tests/gatekeeper_ref.py`, with the shared fixture `sensitive_numbers.json`
+  (texts and URLs) and `rules.json` `sensitive_numbers.ssn_label`. A card number (13-19 digits, Luhn, first digit
+  2-6, groups of 4 first) or SSN (valid `ddd-dd-dddd`; with an SSN label on the field or screen, also 9 bare
+  digits and test values) typed into any field that isn't a card field asks at tap level (kind `sensitive_number`,
+  `always`: refused under Don't ask; excluded from task grants and "everyday"; no "Always allow" offer). A card
+  field keeps `card_field` (screen lock). `open_url`, a URL typed into a browser's address bar and ENTER on an
+  address bar holding one are refused when the URL, decoded, carries one (`builtin:sensitive_link`). The phone
+  can't tell a drive session from a task: the server refuses typing one in drive sessions. Measured on the reference
+  engine: the existing curated scenarios and the fuzz answers are unchanged; new scenarios cover the asks, the
+  false positives (phone numbers, order numbers, dates, a failed Luhn, a timestamp, an unlabeled test SSN), task
+  grants, "everyday", Don't ask and the encoded links.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).
