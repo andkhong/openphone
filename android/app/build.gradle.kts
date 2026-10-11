@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
 }
+
+// The owner's release key lives outside the repo (om keygen writes it; OPENMOB_SIGNING points elsewhere). Its
+// passwords are read by Gradle only; never commit or print them. Without it, the signed builds fail to sign.
+val signingFile = file(System.getenv("OPENMOB_SIGNING")
+    ?: "${System.getProperty("user.home")}/.config/openmob-envs/release-signing.properties")
 
 android {
     namespace = "dev.openmob.companion"
@@ -17,6 +24,18 @@ android {
         versionName = "0.1.0"
     }
 
+    signingConfigs {
+        if (signingFile.exists()) {
+            create("owner") {
+                val p = Properties().apply { signingFile.inputStream().use { load(it) } }
+                storeFile = file(p.getProperty("storeFile"))
+                storePassword = p.getProperty("storePassword")
+                keyAlias = p.getProperty("keyAlias")
+                keyPassword = p.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         // Plain http:// is for a developer's own server on the local network. Release builds turn
         // cleartext off at the platform level too; in every build ServerPolicy only lets http://
@@ -24,9 +43,18 @@ android {
         debug {
             manifestPlaceholders["usesCleartext"] = "true"
         }
+        // What phones download from a hosted server: the owner's key, not debuggable, https only.
         release {
             isMinifyEnabled = false
             manifestPlaceholders["usesCleartext"] = "false"
+            signingConfig = signingConfigs.findByName("owner")
+        }
+        // The owner's own phone against their own server on the local network: the same key (so it updates
+        // over a release install and back), not debuggable, and http:// to local addresses (ServerPolicy).
+        create("local") {
+            initWith(getByName("release"))
+            manifestPlaceholders["usesCleartext"] = "true"
+            matchingFallbacks += listOf("release")
         }
     }
     compileOptions {
