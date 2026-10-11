@@ -11,7 +11,11 @@
 # Usage:
 #   om run <env> [port]        start that environment's server (default port 8765; one at a time)
 #   om phone <env> [serial]    install that environment's app on the phone (or emulator serial)
-#   om build <env>             build that environment's app from its code
+#   om build <env> [signed]    build that environment's app from its code (signed: the owner's key, not
+#                              debuggable, for the owner's own phone; plain builds stay debug, for emulators)
+#   om release                 build the hosted server's download (main, the owner's key, https only) into
+#                              deploy/OpenMob.apk
+#   om keygen                  create the owner's release key (interactive; run it in your own terminal)
 #   om update <env>            pull the latest code for that environment and refresh its Python packages
 #   om status                  what's checked out, what's running, which app the phone has
 set -euo pipefail
@@ -95,15 +99,58 @@ m.main()
 "
 }
 
+SIGNING="${OPENMOB_SIGNING:-$ENVS/release-signing.properties}"
+
 cmd_build() {
-  local env="${1:-}"; [ -n "$env" ] || die "usage: om build <standard|gatekeeper>"
+  local env="${1:-}" kind="${2:-}"; [ -n "$env" ] || die "usage: om build <standard|gatekeeper> [signed]"
   local dir; dir="$(env_dir "$env")"
   [ -f "$dir/android/local.properties" ] || cp "$(env_dir standard)/android/local.properties" "$dir/android/" 2>/dev/null || true
-  echo "▶ building the $env app ($(git -C "$dir" log --oneline -1))…"
-  (cd "$dir/android" && ./gradlew -q assembleDebug)
-  mkdir -p "$APKS" && cp "$dir/android/app/build/outputs/apk/debug/app-debug.apk" "$APKS/$env.apk"
+  if [ "$kind" = signed ]; then
+    [ -f "$SIGNING" ] || die "no release key yet: run 'om keygen' in your own terminal first."
+    echo "▶ building the signed $env app ($(git -C "$dir" log --oneline -1))…"
+    (cd "$dir/android" && OPENMOB_SIGNING="$SIGNING" ./gradlew -q assembleLocal)
+    mkdir -p "$APKS" && cp "$dir/android/app/build/outputs/apk/local/app-local.apk" "$APKS/$env.apk"
+    echo signed > "$APKS/$env.kind"
+  else
+    echo "▶ building the $env app ($(git -C "$dir" log --oneline -1))…"
+    (cd "$dir/android" && ./gradlew -q assembleDebug)
+    mkdir -p "$APKS" && cp "$dir/android/app/build/outputs/apk/debug/app-debug.apk" "$APKS/$env.apk"
+    echo debug > "$APKS/$env.kind"
+  fi
   git -C "$dir" rev-parse --short HEAD > "$APKS/$env.commit"
-  echo "✓ $APKS/$env.apk ($(du -h "$APKS/$env.apk" | cut -f1))"
+  echo "✓ $APKS/$env.apk ($(cat "$APKS/$env.kind"), $(du -h "$APKS/$env.apk" | cut -f1))"
+}
+
+cmd_release() {
+  local dir; dir="$(env_dir standard)"
+  [ -f "$SIGNING" ] || die "no release key yet: run 'om keygen' in your own terminal first."
+  [ "$(git -C "$dir" branch --show-current)" = main ] || die "the release is built from main; check out main in $dir first."
+  echo "▶ building the release app ($(git -C "$dir" log --oneline -1))…"
+  (cd "$dir/android" && OPENMOB_SIGNING="$SIGNING" ./gradlew -q assembleRelease)
+  cp "$dir/android/app/build/outputs/apk/release/app-release.apk" "$dir/deploy/OpenMob.apk"
+  git -C "$dir" rev-parse --short HEAD > "$APKS/release.commit"
+  echo "✓ $dir/deploy/OpenMob.apk (release, $(du -h "$dir/deploy/OpenMob.apk" | cut -f1)). Deploy: fly deploy -a openmob"
+}
+
+cmd_keygen() {
+  [ -f "$SIGNING" ] && die "a release key already exists ($SIGNING). Keep it: phones only accept updates signed with it."
+  local store="$ENVS/release.jks" pass pass2
+  command -v keytool >/dev/null || PATH="$JAVA_HOME/bin:$PATH"
+  echo "Creating OpenMob's release key. Back up $store and its password: losing either means every phone must"
+  echo "uninstall and reinstall OpenMob (and pair again) to take updates."
+  read -r -s -p "New key password (12+ characters): " pass; echo
+  read -r -s -p "Again: " pass2; echo
+  [ "$pass" = "$pass2" ] || die "the passwords don't match."
+  [ "${#pass}" -ge 12 ] || die "use at least 12 characters."
+  umask 077
+  OM_PASS="$pass" keytool -genkeypair -keystore "$store" -storetype PKCS12 -alias openmob -keyalg RSA \
+    -keysize 4096 -validity 10000 -dname "CN=OpenMob, O=OpenMob" -storepass:env OM_PASS -keypass:env OM_PASS \
+    >/dev/null || die "keytool failed; nothing was saved."
+  printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=openmob\nkeyPassword=%s\n' "$store" "$pass" "$pass" > "$SIGNING"
+  chmod 600 "$SIGNING" "$store"
+  echo "✓ release key: $store; its settings: $SIGNING (readable by you only). Its fingerprint:"
+  OM_PASS="$pass" keytool -list -v -keystore "$store" -storetype PKCS12 -storepass:env OM_PASS -alias openmob \
+    | grep -E "SHA256:" | sed 's/^[[:space:]]*/  /'
 }
 
 cmd_phone() {
@@ -143,6 +190,7 @@ cmd_status() {
 
 case "${1:-}" in
   run) shift; cmd_run "$@";; phone) shift; cmd_phone "$@";; build) shift; cmd_build "$@";;
+  release) cmd_release;; keygen) cmd_keygen;;
   update) shift; cmd_update "$@";; status) cmd_status;;
-  *) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//';;
+  *) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//';;
 esac
