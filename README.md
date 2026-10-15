@@ -1,184 +1,208 @@
 # OpenMob
 
-Speak a request and an AI agent carries it out on your Android phone.
+Give AI agents access to your Android phone through one server, REST API, and MCP interface.
 
-> "Open Where Winds Meet, and open the menu."
+OpenMob can run a goal with its own agent, or let an external agent observe and operate the phone one step at a time. The Android companion app connects to your server over an outbound WebSocket, reads the screen through Accessibility, and checks actions on the phone before executing them.
 
+> “Open Settings and go to Display.”
+>
+> “Search YouTube for lo-fi.”
+>
+> “Open Maps and show directions to the airport.”
+
+OpenMob is an early-stage, self-hosted project. It operates real apps on a real device; reliability depends on the app, its screen layout, and the model you use.
+
+## What works today
+
+- **Android companion app:** pair with a QR code and screen-lock confirmation, then connect over Wi-Fi or mobile data. Everyday use needs no USB cable or ADB.
+- **Dashboard and phone commands:** type a request in either interface or use the phone's speech recognition. Follow actions, view the live screen, answer questions, and stop a task.
+- **Two ways to use MCP:** delegate a goal with `run_task`, or use drive sessions to observe, tap, type, scroll, launch apps, open links, and wait for screen changes with your own agent's reasoning.
+- **REST API:** scoped API keys, tasks, live SSE events, cancellation, history, screenshots, webhooks, rate limits, quotas, and an audit log.
+- **Multiple phones:** accounts own their paired devices. Orchestrations run tasks across phones with dependencies and results passed between steps.
+- **Multiple model providers:** adapters for Anthropic, OpenAI, Google, Qwen, xAI, and OpenAI-compatible endpoints. The dashboard selects a model; API tasks select an operator-configured tier (`fast`, `balanced`, or `best`).
+- **Faster navigation:** direct Settings pages, a catalog of in-app links, condition-based waits, and an optional Jev classifier that can handle labeled screens without a main-model decision.
+- **On-phone safeguards:** the companion app's gatekeeper evaluates actions against the actual screen, blocks sensitive apps and security-critical settings, and requests owner approval for risky actions.
+- **Development backends:** direct Android control over ADB, an ADB-to-server bridge, and an experimental iPhone bridge through WebDriverAgent on a Mac.
+
+## How it works
+
+```text
+Dashboard / phone commands      Your code or external AI agent
+            |                         | REST /v1 · MCP /mcp
+            +------------+------------+
+                         v
+                   OpenMob server
+          accounts · scopes · tasks · approvals
+                         |
+             built-in agent OR drive session
+                         |
+                outbound phone WebSocket
+                         |
+                         v
+                  Android companion
+          screen + Accessibility + local gatekeeper
+                         |
+                         v
+                      Your apps
 ```
- OpenMob phone app ──────┐
- Web dashboard ──────────┼─> text ─> Agent loop ──────────────> PhoneDriver (adb) ─> Android phone
- Terminal ───────────────┘            │  Claude: sees the screenshot, picks the next action
-                                      │  Jev:    classifies the screen from its text (state, risk, app)
-                                      └─< screenshot + UI tree + OCR text <─┘
-```
 
-Each step works like this:
+The built-in agent reads the current app, Accessibility elements, and screenshots when needed, chooses an action, and checks the resulting screen. Optional **Jev** (TypeSafe) classifies screen text and can choose simple actions on well-labeled screens. It receives text rather than images. Without its key, the main-model path still works.
 
-1. OpenMob takes a screenshot over adb.
-2. It reads the screen's text. Normal apps provide it through the Android accessibility tree. Games draw their own UI, so for those it runs Apple Vision OCR on the screenshot.
-3. **Jev** (TypeSafe) classifies the screen from that text: loading, pop-up, tap-to-start, menu open, and so on. It also estimates whether the request looks complete.
-4. **Claude** looks at the screenshot and makes one tool call: `launch_app`, `tap`, `tap_element`, `swipe`, `scroll`, `type_text`, `press_key`, `wait`, `ask_user`, or `done`.
-5. OpenMob runs the action, and the loop repeats until the task is done.
+Settings and in-app links can skip UI navigation. Experimental navigation replay and plan-then-execute are available behind configuration switches and are **off by default**. Saved-notes memory and learned skills are not current features.
 
-Results are spoken back with macOS `say`.
+## Run your own server
 
-## How Jev is used
-
-Jev accepts **text only** ([models](https://docs.typesafe.ai/models.md): "No image, audio, or video input"). So the screenshot is first turned into text: foreground app, accessibility labels, and OCR'd words. Jev then answers typed questions about it:
-
-| Question | Type | What OpenMob does with it |
-|---|---|---|
-| Which screen state is this? | choice | On `loading` with p ≥ 0.8 and enough confidence, it waits and re-checks, without paying for a Claude call. The state is also shown to Claude as a hint. |
-| Does the screen show the request is done? | noul | Shown to Claude as a hint. |
-| Would tapping this target spend money, send, delete, or change the account? | noul | Above `jev_risk_threshold`, it asks you before tapping. The keyword list is also always checked. |
-| Which installed app is "where winds meet"? | choice | Fallback for app-name matching after aliases and fuzzy matching, before Claude. |
-
-Jev is optional. Without `TYPESAFE_API_KEY`, OpenMob still runs using only Claude and the keyword safety check.
-
-## Setup
-
-1. Install adb and connect the phone:
-   ```sh
-   brew install android-platform-tools
-   ```
-   - On the phone, go to **Settings → About phone** and tap *Build number* 7 times.
-   - Then go to **Developer options** and turn on **USB debugging**.
-   - Plug in the phone and accept the "Allow USB debugging" prompt.
-   - Xiaomi/POCO phones also need **USB debugging (Security settings)**, or taps are ignored.
-   - For wireless use, pair through *Wireless debugging* (Android 11+): `adb pair <ip:port>` then `adb connect <ip:port>`. On older phones, run `adb tcpip 5555 && adb connect <phone-ip>`.
-2. Install OpenMob:
-   ```sh
-   python3 -m venv .venv && source .venv/bin/activate
-   pip install -e '.[mac]'               # mac = Apple Vision OCR (optional)
-   cp config.example.yaml config.yaml
-   export ANTHROPIC_API_KEY=...
-   export TYPESAFE_API_KEY=...          # optional, enables Jev
-   ```
-4. Check the setup with `openmob doctor`.
-
-## Dashboard (demo / hosted mode)
+You need **Python 3.10+**, an API key for a configured model provider, and an Android phone with **Android 11+** and a screen lock. The current Android build targets **ARM64** devices. Building the app requires **JDK 17** and the **Android SDK with API 35**.
 
 ```sh
-openmob run --public
+git clone https://github.com/andkhong/openphone.git openmob
+cd openmob
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -e .
+cp config.example.yaml config.yaml
+
+# Set this privately in your terminal; never commit a real key.
+export ANTHROPIC_API_KEY="<your-api-key>"
 ```
 
-This prints a `localhost` link and a public **HTTPS** link, both protected by a token. The dashboard shows:
-- The live screen of every connected phone, with a device picker.
-- Typed commands (voice is in the phone app).
-- The agent's thoughts and actions, plus Jev's screen classifications.
-- **Yes/No** buttons when the agent asks for confirmation, and **Stop**.
+The default model and API tiers use Anthropic. To use another provider, install its optional SDK and change the model/tier mapping in `config.yaml`. See [Configuration and providers](docs/self-hosting.md#model-providers).
 
-For wireless control, `openmob connect` switches USB phones to Wi-Fi. `openmob connect <ip>` reconnects, and `--stay-awake` keeps the screen on. Wi-Fi speed varies a lot; see [DEMO.md](DEMO.md).
-
-## Hosted mode: phones connect to the server
-
-Phones can join a server from any network. Each phone opens an outbound WebSocket to `wss://<server>/phone/ws` and the server's agent drives it with the [phone protocol](docs/phone-protocol.md). The coming Android companion app implements that protocol. Until then, `openmob bridge` is the reference client: it runs on any laptop with an adb-attached phone.
+Build a development APK:
 
 ```sh
-# Server (e.g. your Mac). --no-adb: only accept phones that connect in.
-openmob run --public --no-adb
-# → prints the public HTTPS link and token
-
-# Each user, on their own laptop with their phone plugged in:
-openmob bridge https://<public-link> --token <token>
+cd android
+./gradlew assembleDebug
+cd ..
 ```
 
-The phone appears in the dashboard as `connection: app`. Commands can come from the dashboard, or be typed into the bridge terminal (the app will add voice). Agent activity streams back to the phone. A dropped connection reconnects with backoff and keeps the same session.
-
-Code: `openmob/phone/protocol.py` (messages), `openmob/phone/remote.py` (server side: `PhoneLink`, `RemoteDriver`), `openmob/bridge.py` (phone side), `openmob/phone/base.py` (the `Device` interface both drivers implement).
-
-## Admin dashboard
-
-With `--accounts`, an admin can see every account and every paired phone (live status, current task, last seen) and revoke any phone, which disconnects it immediately. Admin is granted **only from the server's command line**; no web request can grant it:
+Start the server:
 
 ```sh
-openmob account admin you@example.com    # grant (openmob account unadmin … removes it)
-openmob account list                     # admins are marked "(admin)"
+openmob run --accounts --no-adb --quiet
 ```
 
-Then sign in and open `https://<server>/admin`. Non-admins get "You're not an admin." (the API returns 403), and signed-out visitors are sent to sign in. Listings never include password, session or key hashes.
+The dashboard is at `http://localhost:8765`. `--accounts` enables account sign-in, phone pairing, `/v1`, and `/mcp`; `--no-adb` uses phones connecting through the app.
 
-The admin page also lists developer API keys, can switch off one key or a whole account's API access (cancelling their running tasks), and shows the API audit log.
+The phone must be able to reach the server. For remote access or easy QR pairing, install `cloudflared` and add `--public` to publish an HTTPS quick tunnel, or configure your own HTTPS reverse proxy. Signed release apps require HTTPS; debug/local builds also permit local HTTP addresses.
 
-## Developer API
-
-With `--accounts`, developers can run tasks on their own phones from code: `POST /v1/devices/{id}/tasks`, then poll the task or follow its live events. Create keys at `https://<server>/developer` or on the server:
+In another terminal, with the same virtual environment and configuration, create your account and get a one-time sign-in link:
 
 ```sh
-openmob key create you@example.com --name my-agent    # shown once; scopes default to devices:read,tasks:run,tasks:read
-openmob key list you@example.com
-openmob key revoke you@example.com <key id>
+openmob account add you@example.com --password-file ~/.openmob-password
+openmob account link you@example.com
 ```
 
-Keys carry scopes (`screen:read` is opt-in), per-key rate limits and quotas, and every action is audited. Responses talk in tiers (`fast`, `balanced`, `best`), steps and credits. See [docs/api.md](docs/api.md).
+The password file is created if it does not exist. Keep it private. Open the printed sign-in link, choose **Connect a phone**, install the APK from the pairing page, and scan the QR code. Confirm pairing with the phone's screen lock, then complete its Accessibility, notifications, and background-running checklist. Keep the phone connected and unlocked while tasks run.
 
-The same server is an MCP server at `/mcp` for Claude Code, Claude Desktop, Cursor and custom agents: `run_task` hands a goal to OpenMob's agent, and the **drive level** (`devices:drive`, opt-in) lets an outside agent operate the phone step by step with its own reasoning, under exactly the checks and owner approvals OpenMob's own agent gets. See [docs/mcp.md](docs/mcp.md) and [docs/design/mcp-drive.md](docs/design/mcp-drive.md).
+Sign-up is invite-only; server operators create additional invites with `openmob account invite`. See [Phone setup](docs/phone-setup.md) and [Self-hosting](docs/self-hosting.md) for the complete setup.
 
-## Use
+### Build for distribution
+
+Debug APKs are for development. For distribution, generate your own signing key with `scripts/om keygen`, then build `assembleRelease` in `android/`. The signing key and its properties file live outside the repository; `OPENMOB_SIGNING` can point to another properties file.
+
+Set `OPENMOB_APK` to your signed APK's absolute path before starting the server to serve it at `/download/openmob.apk`. A phone must uninstall a debug-signed app before switching to your release signature, then pair again. See [Release signing](docs/release-signing.md).
+
+### Optional providers and OCR
 
 ```sh
-openmob do "open where winds meet and open the menu"   # one command, typed
-openmob run                                            # hands-free mode
+pip install -e '.[openai,gemini]'   # SDKs for additional providers
+pip install -e '.[mac]'             # Apple Vision OCR for canvas screens on macOS
 ```
 
-`openmob run` accepts commands from three places, one task at a time:
+| Provider / feature | Environment variable |
+|---|---|
+| Anthropic | `ANTHROPIC_API_KEY` |
+| OpenAI | `OPENAI_API_KEY` |
+| Google | `GEMINI_API_KEY` or `GOOGLE_API_KEY` |
+| Qwen | `QWEN_API_KEY` or `DASHSCOPE_API_KEY` |
+| xAI | `XAI_API_KEY` |
+| OpenAI-compatible endpoint | `OPENAI_COMPATIBLE_BASE_URL`, `OPENAI_COMPATIBLE_API_KEY` when required |
+| Optional Jev classifier | `TYPESAFE_API_KEY` |
 
-- **Phone app.** Type or speak in **Ask your agent**; speech is recognized on the phone. The agent presses HOME first, so the app isn't in the way.
-- **Dashboard.** Type a request and press Send. **Stop** cancels the current task.
-- **Terminal.** Type a line and press Enter.
+Qwen, xAI, and compatible endpoints use the `openai` extra. Keys belong in the server environment. Configure models, endpoints, and tier mappings using [config.example.yaml](config.example.yaml). Provider fallback is Claude-only, so configure Anthropic if you want that fallback available.
 
-Saying or typing "stop" cancels the task. When the agent asks a question (for example "About to tap 'Buy'. Go ahead?"), your next utterance from any input is taken as the answer.
+## Connect an agent or use the API
 
-### App names
+Create an API key in **Developer API & AI agents** on the dashboard. Default scopes allow listing devices and running/reading tasks; screenshots and drive access need explicit scopes.
 
-`launch_app` resolves spoken names in this order:
+For an MCP client, use:
 
-1. `aliases` in config.yaml
-2. Cached app labels and fuzzy matching on package names
-3. Initials (e.g. `wwm`)
-4. Jev
-5. Claude Haiku
+- **URL:** `https://<your-server>/mcp` (Streamable HTTP)
+- **Authorization header:** `Bearer <your-openmob-api-key>`
 
-If nothing matches, the agent opens the app drawer and searches by itself. To find a package for an alias:
+For clients that launch a local stdio server, set `OPENMOB_SERVER` and `OPENMOB_API_KEY` in the client's environment and run `openmob mcp`.
+
+`run_task` delegates to OpenMob's agent. Drive sessions need `devices:drive`, plus `screen:read` for screenshots. They use the same action checks and owner approvals as the built-in agent. See [MCP tools and examples](docs/mcp.md).
+
+For REST, set your server address and key privately, then list phones and start a task:
 
 ```sh
-openmob apps | grep -i <word>
-openmob apps --resolve "where winds meet"
-openmob apps --labels          # reads real app names from APKs; slow, needs aapt2, cached
+export OPENMOB_SERVER="https://<your-server>"
+export OPENMOB_API_KEY="<your-openmob-api-key>"
+
+curl -sS "$OPENMOB_SERVER/v1/devices" \
+  -H "Authorization: Bearer $OPENMOB_API_KEY"
+
+# Replace <device-id> with an online device from the response.
+curl -sS -X POST "$OPENMOB_SERVER/v1/devices/<device-id>/tasks" \
+  -H "Authorization: Bearer $OPENMOB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"instruction":"Open Settings and go to Display","tier":"fast"}'
 ```
 
-## Safety
+Follow `/v1/tasks/<task-id>/events` for live SSE events, or retrieve `/v1/tasks/<task-id>`. A task can pause for an answer or owner approval. Disconnecting the API/MCP client does not cancel it; use cancellation or Stop. See the [Quickstart](docs/quickstart.md), [REST reference](docs/api.md), and [Code examples](docs/examples.md).
 
-- Before tapping anything that matches `confirm_keywords` (buy, pay, send, delete, …), or that Jev rates risky, the agent asks you and waits for "yes".
-- It is told never to type passwords, payment details, or one-time codes.
-- `max_steps` caps every task. "stop" or Esc cancels it.
-- The phone page needs the per-run token, but it's plain HTTP on your LAN. Use it only on networks you trust.
+## Safety and privacy
+
+OpenMob's Accessibility service can see and operate other apps. Connecting a phone grants substantial access; use a dedicated test device while evaluating it.
+
+- **The phone checks actions locally.** The gatekeeper ships in the current Android app and refuses blocked banking, wallet, password-manager, and authenticator apps, password-field typing, unsafe links, and security-critical Settings changes. These protections are specific to the Android companion; ADB and iPhone bridges do not provide that on-device enforcement.
+- **Approvals happen on the phone.** Everyday risky actions can require an Allow/Deny tap; purchases and dangerous actions require fingerprint/PIN approval. Permission modes and owner-approved grants affect when prompts appear. An external agent cannot simply answer “yes” to approve a gatekeeper action.
+- **The owner stays in control.** Stop from the phone, dashboard, or API. Revoking a phone or API key cuts off its access. Tasks and drive sessions have limits.
+- **Screen content leaves the phone.** The built-in agent sends observations and screenshots as needed to the configured AI providers. Jev, when enabled, receives screen text. External drive clients receive observations too. OpenMob does not persist screenshots; task text, outcomes, events, and step records are stored with a configurable retention period (30 days by default). Typed text is redacted from activity and step logs.
+- **Guardrails have limits.** Phase 1 still allows reading non-blocked apps and ordinary actions; some icon-only or non-English risky controls can evade recognition. Screen content is untrusted input, and these checks are not a guarantee against prompt injection or unintended actions.
+
+Read [Safety, approvals, and data handling](docs/safety.md) before giving an agent access to a personal phone.
 
 ## Limitations
 
-- `type_text` uses `adb input text`, which only supports ASCII. Install ADBKeyboard on the phone for other scripts.
-- Screens marked secure (banking apps, some payment pages) come back black in screenshots.
-- Fast-moving game screens can change between the screenshot and the tap. Real-time combat is out of scope.
+- The phone must be awake and unlocked; OpenMob does not bypass its screen lock.
+- App layouts, animations, unlabeled controls, and canvas/game screens can reduce reliability. Real-time gameplay is outside the current scope.
+- Android secure screens may be black in captures. Live video requires Android's screen-sharing consent; agent tasks do not require continuous video sharing.
+- Run one server process per data directory. Phone connections and running tasks are held in that process; horizontal scaling is not supported.
+- iPhone support is an experimental Mac/Xcode/WebDriverAgent development bridge, not an iPhone companion app. See [iOS setup](docs/ios.md).
+
+Latency measurements, their test conditions, and MVP targets are documented in [Benchmarks](docs/benchmarks.md); they are not guarantees for other phones or apps.
 
 ## Development
 
 ```sh
-pip install -e '.[dev,mac]'
-pytest
-python -m openmob.phone.adb screenshot out.jpg   # driver checks: tap X Y | launch PKG | tree | current | apps
+pip install -e '.[dev]'
+python -m pytest -q
+
+cd android
+./gradlew testDebugUnitTest assembleDebug
 ```
 
-Layout:
+For direct Android development with USB debugging enabled and ADB installed:
 
-| Path | Contents |
+```sh
+openmob doctor
+openmob do "Open Settings and go to Display" --quiet
+openmob run --quiet
+```
+
+ADB is an alternative backend; it is not needed for the companion app's normal network connection. See [Testing](docs/testing.md) for emulator and adversarial tests.
+
+| Path | Purpose |
 |---|---|
-| `openmob/phone/adb.py` | Driver |
-| `openmob/phone/apps.py` | App-name resolution |
-| `openmob/agent/` | Tool definitions and loop |
-| `openmob/jev.py` | Jev client and questions |
-| `openmob/vision/ocr.py` | Apple Vision OCR |
-| `openmob/voice/` | Spoken replies (`say`) |
-| `openmob/runner.py` | Task queue and routing |
-| `openmob/server.py` | Phone web page |
-| `openmob/main.py` | CLI |
-# openphone
+| `android/` | Companion app, Accessibility actions, approvals, local gatekeeper |
+| `openmob/agent/` | Built-in agent, drive sessions, links, navigation optimizations |
+| `openmob/platform/` | Shared service, REST, MCP, orchestrations, webhooks |
+| `openmob/phone/` | Device interface, remote, ADB, and iOS drivers |
+| `openmob/static/` | Dashboard, pairing, developer console, admin UI |
+| `openmob/config.py` | Configuration, model allowlist, defaults |
+| `tests/` | Server tests, gatekeeper fixtures, adversarial harness |
+
+Additional references: [Phone protocol](docs/phone-protocol.md), [Errors and limits](docs/errors.md), [Webhooks](docs/webhooks.md).
