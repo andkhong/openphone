@@ -81,9 +81,14 @@ ENTER in a chat or a checkout or a web form,
 "slide to pay", **installing an app the request doesn't name** (owner, 2026-10-09: a free Play Store
 install runs unasked only when the task's own words name the app on the store page, by a distinctive word of its
 title's name part, before any tagline (common English words such as "this", "tap" or "install", and makers' names,
-don't count); any other install asks at tap level, isn't covered by a task approval or "Don't confirm everyday actions", and
-is refused under Don't ask; with no request text, as in a drive session, it always asks; a paid install asks as a
-purchase), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
+don't count); the title is read from the install button's own card (the details header, or a result's row), never
+from the search box, an editable field or a toolbar, and a results page with more than one Install/Get button names
+no app (review M3, 2026-10-17); any other install asks at tap level, isn't covered by a task approval or "Don't
+confirm everyday actions", and is refused under Don't ask; with no request text, as in a drive session, it always
+asks; a paid install asks as a purchase. On a gatekeeper phone the request text must also be one the phone holds:
+typed on the phone, or the task the owner approved there. Named only by the server's task text (a compromised
+server can claim any), the install asks once, as the task prompt showing that text; approved, the task's grant
+covers named installs (review L2, 2026-10-17)), **placing a phone call** (the Call button in the Google, Samsung and AOSP dialers and contacts apps,
 ENTER in their number field, a "Call", voice-call or video-call button in any app; a `tel:` link only opens the
 dialer and isn't a call), **dialing a code with `*` or `#`** (MMI/USSD such as `**21*…#` call forwarding), with the
 screen lock and one prompt, at the dialing (owner, 2026-10-10): the Call button or ENTER on such a number, the
@@ -447,9 +452,9 @@ model's own description of it. The model's words can only add caution.
 
 | Action | How it's judged |
 |---|---|
-| `tap`, `long_press` at coordinates | By the element actually at that point on the screen (re-read if the screen may have changed): its text, description and resource id. A long press of any length is judged as a tap. If nothing labeled is there, it asks in shopping, payment, food, travel and ride apps |
+| `tap`, `long_press` at coordinates | By the element actually at that point on the screen (re-read if the screen may have changed): its text, description and resource id. A long press of any length up to 10 s is judged as a tap; a longer one is refused (`builtin:gesture_too_long`). If nothing labeled is there, it asks in shopping, payment, food, travel and ride apps. On a gatekeeper phone, while a browser's address bar holds a link carrying a card number or SSN, any other tap in that browser (a suggestion row would open it) is refused |
 | `tap_element` | By the element's own text, description and resource id, plus whatever its centre lands on |
-| `swipe`, `scroll` | A swipe that barely moves (within twice the touch slop, 48 px) or is quicker than 150 ms is a tap, judged as one at its start point; so is a swipe that starts and ends on the same button. Any other swipe is judged at each end that is a commit control: a slider ("Slide to pay") or a risky label |
+| `swipe`, `scroll` | A swipe that barely moves (within twice the touch slop, 48 px) or is quicker than 150 ms is a tap, judged as one at its start point; so is a swipe that starts and ends on the same button (within the touch slop of it), unless something under it really scrolls that way (on the phone: a node whose accessibility scroll actions say its content can move in the drag's direction; a class name such as ScrollView or ViewPager alone doesn't count; review H1, 2026-10-17). Any other swipe is judged at each end that is a commit control: a slider ("Slide to pay") or a risky label; a real scroll isn't judged by the words under the finger. A swipe longer than 10 s is refused |
 | ENTER (`press_key ENTER`, `type_text` with `submit`) | In messaging, email and social apps it's a **send**. In a browser or web form, and on a payment screen, it's a **submit** that asks (as a payment when money words are on screen). Search boxes never ask. In a browser's address bar, the link checks below run on the URL |
 | `open_url` | Only `https`/`http`, `tel`, `mailto`, `sms`, `geo` and `market` links. `javascript:`, `intent:`, `file:`, `content:`, `data:` and app-specific schemes are refused. The phone says which app would open the link **before** it opens, and a link into a blocked app (a bank, say) is refused. A link carrying a card number or SSN anywhere (host, path, query or fragment, URL-decoded) is refused ([Sensitive numbers](#sensitive-numbers)). With an older app, OpenMob checks the app in front right after opening and backs out (Back, then Home) of a blocked one |
 | `type_text` | Never into a password field. Never a `javascript:`, `intent:`, `file:`, `content:` or `data:` URL into an address bar, nor a link carrying a card number or SSN. A card number or SSN in any field asks ([Sensitive numbers](#sensitive-numbers)) |
@@ -462,14 +467,25 @@ Card numbers and US Social Security numbers get their own rules (2026-10-10, aft
 into a "Name on card" field, typed an SSN into a loan form, and sent a card number out in a link's query). The
 server (`openmob/agent/sensitive.py`) and the phone (`SensitiveNumbers.kt`) use the same detector, pinned by a
 shared fixture:
-- **A card number:** 13 to 19 digits, optionally grouped by single spaces, dashes or pluses (a grouped number
-  starts with a 4-digit group), first digit 2 to 6, passing the Luhn check. Not after `+` (a phone number) or
-  after `<digit>.` (a coordinate's decimals). **CVV and expiry** count in a card field (card number, CVV, expiry…:
-  any 3 digits) and are covered anyway when typed next to a card number.
-- **An SSN:** `ddd-dd-dddd` with a valid area (not 000, 666 or 9xx), group and serial. Where the field or the
-  screen says SSN or Social Security, `ddd dd dddd`, 9 bare digits and test values such as 000-12-3456 count too.
-- Phone numbers, order numbers, dates, timestamps and map coordinates don't count (a test sweeps 24,000 generated
-  ones; that is a generated set, not a measurement of real use).
+- **A card number:** 13 to 19 digits, optionally grouped by spaces (one or more), dashes, pluses, dots, slashes or
+  underscores (a grouped number starts with a 4-digit group), first digit 2 to 6, passing the Luhn check. Not
+  after `+` (a phone number) or after `<digit>.` (a coordinate's decimals). Any script's decimal digits (Arabic-Indic,
+  Devanagari, fullwidth…) count as their ASCII digits. **CVV and expiry** count in a card field (card number, CVV,
+  expiry…: any 3 digits) and are covered anyway when typed next to a card number.
+- **An SSN:** `ddd-dd-dddd`, `ddd dd dddd` or `ddd.dd.dddd` with a valid area (not 000, 666 or 9xx), group and
+  serial. Where the field or the screen says SSN or Social Security, 9 bare digits and test values such as
+  000-12-3456 count too.
+- **In a link**, also a card number split over consecutive numeric query parameters (`?a=4111111&b=111111111`;
+  each piece 3 to 12 digits, no decimals).
+- **Typed in pieces:** what the field will hold (its text plus the new text; the new text alone with `replace`) is
+  judged, so `4111 1111` then ` 1111 1111` asks at the second piece (review M4, 2026-10-17). A number the field
+  already held (the owner typed it) doesn't make other typing ask.
+- Phone numbers, order numbers, dates, timestamps, IP addresses, version numbers and map coordinates don't count
+  (tests sweep 24,000 generated ones, and 44,000 more with the new separators and link parameters; generated sets,
+  not a measurement of real use).
+- **What this is and isn't:** a guard against accidental leaks (a model copying a number it saw into a field or a
+  link). It is not a guard against a determined adversary: base64, spelled-out digits, other encodings, or a number
+  sent a few digits per request get through (review L1, 2026-10-17).
 
 What happens:
 - **Typing one asks**, in any field and in any app, at tap level (kind `sensitive_number`; a card field keeps its
@@ -478,7 +494,7 @@ What happens:
   sessions** (an outside agent never types card numbers or SSNs, like verification codes). `type_text` with
   `replace` or `submit` is judged the same way. The question names the kind ("a card number"), never the digits.
 - **A link carrying one is refused**, never asked: `open_url`, `open_link` parameters, a URL typed into a browser's
-  address bar, and ENTER on an address bar holding one, after URL-decoding (up to three rounds, so `%20`, `%2B`,
+  address bar, and ENTER on an address bar holding one, after URL-decoding (until it stops changing, at most ten rounds, so `%20`, `%2B`,
   `+` and double encoding don't hide it). On the agent loop and in drive sessions alike, and again on the phone.
 - **Redaction:** any card number or SSN in an event (the request in "Working on: …", the model's thoughts, its
   summary, a refusal) is replaced by `<redacted>` before it reaches the feed, `/v1/tasks/{id}/events`, webhooks'

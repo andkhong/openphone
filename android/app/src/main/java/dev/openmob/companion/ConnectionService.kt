@@ -95,9 +95,9 @@ class ConnectionService : Service() {
 
         /** "Turn on Faster mode" ("phone" or "session"): the server answers with an approval the owner signs here,
          *  behind the screen lock, after reading the warning. False if not connected. */
-        fun requestFaster(scope: String): Boolean = AppState.connected && running?.send(
+        fun requestFaster(scope: String): Boolean = (AppState.connected && running?.send(
             JSONObject().put("type", "faster_mode_request").put("scope", scope)
-        ) ?: false
+        ) ?: false).also { if (it) FasterMode.noteRequest(scope, android.os.SystemClock.elapsedRealtime()) }
 
         /** Turn Faster mode off: here at once, and on the server (one tap, nothing to sign). */
         fun turnOffFaster(context: Context, via: String): Boolean {
@@ -374,6 +374,7 @@ class ConnectionService : Service() {
         val params = message.optJSONObject("params") ?: JSONObject()
         calls.execute {
             val reply = JSONObject().put("type", "result").put("id", id)
+            var acting = false
             try {
                 // D1: the gatekeeper decides first, for every method. A server can at most request.
                 val started = SystemClock.elapsedRealtime()
@@ -387,7 +388,18 @@ class ConnectionService : Service() {
                 if (admission.allowed && method in GateHost.actMethods && method != "wake_unlock") ScreenKeeper.touch()
                 // The agent indicator is on screen before any admitted action's side effect (the phone's own
                 // knowledge: docs/design/control-indicator.md); any other call only keeps a session's indicator up.
-                if (admission.allowed && method in GateHost.actMethods) ControlIndicator.beforeAct() else ControlIndicator.call()
+                // An act stays "in flight" for the indicator until this call ends (the finally below): it can't fade
+                // while a gesture still runs (review M1). If it should show but isn't on screen, the act is refused
+                // (review L5); waking the screen is the exception (nothing may draw while the display is off).
+                if (admission.allowed && method in GateHost.actMethods) {
+                    acting = true
+                    if (!ControlIndicator.beforeAct() && method != "wake_unlock") {
+                        send(reply.put("ok", false).put("code", "gate_indicator_unavailable")
+                            .put("error", "The phone couldn't show its agent indicator, so it didn't act. Try again.")
+                            .put("gate", JSONObject().put("rule", "builtin:indicator").put("package", "").put("ms", 0)))
+                        return@execute
+                    }
+                } else ControlIndicator.call()
                 if (admission.decision == "redact" && service != null) { // a blocked app is visible: black, or []
                     val result = PhoneActions(service).redacted(method, params)
                     if (result is PhoneActions.Frame) sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
@@ -429,6 +441,8 @@ class ConnectionService : Service() {
                 gateReply(reply, e.admission, 0)
             } catch (e: Throwable) {
                 reply.put("ok", false).put("error", "${e.javaClass.simpleName}: ${e.message}")
+            } finally {
+                if (acting) ControlIndicator.afterAct()
             }
             send(reply)
         }

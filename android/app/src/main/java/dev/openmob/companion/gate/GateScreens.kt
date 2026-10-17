@@ -133,8 +133,25 @@ object GateScreens {
                 longClickable = n.isLongClickable, editable = acceptsText, password = n.isPassword,
                 hint = n.hintText?.toString().orEmpty(), checked = if (n.isCheckable) n.isChecked else null,
                 focused = n.isFocused && (acceptsText || n.isPassword), children = children, truncated = truncated,
+                scroll = scrollDirs(n),
             )
         }
+    }
+
+    /** Which way [n]'s content can scroll now (review H1): only a scrollable node with a scroll action left counts. */
+    private fun scrollDirs(n: AccessibilityNodeInfo): Set<String> {
+        if (!n.isScrollable) return emptySet()
+        val names = mutableSetOf<String>()
+        for (a in n.actionList) when (a.id) {
+            AccessibilityNodeInfo.ACTION_SCROLL_FORWARD -> names.add("forward")
+            AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD -> names.add("backward")
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id -> names.add("up")
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_DOWN.id -> names.add("down")
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_LEFT.id -> names.add("left")
+            AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_RIGHT.id -> names.add("right")
+        }
+        val info = n.collectionInfo
+        return ScrollDirs.of(true, names, info?.rowCount ?: -1, info?.columnCount ?: -1, n.className?.toString().orEmpty())
     }
 
     @Suppress("DEPRECATION")

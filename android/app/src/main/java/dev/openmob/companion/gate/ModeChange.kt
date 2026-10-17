@@ -57,6 +57,61 @@ object ModeChange {
         "blacks out, are never sent. OpenMob blocks banking apps and detected card and ID numbers, but it can't " +
         "recognize every sensitive image. You can turn this off at any time."
 
+    /** The warning's first sentence: what the screen-lock sheet shows ([lockText]). */
+    const val FASTER_FIRST = "Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI " +
+        "service, so it can recognize screens faster."
+
+    /** The keys a Faster mode change may carry (the server's FASTER_PATCH); a drive change carries faster_drive alone. */
+    private val FASTER_KEYS = setOf("faster_mode", "faster_until", "faster_idle_s", "faster_resume_s")
+
+    /** How long the owner's tap on "Turn on" stays good for the approval it asks the server for. */
+    const val REQUEST_MS = 5 * 60_000L
+
+    /** Why this phone declines a Faster mode change without showing it (review M2, 2026-10-17), else null:
+     *  - "mixed": it carries anything besides that one Faster part (Don't ask, purchases, a ceiling, everyday,
+     *    permission defaults, trusted apps, or a second Faster part), which one screen lock would also sign;
+     *  - "not_requested": it turns Faster mode on in a scope the owner didn't just tap on this phone ([requested]:
+     *    the scope and when, in elapsed ms; [now] the same clock).
+     *  A key's drive change has no tap here (the dashboard asks), so only "mixed" applies to it. */
+    fun fasterRefusal(input: String, requested: Pair<String, Long>?, now: Long): String? {
+        val p = patch(input)
+        val faster = "faster_mode" in p
+        val drive = "faster_drive" in p
+        if (!faster && !drive) return null
+        if (faster && drive) return "mixed"
+        if (faster && !FASTER_KEYS.containsAll(p.keys)) return "mixed"
+        if (drive && p.keys != setOf("faster_drive")) return "mixed"
+        val scope = fasterScope(input) ?: return null
+        if (requested == null || requested.first != scope || now < requested.second || now - requested.second > REQUEST_MS) {
+            return "not_requested"
+        }
+        return null
+    }
+
+    /** What the screen-lock sheet says (it must stay short: a long description pushes the PIN field under the
+     *  keyboard, PromptText): for Faster mode the scope and the warning's whole first sentence; for other changes each
+     *  part's first sentence, as many as fit, then how many more the screen above lists. */
+    fun lockText(input: String, max: Int = dev.openmob.companion.PromptText.MAX): String {
+        when (fasterScope(input)) {
+            "session" -> return "Turn on Faster mode (this session): $FASTER_FIRST"
+            "phone" -> return "Turn on Faster mode (always on this phone): $FASTER_FIRST"
+        }
+        fasterDriveKey(input)?.let { (key, name) -> return "API key “${name.ifEmpty { key }.take(20)}”: $FASTER_FIRST" }
+        val parts = describeParts(input).map { p -> p.indexOf('?').let { q -> if (q > 0) p.substring(0, q + 1) else p } }
+        if (parts.isEmpty()) return dev.openmob.companion.PromptText.short(describe(input), max)
+        val shown = mutableListOf<String>()
+        for ((i, part) in parts.withIndex()) {
+            val more = parts.size - i - 1
+            val tail = if (more > 0) " +$more more above." else ""
+            val candidate = (shown + part).joinToString(" ")
+            if ((candidate + tail).length > max) break
+            shown.add(part)
+        }
+        if (shown.isEmpty()) return dev.openmob.companion.PromptText.short(parts[0], max)
+        val left = parts.size - shown.size
+        return shown.joinToString(" ") + if (left > 0) " +$left more above." else ""
+    }
+
     /** A change that turns Faster mode on: its scope ("phone" or "session"), else null. Not gatekeeper policy (the
      *  server sends the images; the phone keeps the owner's choice in [dev.openmob.companion.FasterMode]). */
     fun fasterScope(input: String): String? = (patch(input)["faster_mode"] as? String)?.takeIf { it == "phone" || it == "session" }
@@ -69,7 +124,11 @@ object ModeChange {
     }
 
     /** The phone's own wording of the change. */
-    fun describe(input: String): String {
+    fun describe(input: String): String =
+        describeParts(input).joinToString(" ").ifEmpty { "Change how agents ask on this phone?" }
+
+    /** One wording per part of the change, in order. */
+    fun describeParts(input: String): List<String> {
         val parts = mutableListOf<String>()
         when (fasterScope(input)) {
             "phone" -> parts.add("Turn on Faster mode on this phone? $FASTER_WARNING")
@@ -80,7 +139,8 @@ object ModeChange {
             parts.add("Let the API key “${name.ifEmpty { key }}” use Faster mode in its drive sessions on this phone? " +
                       FASTER_WARNING)
         }
-        for (r in records(input)) when (r["type"]) {
+        // The loosest first (Don't ask), so a short summary (lockText) never leaves it out.
+        for (r in records(input).sortedBy { if (it["type"] == "never") 0 else 1 }) when (r["type"]) {
             "never" -> {
                 val hours = (r["duration_ms"] as Long) / 3_600_000L
                 val span = if (hours >= 24) "24 hours" else "$hours hour${if (hours == 1L) "" else "s"}"
@@ -100,7 +160,7 @@ object ModeChange {
             "grant" -> parts.add("Let agents ${r["kind"]} in ${r["binding"]} without asking for ${
                 if (r["kind"] == "pay") "24 hours" else "7 days"}?")
         }
-        return parts.distinct().joinToString(" ").ifEmpty { "Change how agents ask on this phone?" }
+        return parts.distinct()
     }
 
     fun allowsMoney(input: String) = records(input).any { it["type"] == "never" && it["allow_money"] == true }

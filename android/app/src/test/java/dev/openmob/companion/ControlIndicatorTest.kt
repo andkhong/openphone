@@ -225,9 +225,9 @@ class ControlIndicatorTest {
 
     @Test fun aRepeatDodgeMovesOnAndASwipeAcrossTheTopGoesToTheBottom() {
         val p = PillPlacement()
-        p.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0), 21, ::rectOf)
-        // the agent then needs something under the top-left position: back to the top right (free now)
-        assertEquals(PillCorner.TOP_RIGHT, p.dodge(PillCorner.TOP_RIGHT, listOf(100.0 to 200.0), 21, ::rectOf))
+        p.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0), 21, ::rectOf, 0)
+        // the agent then needs something under the top-left position: back to the top right (free now), 2 s later
+        assertEquals(PillCorner.TOP_RIGHT, p.dodge(PillCorner.TOP_RIGHT, listOf(100.0 to 200.0), 21, ::rectOf, 2_000))
         // a swipe along the whole top edge covers both top corners: a bottom corner
         val q = PillPlacement()
         assertEquals(PillCorner.BOTTOM_RIGHT, q.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0, 100.0 to 200.0), 21, ::rectOf))

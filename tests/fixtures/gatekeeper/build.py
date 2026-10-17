@@ -1453,7 +1453,8 @@ SCENARIOS += [
         step("tap", "notifications_kalshi", allow(), x=540, y=1505),
         perm_default("persistent_grants", "allow"),
         step("tap", "contacts_kalshi_allow_only", allow(), x=540, y=1505)], tags=["permissions"]),
-    sc("a free Play Store install the task names doesn't ask; a priced one is money", [
+    sc("a free Play Store install the task names doesn't ask when the phone holds the request; a priced one is money", [
+        {"instruction": "install chess and play 5 moves against a bot"},  # typed on the phone (review L2)
         step("tap", "play_store_chess", allow(), x=540, y=860, task="t1",
              task_text="install chess and play 5 moves against a bot"),
         step("tap", "play_store_paid", ask("pay"), x=540, y=860, task="t1",
@@ -1464,6 +1465,7 @@ SCENARIOS += [
         step("tap", "play_store_chess", ask("install", rule="risk:install:unnamed"), x=540, y=860),
         step("tap", "play_store_flashlight_get", ask("install"), x=540, y=860, task="t1",
              task_text="install chess and play 5 moves against a bot"),
+        {"instruction": "get the Torchlight flashlight"},
         step("tap", "play_store_flashlight_get", allow(), x=540, y=860, task="t2",
              task_text="get the Torchlight flashlight")], tags=["install"]),
     sc("an unnamed install isn't covered by Don't confirm everyday actions, and is refused under Don't ask", [
@@ -1750,6 +1752,7 @@ SCENARIOS += [
         step("tap", "hit_benign_layered", allow(), x=540, y=340),
         step("tap", "hit_buy_layered", allow(), x=540, y=1560),  # Add to cart, next to Buy now
         step("tap", "hit_send_toolbar", allow(), x=400, y=2250),  # the message field
+        {"instruction": "install the torchlight app"},
         step("tap", "hit_install_layered", allow(), x=540, y=860, task="t1", task_text="install the torchlight app"),
         step("tap", "hit_overlay_over_bank", refuse("gate_blocked_app"), x=540, y=300)], tags=["hit_test", "friction"]),
 ]
@@ -1768,7 +1771,7 @@ ADVERSARIAL += [
 WIKI = "com.android.chrome"
 SCREENS.update({
     "wiki_page": screen(app(WIKI, [
-        node(cls="android.webkit.WebView", bounds=(0, 200, W, H), children=[
+        node(cls="android.webkit.WebView", bounds=(0, 200, W, H), scroll=["down", "up"], children=[
             node(cls="android.view.View", bounds=(0, 200, W, H), clickable=True, children=[
                 node(text="Proud host of Wikipedia and other free knowledge projects", bounds=(40, 220, 1040, 300)),
                 button("Donate now", "", (40, 320, 400, 400)),
@@ -1779,7 +1782,7 @@ SCREENS.update({
             node(desc="Tip amount", cls="android.widget.SeekBar", bounds=(40, 1700, 1040, 1800)),
             node(cls="android.widget.FrameLayout", bounds=(0, 1500, W, 2000))])]), labels=LABELS),
     "swipe_up_pay": screen(app(SHOP, [
-        node(cls="android.widget.ScrollView", bounds=(0, 200, W, H), children=[
+        node(cls="android.widget.ScrollView", bounds=(0, 200, W, H), scroll=["down"], children=[
             node(text="Total $20.00", bounds=(40, 400, 1040, 480)),
             node(desc="Swipe up to pay $20.00", cls="android.view.View", bounds=(40, 1900, 1040, 2100), clickable=True)])]),
         labels=LABELS),
@@ -1803,6 +1806,7 @@ SCENARIOS += [
         step("swipe", "list_row_delete", ask("delete"), x1=900, y1=680, x2=100, y2=680, duration_ms=300)], tags=["risk"]),
     sc("common words in the request don't name the store page's app", [
         step("tap", "store_tap_titans", ask("install"), x=540, y=860, task="t1", task_text="tap install on this page"),
+        {"instruction": "install tap titans"},
         step("tap", "store_tap_titans", allow(), x=540, y=860, task="t2", task_text="install tap titans")], tags=["risk"]),
     sc("a prompt the server withdrew (its task stopped) doesn't hold the next act", [
         step("tap", "whatsapp_chat", ask("send"), **SEND),
@@ -1990,6 +1994,184 @@ ADVERSARIAL += [
 ]
 
 
+# --- security review, 2026-10-17 ---------------------------------------------------------------------------------------
+# H1: a short drag that stays inside the button it started on is a press of that button (Android clicks it on release),
+# unless something under it really scrolls that way (a node whose accessibility scroll actions say its content can
+# move in the drag's direction: `scroll`). A class name alone (a ScrollView that can't scroll, a ViewPager, a carousel)
+# no longer makes a drag a scroll.
+MAIL = "com.example.mail"
+
+
+def in_scroller(pkg, parent_cls, label, scroll=(), extra=()):
+    kids = list(extra) + [button(label, "", (100, 1000, 980, 1144))]
+    return screen(app(pkg, [node(cls=parent_cls, bounds=(0, 200, W, 2200), scroll=list(scroll), children=[
+        node(cls="android.widget.LinearLayout", bounds=(0, 200, W, 2200), children=kids)])]), labels=LABELS)
+
+
+SCREENS.update({
+    "h1_send_static_scrollview": in_scroller(MAIL, "android.widget.ScrollView", "Send"),
+    "h1_delete_in_pager": in_scroller(MAIL, "androidx.viewpager.widget.ViewPager", "Delete", scroll=("left", "right")),
+    "h1_uninstall_static_scrollview": in_scroller("com.example.app", "androidx.core.widget.NestedScrollView", "Uninstall"),
+    "h1_place_order_static_scrollview": in_scroller(SHOP, "android.widget.ScrollView", "Place order",
+                                                    extra=[node(text="Total $49.99", bounds=(100, 800, 980, 900))]),
+    "h1_send_in_list_at_top": in_scroller(MAIL, "androidx.recyclerview.widget.RecyclerView", "Send", scroll=("down",)),
+})
+IN_BUTTON_DOWN = dict(x1=540, y1=1010, x2=540, y2=1100, duration_ms=200)  # 90 px, inside the 144 px button
+IN_BUTTON_UP = dict(x1=540, y1=1100, x2=540, y2=1010, duration_ms=200)
+H1_TASK = dict(task="t1", task_text="read my mail")
+SCENARIOS += [
+    sc("review H1: a short drag inside Send in a ScrollView that can't scroll asks exactly as a tap does", [
+        step("tap", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), x=540, y=1070, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), **IN_BUTTON_DOWN, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), **IN_BUTTON_UP, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), mode="ask", **IN_BUTTON_DOWN, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), mode="trusted", **IN_BUTTON_DOWN, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", ask("send", rule="risk:words:send"), mode="plan", **IN_BUTTON_DOWN, **H1_TASK)],
+       tags=["risk", "review_2026_10_17"]),
+    sc("review H1: a vertical drag inside Delete in a sideways pager asks (the pager never takes a vertical drag)", [
+        step("tap", "h1_delete_in_pager", ask("delete", rule="risk:words:delete"), x=540, y=1070, **H1_TASK),
+        step("swipe", "h1_delete_in_pager", ask("delete", rule="risk:words:delete"), **IN_BUTTON_DOWN, **H1_TASK),
+        step("swipe", "h1_delete_in_pager", ask("delete", rule="risk:words:delete"), mode="ask", **IN_BUTTON_UP, **H1_TASK)],
+       tags=["risk", "review_2026_10_17"]),
+    sc("review H1: a drag inside Uninstall in a NestedScrollView that can't scroll asks", [
+        step("swipe", "h1_uninstall_static_scrollview", ask(rule="risk:words:uninstall"), **IN_BUTTON_DOWN, **H1_TASK)],
+       tags=["risk", "review_2026_10_17"]),
+    sc("review H1: a drag inside Place order with a total on screen asks as a payment; under Don't ask it's refused as the tap is", [
+        step("swipe", "h1_place_order_static_scrollview", ask("pay", rule="risk:words:place order", money="terminal"),
+             **IN_BUTTON_DOWN, **H1_TASK),
+        {"policy": {"type": "never", "duration_ms": 3600000, "allow_money": False}, "sig": "valid", "expect_accepted": True},
+        step("tap", "h1_place_order_static_scrollview", refuse("gate_denied", rule="never:money"), x=540, y=1070, **H1_TASK),
+        step("swipe", "h1_place_order_static_scrollview", refuse("gate_denied", rule="never:money"),
+             **IN_BUTTON_UP, **H1_TASK)],
+       tags=["risk", "money", "review_2026_10_17"]),
+    sc("review H1: under Don't ask, a drag inside Send is judged as the tap is", [
+        {"policy": {"type": "never", "duration_ms": 3600000, "allow_money": False}, "sig": "valid", "expect_accepted": True},
+        step("tap", "h1_send_static_scrollview", allow(), x=540, y=1070, **H1_TASK),
+        step("swipe", "h1_send_static_scrollview", allow(), **IN_BUTTON_DOWN, **H1_TASK)],
+       tags=["risk", "review_2026_10_17"]),
+    sc("review H1: a list that can scroll down takes a finger moving up (a scroll); moving down it can't, so that's a press", [
+        step("swipe", "h1_send_in_list_at_top", allow(), **IN_BUTTON_UP, **H1_TASK),
+        step("swipe", "h1_send_in_list_at_top", ask("send", rule="risk:words:send"), **IN_BUTTON_DOWN, **H1_TASK),
+        step("swipe", "h1_send_in_list_at_top", allow(), x1=540, y1=1100, x2=540, y2=400, duration_ms=300, **H1_TASK)],
+       tags=["friction", "review_2026_10_17"]),
+]
+# M3: the Play Store's "names the app" check reads the install button's own card, never the search box; a results page
+# (more than one Install/Get) names no app. L2: a server's task text alone doesn't name it either; the phone must hold
+# the request (approved here as the task, or typed here), so a named install asks once, as the task prompt.
+PLAY = "com.android.vending"
+CHESS_TASK = dict(task="t1", task_text="install chess and play 5 moves against a bot")
+
+
+def play_results(query, results):
+    kids = [node(text=query, id=f"{PLAY}:id/search_bar_text", cls="android.widget.EditText", editable=True,
+                 bounds=(100, 150, 900, 250))] if query is not None else []
+    for i, (title, sponsored) in enumerate(results):
+        top = 400 + 300 * i
+        card = [node(text=title, bounds=(200, top + 50, 800, top + 120)),
+                button("Install", "", (820, top + 50, 1040, top + 140))]
+        if sponsored:
+            card.insert(0, node(text="Sponsored", bounds=(40, top, 300, top + 40)))
+        kids.append(node(cls="android.view.View", bounds=(0, top, W, top + 280), clickable=True, children=card))
+    return screen(app(PLAY, kids), labels=LABELS)
+
+
+SCREENS.update({
+    "m3_sponsored_under_search": play_results("chess", [("Mega Casino Slots", True)]),
+    "m3_results_page": play_results("chess", [("Mega Casino Slots", True), ("Chess - Play and Learn", False),
+                                              ("Chess Clock", False)]),
+    "m3_one_result_card": play_results(None, [("Chess - Play and Learn", False)]),
+})
+SCENARIOS += [
+    sc("review M3: the search box's text never names the app; a sponsored result under it asks", [
+        step("tap", "m3_sponsored_under_search", ask("install", rule="risk:install:unnamed"), x=930, y=500, **CHESS_TASK)],
+       tags=["install", "review_2026_10_17"]),
+    sc("review M3: a results page with several Install buttons asks, even on the result the task names", [
+        {"instruction": "install chess and play 5 moves against a bot"},
+        step("tap", "m3_results_page", ask("install", rule="risk:install:unnamed"), x=930, y=500, **CHESS_TASK),
+        step("tap", "m3_results_page", ask("install", rule="risk:install:unnamed"), x=930, y=800, **CHESS_TASK)],
+       tags=["install", "review_2026_10_17"]),
+    sc("review M3: one result's own card names it", [
+        {"instruction": "install chess and play 5 moves against a bot"},
+        step("tap", "m3_one_result_card", allow(), x=930, y=500, **CHESS_TASK)], tags=["install", "review_2026_10_17"]),
+    sc("review L2: a named install the phone only has the server's word for asks once, as the task; then it runs", [
+        step("tap", "play_store_chess", ask("task", rule="risk:task:install:unattested"), x=540, y=860, **CHESS_TASK),
+        {"approve": "last", "sig": "valid"},
+        step("tap", "play_store_chess", allow(), x=540, y=860, **CHESS_TASK),
+        step("tap", "play_store_chess", allow(), x=540, y=860, **CHESS_TASK)], tags=["install", "task_grant", "review_2026_10_17"]),
+    sc("review L2: another task text than the one approved doesn't carry the grant", [
+        step("tap", "play_store_chess", ask("task", rule="risk:task:install:unattested"), x=540, y=860, **CHESS_TASK),
+        {"approve": "last", "sig": "valid"},
+        {"advance_ms": 61000},  # past the approved step's own permit; the task grant still holds
+        step("tap", "play_store_chess", allow(), x=540, y=860, **CHESS_TASK),
+        step("tap", "play_store_chess", ask("task", rule="risk:task:install:unattested"), x=540, y=860, task="t1",
+             task_text="install chess")], tags=["install", "task_grant", "review_2026_10_17"]),
+    sc("review L2: in Ask every step a named install asks (no task prompt there)", [
+        step("tap", "play_store_chess", ask("install", rule="risk:install:unattested"), mode="ask", x=540, y=860,
+             **CHESS_TASK)], tags=["install", "review_2026_10_17"]),
+]
+# M4: a card number or SSN typed in pieces: what the field will hold (its text plus the new text) is judged, not only
+# the new piece. A browser's address bar holding a link that carries one: a tap on a suggestion row is refused too.
+NOTES = "com.example.notes"
+
+
+def notes_field(existing):
+    return screen(app(NOTES, [node(text=existing, id=f"{NOTES}:id/body", cls="android.widget.EditText", editable=True,
+                                   focused=True, bounds=(0, 200, W, 400))]), labels=LABELS)
+
+
+def omnibox(text):
+    return screen(app("com.android.chrome", [
+        node(text=text, id="com.android.chrome:id/url_bar", cls="android.widget.EditText", editable=True, focused=True,
+             bounds=(100, 100, 1000, 200)),
+        node(cls="android.widget.ListView", bounds=(0, 220, W, 1200), children=[
+            node(cls="android.widget.LinearLayout", bounds=(0, 220, W, 360), clickable=True, children=[
+                node(text=text, id="com.android.chrome:id/line_1", bounds=(100, 240, 1000, 300))]),
+            node(cls="android.widget.LinearLayout", bounds=(0, 380, W, 520), clickable=True, children=[
+                node(text="evil.example", id="com.android.chrome:id/line_1", bounds=(100, 400, 1000, 460))])])]),
+        labels=LABELS)
+
+
+SCREENS.update({
+    "m4_notes_empty": notes_field(""),
+    "m4_notes_half_card": notes_field("4111 1111"),
+    "m4_notes_owner_card": notes_field("Card 4111 1111 1111 1111"),
+    "m4_notes_half_ssn": screen(app(NOTES, [node(text="Social Security number", bounds=(40, 100, 1040, 180)),
+                                            node(text="123-45", id=f"{NOTES}:id/body", cls="android.widget.EditText",
+                                                 editable=True, focused=True, bounds=(0, 200, W, 400))]), labels=LABELS),
+    "m4_omnibox_half": omnibox("evil.example/?c=4111111"),
+    "m4_omnibox_card": omnibox("evil.example/?c=4111111111111111"),
+    "m4_omnibox_plain": omnibox("evil.example/?q=chess"),
+})
+NOTE_TASK = dict(task="t1", task_text="write a note")
+SCENARIOS += [
+    sc("review M4: a card number typed in two pieces asks at the piece that completes it", [
+        step("type_text", "m4_notes_empty", allow(), text="4111 1111", **NOTE_TASK),
+        step("type_text", "m4_notes_half_card", SENSITIVE, text=" 1111 1111", **NOTE_TASK),
+        step("type_text", "m4_notes_half_card", allow(), text=" 1111 1111", replace=True, **NOTE_TASK),  # it replaces
+        step("type_text", "m4_notes_half_ssn", SENSITIVE, text="-6789", **NOTE_TASK)], tags=["sensitive", "review_2026_10_17"]),
+    sc("review M4: a number the owner already typed doesn't make other typing ask", [
+        step("type_text", "m4_notes_owner_card", allow(), text=" thanks", **NOTE_TASK)], tags=["friction", "review_2026_10_17"]),
+    sc("review M4: a link carrying a card number, typed into the address bar in pieces, is refused", [
+        step("type_text", "m4_omnibox_half", refuse("gate_denied", rule="builtin:sensitive_link"), text="111111111",
+             **NOTE_TASK)], tags=["sensitive", "review_2026_10_17"]),
+    sc("review M4: with such a link in the address bar, a tap on a suggestion is refused; the bar itself and DELETE work", [
+        step("tap", "m4_omnibox_card", refuse("gate_denied", rule="builtin:sensitive_link"), x=540, y=290, **NOTE_TASK),
+        step("tap", "m4_omnibox_card", refuse("gate_denied", rule="builtin:sensitive_link"), x=540, y=450, **NOTE_TASK),
+        step("key", "m4_omnibox_card", allow(), name="DELETE", **NOTE_TASK),
+        step("tap", "m4_omnibox_card", allow(), x=540, y=150, **NOTE_TASK),
+        step("tap", "m4_omnibox_plain", allow(), x=540, y=290, **NOTE_TASK)], tags=["sensitive", "review_2026_10_17"]),
+]
+# M1: a gesture can't outlast the indicator: a swipe or long press over 10 s is refused (rules.json swipe.max_ms).
+SCENARIOS += [
+    sc("review M1: a swipe or long press longer than 10 s is refused; 10 s itself is fine", [
+        step("swipe", "wiki_page", refuse("gate_denied", rule="builtin:gesture_too_long"), x1=540, y1=1800, x2=540,
+             y2=600, duration_ms=60000),
+        step("long_press", "wiki_page", refuse("gate_denied", rule="builtin:gesture_too_long"), x=540, y=1800,
+             duration_ms=10001),
+        step("swipe", "wiki_page", allow(), x1=540, y1=1800, x2=540, y2=600, duration_ms=10000),
+        step("long_press", "amazon_product", allow(), x=540, y=610, duration_ms=1500)], tags=["review_2026_10_17"]),
+]
+
 SENSITIVE_NUMBERS = {
     "texts": [
         {"text": t, "ssn_context": s, "card_field": c, "expect": e} for t, s, c, e in [
@@ -2028,8 +2210,22 @@ SENSITIVE_NUMBERS = {
             ("123-45-0000", False, False, None),
             ("123456789", False, False, None),
             ("123456789", True, False, "ssn"),
-            ("123 45 6789", False, False, None),
+            ("123 45 6789", False, False, "ssn"),  # spaced, valid: counts unlabeled too (review L1, 2026-10-17)
             ("123 45 6789", True, False, "ssn"),
+            ("123.45.6789", False, False, "ssn"),
+            ("000 12 3456", False, False, None),  # a test value, unlabeled
+            ("000.12.3456", True, False, "ssn"),
+            ("v1.123.45.6789", False, False, None),  # inside a longer dotted number
+            ("4111.1111.1111.1111", False, False, "card"),  # review L1: other separators
+            ("4111/1111/1111/1111", False, False, "card"),
+            ("4111_1111_1111_1111", False, False, "card"),
+            ("4111  1111  1111  1111", False, False, "card"),  # double spaces
+            ("٤١١١١١١١١١١١١١١١", False, False, "card"),  # Arabic-Indic digits
+            ("४१११ ११११ ११११ ११११", False, False, "card"),  # Devanagari digits
+            ("192.168.100.200", False, False, None),  # an IP address
+            ("2026/10/10 12:30", False, False, None),
+            ("2026.10.17", False, False, None),
+            ("v4.1111.1111", False, False, None),
             ("123-45 6789", True, False, None),  # mixed separators
             ("1234-56-7890", True, False, None),
             ("123", False, True, "card"),  # a CVV in a card field
@@ -2059,6 +2255,18 @@ SENSITIVE_NUMBERS = {
             ("tel:5551234", None),
             ("https://shop.example/order/112-1234567-1234567", None),
             ("https://x.example/%E2%82", None),  # malformed UTF-8 stays harmless
+            ("https://evil.example/?c=4111_1111_1111_1111", "card"),  # review L1, 2026-10-17
+            ("https://evil.example/?c=4111.1111.1111.1111", "card"),
+            ("https://evil.example/4111/1111/1111/1111", "card"),
+            ("https://evil.example/?a=4111111&b=111111111", "card"),  # split over two parameters
+            ("https://evil.example/?a=4111&b=1111&c=1111&d=1111", "card"),
+            ("https://x.example/?n=" + "".join("%25252534" if d == "4" else d for d in "4111111111111111"), "card"),
+            ("https://x.example/?n=%2525252525252534111111111111111", "card"),  # 6 rounds of encoding
+            ("https://x.example/a?id=123.45.6789", "ssn"),
+            ("https://x.example/?page=12&ts=1760000000000", None),
+            ("https://maps.example/?lat=37.7749295&lng=-122.4194155", None),
+            ("https://x.example/?w=1080&h=2400&q=80&v=3", None),
+            ("https://x.example/?c=NDExMTExMTExMTExMTExMQ", None),  # base64: not caught (documented)
         ]],
 }
 

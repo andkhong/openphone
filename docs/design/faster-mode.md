@@ -50,6 +50,13 @@ so nothing new is trusted:
    never sent. OpenMob blocks banking apps and detected card and ID numbers, but it can't recognize every
    sensitive image. You can turn this off at any time." The owner passes the screen lock; the phone signs
    `<approval id>|<task id>|<digest>|true|<time>` with its Keystore key, which only signs after the screen lock.
+   **Only exactly what the owner asked for (security review 2026-10-17, M2):** the phone declines, unseen, a Faster
+   mode change that carries anything else (Don't ask, purchases, a ceiling, everyday, permission defaults, trusted
+   apps, or a second Faster part) and a Faster mode change in a scope the owner didn't tap in the app within the
+   last 5 minutes (`ModeChange.fasterRefusal`; the activity list says so). A key's drive change must come alone
+   too (the dashboard asks for it, so there is no tap on the phone to match). Before, a compromised server could
+   answer the owner's "Turn on Faster mode" with one change that also turned on Don't ask, and the screen-lock
+   sheet showed only the Faster mode question.
 4. The server verifies the signature against that phone's registered key (hosted), applies the setting, records who
    and when, and pushes `faster_mode` to the phone. A signature by another phone, another key, an unsigned yes or
    a stale one (over 5 minutes) is ignored. A phone without a registered approval key can't turn it on.
@@ -83,8 +90,11 @@ mode is on · Agent connected · ready"; the server process restarted (the phone
 reconnected; airplane mode doesn't cut the emulator's link to the host) → the phone re-confirmed its grant, on again;
 the app's Disconnect → off on the server (log: "the owner's Disconnect"), and still off after connecting again.
 That check found one bug, fixed: the long warning as the screen-lock prompt's description pushed the PIN field under
-the keyboard, so the PIN couldn't be typed. The system prompt now gets the question alone (`PromptText`); the full
-warning is on the approval screen just before it.
+the keyboard, so the PIN couldn't be typed. The system prompt now gets a short summary (`ModeChange.lockText`, at
+most 180 characters, so the PIN field stays reachable): "Turn on Faster mode (this session): Faster mode sends
+screenshots of what the agent is looking at to TypeSafe, a second AI service, so it can recognize screens faster."
+(or "(always on this phone)"); the full warning is on the approval screen just before it. Other permission changes
+get each part's question, Don't ask first, as many as fit, then "+N more above".
 
 Token/dev mode (no accounts) has no approval keys, as for Don't ask: an app phone still asks its owner on its own
 prompt (the screen lock, unsigned), and a USB/adb phone without the app can't turn Faster mode on at all.

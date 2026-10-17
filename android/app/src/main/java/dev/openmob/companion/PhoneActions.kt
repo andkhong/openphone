@@ -569,7 +569,8 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
      *  still in flight. */
     private fun gesture(path: Path, durationMs: Long): Any? = synchronized(gestureLock) {
         gate() // under the gesture lock, right before the stroke
-        val duration = durationMs.coerceIn(1, GestureDescription.getMaxGestureDuration())
+        // The gate refuses longer ones (rules.json swipe.max_ms, review M1); this is the belt to its braces.
+        val duration = durationMs.coerceIn(1, minOf(GestureDescription.getMaxGestureDuration(), MAX_GESTURE_MS))
         val gesture = GestureDescription.Builder()
             .addStroke(GestureDescription.StrokeDescription(path, 0, duration))
             .build()
@@ -836,6 +837,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         const val MAX_ELEMENTS = 150
         const val UI_DEADLINE_MS = 10_000L
         const val TAP_MS = 50L
+        const val MAX_GESTURE_MS = 10_000L // rules.json swipe.max_ms
         const val DEFAULT_QUIET_MS = 300L
         const val MIN_QUIET_MS = 50L
         const val DEFAULT_IDLE_MAX_MS = 3_000L

@@ -4,13 +4,19 @@ The same detector runs on the phone (android/.../gate/SensitiveNumbers.kt) and i
 (tests/gatekeeper_ref.py); the shared fixture tests/fixtures/gatekeeper/sensitive_numbers.json pins all three to the
 same answers, and the label patterns below must equal rules.json "sensitive_numbers" (a test checks).
 
-- A **card number**: 13-19 digits, optionally grouped by single spaces, dashes or pluses (a grouped number starts
-  with a 4-digit group), whose first digit is 2-6 (the card networks' range) and that passes the Luhn check. A run
-  preceded by "+" (an international phone number) or by "<digit>." (a decimal fraction, such as a map coordinate)
-  isn't one.
-- A **Social Security number**: ddd-dd-dddd with a valid area (not 000, 666 or 9xx), group (not 00) and serial (not
-  0000). Where the field or the screen says SSN or Social Security, any ddd-dd-dddd, ddd dd dddd or 9 bare digits
-  count, test values such as 000-12-3456 included.
+- A **card number**: 13-19 digits, optionally grouped by spaces (one or more), dashes, pluses, dots, slashes or
+  underscores (a grouped number starts with a 4-digit group), whose first digit is 2-6 (the card networks' range) and
+  that passes the Luhn check. A run preceded by "+" (an international phone number) or by "<digit>." (a decimal
+  fraction, such as a map coordinate) isn't one. Any Unicode decimal digit counts as its ASCII digit.
+- A **Social Security number**: ddd-dd-dddd, ddd dd dddd or ddd.dd.dddd with a valid area (not 000, 666 or 9xx),
+  group (not 00) and serial (not 0000). Where the field or the screen says SSN or Social Security, any of those or 9
+  bare digits count, test values such as 000-12-3456 included.
+- **In a link**, also after percent-decoding until it stops changing (at most 10 rounds), and a card number split over
+  consecutive numeric query parameters (`?a=4111111&b=111111111`: each piece 3-12 digits, no decimals).
+
+This guards against accidental leaks (a model copying a number it saw into a field or a link), not against a
+determined adversary: base64, words, other encodings or a number spread over several requests aren't caught
+(review L1, 2026-10-17).
 - **Card details**: in a field labeled as a card field (card number, CVV, expiry...), any text with 3 or more digits.
 
 Typing one asks the owner (never covered by a task approval or "everyday"), and is refused under Don't ask and in
@@ -31,9 +37,11 @@ CARD_LABEL = r"(?i)card.?number|cc.?num|credit.?card|cvv|cvc|security.?code|expi
 
 _SSN_LABEL = re.compile(SSN_LABEL)
 _CARD_LABEL = re.compile(CARD_LABEL)
-_RUN = re.compile(r"(?<![0-9+])(?<![0-9]\.)[0-9](?:[ +\-]?[0-9])*")
-_SEP = re.compile(r"[ +\-]")
-_SSN = re.compile(r"(?<![0-9\-])([0-9]{3})([ \-]?)([0-9]{2})\2([0-9]{4})(?![0-9])")
+_RUN = re.compile(r"(?<![0-9+])(?<![0-9]\.)[0-9](?:(?: +|[+\-./_])?[0-9])*")
+_SEP = re.compile(r" +|[+\-./_]")
+_SSN = re.compile(r"(?<![0-9\-.])([0-9]{3})([ \-.]?)([0-9]{2})\2([0-9]{4})(?![0-9]|[\-./][0-9])")
+_QUERY_VALUE = re.compile(r"[?&;]([^=&;#]*)=([^&;#]*)")
+_NUMERIC = re.compile(r"^[0-9][0-9 +\-_]*$")  # no dots: a decimal (a coordinate) is not a piece
 _DIGIT = re.compile(r"[0-9]")
 
 CARD = "card"
@@ -52,8 +60,15 @@ def luhn(digits: str) -> bool:
     return total % 10 == 0
 
 
+def ascii_digits(text: str) -> str:
+    """Every Unicode decimal digit (Arabic-Indic, Devanagari, …) as its ASCII digit; one character for one."""
+    if text.isascii():
+        return text
+    return "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in text)
+
+
 def _norm(text: str) -> str:
-    return unicodedata.normalize("NFKC", text or "")
+    return ascii_digits(unicodedata.normalize("NFKC", text or ""))
 
 
 def card_spans(text: str) -> list[tuple[int, int]]:
@@ -86,7 +101,7 @@ def ssn_spans(text: str, labeled: bool) -> list[tuple[int, int]]:
     out = []
     for m in _SSN.finditer(text):
         area, sep, group, serial = m.groups()
-        if labeled or (sep == "-" and _valid_ssn(area, group, serial)):
+        if labeled or (sep and _valid_ssn(area, group, serial)):
             out.append(m.span())
     return out
 
@@ -113,9 +128,9 @@ def find(text: str | None, ssn_context: bool = False, card_field: bool = False) 
 
 
 def decode_url(url: str | None) -> str:
-    """A URL percent-decoded until it stops changing (at most 3 rounds: %2534 is still a digit), NFKC-normalized."""
+    """A URL percent-decoded until it stops changing (at most 10 rounds: %2534 is still a digit), NFKC-normalized."""
     text = url or ""
-    for _ in range(3):
+    for _ in range(10):
         decoded = unquote(text)
         if decoded == text:
             break
@@ -123,10 +138,38 @@ def decode_url(url: str | None) -> str:
     return _norm(text)
 
 
+def split_card(text: str) -> bool:
+    """A card number split over consecutive numeric query parameters (`?a=4111111&b=111111111`): two or more values in
+    a row, each only digits (spaces, dashes, underscores or pluses between) with 3-12 digits (a decimal or a 13-digit
+    timestamp is no piece), whose digits together are a card number."""
+    pieces = []
+    for _, value in _QUERY_VALUE.findall(text):
+        v = value.strip()
+        digits = "".join(ch for ch in v if "0" <= ch <= "9")
+        pieces.append(digits if _NUMERIC.match(v) and 3 <= len(digits) <= 12 else None)
+    for i in range(len(pieces)):
+        joined = pieces[i]
+        if joined is None:
+            continue
+        for j in range(i + 1, len(pieces)):
+            if pieces[j] is None:
+                break
+            joined += pieces[j]
+            if len(joined) > 19:
+                break
+            if len(joined) >= 13 and joined[0] in "23456" and luhn(joined):
+                return True
+    return False
+
+
 def in_url(url: str | None) -> str | None:
-    """CARD or SSN when a link carries a sensitive number anywhere (host, path, query or fragment, decoded)."""
+    """CARD or SSN when a link carries a sensitive number anywhere (host, path, query or fragment, decoded), or a card
+    number split over its query parameters."""
     text = decode_url(url)
-    return find(text, ssn_context=ssn_label(text))
+    found = find(text, ssn_context=ssn_label(text))
+    if found is None and split_card(text):
+        return CARD
+    return found
 
 
 def describe(kind: str | None) -> str:
@@ -135,9 +178,12 @@ def describe(kind: str | None) -> str:
 
 def redact(text: str | None) -> str:
     """`text` with every card number and SSN-shaped number replaced by REDACTED (outward copies: events, logs)."""
-    if not text or not _DIGIT.search(text):
-        return text or ""
-    spans = card_spans(text) + ssn_spans(text, labeled=True)
+    if not text:
+        return ""
+    digits = ascii_digits(text)  # the same length: spans found in it are spans of `text`
+    if not _DIGIT.search(digits):
+        return text
+    spans = card_spans(digits) + ssn_spans(digits, labeled=True)
     if not spans:
         return text
     out, last = [], 0

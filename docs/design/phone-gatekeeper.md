@@ -750,6 +750,24 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   say slide or swipe ("Swipe up to pay"). Sideways swipes and swipes outside lists are judged as before (a list
   row's "Delete" still asks on a sideways swipe). Measured on the reference engine: 0 curated steps changed; 4 of
   1108 fuzz steps changed (2 scroll asks became the server hint's ask, 1 allow became a slider ask, 1 knock-on).
+- **Real scrolls only, and drags inside a button (security review 2026-10-17, H1):** the class-name rule above let a
+  90 px vertical drag that stayed inside "Send", "Delete", "Uninstall" or "Place order" through with no prompt, even
+  in Ask every step, whenever any ancestor's class looked like a scroller. Android clicks such a drag: a ScrollView
+  that can't scroll, a ViewPager or a sideways carousel never takes a vertical drag, so the button stays pressed and
+  clicks on release. Now:
+  - A **real scroll** is a mostly vertical drag over a node whose content can move in the drag's direction: the
+    phone reads each node's accessibility scroll actions (`GNode.scroll`, `ScrollDirs`: the directional actions,
+    or forward/backward placed by the node's collection, else by its class). A class name alone never counts.
+  - A drag that ends inside the clickable control it started on (grown by the 24 px slop), and isn't a real scroll,
+    is judged as a tap at its start (`dragIsTap`), so it asks exactly as the tap does, in every mode. A slider keeps
+    its own judgement.
+  - `scroller_class` is gone from `rules.json`.
+  - Measured on the reference engine against the old one, every swipe on a fresh gate: of the 15 curated swipe
+    steps from before, 2 (the Wikipedia scrolls over "Donate") would newly ask with no scroll data, and 0 once those
+    fixtures say what Chrome's WebView reports (scrollable both ways); 0 of 2 adversarial; 1 of 102 fuzz swipes newly
+    asks (a 400 px sideways drag inside a permission dialog's Allow button: Android would click it, so a right
+    ask). Not measured: how many real apps hide their scrollers from accessibility; there a long scroll that starts
+    on a risky word is judged by its words, as before 2026-10-10.
 - **Play Store installs (owner decision, 2026-10-09; replaces "free installs don't ask"):** `rules.json` `install`,
   mirroring the server's `gate.is_install`, `store_title` and `names_app`. A tap on Install/Get in
   `com.android.vending` runs unasked only when the call's `task_text` (or `task`) names the page's app: a word of 3+
@@ -757,6 +775,16 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   words such as app, free, game, play, learn, pro, com don't count) appears as a whole word in the request. Otherwise
   it asks at tap level (kind `install`, `install:unnamed`), is never covered by a task grant or "everyday", and is
   refused under Don't ask. No task text (a drive session): it always asks. A priced install stays money.
+  - Security review 2026-10-17, M3: the title is the topmost usable text in the install button's own card (its
+    nearest ancestor holding one: the details header, a result's row) that starts above the button's bottom; never
+    an editable field, a search box (`search_field`) or a toolbar, nor the button's own label. More than one
+    Install/Get button on screen (`install.button_words`: a results page) names no app, so it asks.
+  - Security review 2026-10-17, L2: `task_text` is the server's word, and a compromised server can claim any. A
+    named install runs unasked only when the phone holds that text itself (`taskAttested`): a task grant the owner
+    approved on the phone for exactly that text, or a request typed on the phone. Otherwise it is
+    `install:unattested`, which the just-in-time task prompt covers: one prompt for the whole task, showing the
+    text; approved, the grant binds the text's digest and named installs run. In Ask every step it asks as a step.
+    Cost: a dashboard or API task that installs an app the request names now has one task prompt (before: none).
 - **Uninstall vs install (real-device report, "uninstall chess.com"):** the package installer is a hard deny only
   for installing. Its uninstall confirmation ("Do you want to uninstall this app?") is a delete-kind tap-level step
   for the app whose label it shows (the phone reads launchable apps' labels while an installer or Settings window
@@ -776,6 +804,15 @@ captured OEM Settings dumps yet (the Settings fixtures are hand-built trees).
   engine: the existing curated scenarios and the fuzz answers are unchanged; new scenarios cover the asks, the
   false positives (phone numbers, order numbers, dates, a failed Luhn, a timestamp, an unlabeled test SSN), task
   grants, "everyday", Don't ask and the encoded links.
+  - Security review 2026-10-17 (L1, M4): dots, slashes, underscores and repeated spaces separate groups; any
+    script's decimal digits count; spaced and dotted SSNs count unlabeled; links are decoded until stable (at most
+    10 rounds) and a card split over consecutive numeric query parameters counts. Typing judges what the field will
+    hold (its text plus the new text, or the new text alone with `replace`), so a number typed in pieces asks; in
+    the address bar the same goes for links. While a browser's focused address bar holds such a link, any tap in
+    that browser outside the bar (a suggestion row) is refused. Still only a guard against accidental leaks:
+    base64, spelled-out digits or a number sent over several requests get through.
+  - Security review 2026-10-17 (M1): a swipe or long press longer than `swipe.max_ms` (10 s) is refused
+    (`builtin:gesture_too_long`); PhoneActions caps a stroke at 10 s too.
 - **Not yet:** the local 7-day Activity log and the "Always allowed" list UI (the engine can list and revoke),
   the dashboard's "Phone protection" indicator, `min_app_version`, `gate.ms` in the agent's timings, and
   session/proposal prompt limits (Phase 2).

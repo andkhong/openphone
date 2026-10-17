@@ -112,6 +112,13 @@ class ReviewCFixesTest {
         assertEquals("tap", unnamed.level)
         gk.cancel(unnamed.approvalId)
         clock.elapsed += 2000
+        // Named by the server's task text alone, it asks once, as the task (review L2, 2026-10-17)...
+        val claimed = tap(540, 860, "play_store_chess", mapOf("task" to "t1", "task_text" to "install chess"))
+        assertEquals("risk:task:install:unattested", claimed.rule)
+        gk.cancel(claimed.approvalId)
+        clock.elapsed += 2000
+        // ...and runs unasked when the phone holds the request (typed here, or the task approved here).
+        gk.noteInstruction("install chess")
         assertTrue(tap(540, 860, "play_store_chess", mapOf("task" to "t1", "task_text" to "install chess")).allowed)
     }
 

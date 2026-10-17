@@ -214,13 +214,97 @@
    "text": "123 45 6789",
    "ssn_context": false,
    "card_field": false,
-   "expect": null
+   "expect": "ssn"
   },
   {
    "text": "123 45 6789",
    "ssn_context": true,
    "card_field": false,
    "expect": "ssn"
+  },
+  {
+   "text": "123.45.6789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "000 12 3456",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "000.12.3456",
+   "ssn_context": true,
+   "card_field": false,
+   "expect": "ssn"
+  },
+  {
+   "text": "v1.123.45.6789",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "4111.1111.1111.1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111/1111/1111/1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111_1111_1111_1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "4111  1111  1111  1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "٤١١١١١١١١١١١١١١١",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "४१११ ११११ ११११ ११११",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": "card"
+  },
+  {
+   "text": "192.168.100.200",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "2026/10/10 12:30",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "2026.10.17",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
+  },
+  {
+   "text": "v4.1111.1111",
+   "ssn_context": false,
+   "card_field": false,
+   "expect": null
   },
   {
    "text": "123-45 6789",
@@ -338,6 +422,54 @@
   },
   {
    "url": "https://x.example/%E2%82",
+   "expect": null
+  },
+  {
+   "url": "https://evil.example/?c=4111_1111_1111_1111",
+   "expect": "card"
+  },
+  {
+   "url": "https://evil.example/?c=4111.1111.1111.1111",
+   "expect": "card"
+  },
+  {
+   "url": "https://evil.example/4111/1111/1111/1111",
+   "expect": "card"
+  },
+  {
+   "url": "https://evil.example/?a=4111111&b=111111111",
+   "expect": "card"
+  },
+  {
+   "url": "https://evil.example/?a=4111&b=1111&c=1111&d=1111",
+   "expect": "card"
+  },
+  {
+   "url": "https://x.example/?n=%25252534111111111111111",
+   "expect": "card"
+  },
+  {
+   "url": "https://x.example/?n=%2525252525252534111111111111111",
+   "expect": "card"
+  },
+  {
+   "url": "https://x.example/a?id=123.45.6789",
+   "expect": "ssn"
+  },
+  {
+   "url": "https://x.example/?page=12&ts=1760000000000",
+   "expect": null
+  },
+  {
+   "url": "https://maps.example/?lat=37.7749295&lng=-122.4194155",
+   "expect": null
+  },
+  {
+   "url": "https://x.example/?w=1080&h=2400&q=80&v=3",
+   "expect": null
+  },
+  {
+   "url": "https://x.example/?c=NDExMTExMTExMTExMTExMQ",
    "expect": null
   }
  ]

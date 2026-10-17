@@ -187,6 +187,9 @@ class IndicatorPolicy(
 ) {
     private var lastAct = NEVER
     private var lastCall = NEVER
+    /** Admitted acts whose gesture hasn't finished yet (review M1, 2026-10-17): the indicator can't go while any runs. */
+    var inFlight = 0
+        private set
     private var endedAt = NEVER
     private var previewUntil = NEVER
     /** The phone's own approval prompt is open. */
@@ -197,6 +200,20 @@ class IndicatorPolicy(
     /** The gatekeeper admitted an action (before its side effect). */
     fun act(now: Long) { lastAct = now; lastCall = now; if (endedAt >= now) endedAt = NEVER }
 
+    /** An admitted action starts ([act]) and stays in flight until [actDone]. */
+    fun actStart(now: Long) { act(now); inFlight++ }
+
+    /** It finished (done, failed or refused at the last check): the holds count from now, so a "task ended" can hide
+     *  the indicator only [endedHoldMs] after the last act completes, never while one runs. */
+    fun actDone(now: Long) {
+        if (inFlight > 0) inFlight--
+        if (lastAct == NEVER) return // stopped meanwhile: a finishing act doesn't bring it back
+        val ended = endedAt >= lastAct
+        lastAct = now
+        lastCall = now
+        if (ended) endedAt = now // "task ended" came while it ran: 1.5 s from its completion
+    }
+
     /** Any other call from the server (a read or a wait): keeps an active session's border up, never starts one. */
     fun call(now: Long) { if (lastAct != NEVER) lastCall = now }
 
@@ -205,6 +222,7 @@ class IndicatorPolicy(
 
     /** The owner pressed Stop (the pill, the notification, Disconnect): off at once. */
     fun stop() { lastAct = NEVER; lastCall = NEVER; endedAt = NEVER; previewUntil = NEVER; prompt = false; paused = false }
+    // (inFlight survives a stop: the acts still running end with actDone; a stopped indicator stays down meanwhile.)
 
     /** The owner's preview from the settings screen. */
     fun preview(now: Long, ms: Long) { previewUntil = now + ms }
@@ -213,6 +231,7 @@ class IndicatorPolicy(
     /** An agent is acting (not just a preview). */
     fun agentActive(now: Long): Boolean {
         if (lastAct == NEVER) return false
+        if (inFlight > 0) return true
         val sinceAct = now - lastAct
         if (endedAt >= lastAct) return sinceAct < endedHoldMs
         if (sinceAct < actHoldMs) return true
@@ -246,23 +265,36 @@ class IndicatorPolicy(
  * When an agent's gesture the gate would accept lands on the pill, the phone moves it to another visible corner that
  * clears the gesture's points; it stays there until the session's indicator goes, then the owner's corner applies again.
  */
-class PillPlacement {
+class PillPlacement(
+    /** At most one move this often (review L3, 2026-10-17)... */
+    private val minGapMs: Long = 2_000,
+    /** ...and this many per session; after that the pill stays put and a gesture on it stays refused. */
+    private val maxMoves: Int = 10,
+) {
     /** The corner the pill moved to for this session, or null: the owner's. */
     var dodged: PillCorner? = null
         private set
+    var moves = 0
+        private set
+    private var lastMove = Long.MIN_VALUE / 2
 
     fun corner(owner: PillCorner): PillCorner = dodged ?: owner
 
-    /** The session ended (the indicator went): back to the owner's corner next time. */
-    fun reset() { dodged = null }
+    /** The session ended (the indicator went): back to the owner's corner next time, with a fresh move budget. */
+    fun reset() { dodged = null; moves = 0; lastMove = Long.MIN_VALUE / 2 }
 
     /** Move out of the way of [points] (screen px), keeping [margin] px clear; [rectOf] is the pill's bounds in a corner.
-     *  Returns the new corner, or null if every other corner would cover a point too (the gesture stays refused). */
-    fun dodge(owner: PillCorner, points: List<Pair<Double, Double>>, margin: Int, rectOf: (PillCorner) -> IntArray): PillCorner? {
+     *  Returns the new corner, or null if every other corner would cover a point too, or the pill moved less than
+     *  [minGapMs] ago, or [maxMoves] times this session already (the gesture stays refused). [now]: uptime ms. */
+    fun dodge(owner: PillCorner, points: List<Pair<Double, Double>>, margin: Int, rectOf: (PillCorner) -> IntArray,
+              now: Long = 0): PillCorner? {
         val current = corner(owner)
         if (!IndicatorGeometry.covers(rectOf(current), points, margin)) return null // not in the way
+        if (moves >= maxMoves || now - lastMove < minGapMs) return null // hopping: it stays put
         val to = IndicatorGeometry.order(current).firstOrNull { !IndicatorGeometry.covers(rectOf(it), points, margin) } ?: return null
         dodged = to
+        moves++
+        lastMove = now
         return to
     }
 }

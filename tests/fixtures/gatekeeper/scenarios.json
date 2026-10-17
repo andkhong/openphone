@@ -8713,12 +8713,15 @@
   ]
  },
  {
-  "name": "a free Play Store install the task names doesn't ask; a priced one is money",
+  "name": "a free Play Store install the task names doesn't ask when the phone holds the request; a priced one is money",
   "tags": [
    "friction",
    "money"
   ],
   "steps": [
+   {
+    "instruction": "install chess and play 5 moves against a bot"
+   },
    {
     "call": {
      "method": "tap",
@@ -8819,6 +8822,9 @@
    },
    {
     "cancel": "last"
+   },
+   {
+    "instruction": "get the Torchlight flashlight"
    },
    {
     "call": {
@@ -10301,6 +10307,9 @@
     }
    },
    {
+    "instruction": "install the torchlight app"
+   },
+   {
     "call": {
      "method": "tap",
      "params": {
@@ -10471,6 +10480,9 @@
    },
    {
     "cancel": "last"
+   },
+   {
+    "instruction": "install tap titans"
    },
    {
     "call": {
@@ -11426,6 +11438,1009 @@
      }
     },
     "screen": "foreign_overlay_over_shop",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: a short drag inside Send in a ScrollView that can't scroll asks exactly as a tap does",
+  "tags": [
+   "risk",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1070,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1100,
+      "x2": 540,
+      "y2": 1010,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "ask",
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "trusted",
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "plan",
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: a vertical drag inside Delete in a sideways pager asks (the pager never takes a vertical drag)",
+  "tags": [
+   "risk",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1070,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_delete_in_pager",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "rule": "risk:words:delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_delete_in_pager",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "rule": "risk:words:delete"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "mode": "ask",
+      "x1": 540,
+      "y1": 1100,
+      "x2": 540,
+      "y2": 1010,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_delete_in_pager",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "delete",
+     "rule": "risk:words:delete"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: a drag inside Uninstall in a NestedScrollView that can't scroll asks",
+  "tags": [
+   "risk",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_uninstall_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "rule": "risk:words:uninstall"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: a drag inside Place order with a total on screen asks as a payment; under Don't ask it's refused as the tap is",
+  "tags": [
+   "risk",
+   "money",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_place_order_static_scrollview",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "pay",
+     "rule": "risk:words:place order",
+     "money": "terminal"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000,
+     "allow_money": false
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1070,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_place_order_static_scrollview",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:money"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1100,
+      "x2": 540,
+      "y2": 1010,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_place_order_static_scrollview",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "never:money"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: under Don't ask, a drag inside Send is judged as the tap is",
+  "tags": [
+   "risk",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "policy": {
+     "type": "never",
+     "duration_ms": 3600000,
+     "allow_money": false
+    },
+    "sig": "valid",
+    "expect_accepted": true
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 1070,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_static_scrollview",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review H1: a list that can scroll down takes a finger moving up (a scroll); moving down it can't, so that's a press",
+  "tags": [
+   "friction",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1100,
+      "x2": 540,
+      "y2": 1010,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_in_list_at_top",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1010,
+      "x2": 540,
+      "y2": 1100,
+      "duration_ms": 200,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_in_list_at_top",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "send",
+     "rule": "risk:words:send"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1100,
+      "x2": 540,
+      "y2": 400,
+      "duration_ms": 300,
+      "task": "t1",
+      "task_text": "read my mail"
+     }
+    },
+    "screen": "h1_send_in_list_at_top",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M3: the search box's text never names the app; a sponsored result under it asks",
+  "tags": [
+   "install",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 500,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "m3_sponsored_under_search",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unnamed"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M3: a results page with several Install buttons asks, even on the result the task names",
+  "tags": [
+   "install",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "instruction": "install chess and play 5 moves against a bot"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 500,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "m3_results_page",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unnamed"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 800,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "m3_results_page",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unnamed"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M3: one result's own card names it",
+  "tags": [
+   "install",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "instruction": "install chess and play 5 moves against a bot"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 930,
+      "y": 500,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "m3_one_result_card",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review L2: a named install the phone only has the server's word for asks once, as the task; then it runs",
+  "tags": [
+   "install",
+   "task_grant",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "rule": "risk:task:install:unattested"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review L2: another task text than the one approved doesn't carry the grant",
+  "tags": [
+   "install",
+   "task_grant",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "rule": "risk:task:install:unattested"
+    }
+   },
+   {
+    "approve": "last",
+    "sig": "valid"
+   },
+   {
+    "advance_ms": 61000
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "task",
+     "rule": "risk:task:install:unattested"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review L2: in Ask every step a named install asks (no task prompt there)",
+  "tags": [
+   "install",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "mode": "ask",
+      "x": 540,
+      "y": 860,
+      "task": "t1",
+      "task_text": "install chess and play 5 moves against a bot"
+     }
+    },
+    "screen": "play_store_chess",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "install",
+     "rule": "risk:install:unattested"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M4: a card number typed in two pieces asks at the piece that completes it",
+  "tags": [
+   "sensitive",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "4111 1111",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_notes_empty",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": " 1111 1111",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_notes_half_card",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   },
+   {
+    "cancel": "last"
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": " 1111 1111",
+      "replace": true,
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_notes_half_card",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "-6789",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_notes_half_ssn",
+    "expect": {
+     "decision": "ask",
+     "code": "gate_needs_approval",
+     "kind": "sensitive_number",
+     "rule": "risk:sensitive_number",
+     "level": "tap"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M4: a number the owner already typed doesn't make other typing ask",
+  "tags": [
+   "friction",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": " thanks",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_notes_owner_card",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M4: a link carrying a card number, typed into the address bar in pieces, is refused",
+  "tags": [
+   "sensitive",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "type_text",
+     "params": {
+      "text": "111111111",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_half",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M4: with such a link in the address bar, a tap on a suggestion is refused; the bar itself and DELETE work",
+  "tags": [
+   "sensitive",
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 290,
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_card",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 450,
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_card",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:sensitive_link"
+    }
+   },
+   {
+    "call": {
+     "method": "key",
+     "params": {
+      "name": "DELETE",
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_card",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 150,
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_card",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 540,
+      "y": 290,
+      "task": "t1",
+      "task_text": "write a note"
+     }
+    },
+    "screen": "m4_omnibox_plain",
+    "expect": {
+     "decision": "allow"
+    }
+   }
+  ]
+ },
+ {
+  "name": "review M1: a swipe or long press longer than 10 s is refused; 10 s itself is fine",
+  "tags": [
+   "review_2026_10_17"
+  ],
+  "steps": [
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1800,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 60000
+     }
+    },
+    "screen": "wiki_page",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:gesture_too_long"
+    }
+   },
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "x": 540,
+      "y": 1800,
+      "duration_ms": 10001
+     }
+    },
+    "screen": "wiki_page",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied",
+     "rule": "builtin:gesture_too_long"
+    }
+   },
+   {
+    "call": {
+     "method": "swipe",
+     "params": {
+      "x1": 540,
+      "y1": 1800,
+      "x2": 540,
+      "y2": 600,
+      "duration_ms": 10000
+     }
+    },
+    "screen": "wiki_page",
+    "expect": {
+     "decision": "allow"
+    }
+   },
+   {
+    "call": {
+     "method": "long_press",
+     "params": {
+      "x": 540,
+      "y": 610,
+      "duration_ms": 1500
+     }
+    },
+    "screen": "amazon_product",
     "expect": {
      "decision": "allow"
     }

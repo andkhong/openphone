@@ -116,6 +116,15 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
             place(lp0, s.corner)
             runCatching { wm.updateViewLayout(existing, lp0) }
             pillCorner = s.corner
+            // A position-only move doesn't re-lay the view out (no layout callback): the rect OCR ignores follows the
+            // pill now, from the same geometry, and again from the real location once it has drawn there (review I1).
+            pillRect = pillRectIn(s.corner) ?: pillRect
+            existing.post {
+                if (pill === existing && existing.isAttachedToWindow) {
+                    val at = IntArray(2).also(existing::getLocationOnScreen)
+                    pillRect = intArrayOf(at[0], at[1], at[0] + existing.width, at[1] + existing.height)
+                }
+            }
         }
         val view = pill ?: TextView(service).also { v ->
             v.text = service.getString(R.string.indicator_stop)

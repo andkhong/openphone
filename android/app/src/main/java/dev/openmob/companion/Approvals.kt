@@ -59,6 +59,12 @@ object Approvals {
             else -> ActionDigest.signedQuestion(action).ifEmpty { question }
         }
 
+        /** The screen-lock sheet's text: short, so the PIN field stays reachable (PromptText). A permission change
+         *  gets its own summary (ModeChange.lockText: for Faster mode the scope and the warning's first sentence). */
+        val lockText: String get() =
+            if (!gate && kind == "mode_change" && action["input"].orEmpty().contains('\n')) ModeChange.lockText(action["input"].orEmpty())
+            else PromptText.short(shownQuestion)
+
         /** "On Pixel 9: Send message to Mom?", or just the question when the phone isn't named. */
         val shownQuestion: String get() = if (deviceName.isEmpty()) asked else "On $deviceName: $asked"
 
@@ -112,8 +118,19 @@ object Approvals {
         val id = message.optString("id")
         // "gk…" ids are the gatekeeper's own prompts: the server can never raise or answer one through this path.
         if (id.isEmpty() || id.startsWith("gk") || id in pending || id in finished) return
-        // N1: at most 2 permission-change prompts an hour (a route toward Don't ask by wearing the owner down).
         val now = android.os.SystemClock.elapsedRealtime()
+        // Review M2: a Faster mode change mixed with anything else (Don't ask, purchases, grants...) or in a scope the
+        // owner didn't just tap here is declined unseen: one screen lock must sign exactly what the owner asked for.
+        val input = message.optJSONObject("action")?.optString("input").orEmpty()
+        ModeChange.fasterRefusal(input, FasterMode.requested, now)?.let { why ->
+            finished.add(id)
+            ConnectionService.sendApproval(id, false)
+            AppState.addEvent("status", context.getString(
+                if (why == "mixed") R.string.faster_declined_mixed else R.string.faster_declined_unasked))
+            return
+        }
+        if (ModeChange.fasterScope(input) != null) FasterMode.takeRequest()
+        // N1: at most 2 permission-change prompts an hour (a route toward Don't ask by wearing the owner down).
         modeChangePrompts.removeAll { now - it >= 3_600_000L }
         if (modeChangePrompts.size >= 2) {
             AppState.addEvent("status", context.getString(R.string.gate_mode_change_limited))

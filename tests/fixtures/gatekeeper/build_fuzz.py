@@ -49,6 +49,8 @@ def gen_node(rng, words, top, depth=0):
          "cls": rng.choice(["android.widget.TextView", "android.widget.Button", "android.widget.EditText",
                             "android.widget.SeekBar", "android.view.View", "android.webkit.WebView"]),
          "bounds": bounds, "children": []}
+    if d["cls"].endswith("WebView"):  # how far it can scroll, from its bounds (no draw: the other cases stay as they were)
+        d["scroll"] = [[], ["down"], ["up"], ["down", "up"]][(bounds[0] + bounds[1]) % 4]
     if rng.random() < 0.4:
         d["clickable"] = True
     if d["cls"].endswith("EditText"):

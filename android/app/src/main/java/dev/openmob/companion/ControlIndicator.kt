@@ -8,6 +8,7 @@ import android.view.Choreographer
 import dev.openmob.companion.gate.GateHost
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The "an agent is controlling this phone" indicator: when it shows ([IndicatorPolicy]), with the owner's settings
@@ -53,21 +54,44 @@ object ControlIndicator {
 
     /**
      * On the call's thread, after the gatekeeper admitted an action and before its side effect: show the indicator
-     * and wait (at most half a second) until its windows are on screen, so no agent action runs with it hidden.
+     * and wait (at most half a second) until its windows are on screen, so no agent action runs with it hidden. The
+     * act counts as in flight until [afterAct] (call it in a finally, whatever this returns): the indicator can't go
+     * while it runs (review M1, 2026-10-17).
+     *
+     * False: the owner's settings say it should show, but it isn't on screen after the wait and one retry (review L5):
+     * the caller refuses the act (gate_indicator_unavailable). With the border and the Stop button both off in
+     * settings there is nothing to wait for: true at once.
      */
-    fun beforeAct() {
-        if (Looper.myLooper() == Looper.getMainLooper()) { policy.act(SystemClock.uptimeMillis()); apply(); return }
-        val ready = CountDownLatch(1)
-        main.post {
-            val wasShown = overlay?.shown == true
-            policy.act(SystemClock.uptimeMillis())
-            apply()
-            // Newly added: let it reach the screen (the next frame) before the gesture.
-            if (!wasShown && overlay?.shown == true) Choreographer.getInstance().postFrameCallback { ready.countDown() }
-            else ready.countDown()
+    fun beforeAct(): Boolean {
+        val s = if (::app.isInitialized) prefs(app).snapshot() else null
+        val wanted = s == null || s.border || s.pill
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            policy.actStart(SystemClock.uptimeMillis()); apply()
+            return !wanted || overlay?.shown == true
         }
-        ready.await(SHOW_WAIT_MS, TimeUnit.MILLISECONDS)
+        val counted = AtomicBoolean(false)
+        repeat(2) {
+            val ready = CountDownLatch(1)
+            val shown = AtomicBoolean(false)
+            main.post {
+                val wasShown = overlay?.shown == true
+                if (counted.compareAndSet(false, true)) policy.actStart(SystemClock.uptimeMillis()) else policy.act(SystemClock.uptimeMillis())
+                apply()
+                shown.set(overlay?.shown == true)
+                // Newly added: let it reach the screen (the next frame) before the gesture.
+                if (!wasShown && shown.get()) Choreographer.getInstance().postFrameCallback { ready.countDown() }
+                else ready.countDown()
+            }
+            val done = ready.await(SHOW_WAIT_MS, TimeUnit.MILLISECONDS)
+            if (!wanted) return true
+            if (done && shown.get()) return true
+        }
+        return false
     }
+
+    /** The admitted act's call finished (its gesture done, failed or refused at the last check): the holds count
+     *  from now. Always paired with [beforeAct]. */
+    fun afterAct() = main.post { policy.actDone(SystemClock.uptimeMillis()); apply() }
 
     /** Any other call from the server (a read, a wait): keeps an active session's indicator up; never starts one. */
     fun call() = main.post { policy.call(SystemClock.uptimeMillis()); apply() }
@@ -100,7 +124,10 @@ object ControlIndicator {
         main.post {
             val o = overlay
             val owner = prefs(app).corner
-            val to = o?.let { ov -> placement.dodge(owner, points, ov.dodgeMarginPx) { c -> ov.pillRectIn(c) ?: intArrayOf(0, 0, 0, 0) } }
+            val to = o?.let { ov ->
+                placement.dodge(owner, points, ov.dodgeMarginPx, { c -> ov.pillRectIn(c) ?: intArrayOf(0, 0, 0, 0) },
+                                SystemClock.uptimeMillis())
+            }
             if (o == null || to == null || o.pillRectIn(to) == null) { done.countDown(); return@post }
             moved = true
             apply()

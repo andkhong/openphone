@@ -266,4 +266,6 @@
     <string name="faster_offline">Connect to your agent first.</string>
     <string name="faster_turned_off">Faster mode is off: no more screenshots go to TypeSafe.</string>
     <string name="faster_not_approved">The server said Faster mode was on, but it wasn\'t approved on this phone, so the phone turned it off.</string>
+    <string name="faster_declined_mixed">Declined a Faster mode change that came with other permission changes. Turn Faster mode on by itself.</string>
+    <string name="faster_declined_unasked">Declined a Faster mode change you didn\'t just ask for on this phone.</string>
 </resources>

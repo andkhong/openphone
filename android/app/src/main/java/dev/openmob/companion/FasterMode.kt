@@ -33,6 +33,15 @@ object FasterMode {
                 (disconnectedAt <= 0 || now - disconnectedAt <= resumeMs))
     }
 
+    /** The owner's last tap on "Turn on" here: the scope and when (elapsed ms). Only an approval for that scope, soon
+     *  after, is shown (review M2: ModeChange.fasterRefusal). Taken by the first one. */
+    @Volatile var requested: Pair<String, Long>? = null
+        private set
+
+    fun noteRequest(scope: String, at: Long) { requested = scope to at }
+
+    fun takeRequest() { requested = null }
+
     /** What the server applies now: "phone", "session" or "off". */
     @Volatile var serverScope: String = "off"
         private set

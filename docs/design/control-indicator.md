@@ -52,13 +52,24 @@ Only the phone's own knowledge turns it on. A server flag alone can't turn it on
   included), *before* the action's side effect. `ControlIndicator.beforeAct` blocks the call's thread until the
   windows have been added and the next frame has drawn, for at most 500 ms. It's also shown by the phone's own
   approval prompt, which can come before any action (a task prompt).
-- **Kept up:** for 10 s after the last admitted action. Any other call from the server (screenshots, `wait_for`,
+- **Fails closed (security review 2026-10-17, L5):** if the owner's settings say it should show (the border or the
+  Stop button on) and its windows still aren't on screen after the 500 ms wait and one retry, the act is refused
+  with `gate_indicator_unavailable`. With both turned off in settings there is nothing to wait for. `wake_unlock`
+  is the exception: it only wakes the screen, and nothing may draw while the display is off.
+- **While an act runs (security review 2026-10-17, M1):** an admitted act counts as in flight from `beforeAct`
+  until its call ends (`afterAct`, in `handleCall`'s `finally`), whatever the outcome. The indicator can't fade
+  while any act is in flight, and the holds below count from when the last one *finished*. A swipe or long press
+  longer than 10 s is refused by the gate (`builtin:gesture_too_long`), so no single gesture runs long.
+- **Kept up:** for 10 s after the last admitted action finished. Any other call from the server (screenshots, `wait_for`,
   `wait_idle`) keeps an already active session up for 10 s after that call, but no more than 5 minutes after the last
   action. A paused session stays up, dashed, for up to 5 minutes after its last action.
 - **Hidden early:** when the server says the task ended (an `event` of kind `result` or `error`, or the controller line
-  cleared), the border stays only until 1.5 s after the last action, then fades. If a server says "ended" and then
-  acts, that action shows the indicator again before its gesture runs. So a compromised server can't act while the
-  indicator is hidden; at most it can end the indicator 1.5 s after an action instead of 10 s.
+  cleared), the border stays only until 1.5 s after the last action finished, then fades; never while an act is
+  still in flight. If a server says "ended" and then acts, that action shows the indicator again before its gesture
+  runs (or is refused, above). So a compromised server can't run an admitted act while the indicator is hidden; at
+  most it can end the indicator 1.5 s after the last act finishes instead of 10 s. (Before 2026-10-17 this claim
+  was false: the hold counted from admission, so a 60 s drag, or acts queued behind one, ran with the indicator
+  gone after 1.5 s. Review M1.)
 - **Hidden at once:** by Stop (the pill, the notification, Disconnect), and when the connection shuts down.
 - Reads alone never show it.
 
@@ -78,7 +89,9 @@ their `TYPE_WINDOWS_CHANGED` events, so the gate's settle wait and `wait_idle` a
 - **Reads** (`Gatekeeper.hidden`, `ocrWindow`): only `application` windows count as unknown windows or permission
   dialog candidates, so the overlays never black out a screenshot or the live view, and never start OCR.
 - **OCR** (`PermissionOcr.read`): lines whose centre is inside the pill are dropped. The pill sits in a corner, away
-  from a permission dialog's buttons.
+  from a permission dialog's buttons. When the pill moves (a dodge), the rect OCR ignores moves with it at once,
+  from the same geometry, and again from its real location once it has drawn there (a position-only move gets no
+  layout callback; review I1, 2026-10-17).
 - **ui_elements** skips accessibility overlays (as before), so the agent is never offered the pill.
 
 Screenshots (`takeScreenshot`, adb and MediaProjection) include the border and the pill. The agent's system prompt
@@ -116,10 +129,19 @@ agent's tap, long press or swipe with `builtin:own_indicator` (a point is on the
    the new screen. That judges the gesture on the app element now uncovered, with the usual asks and refusals.
 
 The pill keeps its new corner until the indicator goes (the session ends). The next session starts in the owner's
-corner, which stays the default in settings. An agent gesture aimed at the moved pill is still refused by the gate.
+corner, which stays the default in settings.
+
+**At most one move every 2 s, and 10 a session (security review 2026-10-17, L3).** A compromised server could make
+the pill hop at every act, so it evaded the owner's finger. Now a move within 2 s of the last one, or past the
+tenth in a session, doesn't happen: the pill stays put and the gesture on it stays refused
+(`builtin:own_indicator`). The budget starts again when the indicator goes. The notification's Stop and the app's
+Disconnect are always there too. An agent gesture aimed at the moved pill is still refused by the gate.
 In practice the pill dodges again, because the corner it left is now free, so an agent can never press Stop. The pill
 only ever moves between on-screen corners (`IndicatorGeometry.pillRect` clamps to the screen), and only for a gesture
-the gate would accept. A compromised server can make it hop between corners but can't hide it.
+the gate would accept. A compromised server can make it hop between corners (at most once every 2 s and 10 times a
+session) but can't hide it. "An agent can never press Stop" isn't strictly true: in the moment after the pill is
+added, or between two concurrent dodges, a gesture judged on the app below can land on it; the result is only a
+stop, which tightens.
 
 ## Known limits
 

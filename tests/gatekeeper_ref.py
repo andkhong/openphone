@@ -158,6 +158,9 @@ class Node:
     checked: bool | None = None
     focused: bool = False
     truncated: bool = False  # the phone stopped reading below this node (its children aren't all here)
+    # Which way its content can scroll right now ("up", "down", "left", "right"): accessibility's scroll actions on a
+    # scrollable node (GateScreens.scrollDirs). Empty: it can't scroll, whatever its class.
+    scroll: tuple = ()
     children: list = field(default_factory=list)
 
     @classmethod
@@ -167,7 +170,7 @@ class Node:
                    long_clickable=bool(d.get("long_clickable")), editable=bool(d.get("editable")),
                    password=bool(d.get("password")), hint=d.get("hint", ""), checked=d.get("checked"),
                    focused=bool(d.get("focused")), truncated=bool(d.get("truncated")),
-                   children=[Node.of(c) for c in d.get("children", [])])
+                   scroll=tuple(d.get("scroll", ())), children=[Node.of(c) for c in d.get("children", [])])
 
     def contains(self, x: float, y: float) -> bool:
         l, t, r, b = self.bounds
@@ -521,9 +524,11 @@ def looks_like_url(text: str | None) -> bool:
 
 # --- sensitive numbers (SensitiveNumbers.kt): card numbers and SSNs in typed text and links (F2, F3) -------------
 
-_SN_RUN = re.compile(r"(?<![0-9+])(?<![0-9]\.)[0-9](?:[ +\-]?[0-9])*")
-_SN_SEP = re.compile(r"[ +\-]")
-_SN_SSN = re.compile(r"(?<![0-9\-])([0-9]{3})([ \-]?)([0-9]{2})\2([0-9]{4})(?![0-9])")
+_SN_RUN = re.compile(r"(?<![0-9+])(?<![0-9]\.)[0-9](?:(?: +|[+\-./_])?[0-9])*")
+_SN_SEP = re.compile(r" +|[+\-./_]")
+_SN_SSN = re.compile(r"(?<![0-9\-.])([0-9]{3})([ \-.]?)([0-9]{2})\2([0-9]{4})(?![0-9]|[\-./][0-9])")
+_SN_QUERY = re.compile(r"[?&;]([^=&;#]*)=([^&;#]*)")
+_SN_NUMERIC = re.compile(r"^[0-9][0-9 +\-_]*$")
 
 
 def luhn(digits: str) -> bool:
@@ -556,14 +561,19 @@ def has_card(text: str) -> bool:
 def has_ssn(text: str, labeled: bool) -> bool:
     for m in _SN_SSN.finditer(text):
         area, sep, group, serial = m.groups()
-        if labeled or (sep == "-" and area not in ("000", "666") and area[0] != "9" and group != "00"
+        if labeled or (sep and area not in ("000", "666") and area[0] != "9" and group != "00"
                        and serial != "0000"):
             return True
     return False
 
 
+def ascii_digits(text: str) -> str:
+    """Every Unicode decimal digit as its ASCII digit (SensitiveNumbers.asciiDigits; review L1)."""
+    return "".join(str(unicodedata.decimal(c)) if c.isdecimal() else c for c in text)
+
+
 def find_sensitive(text: str | None, ssn_context: bool = False, card_field: bool = False) -> str | None:
-    t = unicodedata.normalize("NFKC", text or "")
+    t = ascii_digits(unicodedata.normalize("NFKC", text or ""))
     if has_card(t):
         return "card"
     if has_ssn(t, ssn_context):
@@ -592,7 +602,7 @@ def _unquote(s: str) -> str:
 
 def decode_url(url: str | None) -> str:
     text = url or ""
-    for _ in range(3):
+    for _ in range(10):
         decoded = _unquote(text)
         if decoded == text:
             break
@@ -600,9 +610,34 @@ def decode_url(url: str | None) -> str:
     return unicodedata.normalize("NFKC", text)
 
 
+def split_card(text: str) -> bool:
+    """A card number split over consecutive numeric query parameters, each 3-12 digits, no decimals (SensitiveNumbers.splitCard)."""
+    pieces = []
+    for _, value in _SN_QUERY.findall(text):
+        v = value.strip()
+        digits = "".join(ch for ch in v if "0" <= ch <= "9")
+        pieces.append(digits if _SN_NUMERIC.match(v) and 3 <= len(digits) <= 12 else None)
+    for i, first in enumerate(pieces):
+        if first is None:
+            continue
+        joined = first
+        for nxt in pieces[i + 1:]:
+            if nxt is None:
+                break
+            joined += nxt
+            if len(joined) > 19:
+                break
+            if len(joined) >= 13 and joined[0] in "23456" and luhn(joined):
+                return True
+    return False
+
+
 def sensitive_in_url(url: str | None, ssn_label: re.Pattern) -> str | None:
     text = decode_url(url)
-    return find_sensitive(text, ssn_context=bool(ssn_label.search(text)))
+    found = find_sensitive(text, ssn_context=bool(ssn_label.search(text)))
+    if found is None and split_card(text):
+        return "card"
+    return found
 
 
 def describe_sensitive(kind: str | None) -> str:
@@ -1017,10 +1052,15 @@ class Gatekeeper:
         # A free install the task's own text doesn't name asks (owner, 2026-10-09); a priced one stays money.
         if j.install_title is not None and not (risk is not None and risk.money):
             request = f"{params.get('task_text') or ''} {params.get('task') or ''}"
+            name = j.install_title or "an app"
             if not self.names_app(request, j.install_title):
-                name = j.install_title or "an app"
                 risk = Risk("install", "install:unnamed", always=True,
                             wording=f"Allow installing “{name}” from the Play Store? The request doesn't name this app.")
+            elif not self.task_attested(params):
+                # Named only by the server's word (review L2): the task prompt below asks for the whole task once,
+                # showing its text on the phone; approved, its grant attests the text and named installs run.
+                risk = Risk("install", "install:unattested",
+                            wording=f"Allow installing “{name}” from the Play Store?")
         hint = str(params.get("hint") or "").strip()
         if risk is None and hint and mode != "never":
             risk = Risk("other", "server_hint", wording=self._wording(method, params, j, screen))
@@ -1054,7 +1094,7 @@ class Gatekeeper:
         task = str(params.get("task") or "")
         text = " ".join(str(params.get("task_text") or "").split())[:300]
         lazy = (mode != "ask" and task and text and self.level(risk) == "tap" and risk.kind not in ("task", "step")
-                and risk.kind in self._task_kinds(text))
+                and (risk.kind in self._task_kinds(text) or risk.reason == "install:unattested"))
         if lazy and any(o["digest"] == sha256(text) and o["expires"] > now for o in self.own_requests):
             self._mint_task(task, sha256(text), text)
             self.note_task_app(params, j.package if j.app else self.last_app, True)
@@ -1625,17 +1665,25 @@ class Gatekeeper:
 
     def judge(self, method: str, params: dict, screen: Screen) -> Judgement:
         r = self.r
+        if method in ("swipe", "long_press"):  # review M1: a gesture longer than max_ms is refused (Gatekeeper.tooLong)
+            ms = float(params.get("duration_ms") or 0)
+            cap = r.d["swipe"].get("max_ms", 10000)
+            if ms > cap:
+                return Judgement(changing=True, refuse=("gate_denied", "builtin:gesture_too_long",
+                                                        f"A swipe or long press lasts at most {cap // 1000} s on this "
+                                                        "phone. Send a shorter one."))
         if method in ("tap", "long_press"):
             return self._judge_point(method, float(params.get("x", -1)), float(params.get("y", -1)), screen)
         if method == "swipe":
             x1, y1, x2, y2 = (float(params.get(k, -1)) for k in ("x1", "y1", "x2", "y2"))
             duration = float(params.get("duration_ms", 300))
             dist = ((x2 - x1) ** 2 + (y2 - y1) ** 2) ** 0.5
-            if dist <= 2 * r.d["swipe"]["slop_px"] or duration < r.d["swipe"]["tap_ms"]:
+            if dist <= 2 * r.d["swipe"]["slop_px"] or duration < r.d["swipe"]["tap_ms"] \
+                    or self._drag_is_tap(x1, y1, x2, y2, screen):
                 return self._judge_point("swipe", x1, y1, screen)
             return self._judge_swipe(x1, y1, x2, y2, screen)
         if method == "type_text":
-            return self._judge_typing(str(params.get("text", "")), screen)
+            return self._judge_typing(str(params.get("text", "")), screen, params.get("replace") is True)
         if method == "key":
             return self._judge_key(str(params.get("name", "")).upper(), screen)
         if method == "launch_app":
@@ -1947,14 +1995,79 @@ class Gatekeeper:
 
     # --- Play Store installs (owner, 2026-10-09) -----------------------------------------------------
 
+    def install_buttons(self, w: Window) -> int:
+        """How many Install/Get buttons the window shows (a label that is exactly the word; one counted per button,
+        not again for its own label inside it). More than one: a results page (review M3, 2026-10-17)."""
+        rx = re.compile(self.r.d["install"]["button_words"])
+        count = 0
+
+        def visit(n: Node, inside: bool) -> None:
+            nonlocal count
+            hit = not inside and (rx.search(n.text or "") or rx.search(n.desc or ""))
+            if hit:
+                count += 1
+            for c in n.children:
+                visit(c, inside or bool(hit))
+        if w.root is not None:
+            visit(w.root, False)
+        return count
+
     def store_title(self, w: Window, button: Node | None) -> str:
-        """The app's name on a Play Store page: the topmost text above the install button that isn't a button,
-        rating, count or badge ("" when it can't be told). Mirrors the server's gate.store_title."""
+        """The app's name on a Play Store page ("" when it can't be told; review M3, 2026-10-17): the topmost text
+        in the install button's own card (its nearest ancestor holding a usable text: the details header on a
+        details page, the row on a results page) that starts above the button's bottom and isn't a button, rating,
+        count or badge. Never an editable field, a search box or a toolbar's text, nor the button's own label. With
+        more than one Install/Get button on screen (a results page) there is no one app: "". Mirrors the server's
+        gate.store_title."""
+        if self.install_buttons(w) > 1 or w.root is None:
+            return ""
         skip = re.compile(self.r.d["install"]["title_skip"])
-        top = button.bounds[1] if button is not None else None
-        texts = [n for n in walk(w.root, []) if len(n.text.strip()) >= 2 and not skip.search(n.text.strip())
-                 and (top is None or n.bounds[3] <= top)]
-        return min(texts, key=lambda n: (n.bounds[1], n.bounds[0])).text.strip() if texts else ""
+        search = re.compile(self.r.d["search_field"])
+        bottom = button.bounds[3] if button is not None else None
+
+        def usable(root: Node) -> list:
+            out = []
+
+            def visit(n: Node, hidden: bool) -> None:
+                if n is button:
+                    return
+                hidden = hidden or n.editable or "EditText" in (n.cls or "") or "Toolbar" in (n.cls or "") \
+                    or bool(search.search(n.id or "")) or bool(search.search(n.hint or ""))
+                t = (n.text or "").strip()
+                if not hidden and len(t) >= 2 and not skip.search(t) and (bottom is None or n.bounds[1] < bottom):
+                    out.append(n)
+                for c in n.children:
+                    visit(c, hidden)
+            visit(root, False)
+            return out
+
+        def path_to(n: Node, path: list) -> list | None:
+            if n is button:
+                return path
+            for c in n.children:
+                found = path_to(c, path + [n])
+                if found is not None:
+                    return found
+            return None
+        cards = list(reversed(path_to(w.root, []) or [])) if button is not None else []
+        for card in cards or [w.root]:
+            texts = usable(card)
+            if texts:
+                return min(texts, key=lambda n: (n.bounds[1], n.bounds[0])).text.strip()
+        return ""
+
+    def task_attested(self, params: dict) -> bool:
+        """The phone itself holds this task's request text (review L2, 2026-10-17): the owner approved it on the phone
+        (a task grant whose digest is this text's) or typed it here. The server's task_text alone is only a claim."""
+        task = str(params.get("task") or "")
+        text = " ".join(str(params.get("task_text") or "").split())[:300]
+        if not task or not text:
+            return False
+        digest, now = sha256(text), self.now()
+        g = self.task_grants.get(task)
+        if g is not None and g["digest"] == digest and now < g["expires"]:
+            return True
+        return any(o["digest"] == digest and o["expires"] > now for o in self.own_requests)
 
     def names_app(self, request: str, title: str) -> bool:
         """The request names the store page's app: one of its title's distinctive words is a word of the request."""
@@ -2054,6 +2167,15 @@ class Gatekeeper:
                     "gate_blocked_app", "builtin:sensitive_apps",
                     f"Blocked on the phone: {w.package} is a sensitive app, under what's on top here. Don't open it "
                     "another way; call done."))
+        bar = self._sensitive_bar(screen)
+        if bar is not None and t.window.id == bar[0].id and not any(
+                n.id == bar[1].id and n.cls == bar[1].cls and n.bounds == bar[1].bounds for n in t.path):
+            # Review M4: the address bar holds a link carrying a card number or SSN; a tap on a suggestion row (or any
+            # other tap in the browser) could open it. Clearing the bar (DELETE) or a tap on the bar itself still works.
+            return Judgement(package=t.window.package, fp=t.fp(False), strict_fp=t.fp(True), changing=True,
+                             refuse=("gate_denied", "builtin:sensitive_link",
+                                     f"The address bar holds a link carrying {describe_sensitive(bar[2])}; a tap here "
+                                     "could open it, and links never carry them out. Clear the address bar first."))
         best = self._judge_target(method, t, x, y, screen)
         rank = self._strictness(best)
         for alt in targets_at(t.window, x, y):
@@ -2222,6 +2344,32 @@ class Gatekeeper:
 
         return w.root is not None and w.root.contains(x, y) and visit(w.root)
 
+    @staticmethod
+    def _real_scroll(start: Target | None, x1, y1, x2, y2) -> bool:
+        """A mostly vertical drag over something that can really scroll that way: an ancestor on the start's path whose
+        content can move in the drag's direction (a finger moving up scrolls the content down). Android's scroller
+        then takes the touch, so nothing under the finger is pressed. A class name alone (a ScrollView that can't
+        scroll, a ViewPager, a horizontal carousel) never counts (review H1, 2026-10-17)."""
+        if start is None or abs(y2 - y1) < 2 * abs(x2 - x1):
+            return False
+        need = "down" if y2 < y1 else "up"
+        return any(need in n.scroll for n in start.path)
+
+    def _drag_is_tap(self, x1, y1, x2, y2, screen: Screen) -> bool:
+        """A drag that ends inside the clickable control it started on (grown by the touch slop) is a press of that
+        control, unless something under it really scrolls that way (review H1): Android keeps the control pressed while
+        the finger stays inside it and clicks on release. A slider keeps its own judgement (_judge_swipe)."""
+        r = self.r
+        start = hit_test(r, screen, x1, y1)
+        if start is None or self._real_scroll(start, x1, y1, x2, y2):
+            return False
+        p = start.pressed
+        if p is None or not (p.clickable or p.long_clickable) or re.search(r.d["slider_class"], p.cls or ""):
+            return False
+        slop = r.d["swipe"]["slop_px"]
+        left, top, right, bottom = p.bounds
+        return left - slop <= x2 < right + slop and top - slop <= y2 < bottom + slop
+
     def _judge_swipe(self, x1, y1, x2, y2, screen: Screen) -> Judgement:
         r = self.r
         start = hit_test(r, screen, x1, y1)
@@ -2240,11 +2388,10 @@ class Gatekeeper:
                 j.refuse = refusal
                 return j
         j.payment = payment_context(r, screen)
-        # A scroll (mostly vertical, starting inside a list or web page): the content under the finger moves, it isn't
-        # pressed, so its words don't make it risky; a slider under the start, or a control whose words say to slide or
-        # swipe it, still asks (Gatekeeper.judgeSwipe).
-        scroll = start is not None and abs(y2 - y1) >= 2 * abs(x2 - x1) and \
-            any(re.search(r.d["scroller_class"], n.cls or "") for n in start.path)
+        # A real scroll (mostly vertical, over something that can scroll that way: _real_scroll): the content under the
+        # finger moves, it isn't pressed, so its words don't make it risky; a slider under the start, or a control whose
+        # words say to slide or swipe it, still asks (Gatekeeper.judgeSwipe).
+        scroll = self._real_scroll(start, x1, y1, x2, y2)
         for t in (start, end):
             if t is None:
                 continue
@@ -2277,7 +2424,7 @@ class Gatekeeper:
         return ("gate_screen_unstable", "builtin:no_field",
                 "No text field the phone can judge has focus. Tap the field first, then look again.")
 
-    def _judge_typing(self, text: str, screen: Screen) -> Judgement:
+    def _judge_typing(self, text: str, screen: Screen, replace: bool = False) -> Judgement:
         r = self.r
         scheme = url_scheme(text)
         if scheme in r.d["schemes"]["typed_refused"]:
@@ -2305,27 +2452,61 @@ class Gatekeeper:
         j.payment = payment_context(r, screen)
         about = f"{node.id} {node.hint}"
         app = self.label(screen, w.package)
+        existing = "" if replace else (node.text or "")
+        result = existing + text
         if self.call_app(w.package) and (self.completes_code(text) or self.completes_code(node.text + text)):
             j.risk = self._call_code_risk(node.text + text, app)  # some dialers run a code once its # is typed (H2)
         elif r.is_cat("browser", w.package) and (re.compile(r.d["url_bar"]).search(node.id or "")
                                                   or looks_like_url(node.text)) \
-                and looks_like_url(text) and sensitive_in_url(text, r.ssn_label) is not None:
-            # No data out through links (F3): a link carrying a card number or SSN is never typed into the address bar.
+                and (link := self._new_sensitive_link(text, existing, result)) is not None:
+            # No data out through links (F3): a link carrying a card number or SSN is never typed into the address bar,
+            # whole or in pieces (review M4: the field's text plus the new text is judged too).
             j.refuse = ("gate_denied", "builtin:sensitive_link", "That link carries "
-                        + describe_sensitive(sensitive_in_url(text, r.ssn_label)) + "; links never carry them out.")
+                        + describe_sensitive(link) + "; links never carry them out.")
         elif re.compile(r.d["payment_field"]).search(about):
             j.risk = Risk("fill", "card_field", always=True, wording=f"Allow typing into the card field in {app}?")
-        elif find_sensitive(text, ssn_context=bool(r.ssn_label.search(f"{about} {node.desc}"))
-                            or bool(r.ssn_label.search(screen_text(screen)))) is not None:
+        elif (kind := self._new_sensitive(text, existing, result, bool(r.ssn_label.search(f"{about} {node.desc}"))
+                                          or bool(r.ssn_label.search(screen_text(screen))))) is not None:
             # A card number or SSN in any field (F2): asks at tap level, every time; never covered by a task approval,
-            # "everyday" or a grant; refused under Don't ask.
-            what = describe_sensitive(find_sensitive(text, ssn_context=True))
+            # "everyday" or a grant; refused under Don't ask. Typed whole or in pieces: what the field will hold (its
+            # text plus the new text, or the new text alone for `replace`) is judged too (review M4, 2026-10-17).
+            what = describe_sensitive(kind)
             fld = (node.hint or node.desc)[:40]
             j.risk = Risk("sensitive_number", "sensitive_number", always=True,
                           wording=f"Allow typing {what}" + (f" into “{fld}”" if fld else "") + f" in {app}?")
         elif re.compile(r.d["otp_field"]).search(about):
             j.risk = Risk("fill", "otp_field", always=True, wording=f"Allow typing a code into {app}?")
         return j
+
+    @staticmethod
+    def _new_sensitive(text: str, existing: str, result: str, ssn_context: bool) -> str | None:
+        """A card number or SSN in the new text, or one the new text completes in the field (review M4): the field's
+        result holds one its old text didn't (a number already there, typed by the owner, doesn't make others ask)."""
+        kind = find_sensitive(text, ssn_context=ssn_context)
+        if kind is None and existing and find_sensitive(existing, ssn_context=ssn_context) is None:
+            kind = find_sensitive(result, ssn_context=ssn_context)
+        return find_sensitive(text, ssn_context=True) or kind if kind else None
+
+    def _new_sensitive_link(self, text: str, existing: str, result: str) -> str | None:
+        """The same for the address bar: a typed link carrying a card number or SSN, whole or completed in pieces."""
+        rx = self.r.ssn_label
+        if looks_like_url(text) and (kind := sensitive_in_url(text, rx)) is not None:
+            return kind
+        if existing and sensitive_in_url(existing, rx) is None and looks_like_url(result.strip()):
+            return sensitive_in_url(result, rx)
+        return None
+
+    def _sensitive_bar(self, screen: Screen):
+        """A browser's focused address bar holding a link that carries a card number or SSN: (window, node, kind)."""
+        found = focused_field(screen)
+        if found is None:
+            return None
+        w, node, _ = found
+        if not self.r.is_cat("browser", w.package) or not (re.search(self.r.d["url_bar"], node.id or "")
+                                                          or looks_like_url(node.text)):
+            return None
+        kind = sensitive_in_url(node.text, self.r.ssn_label)
+        return (w, node, kind) if kind else None
 
     def _judge_key(self, name: str, screen: Screen) -> Judgement:
         r = self.r

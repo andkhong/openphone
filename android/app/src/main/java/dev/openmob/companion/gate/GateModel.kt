@@ -138,6 +138,9 @@ class GNode(
     val focused: Boolean = false, val children: List<GNode> = emptyList(),
     /** The phone stopped reading below this node (its children aren't all here). */
     val truncated: Boolean = false,
+    /** Which way its content can scroll right now ("up", "down", "left", "right"), from accessibility's scroll actions
+     *  on a scrollable node ([ScrollDirs]). Empty: it can't scroll, whatever its class. */
+    val scroll: Set<String> = emptySet(),
 ) {
     fun contains(x: Double, y: Double) = bounds[0] <= x && x < bounds[2] && bounds[1] <= y && y < bounds[3]
     fun fp(withBounds: Boolean): String {
@@ -154,8 +157,30 @@ class GNode(
             clickable = d.bool("clickable"), longClickable = d.bool("long_clickable"), editable = d.bool("editable"),
             password = d.bool("password"), hint = d.str("hint"), checked = d["checked"] as? Boolean,
             focused = d.bool("focused"), children = d["children"].list().map { of(it.obj()) },
-            truncated = d.bool("truncated"),
+            truncated = d.bool("truncated"), scroll = d["scroll"].strings().toSet(),
         )
+    }
+}
+
+/** Which way a scrollable node's content can move (GNode.scroll), from its accessibility actions (review H1,
+ *  2026-10-17). The directional actions say it outright; forward/backward are placed by the node's collection
+ *  (one row and several columns: sideways) or, without one, by its class (pagers and carousels: sideways; anything
+ *  else: up and down). A node that isn't scrollable, or has no scroll action left, can't scroll. */
+object ScrollDirs {
+    private val SIDEWAYS = Regex("(?i)ViewPager|Horizontal|Carousel|TabLayout")
+
+    fun of(scrollable: Boolean, actions: Set<String>, rows: Int, cols: Int, cls: String): Set<String> {
+        if (!scrollable) return emptySet()
+        val out = mutableSetOf<String>()
+        for (d in listOf("up", "down", "left", "right")) if (d in actions) out.add(d)
+        val sideways = when {
+            rows == 1 && cols > 1 -> true
+            rows > 1 -> false
+            else -> SIDEWAYS.containsMatchIn(cls)
+        }
+        if ("forward" in actions) out.add(if (sideways) "right" else "down")
+        if ("backward" in actions) out.add(if (sideways) "left" else "up")
+        return out
     }
 }
 

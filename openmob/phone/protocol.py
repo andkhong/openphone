@@ -55,6 +55,7 @@ GATE_CODES = (
     "gate_unknown_method", "gate_policy_invalid", "phone_locked", "gate_unavailable", "needs_owner_dialog", "gate_permission_choice",
     "gate_no_answer",  # server-side: the phone's prompt ended without the owner deciding (gate_event expired)
     "gate_owner_stopped",  # the owner tapped Stop on the agent indicator: acts refused until the task ends (or 10 s)
+    "gate_indicator_unavailable",  # the indicator should show but isn't on screen: the act didn't run (fails closed)
 )
 
 # method -> (parameters, result, timeout in seconds)

@@ -174,6 +174,9 @@ PRICE_ONLY_MONEY = ("subscribe", "join")  # money only with a price nearby (YouT
 # on the store page; any other install asks, and is refused under Don't ask. A screen, an ad or a guessed package id
 # can't pick what gets installed.
 INSTALL_WORDS = re.compile(r"^\s*(install|get|instalar|installieren|installer|installa)\b", re.I)
+# An Install/Get button's whole label (rules.json install.button_words): more than one on screen is a results page.
+INSTALL_BUTTON = re.compile(r"^\s*(install|get|instalar|installieren|installer|installa)\s*$", re.I)
+_SEARCH_FIELD = re.compile(r"(?i)search|query|SearchView")  # rules.json search_field
 _TITLE_SKIP = re.compile(r"^(install|open|uninstall|update|cancel|more|search|get|share|wishlist|play|buy|"
                          r"contains ads|in-app purchases|\d[\d.,]*\s*[kmb+]*.*|[\d.]+\s*★?.*)$", re.I)
 _GENERIC = {"app", "apps", "the", "and", "for", "with", "free", "game", "games", "play", "learn", "online",
@@ -197,12 +200,32 @@ def is_install(text: str) -> bool:
     return bool(INSTALL_WORDS.search(text or ""))
 
 
+def install_buttons(elements: list) -> int:
+    """How many Install/Get buttons are on screen (a label that is exactly the word; a label inside an element already
+    counted, its text and description, counts once)."""
+    found: list = []
+    for e in elements:
+        if not (INSTALL_BUTTON.match(e.text or "") or INSTALL_BUTTON.match(e.desc or "")):
+            continue
+        cx, cy = e.center
+        if not any(_contains(f, cx, cy) or _contains(e, *f.center) for f in found):
+            found.append(e)
+    return len(found)
+
+
 def store_title(elements: list, button=None) -> str:
-    """The app's name on a Play Store page: the topmost text above the install button that isn't a button,
-    rating, count or badge. Empty when it can't be told."""
-    top = button.bounds[1] if button is not None else None
-    texts = [e for e in elements if e.text and len(e.text.strip()) >= 2 and not _TITLE_SKIP.match(e.text.strip())
-             and (top is None or e.bounds[3] <= top)]
+    """The app's name on a Play Store page (review M3, 2026-10-17): the topmost text that starts above the install
+    button's bottom and isn't a button, rating, count or badge, an editable field or a search box (the query a results
+    page shows is not the app). Empty when it can't be told, and on a results page (more than one Install/Get button):
+    then no app is named and the install asks. The phone reads the button's own card (Gatekeeper.storeTitle); this
+    flat element list has no cards."""
+    if install_buttons(elements) > 1:
+        return ""
+    bottom = button.bounds[3] if button is not None else None
+    texts = [e for e in elements if e is not button and e.text and len(e.text.strip()) >= 2
+             and not _TITLE_SKIP.match(e.text.strip()) and not e.editable and "EditText" not in (e.cls or "")
+             and not _SEARCH_FIELD.search(e.resource_id or "") and not _SEARCH_FIELD.search(e.hint or "")
+             and (bottom is None or e.bounds[1] < bottom)]
     return min(texts, key=lambda e: (e.bounds[1], e.bounds[0])).text.strip() if texts else ""
 
 
