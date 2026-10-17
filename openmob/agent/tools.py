@@ -273,8 +273,8 @@ If it went black right after opening an app, the app probably reopened on such a
 to leave it. Opening the app again only reopens the same page. If it stays black, say so with \
 done(success=false) rather than tapping blindly.
 - A thin coloured glow along the screen's edges and a small "■ Stop" button in a corner are OpenMob's own sign \
-that you're in control: ignore them, and never tap the Stop button (the phone refuses it). If what you need is \
-under it, scroll it clear.
+that you're in control: ignore them. If what you need is under the Stop button, tap your target as usual: the button moves \
+out of the way first.
 - A message that starts with "User correction:" is the user changing course while you work. Follow it \
 from your next action.
 - Earlier requests from this session may be listed. Use them to understand follow-ups like "now scroll down".
@@ -302,8 +302,8 @@ search, type the app's name, and tap the result.
 
 # The agent indicator OpenMob's Android app draws while an agent acts (docs/design/control-indicator.md).
 INDICATOR_LINE = ("- A thin coloured glow along the screen's edges and a small \"■ Stop\" button in a corner are "
-                  "OpenMob's own sign that you're in control: ignore them, and never tap the Stop button (the phone "
-                  "refuses it). If what you need is under it, scroll it clear.\n")
+                  "OpenMob's own sign that you're in control: ignore them. If what you need is under the Stop button, "
+                  "tap your target as usual: the button moves out of the way first.\n")
 ONE_CALL_RULE = "Make exactly ONE tool call per turn, then check the next screenshot to confirm it worked before moving on."
 OPEN_URL_LINE = "- For a web page (https:// link), open_url can be faster than navigating.\n"
 # Added right after OPEN_URL_LINE when the phone can open Settings pages directly (tools.OPEN_SETTINGS_TOOL).

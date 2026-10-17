@@ -105,3 +105,15 @@ def test_the_scenarios_cover_every_area():
     assert {"friction", "permits", "grants", "clock", "modes", "hard_deny", "settings", "risk", "limits",
             "toctou"} <= tags
     assert Gatekeeper().mode("never") == "auto"  # an unsigned claim gets the ceiling
+
+
+def test_the_pill_dodges_only_for_a_gesture_the_gate_would_accept():
+    """GateHost moves the Stop pill only when the gesture is acceptable without it (Gatekeeper.admitsWithoutPill)."""
+    from gatekeeper_ref import Screen
+    screens = load_screens()
+    gk = Gatekeeper()
+    shop, bank = Screen.of(screens["indicator_over_shop"]), Screen.of(screens["indicator_over_bank"])
+    assert gk.admit("tap", {"x": 980, "y": 200}, shop).rule == "builtin:own_indicator"
+    assert gk.admits_without_pill("tap", {"x": 980, "y": 200}, shop)  # the shop's Menu under the pill
+    assert not gk.admits_without_pill("tap", {"x": 980, "y": 200}, bank)  # a bank under it: refused anyway
+    assert not gk.admits_without_pill("type_text", {"text": "x"}, shop)

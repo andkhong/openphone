@@ -241,7 +241,56 @@ class IndicatorPolicy(
     private companion object { const val NEVER = Long.MIN_VALUE / 2 }
 }
 
+/**
+ * Where the Stop pill sits (docs/design/control-indicator.md, "The pill dodges"). The owner's corner is the default.
+ * When an agent's gesture the gate would accept lands on the pill, the phone moves it to another visible corner that
+ * clears the gesture's points; it stays there until the session's indicator goes, then the owner's corner applies again.
+ */
+class PillPlacement {
+    /** The corner the pill moved to for this session, or null: the owner's. */
+    var dodged: PillCorner? = null
+        private set
+
+    fun corner(owner: PillCorner): PillCorner = dodged ?: owner
+
+    /** The session ended (the indicator went): back to the owner's corner next time. */
+    fun reset() { dodged = null }
+
+    /** Move out of the way of [points] (screen px), keeping [margin] px clear; [rectOf] is the pill's bounds in a corner.
+     *  Returns the new corner, or null if every other corner would cover a point too (the gesture stays refused). */
+    fun dodge(owner: PillCorner, points: List<Pair<Double, Double>>, margin: Int, rectOf: (PillCorner) -> IntArray): PillCorner? {
+        val current = corner(owner)
+        if (!IndicatorGeometry.covers(rectOf(current), points, margin)) return null // not in the way
+        val to = IndicatorGeometry.order(current).firstOrNull { !IndicatorGeometry.covers(rectOf(it), points, margin) } ?: return null
+        dodged = to
+        return to
+    }
+}
+
 object IndicatorGeometry {
+    /** Where to try next: the other corner of the same edge, then the other edge on the same side, then the diagonal
+     *  (top right: top left, bottom right, bottom left). */
+    fun order(from: PillCorner): List<PillCorner> {
+        fun at(top: Boolean, right: Boolean) = PillCorner.values().first { it.top == top && it.right == right }
+        return listOf(at(from.top, !from.right), at(!from.top, from.right), at(!from.top, !from.right))
+    }
+
+    /** Any of [points] inside [r] grown by [margin]. */
+    fun covers(r: IntArray, points: List<Pair<Double, Double>>, margin: Int): Boolean = points.any { (x, y) ->
+        r[0] - margin <= x && x < r[2] + margin && r[1] - margin <= y && y < r[3] + margin
+    }
+
+    /** The pill's bounds in [corner] on a [screenW] x [screenH] screen: [sideGap] px in from the side, [edgeGap] px
+     *  below the status bar or above the navigation bar ([insets]: left, top, right, bottom). Always on screen. */
+    fun pillRect(corner: PillCorner, w: Int, h: Int, screenW: Int, screenH: Int, insets: IntArray,
+                 sideGap: Int, edgeGap: Int): IntArray {
+        val x = sideGap + if (corner.right) insets[2] else insets[0]
+        val y = edgeGap + if (corner.top) insets[1] else insets[3]
+        val left = (if (corner.right) screenW - x - w else x).coerceIn(0, maxOf(0, screenW - w))
+        val top = (if (corner.top) y else screenH - y - h).coerceIn(0, maxOf(0, screenH - h))
+        return intArrayOf(left, top, left + w, top + h)
+    }
+
     /** OCR lines that are OpenMob's own Stop pill (their centre inside it): the permission-dialog reader drops them. */
     fun dropOwn(lines: List<GOcrLine>, own: List<IntArray>): List<GOcrLine> {
         if (own.isEmpty()) return lines

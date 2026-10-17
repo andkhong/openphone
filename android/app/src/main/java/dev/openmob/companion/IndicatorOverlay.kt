@@ -80,8 +80,43 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
         view.animate().alpha(1f).setDuration(FADE_IN_MS)
     }
 
+    private var pillLp: WindowManager.LayoutParams? = null
+
+    private fun insets(): IntArray = runCatching {
+        wm.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(
+            WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()).let { intArrayOf(it.left, it.top, it.right, it.bottom) }
+    }.getOrDefault(IntArray(4))
+
+    /** Margin kept between a dodged pill and the gesture's points. */
+    val dodgeMarginPx: Int get() = dp(8f).toInt()
+
+    /** The pill's bounds if it sat in [corner] (its current size), or null while it isn't showing. */
+    fun pillRectIn(corner: PillCorner): IntArray? {
+        val v = pill ?: return null
+        val w = if (v.width > 0) v.width else v.measuredWidth.takeIf { it > 0 } ?: return null
+        val h = if (v.height > 0) v.height else dp(48f).toInt()
+        val b = wm.currentWindowMetrics.bounds
+        return IndicatorGeometry.pillRect(corner, w, h, b.width(), b.height(), insets(), dp(12f).toInt(), dp(8f).toInt())
+    }
+
+    private fun place(lp: WindowManager.LayoutParams, corner: PillCorner) {
+        val i = insets()
+        lp.gravity = (if (corner.top) Gravity.TOP else Gravity.BOTTOM) or (if (corner.right) Gravity.END else Gravity.START)
+        lp.x = dp(12f).toInt() + (if (corner.right) i[2] else i[0])
+        // Below the status bar (top corners), above the navigation bar (bottom ones).
+        lp.y = dp(8f).toInt() + (if (corner.top) i[1] else i[3])
+    }
+
     private fun showPill(s: IndicatorPrefs.Snapshot) {
-        if (pill != null && (pillCorner != s.corner || pillColor != s.argb)) removePill()
+        if (pill != null && pillColor != s.argb) removePill()
+        val existing = pill
+        val lp0 = pillLp
+        if (existing != null && lp0 != null && pillCorner != s.corner) {
+            // Moved (it dodged an agent's gesture, or the owner changed the corner): the same window, never hidden.
+            place(lp0, s.corner)
+            runCatching { wm.updateViewLayout(existing, lp0) }
+            pillCorner = s.corner
+        }
         val view = pill ?: TextView(service).also { v ->
             v.text = service.getString(R.string.indicator_stop)
             v.contentDescription = service.getString(R.string.indicator_stop_description)
@@ -98,10 +133,6 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
                 setStroke(dp(1.5f).toInt(), s.argb)
             }
             v.setOnClickListener { onStop() }
-            val insets = runCatching {
-                wm.currentWindowMetrics.windowInsets.getInsetsIgnoringVisibility(
-                    WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout())
-            }.getOrNull()
             val lp = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.WRAP_CONTENT, dp(48f).toInt(),
                 WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
@@ -109,13 +140,10 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
                 PixelFormat.TRANSLUCENT,
             ).apply {
-                gravity = (if (s.corner.top) Gravity.TOP else Gravity.BOTTOM) or (if (s.corner.right) Gravity.END else Gravity.START)
                 layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
                 fitInsetsTypes = 0
-                x = dp(12f).toInt() + (if (s.corner.right) insets?.right ?: 0 else insets?.left ?: 0)
-                // Below the status bar (top corners), above the navigation bar (bottom ones).
-                y = dp(8f).toInt() + (if (s.corner.top) insets?.top ?: 0 else insets?.bottom ?: 0)
                 title = "OpenMob Stop"
+                place(this, s.corner)
             }
             v.alpha = 0f
             v.addOnLayoutChangeListener { view, _, _, _, _, _, _, _, _ ->
@@ -124,6 +152,7 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
             }
             if (runCatching { wm.addView(v, lp) }.isFailure) return
             pill = v
+            pillLp = lp
             pillCorner = s.corner
             pillColor = s.argb
         }
@@ -140,6 +169,8 @@ class IndicatorOverlay(private val service: OpenMobAccessibilityService, private
     private fun removePill() {
         pill?.let { runCatching { wm.removeView(it) } }
         pill = null
+        pillLp = null
+        pillCorner = null
         pillRect = null
     }
 

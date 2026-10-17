@@ -1605,6 +1605,15 @@ class Gatekeeper:
                 "open_settings": j.wording or "Allow opening a Settings page?"}.get(
             method, f"Allow this action in {app}?")
 
+    def admits_without_pill(self, method: str, params: dict, screen: Screen) -> bool:
+        """Would this gesture be judged acceptable (not refused) without OpenMob's Stop pill on screen? Only then does
+        the phone move the pill out of the way and judge again. No side effects."""
+        if method not in ("tap", "long_press", "swipe"):
+            return False
+        bare = dc_replace(screen, windows=[w for w in screen.windows
+                                                    if not (own_overlay(self.r, w) and catches_touches(w))])
+        return self.judge(method, params, self.with_ocr(bare)).refuse is None
+
     def judge(self, method: str, params: dict, screen: Screen) -> Judgement:
         r = self.r
         if method in ("tap", "long_press"):

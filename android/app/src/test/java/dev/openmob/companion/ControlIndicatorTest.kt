@@ -197,4 +197,81 @@ class ControlIndicatorTest {
         assertEquals(listOf("Allow Shop to send you notifications?"), IndicatorGeometry.dropOwn(lines, listOf(pillBounds)).map { it.text })
         assertEquals(2, IndicatorGeometry.dropOwn(lines, emptyList()).size)
     }
+
+    // --- the pill dodges (owner decision 2026-10-17) --------------------------------------------------------------------
+
+    private val insets = intArrayOf(0, 128, 0, 63) // status bar, navigation bar (the emulator's, px)
+    private fun rectOf(c: PillCorner) = IndicatorGeometry.pillRect(c, 252, 126, 1080, 2400, insets, 31, 21)
+
+    @Test fun pillRectsMatchTheLayoutAndStayOnScreen() {
+        assertEquals(listOf(797, 149, 1049, 275), rectOf(PillCorner.TOP_RIGHT).toList()) // as measured on gk_b7
+        for (c in PillCorner.values()) {
+            val r = rectOf(c)
+            assertTrue(c.name, r[0] >= 0 && r[1] >= 0 && r[2] <= 1080 && r[3] <= 2400 && r[2] - r[0] == 252)
+        }
+        assertEquals(listOf(PillCorner.TOP_LEFT, PillCorner.BOTTOM_RIGHT, PillCorner.BOTTOM_LEFT), IndicatorGeometry.order(PillCorner.TOP_RIGHT))
+        assertEquals(listOf(PillCorner.BOTTOM_RIGHT, PillCorner.TOP_LEFT, PillCorner.TOP_RIGHT), IndicatorGeometry.order(PillCorner.BOTTOM_LEFT))
+    }
+
+    @Test fun thePillDodgesToTheOtherCornerOfTheSameEdge() {
+        val p = PillPlacement()
+        assertNull(p.dodge(PillCorner.TOP_RIGHT, listOf(540.0 to 1200.0), 21, ::rectOf)) // not in the way: stays
+        assertEquals(PillCorner.TOP_RIGHT, p.corner(PillCorner.TOP_RIGHT))
+        assertEquals(PillCorner.TOP_LEFT, p.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0), 21, ::rectOf))
+        assertEquals(PillCorner.TOP_LEFT, p.corner(PillCorner.TOP_RIGHT))
+        // within the margin counts as in the way
+        assertEquals(PillCorner.TOP_LEFT, PillPlacement().dodge(PillCorner.TOP_RIGHT, listOf(785.0 to 200.0), 21, ::rectOf))
+    }
+
+    @Test fun aRepeatDodgeMovesOnAndASwipeAcrossTheTopGoesToTheBottom() {
+        val p = PillPlacement()
+        p.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0), 21, ::rectOf)
+        // the agent then needs something under the top-left position: back to the top right (free now)
+        assertEquals(PillCorner.TOP_RIGHT, p.dodge(PillCorner.TOP_RIGHT, listOf(100.0 to 200.0), 21, ::rectOf))
+        // a swipe along the whole top edge covers both top corners: a bottom corner
+        val q = PillPlacement()
+        assertEquals(PillCorner.BOTTOM_RIGHT, q.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0, 100.0 to 200.0), 21, ::rectOf))
+    }
+
+    @Test fun everyCornerCoveredKeepsThePillWhereItIs() {
+        val p = PillPlacement()
+        val all = listOf(980.0 to 200.0, 100.0 to 200.0, 980.0 to 2250.0, 100.0 to 2250.0)
+        assertNull(p.dodge(PillCorner.TOP_RIGHT, all, 21, ::rectOf))
+        assertEquals(PillCorner.TOP_RIGHT, p.corner(PillCorner.TOP_RIGHT))
+        assertNull(p.dodged)
+    }
+
+    @Test fun thePillReturnsToTheOwnersCornerForTheNextTask() {
+        val p = PillPlacement()
+        p.dodge(PillCorner.TOP_RIGHT, listOf(980.0 to 200.0), 21, ::rectOf)
+        p.reset() // the indicator went (ControlIndicator.apply: HIDDEN)
+        assertEquals(PillCorner.TOP_RIGHT, p.corner(PillCorner.TOP_RIGHT))
+        assertEquals(PillCorner.BOTTOM_LEFT, p.corner(PillCorner.BOTTOM_LEFT)) // the owner's choice, whatever it is
+    }
+
+    private fun screenWithPillAt(r: IntArray) = GScreen(listOf(app(), GateScreen.ownOverlayView(border()),
+        GateScreen.ownOverlayView(GWindow(21, "accessibility_overlay", 31, own, "OpenMob Stop", r,
+            GNode(cls = "android.widget.TextView", bounds = r, clickable = true)))), labels = mapOf("com.example.shop" to "Shop"))
+
+    @Test fun theGateDodgesOnlyForAGestureItWouldAcceptAndTheMovedPillIsStillRefused() {
+        val clock = GateScenarioTest.FakeClock()
+        val gk = Gatekeeper(GateScenarioTest.RULES, clock, GateScenarioTest.VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
+        val before = screenWithPillAt(rectOf(PillCorner.TOP_RIGHT))
+        val menu = mapOf<String, Any?>("x" to 1000L, "y" to 200L)
+        assertEquals("builtin:own_indicator", gk.admit("tap", menu, before).rule)
+        assertTrue(gk.admitsWithoutPill("tap", menu, before)) // the shop's Menu under it: fine to move for
+        assertFalse(gk.admitsWithoutPill("type_text", mapOf("text" to "x"), before))
+        clock.elapsed += 2000
+        val after = screenWithPillAt(rectOf(PillCorner.TOP_LEFT))
+        assertTrue(gk.admit("tap", menu, after).allowed) // judged on the real Menu now
+        clock.elapsed += 2000
+        val onMoved = gk.admit("tap", mapOf("x" to 150L, "y" to 200L), after)
+        assertEquals("builtin:own_indicator", onMoved.rule) // the pill in its new corner is still refused
+        // A bank under the pill: refused without it too, so the pill doesn't move for it.
+        val bank = GScreen(listOf(GWindow(1, "application", 1, "com.chase.sig.android", "", full,
+            GNode(cls = "android.widget.FrameLayout", bounds = full, children = listOf(
+                GNode(text = "Transfer", bounds = intArrayOf(900, 150, 1060, 260), clickable = true)))),
+            GateScreen.ownOverlayView(pill())))
+        assertFalse(gk.admitsWithoutPill("tap", menu, bank))
+    }
 }

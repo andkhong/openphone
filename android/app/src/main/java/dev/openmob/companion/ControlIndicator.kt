@@ -22,6 +22,7 @@ object ControlIndicator {
     private val main = Handler(Looper.getMainLooper())
     private val token = Any()
     private val policy = IndicatorPolicy()
+    private val placement = PillPlacement()
     private var overlay: IndicatorOverlay? = null
     private lateinit var app: Context
     @Volatile private var prefs: IndicatorPrefs? = null
@@ -86,6 +87,30 @@ object ControlIndicator {
         main.post { policy.preview(SystemClock.uptimeMillis(), 4_000); apply() }
     }
 
+    /**
+     * On the call's thread: an agent's gesture the gate would accept but for the Stop pill under [points] (screen px).
+     * Moves the pill to another visible corner that clears them (8 dp margin) and waits until it's laid out there
+     * (at most 600 ms). False if it isn't showing or no corner is free; the gate then refuses as before. Only ever
+     * called for such a gesture (GateHost.admit): a server can move the pill between visible corners, never hide it.
+     */
+    fun dodge(points: List<Pair<Double, Double>>): Boolean {
+        if (Looper.myLooper() == Looper.getMainLooper() || points.isEmpty()) return false
+        val done = CountDownLatch(1)
+        var moved = false
+        main.post {
+            val o = overlay
+            val owner = prefs(app).corner
+            val to = o?.let { ov -> placement.dodge(owner, points, ov.dodgeMarginPx) { c -> ov.pillRectIn(c) ?: intArrayOf(0, 0, 0, 0) } }
+            if (o == null || to == null || o.pillRectIn(to) == null) { done.countDown(); return@post }
+            moved = true
+            apply()
+            // Two frames: the window manager lays the moved window out, then it draws there.
+            Choreographer.getInstance().postFrameCallback { Choreographer.getInstance().postFrameCallback { done.countDown() } }
+        }
+        done.await(600, TimeUnit.MILLISECONDS)
+        return moved
+    }
+
     /** Where the Stop pill is on screen, if it's showing: OCR drops its text (PermissionOcr). */
     fun ownRects(): List<IntArray> = listOfNotNull(overlay?.pillRect)
 
@@ -97,6 +122,7 @@ object ControlIndicator {
         policy.paused = lockPaused || GateHost.ownerDialog != null || GateHost.suspended
         val next = policy.state(now)
         state = next
+        if (next == IndicatorState.HIDDEN) placement.reset() // the next session starts in the owner's corner
         main.removeCallbacksAndMessages(token)
         val service = OpenMobAccessibilityService.instance
         if (service == null || !::app.isInitialized) {
@@ -104,7 +130,8 @@ object ControlIndicator {
         } else {
             if (overlay?.let { it.owner !== service } == true) { overlay?.removeAll(); overlay = null }
             if (next != IndicatorState.HIDDEN && overlay == null) overlay = IndicatorOverlay(service, ::onPillTapped)
-            overlay?.apply(next, prefs(app).snapshot())
+            val s = prefs(app).snapshot()
+            overlay?.apply(next, IndicatorPrefs.Snapshot(s.border, s.color, s.pulse, s.pill, placement.corner(s.corner)))
         }
         // Look again when the hold runs out; while a prompt is open, every 2 s (it expires after 2 minutes).
         val again = listOfNotNull(policy.recheckIn(now), if (next == IndicatorState.APPROVAL) 2_000L else null).minOrNull()

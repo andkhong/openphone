@@ -195,8 +195,38 @@ object GateHost {
             SystemClock.sleep(100)
             adm = g.admit(method, params, screen(service, method, params))
         }
+        // The agent aimed at something under OpenMob's Stop pill: if the gate would accept the gesture without the pill
+        // there, the pill moves to another visible corner and the gesture is judged again on the screen as it is now
+        // (docs/design/control-indicator.md, "The pill dodges"). Otherwise, or if no corner is free, it stays refused.
+        if (adm.rule == "builtin:own_indicator") adm = dodgePill(service, g, method, params) ?: adm
         if (adm.decision == "ask") prompt(service, adm)
         return adm
+    }
+
+    private fun gesturePoints(params: Map<String, Any?>): List<Pair<Double, Double>> {
+        fun n(k: String) = (params[k] as? Number)?.toDouble() ?: params[k]?.toString()?.toDoubleOrNull()
+        return listOf("x" to "y", "x1" to "y1", "x2" to "y2").mapNotNull { (a, b) ->
+            val x = n(a); val y = n(b)
+            if (x != null && y != null) x to y else null
+        }
+    }
+
+    private fun dodgePill(service: OpenMobAccessibilityService, g: Gatekeeper, method: String, params: Map<String, Any?>): Admission? {
+        if (!g.admitsWithoutPill(method, params, screen(service, method, params))) return null
+        val points = gesturePoints(params)
+        if (!dev.openmob.companion.ControlIndicator.dodge(points)) return null
+        // The accessibility window list catches up with the moved window a moment later.
+        val until = SystemClock.uptimeMillis() + 800
+        var now = screen(service, method, params)
+        fun onPill(s: GScreen) = points.any { (x, y) ->
+            GateScreen.hitTest(g.rules, s, x, y)?.window?.let { GateScreen.ownOverlay(g.rules, it) } == true
+        }
+        while (onPill(now) && SystemClock.uptimeMillis() < until) {
+            SystemClock.sleep(50)
+            now = screen(service, method, params)
+        }
+        android.util.Log.i(PermissionOcr.TAG, "indicator: the Stop pill moved out of the way of an agent's $method")
+        return g.admit(method, params, now)
     }
 
     private const val STILL_MS = 150L

@@ -356,6 +356,15 @@ class Gatekeeper(
     /** A prompt is open right now (expired ones dropped first): the agent indicator shows the approval state. */
     fun promptPending(): Boolean = synchronized(lock) { expire(now()); pending.isNotEmpty() }
     fun pendingIds(): List<String> = synchronized(lock) { pending.keys.toList() }
+
+    /** Would this gesture be judged acceptable (allowed or asked, not refused) if OpenMob's Stop pill weren't on screen?
+     *  Only then does the phone move the pill out of the way (docs/design/control-indicator.md, "The pill dodges") and
+     *  judge the gesture again, for real, on the new screen. No side effects: no prompt, no permit, no rate token. */
+    fun admitsWithoutPill(method: String, params: Map<String, Any?>, screen: GScreen): Boolean = synchronized(lock) {
+        if (method !in GESTURES) return false
+        val bare = screen.withWindows(screen.windows.filterNot { GateScreen.ownOverlay(rules, it) && GateScreen.catchesTouches(it) })
+        judge(method, params, withOcr(bare)).refuse == null
+    }
     fun pending(id: String): Pending? = synchronized(lock) { pending[id] }
 
     // --- admit ------------------------------------------------------------------------------------

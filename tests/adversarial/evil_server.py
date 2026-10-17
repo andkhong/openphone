@@ -1733,13 +1733,42 @@ async def g_indicator(phone: Phone, dev: Device) -> None:
     if len(pill) != 4:
         check(G, "the pill's frame is known", False, str(pill))
         return
+    home_pill = pill
     cx, cy = (pill[0] + pill[2]) // 2, (pill[1] + pill[3]) // 2
-    for method, params in (("tap", dict(x=cx, y=cy)), ("long_press", dict(x=cx, y=cy)),
-                           ("swipe", dict(x1=cx, y1=cy, x2=cx, y2=cy + 800, duration_ms=300))):
-        r = await phone.call(method, **params)
-        check(G, f"an agent {method} on the Stop pill is refused", rule(r) == "gate_denied_page:builtin:own_indicator", short(r)[:200])
-    check(G, "the pill is still up and the session alive after the refusals",
-          "OpenMob Stop" in overlay_windows(dev) and phone.ws.state == websockets.protocol.State.OPEN, "")
+
+    # The pill dodges (owner decision 2026-10-17): a toolbar "Menu" button right under its default spot. The agent's
+    # tap moves the pill to the top left first, then reaches the button; the owner's Stop never fires.
+    dev.sh("am start -n com.example.shop/.ToolbarActivity")
+    await asyncio.sleep(2.5)
+    dev.logcat_clear()
+    r = await phone.call("tap", x=cx, y=cy)
+    await asyncio.sleep(1)
+    moved = overlay_windows(dev).get("OpenMob Stop") or []
+    menu = "MENU tapped" in dev.log("ShopStandIn")
+    shot = dev.shot("indicator-1b-pill-dodged")
+    check(G, "an agent tap on a button under the pill moves the pill to the top left and reaches the button",
+          r.get("ok") is True and menu and len(moved) == 4 and moved[0] < 200 and moved[1] == pill[1],
+          f"{short(r)[:120]} menu={menu} pill {pill} -> {moved} {shot}")
+    # The agent aims at the pill's new spot: it moves again (back to the free top right); never stopped, never hidden.
+    mx, my = ((moved[0] + moved[2]) // 2, (moved[1] + moved[3]) // 2) if len(moved) == 4 else (cx, cy)
+    r = await phone.call("tap", x=mx, y=my)
+    again = overlay_windows(dev).get("OpenMob Stop") or []
+    # (The empty area there is judged as usual: the gate asks for an unlabeled tap over a screen whose only label is
+    # "MENU". Either way it is judged on the app, not refused as the pill.)
+    check(G, "an agent tap on the moved pill's spot moves it again and is judged on the app; the session stays up",
+          (r.get("ok") is True or asks(r)) and again == home_pill and phone.ws.state == websockets.protocol.State.OPEN,
+          f"{json.dumps(r.get('gate'))} pill {moved} -> {again}")
+    check(G, "the pill and border are still showing", {"OpenMob Stop", "OpenMob indicator"} <= set(overlay_windows(dev)), "")
+    if asks(r):
+        await dev.deny("indicator-moved-pill-deny")
+        await phone.gate_state(r["approval_id"])
+        dev.sh("am start -n com.example.shop/.ToolbarActivity")
+        await asyncio.sleep(2.5)
+    # Once more onto the Menu: the pill ends this session in the top left (the next session starts in the owner's corner).
+    r = await phone.call("tap", x=cx, y=cy)
+    left = overlay_windows(dev).get("OpenMob Stop") or []
+    check(G, "a repeat tap on the Menu moves the pill to the top left again", r.get("ok") is True and left[:1] == moved[:1],
+          f"{short(r)[:120]} {left}")
 
     # The phone's own prompt: amber and thicker.
     await shop_open(dev)
@@ -1765,6 +1794,7 @@ async def g_indicator(phone: Phone, dev: Device) -> None:
     # The owner taps the pill: the task stops (the connection closes with 1000) and the indicator goes.
     r = await phone.call("tap", x=title["center"][0], y=title["center"][1])
     pill = overlay_windows(dev).get("OpenMob Stop") or []
+    check(G, "the next task's pill is back in the owner's corner", pill == home_pill, f"{pill} vs {home_pill}")
     if len(pill) == 4:
         dev.sh(f"input tap {(pill[0] + pill[2]) // 2} {(pill[1] + pill[3]) // 2}")
         await asyncio.sleep(2)

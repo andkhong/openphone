@@ -90,10 +90,31 @@ No server, API or protocol method reads or writes these settings. Agents can't c
 refuses every tap on OpenMob's own windows (`own_packages`, `builtin:own_window`; fixture
 `openmob_indicator_settings`).
 
+## The pill dodges (owner decision, 2026-10-17)
+
+The default top-right spot is where many toolbars put their overflow (⋮) or account button. When the gate refuses an
+agent's tap, long press or swipe with `builtin:own_indicator` (a point is on the pill), `GateHost.admit` does this:
+
+1. It asks the gate whether the gesture would be acceptable, allowed or asked, without the pill
+   (`Gatekeeper.admitsWithoutPill`; mirrored as `admits_without_pill` in the reference engine). This has no side
+   effects. If the answer is no (a bank under the pill, say), the refusal stands and the pill doesn't move.
+2. It moves the pill (`ControlIndicator.dodge`, `PillPlacement`). The order is the other corner of the same edge, then
+   the other edge on the same side, then the diagonal; the first corner whose rect, grown by 8 dp, contains none of the
+   gesture's points wins. The window is moved in place (`updateViewLayout`), so it never disappears, and the dodge waits
+   two frames, at most 600 ms. If no corner is free, it doesn't move and the gesture stays refused.
+3. It waits up to 800 ms for the accessibility window list to show the moved window, then runs the real admit again on
+   the new screen. That judges the gesture on the app element now uncovered, with the usual asks and refusals.
+
+The pill keeps its new corner until the indicator goes (the session ends). The next session starts in the owner's
+corner, which stays the default in settings. An agent gesture aimed at the moved pill is still refused by the gate.
+In practice the pill dodges again, because the corner it left is now free, so an agent can never press Stop. The pill
+only ever moves between on-screen corners (`IndicatorGeometry.pillRect` clamps to the screen), and only for a gesture
+the gate would accept. A compromised server can make it hop between corners but can't hide it.
+
 ## Known limits
 
-- **Top right covers apps' top-right controls.** It's the owner's default, but it sits where many apps' toolbars put
-  the overflow (⋮) or account button. The gate refuses those taps (`own_indicator`, telling the agent to scroll the
-  target clear), so a task that needs that button fails until the owner moves the pill or turns it off.
+- Every dodge adds a little latency to that one gesture: a second capture, two frames, and the window list catching up
+  (measured on the emulator in the report, not on a phone).
+- A gesture that would cover every corner (impossible with ≤ 2 points on a phone screen) stays refused.
 - With the Stop button and the border both off, nothing is shown, which is the owner's choice. The notification stays.
 - A task that only reads (no admitted action) shows no indicator.
