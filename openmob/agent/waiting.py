@@ -38,6 +38,10 @@ POLL_QUIET_MS = 250  # between polls on a phone with wait_idle: poll once the sc
 POLL_MAX_MS = 1500  # ...or after this long on a screen that never goes quiet
 POLL_SECONDS = 0.7  # between polls on phones without wait_idle (adb dumps take ~1 s on their own)
 LOADING_QUIET_MS = 500  # loading_done: the screen must also have been quiet this long
+# loading_done on a labeled screen that never goes quiet (a map's moving tiles and pins, an animated feed): once
+# nothing on it has said "loading" for this long, the wait ends. Measured 2026-10-17: Maps "coffee near me" waited
+# its full ~9.4 s cap in every run though its results were up after ~2.5 s.
+LOADING_MOVING_GRACE_S = 2.5
 PHONE_CHUNK_MS = 10_000  # one wait_for call at most, so a stop is noticed between calls
 OCR_POLL_SECONDS = 1.0
 # Text, element and app conditions end early ("not met: the screen is still") once the screen has been completely
@@ -349,12 +353,20 @@ class Waiter:
         phone_ok = "wait_for" in (getattr(self.driver, "capabilities", None) or ())
         still_exit = still_exit_s if cond.until in STILL_EXIT_CONDITIONS and extra_stop is None else None
         still_since = start  # when the screen last moved (or something was loading)
+        unloaded_since: float | None = None  # loading_done: since when a labeled screen has shown nothing loading
         while True:
             if self.blocked(look.package):
                 return done(False, f"{look.package} is blocked for this task, so the wait stopped", via, look, "blocked")
             hit = self._check(cond, look, base, prev)
             if hit is not None:
                 return done(True, hit, via, look)
+            if cond.until == "loading_done" and labeled(look.elements):
+                if loading_element(look.elements) is not None:
+                    unloaded_since = None
+                elif unloaded_since is None:
+                    unloaded_since = self.clock()
+                elif self.clock() - unloaded_since >= LOADING_MOVING_GRACE_S:
+                    return done(True, "nothing is loading (the screen keeps moving)", via, look)
             if extra_stop is not None and (why := extra_stop(look, self.clock() - start)):
                 return done(False, why, via, look)
             if still_exit is not None:

@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 from conftest import FakeDriver, RecordingIO, ScriptedClient, text_block, tool_use
-from test_app_links import Phone, first_user_text, make
+from test_app_links import LABELS as LABELS_FOR_AMAZON, OPENS as OPENS_FOR_AMAZON, Phone, first_user_text, make
 from test_fast_path import el
 from test_gatekeeper_server import _Link
 
@@ -197,3 +197,40 @@ def test_a_model_refusal_is_reported_as_one(tmp_path):
                   Config(settle_delay=0, launch_settle_delay=0, fast_path="off"), RecordingIO(), use_ocr=False)
     result = agent.run("explain the page", permissions=TaskPermissions("auto"), isolated=True)
     assert not result.success and result.reason == "model_refusal" and "declined to continue" in result.summary
+
+
+# --- 2026-10-17 performance run: Maps' loading wait, Amazon's unsent search -------------------------------------------
+
+def test_loading_done_ends_on_a_labeled_screen_that_keeps_moving():
+    # Maps "coffee near me" waited its full cap (~9.4 s) in every run: pins and tiles keep changing, so the screen never
+    # went quiet, though nothing on it said "loading". It ends once nothing has been loading for the grace time.
+    from test_wait_until import TimedPhone, wait
+    from openmob.agent import waiting
+
+    names = [f"Cafe {a}{b}" for a in "ABCDEFGH" for b in "abcdefgh"]  # letters: the stillness check ignores digits
+    schedule = [(i * 0.2, "com.google.android.apps.maps", [el(0, "Results"), el(1, names[i])]) for i in range(60)]
+    phone = TimedPhone(schedule, idle=False)
+    cond, result = wait(phone, until="loading_done", timeout_s=10)
+    assert result.met and "keeps moving" in result.seen
+    assert result.waited_ms < (waiting.LOADING_MOVING_GRACE_S + 1.5) * 1000
+    # A screen that keeps saying "loading" still waits.
+    phone = TimedPhone([(i * 0.2, "a", [el(0, "Loading…"), el(1, names[i])]) for i in range(30)], idle=False)
+    cond, result = wait(phone, until="loading_done", timeout_s=4)
+    assert not result.met
+
+
+def test_an_amazon_search_left_unsent_in_the_box_is_submitted_without_the_model(tmp_path):
+    amz = "com.amazon.mShop.android.shopping"
+    box = el(0, "usb-c cables", cls="android.widget.EditText", editable=True, focused=True)
+    phone = Phone(opens={**OPENS_FOR_AMAZON, "https://www.amazon.com": amz}, packages=[*LABELS_FOR_AMAZON, amz],
+                  elements=[box])
+    agent, driver, _, steps, _ = make([[tool_use("done", "z", summary="ok", success=True)]], "search Amazon for usb-c cables",
+                                      driver=phone, tmp_path=tmp_path)
+    assert ("key", "ENTER") in driver.actions
+    assert [s["tool"] for s in steps[:2]] == ["open_link", "press_key"] and steps[1]["source"] == "link"
+    # Results already showing (the query in an unfocused bar): nothing is pressed.
+    phone = Phone(opens={**OPENS_FOR_AMAZON, "https://www.amazon.com": amz}, packages=[*LABELS_FOR_AMAZON, amz],
+                  elements=[el(0, "usb-c cables"), el(1, "Results")])
+    agent, driver, _, steps, _ = make([[tool_use("done", "z", summary="ok", success=True)]], "search Amazon for usb-c cables",
+                                      driver=phone, tmp_path=tmp_path)
+    assert ("key", "ENTER") not in driver.actions

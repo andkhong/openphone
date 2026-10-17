@@ -530,6 +530,8 @@ class Agent:
                 taken = self._link_step(state, obs) if self._app_links_fast_on() else None
                 if taken is not None:
                     obs = self._after_fast_step(state, obs, taken, messages)
+                    if (enter := self._link_submit(state, obs)) is not None:
+                        obs = self._after_fast_step(state, obs, enter, messages)
                     self._link_landing(state, obs, messages)
                     continue
                 taken = self._settings_step(state, obs) if self._deep_links_fast_on() else None
@@ -1944,6 +1946,23 @@ class Agent:
         state.link_cue = link if (link.cue or link.echo) and not outcome.is_error else None
         state.link_echo = str(params.get(link.echo) or "") if link.echo else ""
         return [("open_link", args, outcome)]
+
+    def _link_submit(self, state: _TaskState, obs: Observation) -> list[tuple[str, dict, Outcome]] | None:
+        """A search link that landed with its query typed in the app's focused search box but not run (Amazon,
+        measured 2026-10-17: one run in two): press ENTER as a fast step, judged by the usual ENTER rules,
+        instead of a model look and a wait."""
+        echo = state.link_echo
+        if not echo or state.link_cue is None or state.vision_next:
+            return None
+        field = gate.focused_field(obs.elements)
+        if field is None or not field.editable or field.password or not app_links.echo_shown(echo, [field.text or ""]):
+            return None
+        args = {"key": "ENTER"}
+        outcome = self._execute("press_key", args, obs, state, fast_step=True, source=app_links.SOURCE)
+        state.fast_steps += 1
+        self._event("error" if outcome.is_error else "action", f"press_key: {outcome.shown or outcome.text}",
+                    {"timings": outcome.timings, "jev": self.judge is not None, "fast": True})
+        return [("press_key", args, outcome)]
 
     def _link_landing(self, state: _TaskState, obs: Observation, messages: list[dict]) -> None:
         """After the link step's look: an entry with a screen cue must show it, else the main model takes the

@@ -211,7 +211,7 @@ LINKS: tuple[Link, ...] = (
          note="the chat only, with nothing typed; sending is a tap that asks as today"),
     Link("amazon", "search", "an Amazon search", "https://www.amazon.com/s", (_Q,), (("q", "k"),),
          patterns=SEARCH, verbs=_SEARCH_WORDS + ("shop for", "buy", "order"),
-         note="results only; buying is taps that ask as today"),
+         note="results only; buying is taps that ask as today", echo="q"),
     Link("google", "search", "a Google search", "https://www.google.com/search", (_Q,), (("q", "q"),),
          patterns=SEARCH + GOOGLE, verbs=_SEARCH_WORDS),
     Link("gmail", "inbox", "the Gmail inbox", "https://mail.google.com/mail/u/0/", patterns=INBOX, verbs=("inbox",)),
