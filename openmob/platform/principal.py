@@ -25,8 +25,6 @@ class Principal:
     kind: str = "api_key"  # later: "oauth"
     confirm_approve: bool = False  # the owner let this caller approve risky actions itself
     max_mode: str = "auto"  # the loosest permission mode its tasks may ask for (the phone's ceiling applies too)
-    # The owner let this key's drive sessions use Faster mode (screenshots to TypeSafe) where the phone has it on.
-    faster_drive: bool = False
 
     def has(self, scope: str) -> bool:
         return scope in self.scopes
@@ -52,4 +50,4 @@ def resolve(store, token: str | None) -> Principal:
         raise Unauthorized("Invalid API key.") from None
     return Principal(id=key["id"], account_id=key["account_id"], scopes=frozenset(key["scopes"]),
                      name=key["name"], confirm_approve=bool(key.get("confirm_approve")),
-                     max_mode=key.get("max_mode") or "auto", faster_drive=bool(key.get("faster_drive")))
+                     max_mode=key.get("max_mode") or "auto")

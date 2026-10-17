@@ -159,6 +159,22 @@ def test_loading_skips_the_model_and_the_wait_ends_when_ready(tmp_path, words):
     assert any("Faster mode" in m for k, m in agent.io.events if k == "status")
 
 
+def test_the_saved_line_counts_the_skipped_call_the_skipped_look_and_the_shortened_wait(tmp_path, words):
+    from openmob.agent import waiting
+
+    images = FakeImages(states=["loading", "menu"], loading=[0.9, 0.05])
+    agent, _ = make(tmp_path, DONE, images)
+    result = agent.run("start the game")
+    f = result.faster
+    assert f["model_calls_skipped"] == 1 and f["ready_waits"] == 1
+    totals = result.timings
+    looks = 2  # the first look and the one after the wait
+    expected = (totals["model_ms"] / 1000 + totals["observe_ms"] / 1000 / looks + waiting.LOADING_QUIET_MS / 1000
+                - f["jev_image_ms"] / 1000)
+    assert f["saved_s"] == pytest.approx(round(expected, 1), abs=0.11)
+    assert "shortened wait" in f["text"]
+
+
 def test_other_states_are_a_hint_and_go_on_the_step_record(tmp_path, words):
     images = FakeImages(states=["game_over"])
     agent, _ = make(tmp_path, DONE, images)
@@ -307,8 +323,13 @@ def test_drive_sessions_send_nothing_unless_the_owner_allowed_the_key(tmp_path, 
     assert agent._faster_blocked(state) == faster.DRIVE
     obs_elements: list = []
     assert agent._faster_image(state, GAME, obs_elements, GameDriver().screenshot(), True) is None
-    state.drive_images = True  # the owner allowed this key (KeyPatch faster_drive)
+    state.drive_images = True  # the phone approved this key
     assert agent._faster_blocked(state) is None
+    allowed = {"on": True}
+    state.drive_images = lambda: allowed["on"]  # live: the console turning it off takes effect at the next image
+    assert agent._faster_blocked(state) is None
+    allowed["on"] = False
+    assert agent._faster_blocked(state) == faster.DRIVE
     # A real drive session: the loop's own looks send nothing for a key that wasn't allowed.
     channel = DriveChannel(1, 5, 3, "bot")
     agent.run("drive it", drive=channel)

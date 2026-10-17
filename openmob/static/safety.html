@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenMob safety</title>
+<meta name="description" content="What OpenMob's Faster mode sends to TypeSafe, what it never sends, and how to turn it off.">
+<script>try { const t = localStorage.getItem("openmob.theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="/static/ds.css">
+<style>
+body { margin: 0; }
+main { max-width: 720px; margin: 0 auto; padding: 32px 16px 64px; line-height: 1.6; }
+h1 { font-size: 28px; margin: 0 0 8px; }
+h2 { font-size: 21px; margin: 32px 0 8px; }
+li { margin: 6px 0; }
+.warning { border-left: 3px solid var(--line-strong); padding: 10px 14px; background: var(--surface); border-radius: 6px; }
+.muted { color: var(--muted); font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>OpenMob safety</h1>
+  <p class="muted">The full version, with approvals, permission modes and data handling, is docs/safety.md in the
+    OpenMob source. This page covers what your phone's app links to.</p>
+
+  <h2 id="faster-mode">Faster mode</h2>
+  <p><b>Off by default.</b> While it's on, OpenMob may send <b>small screenshots (768 px)</b> of what the agent is
+    looking at to <b>TypeSafe</b> (Jev), a second AI service, to recognise screens faster: on screens with no
+    readable text (games, canvas pages), a loading screen is waited out without asking the main model, and the wait
+    ends as soon as the screen is ready. Jev never taps from a screenshot.</p>
+  <p class="warning">Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI service, so
+    it can recognize screens faster. Banking, wallet and password apps, and screens the phone blacks out, are never
+    sent. OpenMob blocks banking apps and detected card and ID numbers, but it can't recognize every sensitive
+    image. You can turn this off at any time.</p>
+  <ul>
+    <li><b>Only you turn it on, on the phone,</b> in the OpenMob app's Faster mode card, with your screen lock:
+      <b>Turn on for this session</b> or <b>Always on this phone</b>. An API key, the dashboard, a drive client or
+      the server's settings can't turn it on.</li>
+    <li><b>This session only</b> lasts until you disconnect (the app's Disconnect or the notification's Stop) or
+      the phone has been idle for an hour (no task or drive session). A network blip of up to 5 minutes keeps it on,
+      once the phone re-confirms the grant you signed.</li>
+    <li><b>Turning it off is one tap, no lock:</b> in the app, on the ongoing notification ("Faster mode is on" →
+      Turn off Faster mode), on the dashboard, or over the API. It takes effect from the next look.</li>
+    <li><b>Never sent, even when it's on:</b> banking, payment, wallet and password-manager apps and any app blocked
+      for the task; black or secure screens, unidentified windows and system dialogs the phone hides; the lock
+      screen; screens with a password field; screens whose text shows a card number or a Social Security number;
+      and screens with readable text (they don't need it).</li>
+    <li><b>A server without OCR sends nothing.</b> Before an image goes out, the server reads the screen's words to
+      check for card and ID numbers. A server that can't (OCR is macOS-only today) never sends one; the dashboard
+      says "Faster mode is on but inactive on this server".</li>
+    <li><b>Drive sessions</b> (an outside agent at the controls) send nothing unless you approved that API key on the
+      phone, with your screen lock.</li>
+    <li><b>Every change is logged</b>, with who and when, and every step records whether a screenshot went to
+      TypeSafe.</li>
+    <li><b>What it can't promise:</b> the server enforces all of this. A compromised server could ignore it and send
+      screenshots anyway, as it could with any screenshot it handles.</li>
+  </ul>
+</main>
+</body>
+</html>

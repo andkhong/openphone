@@ -1278,7 +1278,12 @@ class MainActivity : Activity() {
         card.addView(fasterStatus, margins(top = 10))
         card.addView(text(getString(R.string.faster_warning), 13f, color(R.color.om_text_secondary)), margins(top = 8))
         card.addView(link(getString(R.string.faster_learn_more)) {
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(getString(R.string.faster_learn_more_url)))) }
+            // The page is served by this phone's own OpenMob server (public, no sign-in): every owner can reach it.
+            val server = settings.server
+            if (server.isEmpty()) toast(getString(R.string.faster_offline)) else runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(server).buildUpon().path("/safety")
+                    .clearQuery().fragment("faster-mode").build()))
+            }
         })
         val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         fasterOnSession = button(getString(R.string.faster_on_session), Style.SECONDARY) { askFaster("session") }

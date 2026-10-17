@@ -54,18 +54,31 @@ object ModeChange {
     /** Faster mode's warning, shown when turning it on (docs/safety.md "Faster mode"; the server's FASTER_WARNING). */
     const val FASTER_WARNING = "Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second " +
         "AI service, so it can recognize screens faster. Banking, wallet and password apps, and screens the phone " +
-        "blacks out, are never sent. You can turn this off at any time."
+        "blacks out, are never sent. OpenMob blocks banking apps and detected card and ID numbers, but it can't " +
+        "recognize every sensitive image. You can turn this off at any time."
 
     /** A change that turns Faster mode on: its scope ("phone" or "session"), else null. Not gatekeeper policy (the
      *  server sends the images; the phone keeps the owner's choice in [dev.openmob.companion.FasterMode]). */
     fun fasterScope(input: String): String? = (patch(input)["faster_mode"] as? String)?.takeIf { it == "phone" || it == "session" }
+
+    /** A change that lets one API key's drive sessions use Faster mode: (key id, name), else null. */
+    fun fasterDriveKey(input: String): Pair<String, String>? {
+        val d = patch(input)["faster_drive"].obj()
+        val key = d["key"] as? String ?: return null
+        return if (d["on"] == true) key to (d["name"] as? String).orEmpty().take(60) else null
+    }
 
     /** The phone's own wording of the change. */
     fun describe(input: String): String {
         val parts = mutableListOf<String>()
         when (fasterScope(input)) {
             "phone" -> parts.add("Turn on Faster mode on this phone? $FASTER_WARNING")
-            "session" -> parts.add("Turn on Faster mode for this session? $FASTER_WARNING")
+            "session" -> parts.add("Turn on Faster mode for this session (until you disconnect, or an hour without " +
+                                   "agent activity)? $FASTER_WARNING")
+        }
+        fasterDriveKey(input)?.let { (key, name) ->
+            parts.add("Let the API key “${name.ifEmpty { key }}” use Faster mode in its drive sessions on this phone? " +
+                      FASTER_WARNING)
         }
         for (r in records(input)) when (r["type"]) {
             "never" -> {

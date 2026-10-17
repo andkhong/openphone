@@ -273,9 +273,12 @@ class DeveloperApi:
             if body.max_mode is not None:
                 self.store.set_key_max_mode(account_id, key_id, body.max_mode)
                 self.ledger.audit("key.max_mode", account_id, key_id, outcome=body.max_mode)
-            if body.faster_drive is not None:
-                self.store.set_key_faster_drive(account_id, key_id, body.faster_drive)
-                self.ledger.audit("key.faster_drive", account_id, key_id, outcome="on" if body.faster_drive else "off")
+            if body.faster_drive is True:  # on is the owner's dashboard request, approved on the phone
+                raise HTTPException(403, "Turning this on is asked from the dashboard (a phone's Permissions) and "
+                                         "approved on that phone with its screen lock. Here it can only be turned off.")
+            if body.faster_drive is False:
+                n = self.service.manager.faster_drive_off(account_id, key_id, "the developer console")
+                self.ledger.audit("key.faster_drive", account_id, key_id, outcome=f"off on {n} phone(s)")
             return next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
 
         @r.post("/keys/{key_id}/revoke")

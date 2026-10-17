@@ -24,7 +24,7 @@ on canvas; J3 96.9% (recall 88.9%) against 22.2% recall for today's one-frame he
 | | How | Lock |
 |---|---|---|
 | **Turn on: always on this phone** | The OpenMob app's Faster mode card → **Always on this phone** | Screen lock |
-| **Turn on: this session only** | The card → **Turn on for this session**. Ends when the phone's connection to the server ends (the app disconnects, the phone goes offline or reconnects, or the server restarts) | Screen lock |
+| **Turn on: this session only** | The card → **Turn on for this session**. Lasts until the owner disconnects (the app's Disconnect or the notification's Stop) or an hour without task or drive activity, and never past its signed 24-hour expiry. A reconnect within 5 minutes (a network blip) keeps it, once the phone re-presents the signed grant (§1.1) | Screen lock |
 | **Turn off** | One tap: the card's **Turn off Faster mode**, the ongoing notification's **Turn off Faster mode**, the dashboard (the **Faster mode on · Turn off** chip, or the Permissions dialog), the API (`PATCH /v1/devices/{id}/permissions {"faster_mode": "off"}`), MCP (`change_permissions faster_mode=off`) | None |
 
 **Who can turn it on: only the phone's owner, on that phone.** Never an API key, the dashboard, MCP, the server's
@@ -41,11 +41,14 @@ so nothing new is trusted:
 
 1. The app sends `{"type": "faster_mode_request", "scope": "phone" | "session"}`.
 2. The server makes a `mode_change` approval for **that phone only**, whose action input is
-   `<question>\n{"faster_mode": "<scope>"}` and whose digest binds it (`phone/approval_keys.py`).
+   `<question>\n{"faster_mode": "<scope>", …}` and whose digest binds it (`phone/approval_keys.py`). A session's
+   limits are in that signed change: `faster_until` (a hard expiry, 24 h), `faster_idle_s` (3600) and
+   `faster_resume_s` (300). The phone clamps looser values to those.
 3. The phone words the prompt **itself** from the signed change (`gate/ModeChange.describe`): "Turn on Faster mode
    on this phone? Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI service,
    so it can recognize screens faster. Banking, wallet and password apps, and screens the phone blacks out, are
-   never sent. You can turn this off at any time." The owner passes the screen lock; the phone signs
+   never sent. OpenMob blocks banking apps and detected card and ID numbers, but it can't recognize every
+   sensitive image. You can turn this off at any time." The owner passes the screen lock; the phone signs
    `<approval id>|<task id>|<digest>|true|<time>` with its Keystore key, which only signs after the screen lock.
 4. The server verifies the signature against that phone's registered key (hosted), applies the setting, records who
    and when, and pushes `faster_mode` to the phone. A signature by another phone, another key, an unsigned yes or
@@ -53,7 +56,22 @@ so nothing new is trusted:
 5. The phone shows "Faster mode is on" (the ongoing notification's text, first, and the card) only for the scope
    its owner approved there (`FasterMode.kt`). If the server's push claims Faster mode is on in a way the phone
    never approved (or "always" after a session-only approval), the phone tells the server to turn it off and says
-   so in its activity list.
+   so in its activity list. It does the same when the server claims a session-only grant is on after the grant
+   ran out (idle, expired, or away too long).
+
+### 1.1 Session only, reconnects and idle
+
+- **The owner's Disconnect** (the app's Disconnect, or Stop on the notification: a normal close, code 1000) ends it,
+  on the server and on the phone.
+- **A network blip** (any other drop) leaves it waiting: off on the server (no image is sent) until the phone
+  reconnects and sends `faster_mode_resume` with the same approval id, signature and signed time. The server treats
+  it as on again only if that is the grant it recorded, the signature checks out against the phone's key
+  (`verify_faster_grant`; the signature's age doesn't matter here, the grant's own signed limits do), the phone came
+  back within `faster_resume_s` (5 min) and the session wasn't idle past `faster_idle_s`. Anything else ends it.
+- **Idle:** the server counts task and drive activity (every image check the agent makes during a task), the phone
+  counts the server's calls. An hour without any ends it on both sides.
+- A server restart is a reconnect: the phone re-presents its grant, which still has to be inside its signed limits.
+- "Always on this phone" survives reconnects and restarts; only turning it off ends it.
 
 Token/dev mode (no accounts) has no approval keys, as for Don't ask: an app phone still asks its owner on its own
 prompt (the screen lock, unsigned), and a USB/adb phone without the app can't turn Faster mode on at all.
@@ -67,11 +85,32 @@ off_discarded`).
 
 - the phone's own `faster_log` (last 50 entries, in its permission settings, shown in the dashboard's Permissions
   dialog payload): `{at, on, scope, by}`, where `by` is "the phone (screen lock)", "the phone app", "the phone's
-  notification", "Your dashboard", an API key's name, or "the session's end";
+  notification", "Your dashboard", an API key's name, "the owner's Disconnect", "60 min idle", "the phone coming
+  back too late" or "a grant that didn't match";
 - the hosted audit log: `device.faster_mode` with `on:<scope> by …` or `off by …`;
 - a status line in the phone's chat feed;
 - per step: `faster` (on for that phone at that step), `jev_images` (screenshots sent), `jev_image_ms`, `jev_state`
   and `jev_image_skip` (why none was sent) in the steps table.
+
+### 1.2 A key's drive sessions
+
+A drive session (an outside agent deciding each step) sends no image unless the owner let that one API key, on that
+phone, with the same signed flow:
+
+1. The owner's dashboard asks (`POST /api/devices/{id}/faster-drive {"key_id"}`, an owner session only; never an
+   API key, MCP or the developer console). 202 `needs_phone_approval`.
+2. The phone gets a `mode_change` whose signed change is `{"faster_drive": {"key", "name", "on": true}}` and words it
+   itself: "Let the API key “driver” use Faster mode in its drive sessions on this phone? <the warning>".
+3. With the phone's screen-lock signature, the key joins that phone's `faster_drive_keys`. A session of that key then
+   sends images only while Faster mode itself is on for the phone (checked live at every image).
+4. Off, at once and from anywhere: the dashboard (`{"on": false}`), or the developer console
+   (`PATCH /api/developer/keys/{id} {"faster_drive": false}` removes it on every phone; `true` is refused there).
+
+### 1.3 A server that can't act on it
+
+A server with no OCR (it is macOS-only today) or no TypeSafe key never sends an image, even with Faster mode on.
+The dashboard's chip says "Faster mode is on but inactive on this server", and the Permissions dialog gives the
+reason (`faster_inactive`).
 
 ## 2. What is sent, and when
 
@@ -100,7 +139,7 @@ order:
 | `sensitive_number` | A card number or SSN in any element's text or the OCR'd words, alone or joined across boxes (`agent/sensitive.py`, the detector the gatekeeper uses) |
 | `no_text_check` | The server has no OCR (it is macOS-only today), so a treeless screen's words couldn't be checked first. **Fail closed: nothing is sent.** |
 | `black_frame` | The prepared image is black: a `FLAG_SECURE` window or a gatekeeper-blacked-out read |
-| `drive` | A drive session, unless the owner allowed that key (`faster_drive` on the key, default off; developer console `PATCH /api/developer/keys/{id}`) |
+| `drive` | A drive session, unless the owner approved that key on that phone (§1.2) |
 
 ## 3. What the loop does with the answers
 
@@ -142,15 +181,20 @@ data carries `faster: {images, jev_image_ms, model_calls_skipped, mean_model_s, 
 
 - `model_calls_skipped`: loading looks that didn't go to the main model, counted only when the text classifier
   (if any) didn't also call the screen loading (it would have waited anyway).
-- Each is priced at **this task's mean main-model time per call** (`model_ms` ÷ main-model calls).
+- Each saves **one main-model call**, at this task's mean main-model time per call (`model_ms` ÷ main-model calls),
+  **and one look**, at this task's mean observe time per look (`observe_ms` ÷ looks): on the model path the model
+  answers "wait", and the loop looks again after that wait.
+- **The shortened wait:** each loading wait a J3 check ended on "ready" saves the stillness today's frame-based
+  `loading_done` wait needs before it calls a screen loaded (`waiting.LOADING_QUIET_MS`, 0.5 s). That is the
+  replaced wait's minimum overrun past "ready", not its full length: the screen had to finish loading either way.
 - Minus the wall time of every image request this task (`jev_image_ms`).
 - With no main-model call in the task, the skipped calls are counted but not priced ("this task made no model call
   to price them"). A negative result says "saved no time".
 
-What it leaves out: the counterfactual's own extras (the main model on a loading screen usually answers "wait",
-which costs a settle and another call), and the wait itself (the screen had to finish loading either way). So the
-line is an estimate built from measured parts; the honest comparison is the same task with Faster mode off and on
-(`docs/benchmarks.md`).
+It stays conservative: the model path's own wait polling (a frame read about every 0.7 s) and its extra settle are
+not counted. On the emulator runs below it gives about 1.3 + 2.7 + 0.5 − 0.5 ≈ 4.0 s, against 4.4 s measured
+(estimate from those runs' parts; the line itself was re-checked only by the unit tests). The measured comparison is
+still the same task with Faster mode off and on (`docs/benchmarks.md`).
 
 ### Measured on the emulator (2026-10-17)
 
@@ -172,8 +216,8 @@ phone-signed switch is covered by `tests/test_faster_mode_switch.py`).
 
 - **Measured:** about 4.4 s less per task (median), and one main-model call fewer. On the "on" runs the loading look
   went to Jev, not the model, and the menu got the hint "menu".
-- **The "saved" line underestimates it:** it said ~0.5–1.2 s, because it prices only the skipped model call minus
-  the image time; the extra observation (about 2.6 s on adb with OCR) and the model's own longer wait aren't in it.
+- **The first "saved" line under-reported it:** it said ~0.5–1.2 s, pricing only the skipped model call minus the
+  image time. It now also counts the skipped look and the shortened wait (§4).
 - Limits: one emulator, one synthetic page, adb (each look about 2.7 s: the uiautomator dump, screenshot and OCR);
   on the app's fast element list the looks are cheaper and the gap will differ. Not measured on a real phone.
 
@@ -181,6 +225,8 @@ phone-signed switch is covered by `tests/test_faster_mode_switch.py`).
 
 | Threat | What stops it |
 |---|---|
+| A key's drive sessions get images without the owner | Per key and per phone, only with the phone's screen-lock signature (§1.2); the developer console can only turn it off |
+| A session-only grant outlives the session | Its limits are signed; the server ends it at Disconnect, an idle hour or a late reconnect, and the phone turns off a server that claims it after that |
 | An API key, MCP client or drive client turns it on | Schemas accept only "off"; the server refuses any `faster:` loosening not from the phone's own socket; and it still needs the phone's screen-lock signature |
 | The dashboard (or a stolen dashboard session) turns it on | Same: the dashboard can only turn it off |
 | A web page or another app on the phone | Can't reach the app's socket; the approval needs the screen lock, and the phone words the prompt itself |
@@ -206,10 +252,10 @@ jev_image_loading_wait_seconds: 10
 
 Faster mode needs `TYPESAFE_API_KEY` (Jev) and, for treeless screens, OCR on the server (macOS).
 
-## 7. Open decisions (owner)
+## 7. Owner decisions (2026-10-17)
 
-- "This session only" means the phone's current connection. A Wi-Fi blip ends it (fail toward off).
-- No OCR, no image: on a Linux server (Fly today) Faster mode does nothing until there is a text check.
-- Whether allowing a key's drive sessions (`faster_drive`) should also need the phone's screen lock (today: the
-  owner's developer console).
-- Whether to add J5 (an image "sensitive content?" check, add-only) before widening the trigger.
+- "This session only": until the owner disconnects or an hour idle; a reconnect within 5 minutes keeps it if the
+  phone re-confirms the same signed grant (§1.1).
+- No OCR, no image: kept. Stated in the docs and on the dashboard's chip (§1.3).
+- A key's drive sessions: the phone's screen lock, per key; the developer console can only turn it off (§1.2).
+- Deferred: J5 (an image "sensitive content?" check) and any wider phone-side check.

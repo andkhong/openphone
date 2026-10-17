@@ -79,7 +79,8 @@ class DriveChannel:
         self.max_seconds = float(max_seconds)
         self.max_steps = int(max_steps)
         self.requester = requester  # the key's name: the feed and the phone say who is driving
-        # Faster mode's images in this session (where the phone has it on): only if the owner allowed this key.
+        # Faster mode's images in this session: False, or a callable asked at every image (the phone approved this
+        # key with its screen lock, and Faster mode is on).
         self.faster_images = False
         self._slot: queue.Queue[Command] = queue.Queue(maxsize=1)
         self._lock = threading.Lock()

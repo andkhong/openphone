@@ -622,14 +622,13 @@ class AccountStore:
                 self._save()
             return {"id": key_id, "account_id": record["account_id"], "scopes": list(record["scopes"]),
                     "name": record["name"], "confirm_approve": bool(record.get("confirm_approve")),
-                    "max_mode": record.get("max_mode") or "auto", "faster_drive": bool(record.get("faster_drive"))}
+                    "max_mode": record.get("max_mode") or "auto"}
 
     @staticmethod
     def _public_key(key_id: str, k: dict) -> dict:
         return {"id": key_id, "prefix": f"{KEY_PREFIX}{key_id}", "name": k["name"], "scopes": list(k["scopes"]),
                 "created": k["created"], "last_used": k["last_used"], "disabled": bool(k.get("disabled")),
-                "confirm_approve": bool(k.get("confirm_approve")), "max_mode": k.get("max_mode") or "auto",
-                "faster_drive": bool(k.get("faster_drive"))}
+                "confirm_approve": bool(k.get("confirm_approve")), "max_mode": k.get("max_mode") or "auto"}
 
     def list_api_keys(self, account_id: str) -> list[dict]:
         """This account's live keys (never the hash)."""
@@ -675,17 +674,6 @@ class AccountStore:
             if not k or k["account_id"] != account_id or k["revoked"]:
                 return False
             k["confirm_approve"] = bool(on)
-            self._save()
-            return True
-
-    def set_key_faster_drive(self, account_id: str, key_id: str, on: bool) -> bool:
-        """Let this key's drive sessions use Faster mode on phones that have it on (off by default)."""
-        with self._lock:
-            self._refresh()
-            k = self._data["api_keys"].get(key_id)
-            if not k or k["account_id"] != account_id or k["revoked"]:
-                return False
-            k["faster_drive"] = bool(on)
             self._save()
             return True
 

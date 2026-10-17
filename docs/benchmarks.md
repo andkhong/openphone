@@ -64,7 +64,7 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `jev_image_skip` | While Faster mode was on, why no image was sent (the first reason this step): `sensitive_app`, `blocked_app`, `sensitive_number`, `password_field`, `black_frame`, `system_dialog`, `unknown_window`, `locked`, `no_text_check` (no OCR), `drive`, `no_frame`, or `off_discarded` (turned off while a request ran: its answer was dropped) |
 
 A loading wait that Faster mode ran is `wait_cond = auto:jev_loading`. The task's final event carries `faster`
-(`images`, `jev_image_ms`, `model_calls_skipped`, `mean_model_s`, `saved_s`) and the feed's "Faster mode saved
+(`images`, `jev_image_ms`, `model_calls_skipped`, `ready_waits`, `mean_model_s`, `mean_look_s`, `saved_s`) and the feed's "Faster mode saved
 ~N s" line; its method is in [design/faster-mode.md](design/faster-mode.md) §4 (an estimate from measured parts;
 compare the same task with Faster mode off and on for a measured number).
 

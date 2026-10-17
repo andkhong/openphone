@@ -546,29 +546,45 @@ also ends on its own after its step cap, 2 minutes without a command, or 30 minu
 to **TypeSafe** (Jev), a second AI service, to recognise screens faster: on screens with no readable text (games,
 canvas pages), a loading screen is waited out without asking the main model, and the wait ends as soon as the screen
 is ready. Jev never taps from a screenshot. Design, data flow and threat model: [design/faster-mode.md](design/faster-mode.md).
+Every OpenMob server also serves this section publicly at `/safety#faster-mode` (the phone app's "What is sent" link).
 
-- **Only you turn it on, on the phone.** In the OpenMob app's **Faster mode** card: **Turn on for this session**
-  (until the phone disconnects) or **Always on this phone**. The phone shows this warning and asks for your screen
-  lock: "Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI service, so it can
-  recognize screens faster. Banking, wallet and password apps, and screens the phone blacks out, are never sent.
-  You can turn this off at any time." The server treats it as on only after that phone's screen-lock signature.
-  An API key, the dashboard, MCP, a drive client or the server's config can't turn it on.
+- **Only you turn it on, on the phone.** In the OpenMob app's **Faster mode** card: **Turn on for this session** or
+  **Always on this phone**. The phone shows this warning and asks for your screen lock: "Faster mode sends screenshots
+  of what the agent is looking at to TypeSafe, a second AI service, so it can recognize screens faster. Banking,
+  wallet and password apps, and screens the phone blacks out, are never sent. OpenMob blocks banking apps and
+  detected card and ID numbers, but it can't recognize every sensitive image. You can turn this off at any time."
+  The server treats it as on only after that phone's screen-lock signature. An API key, the dashboard, MCP, a drive
+  client or the server's config can't turn it on.
+- **This session only** lasts until you disconnect (the app's **Disconnect**, or **Stop** on the notification) or
+  an hour passes with no task or drive activity. A network blip of up to 5 minutes keeps it on: after reconnecting,
+  the phone re-presents the grant you signed (its scope, its 24-hour hard expiry, the idle hour and the 5 minute
+  window are inside the signed change), and the server treats it as on again only then. If the server claims it's on
+  after the grant has run out, the phone turns it off.
 - **Turning it off is one tap, no lock:** in the app, on the ongoing notification ("Faster mode is on" → **Turn off
   Faster mode**), on the dashboard (the **Faster mode on · Turn off** chip), or over the API/MCP
   (`faster_mode: "off"`). It takes effect from the next look; a request already on its way may finish, but its
   answer is thrown away.
 - **While it's on**, the phone's ongoing notification says "Faster mode is on", and the dashboard shows the chip.
+- **A server without OCR sends nothing.** Before any image goes out, the server reads the screen's words to check for
+  card and ID numbers. OCR is macOS-only today, so a Linux server (the hosted one included) never sends an image;
+  the dashboard's chip then reads "Faster mode is on but inactive on this server". The same holds for a server with
+  no TypeSafe key.
 - **Never sent, even when it's on** (checked on the server before every request): banking, payment, wallet and
   password-manager apps and any app blocked for the task; black or secure screens, unidentified windows and system
   dialogs the phone hides; the lock screen; screens with a password field; screens whose text shows a card number or
   a Social Security number ([Sensitive numbers](#sensitive-numbers)); screens with readable text (they don't need
-  it); any screen when the server has no OCR to check the words first; and drive sessions, unless you allowed that
-  key in the developer console.
-- **Every change is logged**, with who and when (the phone, the notification, the dashboard, a key), and every step
-  records whether a screenshot went to TypeSafe.
+  it); any screen when the server has no OCR to check the words first; and drive sessions, unless you approved that
+  API key on the phone.
+- **Drive sessions, per key.** An outside agent's drive session sends no image unless you let that one key: ask from
+  the dashboard (a phone's **Permissions** → Faster mode → **Allow a key's drive sessions**), then approve on the
+  phone with your screen lock ("Let the API key "…" use Faster mode in its drive sessions on this phone?"). The
+  developer console and the dashboard can only take it back, at once, on every phone.
+- **Every change is logged**, with who and when (the phone, the notification, the dashboard, a key, a session's end),
+  and every step records whether a screenshot went to TypeSafe.
 - **What it can't promise:** the server enforces all of this. A compromised server could ignore it and send
-  screenshots anyway, as it could with any screenshot it handles. Personal data other than card numbers and SSNs on a
-  screen without text (a balance in a game-like app with an unlisted package) isn't recognised.
+  screenshots anyway, as it could with any screenshot it handles. OpenMob blocks banking apps and detected card and
+  ID numbers, but it can't recognize every sensitive image: other personal data on a screen without text (a balance
+  in a game-like app with an unlisted package) isn't recognised.
 
 ## Sensitive apps are off-limits by default
 

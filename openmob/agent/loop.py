@@ -260,10 +260,22 @@ class _TaskState:
     refuse_otp: bool = False
     # Faster mode (agent/faster.py): a drive session sends no image unless the owner allowed its key.
     drive: bool = False
-    drive_images: bool = False
+    drive_images: object = False  # True, or a callable asked at every image (the phone approved this key)
     faster_images: int = 0  # image requests sent to TypeSafe this task
     faster_jev_ms: float = 0.0  # their wall time
     faster_skipped: int = 0  # loading looks that didn't go to the main model (no text check had caught them)
+    faster_ready_waits: int = 0  # loading waits a J3 image check ended on "ready"
+    looks: int = 0  # observations this task (to price the extra look the model path takes)
+
+
+def _drive_images_ok(allowed) -> bool:
+    """A drive session's Faster mode allowance: True, or a callable (asked live); anything else is no."""
+    if callable(allowed):
+        try:
+            return allowed() is True
+        except Exception:
+            return False
+    return allowed is True
 
 
 def is_yes(answer: str) -> bool:
@@ -364,7 +376,7 @@ class Agent:
         if drive is not None:  # no model, no fast path, no replay: the outside agent is all of those
             state.fast = False
             state.drive = True
-            state.drive_images = getattr(drive, "faster_images", False) is True
+            state.drive_images = getattr(drive, "faster_images", False)
             self._task_variant = "drive"
             # The phone judges each act at this session's mode (capped at trusted), and its own prompts wait here
             # and reach the outside agent as needs_approval. Without this a gatekeeper phone saw no mode and judged
@@ -889,6 +901,7 @@ class Agent:
 
     def _observe(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = (),
                  classify: bool = True) -> Observation:
+        state.looks += 1
         with self.timer.phase("observe"):
             return self._observe_untimed(state, before, pending, classify)
 
@@ -3470,7 +3483,7 @@ class Agent:
             on = False
         if not on:
             return faster.OFF
-        if state.drive and not state.drive_images:
+        if state.drive and not _drive_images_ok(state.drive_images):
             return faster.DRIVE
         return None
 
@@ -3620,36 +3633,48 @@ class Agent:
                 break
         waited = int((time.monotonic() - started) * 1000)
         state.settle_wait = {"wait_cond": "auto:jev_loading", "wait_met": met, "wait_via": via, "waited_ms": waited}
+        if met and via == "jev_image":
+            state.faster_ready_waits += 1
         timing.trace(f"faster wait: {seen} after {waited} ms via {via}")
         return met
 
     def _faster_summary(self, state: _TaskState) -> dict | None:
-        """"Faster mode saved ~N s", computed from this task's own measurements: each loading look that skipped
-        the main model is priced at this task's mean main-model time per call, minus the time spent on image
-        requests. With no main-model call in the task, the skipped calls are counted but not priced
-        (docs/design/faster-mode.md, "Time saved")."""
+        """"Faster mode saved ~N s", from this task's own measurements (docs/design/faster-mode.md §4):
+
+        - each loading look that skipped the main model saves one main-model call (this task's mean time per call)
+          and one look (this task's mean observe time per look: the model path looks again after its own wait);
+        - each loading wait a J3 check ended on "ready" saves the stillness today's frame wait needs before it calls a
+          screen loaded (waiting.LOADING_QUIET_MS);
+        - minus the wall time of every image request.
+
+        Conservative: the model path's own wait polls and its extra settle aren't counted. With no main-model call in
+        the task, the skipped calls can't be priced and the line says so."""
         if not state.faster_images and not state.faster_skipped:
             return None
+        totals = self.timer.task_totals()
         jev_s = state.faster_jev_ms / 1000
-        model_ms = self.timer.task_totals().get("model_ms", 0)
-        mean_s = model_ms / 1000 / self._vision_calls if self._vision_calls else None
+        mean_s = totals.get("model_ms", 0) / 1000 / self._vision_calls if self._vision_calls else None
+        look_s = totals.get("observe_ms", 0) / 1000 / state.looks if state.looks else 0.0
+        quiet_s = waiting.LOADING_QUIET_MS / 1000 * state.faster_ready_waits
         out = {"images": state.faster_images, "jev_image_ms": int(round(state.faster_jev_ms)),
-               "model_calls_skipped": state.faster_skipped, "mean_model_s": round(mean_s, 2) if mean_s else None}
+               "model_calls_skipped": state.faster_skipped, "ready_waits": state.faster_ready_waits,
+               "mean_model_s": round(mean_s, 2) if mean_s is not None else None, "mean_look_s": round(look_s, 2)}
         sent = f"{state.faster_images} screenshot check{'s' if state.faster_images != 1 else ''} ({jev_s:.1f} s)"
-        if state.faster_skipped and mean_s:
-            saved = state.faster_skipped * mean_s - jev_s
+        calls = f"{state.faster_skipped} model call{'s' if state.faster_skipped != 1 else ''}"
+        if state.faster_skipped and mean_s is not None:
+            saved = state.faster_skipped * (mean_s + look_s) + quiet_s - jev_s
             out["saved_s"] = round(saved, 1)
-            calls = f"{state.faster_skipped} model call{'s' if state.faster_skipped != 1 else ''}"
-            out["text"] = (f"Faster mode saved ~{saved:.1f} s: {calls} skipped on loading screens, at this task's "
-                           f"{mean_s:.1f} s per model call, minus {sent}." if saved > 0 else
-                           f"Faster mode saved no time this task: {calls} skipped ({mean_s:.1f} s each) didn't cover "
-                           f"{sent}.")
+            how = (f"{calls} and look{'s' if state.faster_skipped != 1 else ''} skipped on loading screens "
+                   f"({mean_s:.1f} s + {look_s:.1f} s each, this task's own), {quiet_s:.1f} s of shortened wait, "
+                   f"minus {sent}")
+            out["text"] = (f"Faster mode saved ~{saved:.1f} s: {how}." if saved > 0 else
+                           f"Faster mode saved no time this task: {how}.")
         elif state.faster_skipped:
             out["saved_s"] = None
-            out["text"] = (f"Faster mode skipped {state.faster_skipped} model call(s) on loading screens (this task "
-                           f"made no model call to price them); {sent}.")
+            out["text"] = (f"Faster mode skipped {calls} on loading screens (this task made no model call to price "
+                           f"them); {sent}.")
         else:
-            out["saved_s"] = round(-jev_s, 1)
+            out["saved_s"] = round(quiet_s - jev_s, 1)
             out["text"] = f"Faster mode skipped no model call this task; {sent}."
         return out
 

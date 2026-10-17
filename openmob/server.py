@@ -81,6 +81,11 @@ class PermissionsIn(BaseModel):
     faster_mode: Literal["off"] | None = None
 
 
+class FasterDriveIn(BaseModel):
+    key_id: str
+    on: bool = True
+
+
 class Credentials(BaseModel):
     email: str
     password: str
@@ -230,6 +235,11 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
             raise HTTPException(status_code=404, detail="Unknown doc.")
         return Response(path.read_text(), media_type="text/markdown; charset=utf-8",
                         headers={"Cache-Control": "public, max-age=300"})
+
+    @app.get("/safety", response_class=HTMLResponse)
+    def safety_page() -> str:
+        """Public: what Faster mode sends and never sends (the phone app's "What is sent" link points here)."""
+        return (STATIC / "safety.html").read_text()
 
     @app.get("/connect", response_class=HTMLResponse)
     def connect_page() -> str:
@@ -649,15 +659,26 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                 return mode_error(exc)
         return {"result": session.coordinator.submit(body.text, "dashboard", mode=body.mode, permission_mode=mode)}
 
+    def faster_view(session) -> dict:
+        """Faster mode for the dashboard: on (and which scope) and, when on, whether this server can act on it at
+        all (no TypeSafe key, or no OCR to check a screen's words first: then nothing is ever sent)."""
+        active = manager.faster_scope(session.info.id) if hasattr(manager, "faster_scope") else "off"
+        agent = getattr(session.coordinator, "agent", None)
+        inactive = None
+        if active != "off":
+            if agent is None or getattr(agent, "images", None) is None:
+                inactive = "no TypeSafe key on this server"
+            elif not getattr(agent, "use_ocr", False):
+                inactive = "no OCR on this server, so no screen's words can be checked and nothing is sent"
+        return {"faster_active": active, "faster_inactive": inactive}
+
     def permissions_view(session) -> dict:
         settings = manager.permission_settings(session.info.id)
         return {**perm.public(settings), "labels": perm.LABELS, "descriptions": perm.DESCRIPTIONS,
                 "categories": sorted(manager.cfg.app_categories), "never_durations": list(perm.NEVER_DURATIONS),
                 "can_loosen": manager._may_loosen(session), "online": bool(session.online),
-                # Whether Faster mode is on for this phone now (the stored faster_mode, checked against its
-                # connection for "session"). The dashboard can only turn it off.
-                "faster_active": manager.faster_scope(session.info.id)
-                if hasattr(manager, "faster_scope") else "off"}
+                # Whether Faster mode is on for this phone now. The dashboard can only turn it off.
+                **faster_view(session)}
 
     @app.get("/api/devices/{device_id}/permissions")
     def get_permissions(device_id: str, request: Request) -> dict:
@@ -674,6 +695,28 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
         patch = body.model_dump(exclude_none=True)
         try:
             result = manager.change_permissions(session, patch, requester="Your dashboard")
+        except (perm.ModeNotAllowed, perm.PhoneUnavailable, perm.PermissionsInvalid) as exc:
+            return mode_error(exc)
+        if result["status"] == "applied":
+            return JSONResponse({**result, "settings": permissions_view(session)})
+        return JSONResponse({**result, "code": "needs_phone_approval",
+                             "detail": "Approve this on the phone, with its screen lock."}, status_code=202)
+
+    @app.post("/api/devices/{device_id}/faster-drive")
+    def faster_drive(device_id: str, body: FasterDriveIn, request: Request) -> Response:
+        """The owner asks to let one of their API keys' drive sessions use Faster mode on this phone. Applied only
+        after the phone's screen-lock approval (202 needs_phone_approval). Off: {on: false}, applied at once."""
+        require_auth(request)
+        session = owned_session(device_id, request)
+        if store is None:
+            raise HTTPException(status_code=400, detail="API keys (and drive sessions) exist only in accounts mode.")
+        key = next((k for k in store.list_api_keys(account(request)) if k["id"] == body.key_id), None)
+        if key is None:
+            raise HTTPException(status_code=404, detail="Unknown key.")
+        try:
+            result = (manager.request_faster_drive(session, key["id"], key["name"], requester="Your dashboard")
+                      if body.on else manager.change_permissions(
+                          session, {"faster_drive": {"key": key["id"], "on": False}}, requester="Your dashboard"))
         except (perm.ModeNotAllowed, perm.PhoneUnavailable, perm.PermissionsInvalid) as exc:
             return mode_error(exc)
         if result["status"] == "applied":
@@ -802,8 +845,7 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
         owner_dialog = getattr(s.driver, "owner_dialog", None)
         return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s)),
                 "owner_dialog": owner_dialog if isinstance(owner_dialog, str) else None,
-                "permissions": {**perm.public(settings), "faster_active": manager.faster_scope(s.info.id)
-                                if hasattr(manager, "faster_scope") else "off"} if settings else None}
+                "permissions": {**perm.public(settings), **faster_view(s)} if settings else None}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
 
@@ -982,8 +1024,24 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
     def may_approve_for_others(session) -> bool:
         return store.trusted_for_approvals(session.info.id.removeprefix("app-"))
 
+    def verify_faster_grant(session, grant: dict) -> bool:
+        """A re-presented Faster mode grant: the phone's own screen-lock signature over the recorded approval (its
+        id, task and the change's digest). Its age doesn't matter here: the grant's own signed limits do."""
+        if store is None:
+            return True
+        from .phone.approval_keys import verify_approval
+
+        auth = store.device_auth(session.info.id.removeprefix("app-"))
+        if not auth or auth["revoked"] or auth["account_id"] != session.account_id or not auth["approval_key"]:
+            return False
+        ts = grant.get("timestamp")
+        return isinstance(ts, (int, float)) and verify_approval(
+            auth["approval_key"], str(grant.get("approval_id") or ""), str(grant.get("task_id") or ""), True, ts,
+            grant.get("signature"), now=ts, digest=grant.get("digest"))
+
     if hasattr(manager, "replaced_listeners"):  # (test doubles may not have these)
         manager.approval_verifier = verify_phone_approval
+        manager.faster_grant_verifier = verify_faster_grant
         if store is not None:  # hosted: settings live on each phone's pairing; loosening needs its key
             manager.permissions = perm.AccountPermissions(store)
             manager.can_loosen = phone_can_loosen
@@ -1092,6 +1150,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                     await run_in_threadpool(manager.phone_turned_off_never, session)
                 elif kind == "faster_mode_request":  # the owner turns Faster mode on in the app: a signed approval
                     await run_in_threadpool(manager.phone_faster_request, session, str(message.get("scope") or ""))
+                elif kind == "faster_mode_resume":  # after a reconnect: the phone re-presents its signed grant
+                    await run_in_threadpool(manager.phone_faster_resume, session, message)
                 elif kind == "faster_mode_off":  # one tap in the app or its notification: an unsigned tightening
                     await run_in_threadpool(manager.faster_off, session, "the phone's notification"
                                             if message.get("via") == "notification" else "the phone app")

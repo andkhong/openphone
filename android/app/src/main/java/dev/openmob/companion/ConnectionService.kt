@@ -287,7 +287,7 @@ class ConnectionService : Service() {
         val delay = backoffSeconds * (0.8 + Random.nextDouble() * 0.4)
         AppState.setConnection("$reason. Retrying in ${delay.toInt().coerceAtLeast(1)} s…", false)
         setController("") // the server says again who is driving once we're back
-        FasterMode.connectionEnded() // a session-only Faster mode ends with the connection (the server agrees)
+        FasterMode.connectionLost() // a blip: a session-only Faster mode waits for the reconnect (its window)
         updateNotification("Reconnecting to your agent…")
         main.postDelayed({ connect() }, (delay * 1000).toLong())
         backoffSeconds = (backoffSeconds * 2).coerceAtMost(30.0)
@@ -309,7 +309,7 @@ class ConnectionService : Service() {
         ScreenKeeper.release()
         getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         Approvals.clear(this)
-        FasterMode.connectionEnded()
+        FasterMode.ownerDisconnected() // the owner disconnected: a session-only Faster mode ends
         setController("")
         status?.let { AppState.setConnection(it, false) }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -361,6 +361,7 @@ class ConnectionService : Service() {
         )
 
     private fun handleCall(message: JSONObject) {
+        FasterMode.touch() // agent activity (a session-only Faster mode ends after an hour without any)
         val id = message.getString("id")
         val method = message.getString("method")
         val params = message.optJSONObject("params") ?: JSONObject()
@@ -576,6 +577,8 @@ class ConnectionService : Service() {
                     backoffSeconds = 1.0
                     AppState.setConnection("Connected to ${Uri.parse(settings.server).host ?: "server"}", true)
                     updateNotification("Agent connected · ready")
+                    // Back after a blip: re-present a session-only Faster mode's signed grant, if still good.
+                    FasterMode.resumeMessage()?.let { send(JSONObject(it)) }
                 }
                 "call" -> handleCall(message)
                 "event" -> handleEvent(message.optString("kind"), message.optString("message"))
@@ -595,7 +598,8 @@ class ConnectionService : Service() {
                         p.keys().forEach { GateHost.tightenPermission(it, p.optString(it)) }
                     }
                     // Faster mode: shown only as the owner approved it here; a server claiming more is told off.
-                    if (FasterMode.onServerPush(this@ConnectionService, message.optString("faster_mode", "off"))) {
+                    if (FasterMode.onServerPush(this@ConnectionService, message.optString("faster_mode", "off"),
+                                                message.optBoolean("faster_resume"))) {
                         send(JSONObject().put("type", "faster_mode_off").put("via", "app"))
                         AppState.addEvent("status", getString(R.string.faster_not_approved))
                     }
