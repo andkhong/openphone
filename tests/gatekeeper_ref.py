@@ -325,11 +325,21 @@ def targets_at(window: Window, x: float, y: float, limit: int = 60) -> list:
     return out
 
 
+def own_overlay(rules: Rules, w: Window) -> bool:
+    """One of OpenMob's own accessibility overlays (keep-awake, the agent indicator's border and Stop pill)."""
+    return w.type == "accessibility_overlay" and w.package in rules.own
+
+
+def catches_touches(w: Window) -> bool:
+    """Only the indicator's Stop pill has a clickable node: the border and keep-awake are untouchable."""
+    return any(n.clickable or n.long_clickable for n in walk(w.root, []))
+
+
 def hit_test(rules: Rules, screen: Screen, x: float, y: float) -> Target | None:
-    """The window that catches a touch at (x, y) (highest layer first; our own keep-awake overlay never
-    catches touches), and the path to the deepest node there."""
+    """The window that catches a touch at (x, y), highest layer first, and the path to the deepest node there. Our
+    own untouchable overlays never catch touches; the Stop pill does (and a tap on it is refused)."""
     for w in screen.ordered():
-        if w.type == "accessibility_overlay" and w.package in rules.own:
+        if own_overlay(rules, w) and not catches_touches(w):
             continue
         if not contains(w.bounds, x, y):
             continue
@@ -1680,6 +1690,10 @@ class Gatekeeper:
         if not w.package:
             return ("gate_screen_unstable", "builtin:unknown_window",
                     "That part of the screen can't be read yet (an app may still be loading). Look again.")
+        if own_overlay(r, w):
+            return ("gate_denied_page", "builtin:own_indicator",
+                    "That's OpenMob's Stop button (its agent indicator); agents can't touch it. Tap somewhere else, or "
+                    "scroll what you need away from that corner.")
         if w.package in r.own:
             return ("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if w.package == r.surf["systemui"]:

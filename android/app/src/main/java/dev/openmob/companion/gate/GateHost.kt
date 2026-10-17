@@ -145,7 +145,7 @@ object GateHost {
     fun isSettingsPackage(pkg: String): Boolean = gk().rules.settingsPkg.containsMatchIn(pkg)
 
     /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
-    fun ownerDialogOpened(message: String) { ownerDialog = message }
+    fun ownerDialogOpened(message: String) { ownerDialog = message; dev.openmob.companion.ControlIndicator.refresh() }
 
     /** On window events: has the dialog a task is waiting on gone? */
     fun refreshOwnerDialog(service: OpenMobAccessibilityService) {
@@ -154,6 +154,7 @@ object GateHost {
         if (runCatching { g.ownerDialog(GateScreens.dialogScreen(service)) }.getOrNull() == null) {
             ownerDialog = null
             onOwnerDialogClosed?.invoke()
+            dev.openmob.companion.ControlIndicator.refresh()
         }
     }
 
@@ -321,8 +322,16 @@ object GateHost {
     fun markShown(id: String) { gate?.markShown(id) }
     fun cancel(id: String): Boolean = id.startsWith("gk") && gate?.cancel(id) == true
 
+    /** Is one of the phone's own prompts open (the indicator turns amber)? */
+    fun promptPending(): Boolean = gate?.promptPending() == true
+
+    /** The owner tapped the indicator's Stop: every open prompt closes unanswered, and the server hears it
+     *  (gate_event expired) before the connection closes. */
+    fun withdrawPrompts() { gate?.pendingIds()?.forEach { cancel(it) } }
+
     private fun onEvent(id: String, state: String) {
         sink?.invoke(JSONObject().put("type", "gate_event").put("approval_id", id).put("state", state))
+        dev.openmob.companion.ControlIndicator.refresh() // a prompt opened or closed: amber or not
         if (state == "expired") main.post { Approvals.cancel(app, id) }
         if (state == "denied" && gk().suspended) main.post {
             dev.openmob.companion.ConnectionService.showResume()
@@ -362,7 +371,7 @@ object GateHost {
         refreshBanner()
     }
 
-    fun resume() = gate?.resume()
+    fun resume() { gate?.resume(); dev.openmob.companion.ControlIndicator.refresh() }
     fun everydayOff() { gate?.let { if (it.everyday) { it.everydayOff(); save() } } }
 
     /** A permission-dialog default from the server: taken only if it tightens (loosening is signed on the phone). */

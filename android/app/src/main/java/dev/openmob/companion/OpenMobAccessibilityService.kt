@@ -29,6 +29,27 @@ class OpenMobAccessibilityService : AccessibilityService() {
     @Volatile var lastEventAt: Long = 0L
     val windowSince = java.util.concurrent.ConcurrentHashMap<Int, Long>()
 
+    /** Ids of OpenMob's own overlay windows (keep-awake, the agent indicator) seen so far: their coming and going is
+     *  not a change on screen (window ids aren't reused until reboot; a few dozen at most are kept). */
+    private val ownWindows = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Int, Boolean>())
+
+    private fun noteOwnWindows() {
+        runCatching {
+            for (w in windows) if (w.type == android.view.accessibility.AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY) {
+                val root = w.root ?: continue
+                if (root.packageName?.toString() == packageName) ownWindows.add(w.id)
+            }
+        }
+        if (ownWindows.size > 64) ownWindows.clear()
+    }
+
+    private fun ownWindowEvent(event: AccessibilityEvent): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED) return false
+        if (event.windowId in ownWindows) return true
+        noteOwnWindows() // just added: not seen yet
+        return event.windowId in ownWindows
+    }
+
     private fun noteWindows() {
         val now = SystemClock.uptimeMillis()
         val ids = runCatching { windows.map { it.id } }.getOrDefault(emptyList())
@@ -77,6 +98,8 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         instance = this
+        ControlIndicator.init(this)
+        ControlIndicator.refresh() // a task may be acting already (the service restarted)
         PermissionOcr.warmUp() // permission dialogs Android 14+ hides are read with OCR: have the model ready
         AppState.notifyListeners()
         if (AppState.returnAfterAccessibility) {
@@ -92,6 +115,9 @@ class OpenMobAccessibilityService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
+        // OpenMob's own overlay appearing or going (the indicator before an action): not a change on screen, so the
+        // gate's settle wait and wait_idle aren't held up by it.
+        if (ownWindowEvent(event)) return
         noteChange(event)
         if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) noteWindows()
@@ -142,12 +168,14 @@ class OpenMobAccessibilityService : AccessibilityService() {
 
     override fun onUnbind(intent: Intent?): Boolean {
         keepScreenOn(false)
+        ControlIndicator.serviceGone() // its overlays go with the service
         instance = null
         AppState.notifyListeners()
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        ControlIndicator.serviceGone()
         instance = null
         AppState.notifyListeners()
         super.onDestroy()

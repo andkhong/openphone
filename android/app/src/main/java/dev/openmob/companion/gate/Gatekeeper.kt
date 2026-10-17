@@ -353,6 +353,9 @@ class Gatekeeper(
     }
 
     val promptOpen: Boolean get() = synchronized(lock) { pending.isNotEmpty() }
+    /** A prompt is open right now (expired ones dropped first): the agent indicator shows the approval state. */
+    fun promptPending(): Boolean = synchronized(lock) { expire(now()); pending.isNotEmpty() }
+    fun pendingIds(): List<String> = synchronized(lock) { pending.keys.toList() }
     fun pending(id: String): Pending? = synchronized(lock) { pending[id] }
 
     // --- admit ------------------------------------------------------------------------------------
@@ -1078,6 +1081,9 @@ class Gatekeeper(
     private fun surfaceRefusal(w: GWindow): Triple<String, String, String>? {
         if (w.pkg.isEmpty()) return Triple("gate_screen_unstable", "builtin:unknown_window",
             "That part of the screen can't be read yet (an app may still be loading). Look again.")
+        if (GateScreen.ownOverlay(rules, w)) return Triple("gate_denied_page", "builtin:own_indicator",
+            "That's OpenMob's Stop button (its agent indicator); agents can't touch it. Tap somewhere else, or scroll " +
+                "what you need away from that corner.")
         if (w.pkg in rules.own) return Triple("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if (w.pkg == rules.surfStr("systemui")) {
             val title = rules.rx(rules.surfStr("prompt_titles"))

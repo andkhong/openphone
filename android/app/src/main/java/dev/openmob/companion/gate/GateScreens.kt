@@ -85,8 +85,11 @@ object GateScreens {
             val bounds = Rect().also(w::getBoundsInScreen)
             val pkg = root?.packageName?.toString().orEmpty()
             val tree = root?.let { TreeWalk(ADAPTER, pinned, budget = MAX_NODES, maxDepth = MAX_DEPTH).read(it) }
-            windows.add(GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(),
-                intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree, service.windowSince[w.id] ?: 0L))
+            val gw = GWindow(w.id, typeName(w.type), w.layer, pkg, w.title?.toString().orEmpty(),
+                intArrayOf(bounds.left, bounds.top, bounds.right, bounds.bottom), tree, service.windowSince[w.id] ?: 0L)
+            // OpenMob's own overlays (keep-awake, the agent indicator): only whether they catch touches matters.
+            windows.add(if (w.type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY && pkg == service.packageName)
+                GateScreen.ownOverlayView(gw) else gw)
         }
         val keyguard = service.getSystemService(android.app.KeyguardManager::class.java)
         val pm = service.packageManager

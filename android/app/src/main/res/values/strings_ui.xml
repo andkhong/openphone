@@ -229,4 +229,25 @@
     <string name="gate_prompt_interrupted">Interrupted. The screen lock prompt comes back in a moment; or tap Approve or Deny.</string>
     <string name="gate_always_for">Always allow for %1$s</string>
     <string name="gate_mode_change_limited">A permission change request was ignored: at most 2 an hour can be asked on this phone.</string>
+    <!-- The agent indicator (IndicatorOverlay, MainActivity's Agent indicator card) -->
+    <string name="indicator_stop">■ Stop</string>
+    <string name="indicator_stop_description">Stop the agent</string>
+    <string name="indicator_stopped_event">You stopped the agent with the Stop button.</string>
+    <string name="indicator_title">Agent indicator</string>
+    <string name="indicator_help">While an agent is acting on this phone, a glowing border shows around the screen and a Stop button sits in a corner. Amber and thicker: a prompt waits for you. Dashed: paused until you unlock or answer. Only you can change these here; agents and servers can\'t.</string>
+    <string name="indicator_border">Glowing border</string>
+    <string name="indicator_color">Border colour</string>
+    <string name="indicator_custom">Custom…</string>
+    <string name="indicator_custom_title">Custom border colour</string>
+    <string name="indicator_custom_hint">#RRGGBB, e.g. #00B8D4</string>
+    <string name="indicator_custom_invalid">Use six hex digits, like #00B8D4.</string>
+    <string name="indicator_pulse">Gentle pulse</string>
+    <string name="indicator_pulse_help">Off whenever Android\'s Remove animations is on.</string>
+    <string name="indicator_pill">Stop button</string>
+    <string name="indicator_corner">Stop button corner</string>
+    <string name="indicator_corner_top_right">Top right</string>
+    <string name="indicator_corner_top_left">Top left</string>
+    <string name="indicator_corner_bottom_right">Bottom right</string>
+    <string name="indicator_corner_bottom_left">Bottom left</string>
+    <string name="indicator_preview">Preview for 4 seconds</string>
 </resources>
