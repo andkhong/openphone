@@ -290,6 +290,20 @@ class Config:
     jev_auto_wait_seconds: float = 30.0  # max time to wait on screens Jev calls "loading"
     # false: run without Jev even when TYPESAFE_API_KEY is set (for comparisons). OPENMOB_JEV=off does the same.
     jev_enabled: bool = True
+    # Faster mode (docs/design/faster-mode.md): small screenshots of screens without usable text go to TypeSafe
+    # (Jev images) to tell loading screens apart and name the screen's state. Each phone's owner turns it on in
+    # the OpenMob app, with the screen lock; every phone starts with it off, and nothing here can turn it on.
+    # "phone_opt_in": phones may turn it on; "disabled": this server never sends an image (the phones' setting
+    # is ignored). Any other value is refused.
+    faster_mode: str = "phone_opt_in"
+    # Pinned: images are TypeSafe "Dreamer-ready" (not production); 1.14.0 is the version the 2026-10-17
+    # benchmark measured. Never a moving alias (jev-preview, jev-latest).
+    jev_image_model: str = "jev-1.14.0"
+    jev_image_side: int = 768  # the long side of the image sent (the benchmark's size)
+    jev_image_timeout_ms: int = 600  # one image request at most; a slower answer is discarded, the step goes on
+    jev_image_min_confidence: float = 0.6  # below this, an image answer is ignored (today's behaviour)
+    jev_image_loading_looks: int = 2  # extra looks on a loading screen before the main model is asked anyway
+    jev_image_loading_wait_seconds: float = 10.0  # one loading wait at most (jev_auto_wait_seconds caps a task)
     # Fast path (needs Jev): on screens with a usable element list, Jev picks the next operation and its
     # target in one call and the step runs without the main model (a small text model writes any text).
     # off | fast_tier (only tasks on the `fast` API tier's model) | on. OPENMOB_FAST_PATH sets it too.
@@ -340,6 +354,9 @@ class Config:
     workspace_id: str | None = None
     jev_api_key: str | None = None
     source: Path | None = None
+
+
+FASTER_MODE_VALUES = ("phone_opt_in", "disabled")
 
 
 def load_config(path: str | Path | None = None) -> Config:
@@ -441,6 +458,11 @@ def load_config(path: str | Path | None = None) -> Config:
         raise ValueError("history_trim must be one of: batch, rolling")
     if cfg.ui_tree not in {"auto", "always", "never"}:
         raise ValueError("ui_tree must be one of: auto, always, never")
+    if cfg.faster_mode not in FASTER_MODE_VALUES:
+        raise ValueError("faster_mode must be one of: " + ", ".join(FASTER_MODE_VALUES) + ". Only a phone's owner "
+                         "can turn Faster mode on, in the OpenMob app on that phone.")
+    if not str(cfg.jev_image_model).startswith("jev-") or cfg.jev_image_model in ("jev-latest", "jev-preview"):
+        raise ValueError("jev_image_model must name an exact Jev version (e.g. jev-1.14.0), not a moving alias.")
     prompts = dict(PERMISSION_DEFAULTS)
     for kind, value in (cfg.permission_prompts or {}).items():
         if kind not in PERMISSION_DEFAULTS or value not in permission_values(kind):

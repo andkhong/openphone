@@ -439,6 +439,8 @@ class Coordinator:
                             self.task_info[task_id]["prompts_count"] = result.prompts
                 if getattr(result, "done_via", None):
                     data["done_via"] = result.done_via  # internal: vision | classifier (the API doesn't show it)
+                if isinstance(getattr(result, "faster", None), dict):
+                    data["faster"] = result.faster  # Faster mode: images sent, model calls skipped, time saved
                 summary = result.summary
                 if getattr(result, "reason", None) and not result.success:
                     data["reason"] = result.reason  # e.g. phone_locked: the phone stayed locked past the wait

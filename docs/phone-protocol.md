@@ -240,6 +240,38 @@ the socket (1000), as before.
 **`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
 Don't ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
 
+**Faster mode** ([design](design/faster-mode.md)). Newer servers and apps; others ignore these messages, and
+Faster mode stays off.
+
+- **`faster_mode_request`** (phone to server): the owner tapped **Turn on** in the app.
+  `{"type": "faster_mode_request", "scope": "phone" | "session"}`. The server answers with a `mode_change`
+  `approval_request` to **that phone only**, whose `action.input` is `<question>\n{"faster_mode": "<scope>"}` and
+  whose `change` carries `faster_mode`. The app words the prompt itself from the signed change (the warning in
+  [safety.md](safety.md#faster-mode)) and signs it with its screen-lock key, as any `mode_change`. The server
+  applies it only with that signature (accounts mode); it never comes from anything but this message, and the
+  dashboard and the API can't start one. `session`: its limits are in the signed change (`faster_until`, a unix
+  hard expiry about 24 h out; `faster_idle_s`, 3600; `faster_resume_s`, 300); it lasts until the owner disconnects
+  (a normal close, 1000) or that long without agent activity.
+- **`faster_mode_resume`** (phone to server): right after the `welcome` of a reconnect, a session-only grant that is
+  still inside its signed limits. `{"type": "faster_mode_resume", "approval_id": "…", "signature": "…",
+  "timestamp": 1791223200}`: exactly the approval's id, signature and signed time (an unsigned token-mode approval
+  sends the id only). The server treats Faster mode as on again only if it matches the grant it recorded, the
+  signature verifies against the phone's key, and the phone came back within `faster_resume_s`; anything else ends
+  it. The phone ends a session grant at Disconnect, after `faster_idle_s` without server calls, or past
+  `faster_until`.
+- **Drive sessions, per key:** a `mode_change` whose change is `{"faster_drive": {"key", "name", "on": true}}`
+  (asked from the owner's dashboard). The app words it ("Let the API key “…” use Faster mode in its drive
+  sessions on this phone?" plus the warning) and signs it as any `mode_change`. It isn't a Faster mode grant of its
+  own: images still need Faster mode on.
+- **`faster_mode_off`** (phone to server): one tap in the app or its notification.
+  `{"type": "faster_mode_off", "via": "app" | "notification"}`. A tightening: no signature.
+- **`permissions`** (server to phone) carries `"faster_mode": "phone" | "session" | "off"`, what the server applies
+  now, and `"faster_resume": true` while a session-only grant waits for the phone's `faster_mode_resume` (the app
+  keeps its grant then). The app shows "Faster mode is on" (first in its ongoing notification, with a **Turn off
+  Faster mode** action, and on its Faster mode card) only for an active grant of that scope; when the server
+  claims more, or claims a session grant after it ran out, the app sends `faster_mode_off` and says so in its
+  activity list.
+
 **`event` with `kind: "controller"`** (server to phone): who is driving the phone right now.
 ```json
 {"type": "event", "kind": "controller", "message": "Claude"}

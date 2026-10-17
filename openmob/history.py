@@ -151,8 +151,15 @@ MIGRATIONS = [("turns", "package", "TEXT")] + [
 ] + [("steps", column, kind) for column, kind in (
     # A wait (agent/waiting.py) on this step: the wait_until tool's, the `wait` tool's sleep, or the loop's own
     # ("auto:…", after a launch or an Install tap). wait_cond: e.g. text_appears:Open|Play, sleep, auto:loading_done.
-    ("wait_cond", "TEXT"), ("wait_met", "INTEGER"), ("wait_via", "TEXT"), ("waited_ms", "INTEGER"))]
+    ("wait_cond", "TEXT"), ("wait_met", "INTEGER"), ("wait_via", "TEXT"), ("waited_ms", "INTEGER"))] + [
+    # Faster mode (docs/design/faster-mode.md): faster 1/0 = on for this phone at this step; jev_images = screenshots
+    # sent to TypeSafe on this step and jev_image_ms their wall time (part of jev_ms); jev_state = the screen state
+    # an image check named (J1); jev_image_skip = why an image wasn't sent while it was on (agent/faster.py).
+    ("steps", column, kind) for column, kind in (
+        ("faster", "INTEGER"), ("jev_images", "INTEGER"), ("jev_image_ms", "INTEGER"), ("jev_state", "TEXT"),
+        ("jev_image_skip", "TEXT"))]
 WAIT_COLUMNS = ("wait_cond", "wait_met", "wait_via", "waited_ms")
+FASTER_COLUMNS = ("faster", "jev_images", "jev_image_ms", "jev_state", "jev_image_skip")
 
 
 class History:
@@ -283,6 +290,13 @@ class History:
                                  "WHERE turn_id = ? AND idx = ?",
                                  (step["wait_cond"], None if met is None else int(bool(met)), step.get("wait_via"),
                                   step.get("waited_ms"), turn_id, step["idx"]))
+            if any(step.get(c) is not None for c in FASTER_COLUMNS):
+                on = step.get("faster")
+                self._db.execute("UPDATE steps SET faster = ?, jev_images = ?, jev_image_ms = ?, jev_state = ?, "
+                                 "jev_image_skip = ? WHERE turn_id = ? AND idx = ?",
+                                 (None if on is None else int(bool(on)), step.get("jev_images"),
+                                  step.get("jev_image_ms"), step.get("jev_state"), step.get("jev_image_skip"),
+                                  turn_id, step["idx"]))
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
 

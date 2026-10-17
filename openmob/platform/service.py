@@ -601,6 +601,9 @@ class V1Service:
         task_id = coordinator.new_task_id()
         channel = drive.DriveChannel(self.cfg.api_drive_idle_seconds, self.cfg.api_drive_max_seconds, max_steps,
                                      p.name)
+        # Faster mode in this session: only if the phone approved this key (screen lock), checked live at every image.
+        allowed = getattr(self.manager, "faster_drive_allowed", None)
+        channel.faster_images = (lambda sid=session.info.id, key=key_id: allowed(sid, key)) if allowed else False
         meta = {"account_id": account_id, "key_id": key_id, "session_id": session.info.id,
                 "device_id": session.info.id.removeprefix("app-"), "tier": drive.TIER,
                 "credits_per_step": drive.CREDITS_PER_STEP, "requester": p.name,
@@ -830,7 +833,11 @@ class V1Service:
         self.require(p, "devices:read")
         device, session = self._session_for(p, device_id)
         settings = self.manager.permission_settings(f"app-{device.id}")
-        return {"device_id": f"app-{device.id}", **perm.public(settings), "key_max_mode": p.max_mode}
+        view = perm.public(settings)
+        view.pop("faster_log", None)  # the owner's audit trail stays on the dashboard
+        faster = getattr(self.manager, "faster_scope", None)
+        view["faster_active"] = faster(f"app-{device.id}") if faster else "off"
+        return {"device_id": f"app-{device.id}", **view, "key_max_mode": p.max_mode}
 
     def change_permissions(self, p: Principal, device_id: str, patch: dict) -> dict:
         """Tightening applies now. Loosening never applies from the API: it asks the phone's owner to

@@ -441,6 +441,10 @@
           <p class="muted small" id="permNever" style="margin:6px 0 0"></p>
         </div>
         <div>
+          <h3>Faster mode</h3>
+          <p class="muted small" id="permFaster" style="margin:0"></p>
+        </div>
+        <div>
           <h3>Trusted apps</h3>
           <div class="trusted-list" id="trustedList"></div>
           <form class="trusted-add" id="trustedAdd">
@@ -518,6 +522,7 @@
     </div>
     <div class="phone-notices">
       <button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button>
+      <button class="pill warn" id="fasterChip" type="button" hidden title="Faster mode is on: screenshots of screens without readable text go to TypeSafe. Click to turn it off.">Faster mode on · Turn off</button>
       <div class="screen-notice" id="screenNotice" role="status" hidden></div>
     </div>
     <div class="screen-meta">
@@ -1316,6 +1321,14 @@ function renderMode() {
   const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
   $("neverChip").hidden = !neverOn;
   if (neverOn) $("neverChip").textContent = `Don't ask${perms.never_money ? ", including purchases," : ""} · until ${clock(perms.never_until)}`;
+  $("fasterChip").hidden = !(perms && perms.faster_active && perms.faster_active !== "off");
+  if (perms && perms.faster_inactive) {
+    $("fasterChip").textContent = "Faster mode is on but inactive on this server · Turn off";
+    $("fasterChip").title = `Faster mode is on for this phone, but this server sends nothing: ${perms.faster_inactive}. Click to turn it off.`;
+  } else {
+    $("fasterChip").textContent = "Faster mode on · Turn off";
+    $("fasterChip").title = "Faster mode is on: screenshots of screens without readable text go to TypeSafe. Click to turn it off.";
+  }
   if (!$("modeMenu").hidden) renderModeMenu();
 }
 
@@ -1512,6 +1525,17 @@ const enableNever = () => {
   return changePerms(body, () => { setChatMode("never"); setHint(`Don't ask${body.allow_money ? ", including purchases," : ""} for this chat, until it expires.`); });
 };
 const turnOffNever = () => changePerms({ never: "off" }, () => { if (chatMode() === "never") setChatMode(null); setHint("Agents ask again on this phone."); });
+// Faster mode: the dashboard can only turn it off (one tap, no lock). Turning it on is done in the phone's app.
+const turnOffFaster = (after) => changePerms({ faster_mode: "off" }, async () => { await refreshPerms(); setHint("Faster mode is off: no more screenshots go to TypeSafe."); if (after) after(); });
+$("fasterChip").onclick = () => turnOffFaster();
+async function fasterDrive(key, on) {
+  try {
+    const r = await api(`/api/devices/${deviceId}/faster-drive`, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key_id: key, on }) });
+    permShow(r && r.status === "needs_phone_approval" ? "Approve on your phone…" : "");
+  } catch (err) { permShow(err.message); }
+  await refreshPerms(); renderPerms();
+}
 
 async function refreshPerms() {
   if (!deviceId) return;
@@ -1551,6 +1575,37 @@ function renderPerms() {
     $("permNever").append(off);
   } else if (p.can_loosen === false) {
     $("permNever").textContent = "This phone's app can't sign approvals yet, so it stays at Auto or stricter. Update the OpenMob app.";
+  }
+  $("permFaster").replaceChildren();
+  if (p.faster_active && p.faster_active !== "off") {
+    const what = p.faster_inactive ? `On, but inactive on this server (${p.faster_inactive}). `
+      : "Screenshots of screens without readable text go to TypeSafe. ";
+    $("permFaster").append(document.createTextNode(`${p.faster_active === "session" ? "On for this session" : "On on this phone"}. ${what}`));
+    const off = el("button", "btn btn-sm", "Turn off");
+    off.type = "button";
+    off.onclick = () => turnOffFaster(renderPerms);
+    $("permFaster").append(off);
+  } else {
+    $("permFaster").textContent = "Off. Only the phone's owner can turn it on, in the OpenMob app on the phone (with its screen lock).";
+  }
+  // API keys whose drive sessions may use Faster mode on this phone (each approved on the phone).
+  for (const key of p.faster_drive_keys || []) {
+    const row = el("div", "perm-row");
+    row.append(document.createTextNode(`Drive sessions of key ${key} may use it. `));
+    const rm = el("button", "btn btn-sm", "Turn off");
+    rm.type = "button";
+    rm.onclick = () => fasterDrive(key, false);
+    row.append(rm);
+    $("permFaster").append(row);
+  }
+  if (p.faster_active && p.faster_active !== "off") {
+    const ask = el("button", "btn btn-sm", "Allow a key's drive sessions (approve on phone)");
+    ask.type = "button";
+    ask.onclick = async () => {
+      const key = prompt("The id of the API key whose drive sessions may use Faster mode on this phone:");
+      if (key) fasterDrive(key.trim(), true);
+    };
+    $("permFaster").append(el("div", "perm-row"), ask);
   }
   const list = $("trustedList");
   list.replaceChildren(...(p.trusted.length ? p.trusted.map((t, i) => {

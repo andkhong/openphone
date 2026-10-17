@@ -251,7 +251,9 @@ class ApprovalActivity : Activity() {
                 else -> R.string.approval_prompt_title
             }))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
-            .setDescription(listOf(request.shownQuestion, request.actionLine).filter { it.isNotEmpty() }
+            // Short: a long description pushes the PIN field under the keyboard (PromptText). The full text is on
+            // this screen, which the owner just read.
+            .setDescription(listOf(PromptText.short(request.shownQuestion), request.actionLine).filter { it.isNotEmpty() }
                 .joinToString("\n"))
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()
@@ -327,6 +329,12 @@ class ApprovalActivity : Activity() {
             if (approved && signature != null && request?.kind == "mode_change") {
                 dev.openmob.companion.gate.GateHost.applyModeChange(request.id, request.taskId, request.action,
                                                                     timestamp, always, signature)
+            }
+            // Faster mode: the owner read the warning and passed the screen lock; the phone keeps that choice, and
+            // shows "Faster mode is on" only once the server applies exactly it (FasterMode.onServerPush).
+            if (approved && request?.kind == "mode_change") {
+                FasterMode.grantFrom(request.action["input"].orEmpty(), request.id, request.taskId, signature, timestamp)
+                    ?.let { FasterMode.approve(this, it) }
             }
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,

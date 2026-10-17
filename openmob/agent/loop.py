@@ -16,7 +16,8 @@ from typing import Callable, Protocol
 from urllib.parse import quote
 
 from ..config import Config
-from ..jev import JevError, JevJudge, ScreenAssessment, StepChoice, describe_screen
+from ..jev import ImageAnswer, JevError, JevImageJudge, JevJudge, ScreenAssessment, StepChoice, describe_screen, \
+    prepare_image
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError, GateRefused, OwnerDialog, PhoneLocked
 from ..phone.apps import NOT_LAUNCHABLE, AppResolver
@@ -24,7 +25,7 @@ from ..usage import Usage
 from ..vision import ocr
 from ..permissions import ALWAYS_DAYS, FOLLOWUP_SECONDS, TaskPermissions, category_of, trusted_for
 from ..phone.approval_keys import action_digest
-from . import app_links, fast, gate, permission_dialogs, plan, replay, sensitive, timing, waiting
+from . import app_links, fast, faster, gate, permission_dialogs, plan, replay, sensitive, timing, waiting
 from .drive import DriveChannel, screen_view
 from .drive import ESCAPE_KEYS as DRIVE_ESCAPE_KEYS, SOURCE as DRIVE_SOURCE
 from .models import ModelError, ModelRequest, ModelResponse, ModelUnavailable, router_for
@@ -89,6 +90,9 @@ DIALOG_TAP_REFUSED = ("Android doesn't let OpenMob press buttons in permission d
                       "nothing was tapped. Press BACK (press_key BACK) to dismiss it; the app won't get the permission. "
                       "If the request needs the permission, tell the owner to allow it on the phone themselves.")
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
+# Faster mode (agent/faster.py, docs/design/faster-mode.md): between loading checks (J3) in a loading wait.
+JEV_READY_POLL_S = 0.25
+FASTER_STEP_FIELDS = ("jev_image_ms", "jev_images", "jev_state", "jev_image_skip", "faster")
 
 
 class UserIO(Protocol):
@@ -110,6 +114,8 @@ class AgentResult:
     prompts: int = 0  # approval prompts the owner saw (permission telemetry)
     mode: str | None = None  # the permission mode the task ran in
     reason: str | None = None  # why it failed, when it's not the model's call (phone_locked)
+    # Faster mode, when it did anything this task: {images, jev_image_ms, model_calls_skipped, saved_s, text}.
+    faster: dict | None = None
 
 
 class Observation:
@@ -133,6 +139,8 @@ class Observation:
         # The classifier wasn't asked about this screen: a direct first step was expected to leave it (the
         # loop asks when no such step is taken, see Agent._classify_now).
         self.unclassified = False
+        # Faster mode's screen state from this screen's image (J1), when one was sent and answered.
+        self.image_state: ImageAnswer | None = None
 
     @property
     def shot(self) -> Screenshot:
@@ -250,6 +258,24 @@ class _TaskState:
     # A drive session (docs/design/mcp-drive.md): never type into a one-time-code field (the loop may, under the
     # owner's instruction; an outside agent that read the code off the screen is the account-takeover shape).
     refuse_otp: bool = False
+    # Faster mode (agent/faster.py): a drive session sends no image unless the owner allowed its key.
+    drive: bool = False
+    drive_images: object = False  # True, or a callable asked at every image (the phone approved this key)
+    faster_images: int = 0  # image requests sent to TypeSafe this task
+    faster_jev_ms: float = 0.0  # their wall time
+    faster_skipped: int = 0  # loading looks that didn't go to the main model (no text check had caught them)
+    faster_ready_waits: int = 0  # loading waits a J3 image check ended on "ready"
+    looks: int = 0  # observations this task (to price the extra look the model path takes)
+
+
+def _drive_images_ok(allowed) -> bool:
+    """A drive session's Faster mode allowance: True, or a callable (asked live); anything else is no."""
+    if callable(allowed):
+        try:
+            return allowed() is True
+        except Exception:
+            return False
+    return allowed is True
 
 
 def is_yes(answer: str) -> bool:
@@ -270,8 +296,16 @@ class Agent:
         judge: JevJudge | None = None,
         use_ocr: bool | None = None,
         paths: replay.PathStore | None = None,
+        images: JevImageJudge | None = None,
     ):
         self.client = client
+        # Faster mode (agent/faster.py): Jev's image questions, and the phone-signed switch, asked before every
+        # image (DeviceManager sets it per phone; without it no image is ever sent).
+        self.images = images
+        self.faster_mode: Callable[[], bool] | None = None
+        self._faster_step: dict = {}  # this step's Faster mode record (FASTER_STEP_FIELDS)
+        self._vision_calls = 0  # main-model calls this task (to price the ones Faster mode skipped)
+        self._ocr_ok = True  # the last OCR read worked (an image goes only after its words were checked)
         self.driver = driver
         self.resolver = resolver
         self.config = config
@@ -330,6 +364,8 @@ class Agent:
         self.usage = Usage()
         self.timer.reset()
         self._step_tokens = self._shown_side = None
+        self._faster_step = {}
+        self._vision_calls = 0
         self.task_model = model or self.model
         perms = permissions or TaskPermissions(self.config.default_permission_mode)
         if perms.requested == "never":  # no prompts: sensitive apps are off-limits for every task then
@@ -339,6 +375,8 @@ class Agent:
                            perms=perms)
         if drive is not None:  # no model, no fast path, no replay: the outside agent is all of those
             state.fast = False
+            state.drive = True
+            state.drive_images = getattr(drive, "faster_images", False)
             self._task_variant = "drive"
             # The phone judges each act at this session's mode (capped at trusted), and its own prompts wait here
             # and reach the outside agent as needs_approval. Without this a gatekeeper phone saw no mode and judged
@@ -375,6 +413,9 @@ class Agent:
         result.planned = state.planned
         result.prompts = state.prompts
         result.mode = perms.mode()
+        result.faster = self._faster_summary(state)
+        if result.faster:
+            self.io.event("status", result.faster["text"])
         # A path worth replaying: the task succeeded, only navigated (the request as it stands, corrections
         # included), typed nothing, asked nothing and tapped nothing risky, and came from the phone's own chat
         # (not an isolated caller such as an API key: the owner's call; replay_store_api opts in, for benchmarks).
@@ -842,6 +883,7 @@ class Agent:
 
     def _count_vision(self, response) -> None:
         # Count under the model the API says served this call, which verifies the model choice.
+        self._vision_calls += 1
         self.usage.add_model(response.usage, response.model or self.task_model)
         self._note_tokens(response.usage, self._shown_side)
 
@@ -859,6 +901,7 @@ class Agent:
 
     def _observe(self, state: _TaskState, before: Observation | None = None, pending: list[dict] = (),
                  classify: bool = True) -> Observation:
+        state.looks += 1
         with self.timer.phase("observe"):
             return self._observe_untimed(state, before, pending, classify)
 
@@ -980,6 +1023,7 @@ class Agent:
                     obs = self._observe(state, before, pending)  # it became readable: look again
         else:
             state.unreadable_seen = None
+        obs = self._faster_loading(state, obs, before, pending)
         while self._is_loading(obs) and state.auto_waited < self.config.jev_auto_wait_seconds:
             if state.cancel.is_set():
                 break
@@ -1001,8 +1045,10 @@ class Agent:
         try:
             boxes = ocr.recognize_text(shot.jpeg, shot.width, shot.height)
         except Exception as exc:
+            self._ocr_ok = False
             self.io.event("error", f"OCR failed: {exc}")
             return []
+        self._ocr_ok = True
         elements = []
         for box in boxes:
             if box.confidence < OCR_MIN_CONFIDENCE or not box.text.strip():
@@ -1062,6 +1108,10 @@ class Agent:
             body = "No UI element list or readable text for this screen. Work from the screenshot."
         if obs.assessment:
             body += "\n" + obs.assessment.summary()
+        if obs.image_state is not None:  # Faster mode (J1): a hint only; the screenshot decides
+            a = obs.image_state
+            body += (f"\nScreen state from a quick screenshot check: {a.value.replace('_', ' ')} "
+                     f"(p={a.probability:.2f}). A hint only: trust the screenshot when they differ.")
         self._shown_side = max(obs.shot.width, obs.shot.height)
         return [
             {"type": "text", "text": f"{header}\n{body}"},
@@ -1177,6 +1227,7 @@ class Agent:
         if name != plan.TOOL:  # a plan isn't an action on the phone
             state.actions.append({"action": self._action_text(name, args, obs), "screen_changed": None})
         self._record_step(state, name, args, obs, outcome, time.monotonic() - started, fast_step, handled_by, source)
+        self._faster_step = {}  # counted on the step it belonged to (or dropped with an IO that keeps no steps)
         if self._replay_on() and not outcome.is_error and source in (None, replay.SOURCE, plan.SOURCE):
             step = replay.recordable(name, args, obs.package, obs.elements, outcome.launched)
             if step is not None:
@@ -1246,6 +1297,7 @@ class Agent:
                 **({"handled_by": handled_by} if handled_by else {}),
                 **({"source": source} if source else {}),
                 **(outcome.wait or state.settle_wait or {}),
+                **self._take_faster_step(state),
             }
             record(row)
         except Exception as exc:  # the trajectory record must never break a task
@@ -3415,6 +3467,216 @@ class Agent:
         The note is made as soon as the elements are read, before the classifier sees recent actions."""
         pending = [action for action in state.actions if action["screen_changed"] is None]
         return self._observe_settled(state, before, pending)
+
+    # --- Faster mode: Jev images on screens without usable text (agent/faster.py) ------------------------
+
+    def _faster_blocked(self, state: _TaskState) -> str | None:
+        """Why no image may go to TypeSafe right now, whatever the screen (None: Faster mode is on for this phone
+        and task). Asked before every image and again when its answer arrives."""
+        if self.images is None:
+            return faster.NO_JEV
+        if getattr(self.config, "faster_mode", "phone_opt_in") == "disabled" or self.faster_mode is None:
+            return faster.OFF
+        try:
+            on = self.faster_mode() is True
+        except Exception:
+            on = False
+        if not on:
+            return faster.OFF
+        if state.drive and not _drive_images_ok(state.drive_images):
+            return faster.DRIVE
+        return None
+
+    def _faster_note(self, **fields) -> None:
+        step = self._faster_step
+        for key, value in fields.items():
+            if key in ("jev_image_ms", "jev_images"):
+                step[key] = (step.get(key) or 0) + value
+            elif key == "jev_image_skip":
+                step.setdefault(key, value)  # the first reason this step
+            else:
+                step[key] = value
+
+    def _take_faster_step(self, state: _TaskState) -> dict:
+        step, self._faster_step = self._faster_step, {}
+        on = self._faster_blocked(state) not in (faster.OFF, faster.NO_JEV)
+        out = {k: step[k] for k in FASTER_STEP_FIELDS if k in step}
+        if "jev_image_ms" in out:
+            out["jev_image_ms"] = int(round(out["jev_image_ms"]))
+        if on or out:
+            out["faster"] = on
+        return out
+
+    def _faster_image(self, state: _TaskState, package: str | None, elements: list[UIElement],
+                      shot: Screenshot | None, ocr_ran: bool) -> bytes | None:
+        """The image to send for this screen, or None (the reason is recorded on the step). Every never-sent rule
+        is checked here, on the server, before any request (docs/design/faster-mode.md)."""
+        why = self._faster_blocked(state)
+        if why is None and faster.labeled(elements):
+            return None  # Jev text reads this screen: no image needed (not a refusal, nothing recorded)
+        if why is None:
+            why = faster.refusal(package, elements, blocked=state.blocked, sensitive_apps=self.config.sensitive_apps,
+                                 locked=bool(getattr(self.driver, "locked", False)), ocr_ran=ocr_ran)
+        if why is None and shot is None:
+            why = faster.NO_FRAME
+        prepared = None
+        if why is None:
+            try:
+                prepared = prepare_image(shot.jpeg, int(self.config.jev_image_side))
+            except (OSError, ValueError):
+                why = faster.NO_FRAME
+        if why is None and prepared.black:
+            why = faster.BLACK_FRAME
+        if why is not None:
+            if why not in (faster.OFF, faster.NO_JEV):
+                self._faster_note(jev_image_skip=why)
+            return None
+        return prepared.jpeg
+
+    def _faster_ask(self, state: _TaskState, kind: str, package: str | None, image: bytes) -> ImageAnswer | None:
+        """One image question (J1 "state" or J3 "loading"), at most jev_image_timeout_ms; None on an error, a
+        timeout, or when Faster mode went off while it ran (the answer is discarded)."""
+        self.images.timeout_s = max(int(self.config.jev_image_timeout_ms), 50) / 1000
+        started = time.perf_counter()
+        answer = None
+        with self.timer.phase("jev"):
+            try:
+                answer = (self.images.screen_state if kind == "state" else self.images.loading)(package, image)
+            except JevError as exc:
+                self.io.event("error", f"Faster mode: {exc}")
+        ms = (time.perf_counter() - started) * 1000
+        state.faster_images += 1
+        state.faster_jev_ms += ms
+        self._faster_note(jev_image_ms=ms, jev_images=1)
+        if answer is not None and self._faster_blocked(state) is not None:
+            self._faster_note(jev_image_skip="off_discarded")  # turned off mid-request: the answer isn't used
+            return None
+        return answer
+
+    def _faster_state(self, state: _TaskState, obs: Observation) -> ImageAnswer | None:
+        """J1 on this look, when the screen has no usable text and may be sent. Sets obs.image_state."""
+        if self._faster_blocked(state) is not None or faster.labeled(obs.elements):
+            return None
+        ocr_ran = self.use_ocr and obs.captured and self._ocr_ok
+        image = self._faster_image(state, obs.package, obs.elements, obs.geometry() if obs.captured else None, ocr_ran)
+        if image is None:
+            return None
+        answer = self._faster_ask(state, "state", obs.package, image)
+        if answer is None or answer.confidence < self.config.jev_image_min_confidence:
+            return None
+        obs.image_state = answer
+        self._faster_note(jev_state=answer.value)
+        return answer
+
+    def _faster_loading(self, state: _TaskState, obs: Observation, before: Observation | None,
+                        pending: list[dict]) -> Observation:
+        """J1 says loading: don't ask the main model; wait for it to be ready (J3) and look again, at most
+        jev_image_loading_looks extra looks (and jev_auto_wait_seconds a task). Any other state is a hint for the
+        main model (obs.image_state). Off, refused or unsure: today's behaviour, unchanged."""
+        looks = 0
+        while not state.cancel.is_set():
+            answer = self._faster_state(state, obs)
+            if answer is None or answer.value != "loading":
+                return obs
+            budget = min(float(self.config.jev_image_loading_wait_seconds),
+                         self.config.jev_auto_wait_seconds - state.auto_waited)
+            if looks >= int(self.config.jev_image_loading_looks) or budget <= 0.2:
+                return obs  # still loading: the main model decides, with the state as its hint
+            looks += 1
+            if not self._is_loading(obs):  # the text check (if any) wouldn't have waited: a model call skipped
+                state.faster_skipped += 1
+            self.io.event("status", "Loading screen (Faster mode); waiting until it's ready…")
+            started = time.monotonic()
+            with self.timer.phase("wait"):
+                self._faster_wait_ready(state, obs, budget)
+            state.auto_waited += max(time.monotonic() - started, 0.1)
+            obs = self._observe(state, before, pending)
+        return obs
+
+    def _faster_wait_ready(self, state: _TaskState, obs: Observation, budget: float) -> bool:
+        """J3: ask Jev on fresh frames whether the screen is still loading, and end the wait as soon as it's ready
+        (at the confidence floor). True: ready (or the screen gained text, which Jev text reads). False: the
+        budget ran out while loading, or a fallback (refused, unsure, an error or a timeout) ended it early;
+        the next look decides then, as today. Recorded as the step's wait (wait_via "jev_image")."""
+        started = time.monotonic()
+        deadline = started + budget
+        floor = self.config.jev_image_min_confidence
+        via, met, seen = "jev_image", False, "still loading"
+        mode = self.config.ui_tree
+        while time.monotonic() < deadline and not state.cancel.is_set():
+            state.cancel.wait(JEV_READY_POLL_S)
+            try:
+                package = self.driver.current_app()
+                read_tree = mode == "always" or (mode == "auto" and state.treeless_misses.get(package or "", 0) < 2)
+                elements = self.driver.ui_elements() if read_tree and getattr(self.driver, "fast_ui_tree", False) else []
+                shot = self._frame = self.driver.screenshot()
+            except DeviceError:
+                via, seen = "fallback", "the phone didn't answer"
+                break
+            if faster.labeled(elements):
+                met, seen = True, "the screen has text now"
+                break
+            ocr_ran = False
+            if self.use_ocr:
+                elements = elements + self._ocr_elements(shot, start=len(elements))
+                ocr_ran = self._ocr_ok
+            image = self._faster_image(state, package, elements, shot, ocr_ran)
+            if image is None:
+                via, seen = "fallback", self._faster_step.get("jev_image_skip") or "not sent"
+                break
+            answer = self._faster_ask(state, "loading", package, image)
+            if answer is None or answer.confidence < floor:
+                via, seen = "fallback", "no confident answer"
+                break
+            if answer.value == "ready":
+                met, seen = True, f"ready (p_loading={answer.p_loading:.2f})"
+                break
+        waited = int((time.monotonic() - started) * 1000)
+        state.settle_wait = {"wait_cond": "auto:jev_loading", "wait_met": met, "wait_via": via, "waited_ms": waited}
+        if met and via == "jev_image":
+            state.faster_ready_waits += 1
+        timing.trace(f"faster wait: {seen} after {waited} ms via {via}")
+        return met
+
+    def _faster_summary(self, state: _TaskState) -> dict | None:
+        """"Faster mode saved ~N s", from this task's own measurements (docs/design/faster-mode.md §4):
+
+        - each loading look that skipped the main model saves one main-model call (this task's mean time per call)
+          and one look (this task's mean observe time per look: the model path looks again after its own wait);
+        - each loading wait a J3 check ended on "ready" saves the stillness today's frame wait needs before it calls a
+          screen loaded (waiting.LOADING_QUIET_MS);
+        - minus the wall time of every image request.
+
+        Conservative: the model path's own wait polls and its extra settle aren't counted. With no main-model call in
+        the task, the skipped calls can't be priced and the line says so."""
+        if not state.faster_images and not state.faster_skipped:
+            return None
+        totals = self.timer.task_totals()
+        jev_s = state.faster_jev_ms / 1000
+        mean_s = totals.get("model_ms", 0) / 1000 / self._vision_calls if self._vision_calls else None
+        look_s = totals.get("observe_ms", 0) / 1000 / state.looks if state.looks else 0.0
+        quiet_s = waiting.LOADING_QUIET_MS / 1000 * state.faster_ready_waits
+        out = {"images": state.faster_images, "jev_image_ms": int(round(state.faster_jev_ms)),
+               "model_calls_skipped": state.faster_skipped, "ready_waits": state.faster_ready_waits,
+               "mean_model_s": round(mean_s, 2) if mean_s is not None else None, "mean_look_s": round(look_s, 2)}
+        sent = f"{state.faster_images} screenshot check{'s' if state.faster_images != 1 else ''} ({jev_s:.1f} s)"
+        calls = f"{state.faster_skipped} model call{'s' if state.faster_skipped != 1 else ''}"
+        if state.faster_skipped and mean_s is not None:
+            saved = state.faster_skipped * (mean_s + look_s) + quiet_s - jev_s
+            out["saved_s"] = round(saved, 1)
+            how = (f"{calls} and look{'s' if state.faster_skipped != 1 else ''} skipped on loading screens "
+                   f"({mean_s:.1f} s + {look_s:.1f} s each, this task's own), {quiet_s:.1f} s of shortened wait, "
+                   f"minus {sent}")
+            out["text"] = (f"Faster mode saved ~{saved:.1f} s: {how}." if saved > 0 else
+                           f"Faster mode saved no time this task: {how}.")
+        elif state.faster_skipped:
+            out["saved_s"] = None
+            out["text"] = (f"Faster mode skipped {calls} on loading screens (this task made no model call to price "
+                           f"them); {sent}.")
+        else:
+            out["saved_s"] = round(quiet_s - jev_s, 1)
+            out["text"] = f"Faster mode skipped no model call this task; {sent}."
+        return out
 
     # --- settling after an action -------------------------------------------------
 

@@ -118,6 +118,12 @@ class MainActivity : Activity() {
     private lateinit var liveViewSwitch: Switch
     private lateinit var connectionWarning: TextView
 
+    // Faster mode (its own card: FasterMode.kt)
+    private lateinit var fasterStatus: TextView
+    private lateinit var fasterOnSession: Button
+    private lateinit var fasterOnAlways: Button
+    private lateinit var fasterOff: Button
+
     // Ask
     private lateinit var askCard: LinearLayout
     private lateinit var askInput: EditText
@@ -258,6 +264,7 @@ class MainActivity : Activity() {
         val connected = AppState.connected
 
         renderApprovals(notifs)
+        renderFaster()
 
         // Setup checklist, in order: pair, Accessibility, notifications, background. Screen sharing
         // joins only once someone has opened the live view (it's never asked for at setup).
@@ -1089,6 +1096,7 @@ class MainActivity : Activity() {
         content.addView(buildSetupCard())
         content.addView(buildConnectionCard())
         content.addView(buildIndicatorCard())
+        content.addView(buildFasterCard())
         content.addView(buildAskCard())
         content.addView(buildActivityCard())
 
@@ -1340,6 +1348,61 @@ class MainActivity : Activity() {
         card.addView(button(getString(R.string.indicator_preview), Style.SECONDARY) { ControlIndicator.preview(this) },
             margins(top = 12, width = match))
         return card
+    }
+
+    // Faster mode: off by default. On only from here (the server sends back an approval with the warning, behind
+    // the screen lock); off with one tap, here or in the notification.
+    private fun buildFasterCard(): View {
+        val card = card()
+        card.addView(cardTitle(getString(R.string.faster_title)))
+        fasterStatus = text("", 15f, color(R.color.om_text))
+        card.addView(fasterStatus, margins(top = 10))
+        card.addView(text(getString(R.string.faster_warning), 13f, color(R.color.om_text_secondary)), margins(top = 8))
+        card.addView(link(getString(R.string.faster_learn_more)) {
+            // The page is served by this phone's own OpenMob server (public, no sign-in): every owner can reach it.
+            val server = settings.server
+            if (server.isEmpty()) toast(getString(R.string.faster_offline)) else runCatching {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(server).buildUpon().path("/safety")
+                    .clearQuery().fragment("faster-mode").build()))
+            }
+        })
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        fasterOnSession = button(getString(R.string.faster_on_session), Style.SECONDARY) { askFaster("session") }
+        fasterOnAlways = button(getString(R.string.faster_on_always), Style.SECONDARY) { askFaster("phone") }
+        row.addView(fasterOnSession, LinearLayout.LayoutParams(0, wrap, 1f))
+        row.addView(fasterOnAlways, LinearLayout.LayoutParams(0, wrap, 1f).apply { marginStart = dp(10) })
+        card.addView(row, margins(top = 8, width = match))
+        fasterOff = button(getString(R.string.faster_turn_off), Style.DANGER) {
+            ConnectionService.turnOffFaster(this, "app")
+            toast(getString(R.string.faster_turned_off))
+            render()
+        }
+        card.addView(fasterOff, margins(top = 8, width = match))
+        return card
+    }
+
+    private fun askFaster(scope: String) {
+        if (!ConnectionService.requestFaster(scope)) {
+            toast(getString(R.string.faster_offline))
+            return
+        }
+        toast(getString(R.string.faster_asked))
+    }
+
+    private fun renderFaster() {
+        val on = FasterMode.isOn
+        fasterStatus.text = getString(when {
+            on && FasterMode.serverScope == "session" -> R.string.faster_status_session
+            on -> R.string.faster_status_phone
+            else -> R.string.faster_status_off
+        })
+        fasterStatus.setTextColor(color(if (on) R.color.om_question else R.color.om_text))
+        fasterOff.visibility = if (on) View.VISIBLE else View.GONE
+        val canAsk = !on && AppState.connected
+        fasterOnSession.visibility = if (on) View.GONE else View.VISIBLE
+        fasterOnAlways.visibility = if (on) View.GONE else View.VISIBLE
+        setEnabled(fasterOnSession, canAsk)
+        setEnabled(fasterOnAlways, canAsk)
     }
 
     // 4. Ask your agent

@@ -364,6 +364,9 @@ def build_server(service: V1Service) -> MCPServer:
                                Field(description="With never: also let purchases run without asking (off by "
                                                  "default). Only ask for this when the user explicitly wants it.")]
         = None,
+        faster_mode: Annotated[Literal["off"] | None,
+                               Field(description="Turn the phone's Faster mode off (screenshots to TypeSafe). It can "
+                                                 "only be turned on by the owner in the phone's OpenMob app.")] = None,
     ) -> Annotated[CallToolResult, PermissionChange]:
         """Change a phone's permission settings. Tightening (a stricter mode, turning never off) applies at
         once. Loosening never applies from here: it sends the owner an approval on the phone and returns
@@ -374,6 +377,8 @@ def build_server(service: V1Service) -> MCPServer:
         patch = {k: v for k, v in {"default_mode": default_mode, "ceiling": ceiling, "never": never}.items() if v}
         if allow_money is not None:
             patch["allow_money"] = allow_money
+        if faster_mode == "off":
+            patch["faster_mode"] = "off"
         data = await _call(s.change_permissions, p, device, patch)
         line = ("Applied." if data["status"] == "applied"
                 else "needs_phone_approval: " + ERROR_HINTS["needs_phone_approval"])
