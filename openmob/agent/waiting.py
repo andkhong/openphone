@@ -55,8 +55,11 @@ FRAME_CHANGED_CELL = 24  # a cell moved this much (of 255)...
 FRAME_CHANGED_SHARE = 0.02  # ...in this share of the cells: the screen changed
 FRAME_STILL_CELL = 12  # no cell moved more than this between two frames: the screen is still
 
-LOADING_CLASS = re.compile(r"progress|spinner|loading|shimmer", re.I)
-LOADING_ID = re.compile(r"progress|spinner|loading|shimmer|skeleton", re.I)
+# Not a bare "spinner": android.widget.Spinner is Android's dropdown (Maps' "Relevance" and "Price" filters), and it
+# made every Maps results screen look loading (owner's Samsung, 2026-10-17). Loading spinners are ProgressBars, or
+# custom views named for loading ("LoadingSpinnerView").
+LOADING_CLASS = re.compile(r"progress|loading|shimmer", re.I)
+LOADING_ID = re.compile(r"progress|loading|shimmer|skeleton", re.I)
 # No bare percentage: stock Android Settings shows "100%" (battery) and "83%" (brightness) all the time, and
 # reading them as progress held every Settings launch for the whole launch wait (measured on an emulator,
 # 2026-10-08). A real progress bar is caught by its class or id.

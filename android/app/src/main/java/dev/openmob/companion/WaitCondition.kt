@@ -82,8 +82,10 @@ class WaitCondition(val until: String, pattern: String, val pkg: String, val qui
         const val MOVING_GRACE_MS = 2_500L
         val CONDITIONS = setOf("screen_changes", "text_appears", "text_disappears", "element_enabled", "app_in_front", "loading_done")
         private val NEEDS_PATTERN = setOf("text_appears", "text_disappears", "element_enabled")
-        private val LOADING_CLASS = Regex("progress|spinner|loading|shimmer", RegexOption.IGNORE_CASE)
-        private val LOADING_ID = Regex("progress|spinner|loading|shimmer|skeleton", RegexOption.IGNORE_CASE)
+        // Not a bare "spinner": android.widget.Spinner is the dropdown (Maps' "Relevance" filter made every Maps results
+        // screen look loading, 2026-10-17). Mirrors waiting.LOADING_CLASS / LOADING_ID.
+        private val LOADING_CLASS = Regex("progress|loading|shimmer", RegexOption.IGNORE_CASE)
+        private val LOADING_ID = Regex("progress|loading|shimmer|skeleton", RegexOption.IGNORE_CASE)
         private val LOADING_TEXT = Regex("^\\s*(loading|please wait|connecting|starting|signing in|downloading|installing|" +
             "pending|preparing|updating)\\b|\\bloading\\b\\W*$", RegexOption.IGNORE_CASE) // no bare "83%": see waiting.py
         private val DIGITS = Regex("\\d+")

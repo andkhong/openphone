@@ -234,3 +234,16 @@ def test_an_amazon_search_left_unsent_in_the_box_is_submitted_without_the_model(
     agent, driver, _, steps, _ = make([[tool_use("done", "z", summary="ok", success=True)]], "search Amazon for usb-c cables",
                                       driver=phone, tmp_path=tmp_path)
     assert ("key", "ENTER") not in driver.actions
+
+
+def test_a_dropdown_spinner_is_not_loading():
+    # android.widget.Spinner is Android's dropdown: Maps' "Relevance" and "Price" filters made every results screen
+    # look loading, so the wait ran to its cap.
+    from openmob.agent import waiting
+    from openmob.phone.adb import UIElement as U
+
+    dropdown = U(0, "", "Relevance", "", "android.widget.Spinner", True, None, (0, 0, 300, 100))
+    assert waiting.loading_element([dropdown]) is None
+    assert waiting.loading_element([U(1, "", "", "com.app:id/progress", "android.widget.ProgressBar", False, None,
+                                      (0, 0, 50, 50))]) is not None
+    assert waiting.loading_element([U(2, "", "", "", "com.app.LoadingSpinnerView", False, None, (0, 0, 50, 50))]) is not None

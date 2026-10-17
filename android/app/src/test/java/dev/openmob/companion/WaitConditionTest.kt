@@ -72,4 +72,10 @@ class WaitConditionTest {
         // Something still loading keeps waiting, however long.
         assertNull(c.check("maps", maps + el("Loading…"), null, quietFor = 0L, unloadedFor = 60_000L))
     }
+
+    @Test fun aDropdownSpinnerIsNotLoading() {
+        assertFalse(WaitCondition.loading(el(cls = "android.widget.Spinner")))
+        assertTrue(WaitCondition.loading(el(cls = "android.widget.ProgressBar")))
+        assertTrue(WaitCondition.loading(el(cls = "com.app.LoadingSpinnerView")))
+    }
 }
