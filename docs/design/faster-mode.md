@@ -73,6 +73,15 @@ so nothing new is trusted:
 - A server restart is a reconnect: the phone re-presents its grant, which still has to be inside its signed limits.
 - "Always on this phone" survives reconnects and restarts; only turning it off ends it.
 
+**Checked on the emulator** (`gk_b7`, this branch's app, a token-mode server on port 8767, 2026-10-17): turned on
+for the session from the app's card (the phone-worded prompt, then the PIN) → on, and the notification read "Faster
+mode is on · Agent connected · ready"; the server process restarted (the phone saw a dropped connection and
+reconnected; airplane mode doesn't cut the emulator's link to the host) → the phone re-confirmed its grant, on again;
+the app's Disconnect → off on the server (log: "the owner's Disconnect"), and still off after connecting again.
+That check found one bug, fixed: the long warning as the screen-lock prompt's description pushed the PIN field under
+the keyboard, so the PIN couldn't be typed. The system prompt now gets the question alone (`PromptText`); the full
+warning is on the approval screen just before it.
+
 Token/dev mode (no accounts) has no approval keys, as for Don't ask: an app phone still asks its owner on its own
 prompt (the screen lock, unsigned), and a USB/adb phone without the app can't turn Faster mode on at all.
 

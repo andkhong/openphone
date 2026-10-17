@@ -251,7 +251,9 @@ class ApprovalActivity : Activity() {
                 else -> R.string.approval_prompt_title
             }))
             .setSubtitle(getString(R.string.approval_requester, request.requester))
-            .setDescription(listOf(request.shownQuestion, request.actionLine).filter { it.isNotEmpty() }
+            // Short: a long description pushes the PIN field under the keyboard (PromptText). The full text is on
+            // this screen, which the owner just read.
+            .setDescription(listOf(PromptText.short(request.shownQuestion), request.actionLine).filter { it.isNotEmpty() }
                 .joinToString("\n"))
             .setAllowedAuthenticators(APPROVERS) // no negative button allowed with DEVICE_CREDENTIAL
             .build()

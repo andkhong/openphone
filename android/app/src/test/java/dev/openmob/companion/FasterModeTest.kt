@@ -86,6 +86,15 @@ class FasterModeTest {
         assertFalse(FasterMode.decide("phone", phone, now, 0))
     }
 
+    @Test fun theScreenLockPromptGetsAShortDescription() {
+        val long = ModeChange.describe(input("{\"faster_mode\": \"session\"}"))
+        assertEquals("Turn on Faster mode for this session (until you disconnect, or an hour without agent activity)?",
+                     PromptText.short(long))
+        assertEquals("Buy it?", PromptText.short("Buy it?"))
+        val noQuestion = "x".repeat(300)
+        assertEquals(PromptText.MAX, PromptText.short(noQuestion).length)
+    }
+
     @Test fun theWarningMatchesTheServers() {
         // openmob/permissions.py FASTER_WARNING: the same words on both sides.
         assertEquals(
