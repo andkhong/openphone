@@ -286,6 +286,9 @@ class DeveloperApi:
             if not self.store.revoke_api_key(account_id, key_id):
                 raise HTTPException(404, "Unknown key.")
             self.service.cancel_tasks(key_id=key_id)
+            # A revoked key leaves every phone's Faster mode list too (review S L4).
+            if hasattr(self.service.manager, "faster_drive_off"):
+                self.service.manager.faster_drive_off(account_id, key_id, "the key's revocation")
             self.ledger.audit("key.revoke", account_id, key_id)
             return {"ok": True}
 

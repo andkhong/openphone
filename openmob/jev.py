@@ -10,6 +10,7 @@ from __future__ import annotations
 import io
 import json
 import random
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -182,7 +183,7 @@ class JevClient:
                     time.sleep(0.5 * 2**attempt)
                     continue
                 if response.status_code != 200:
-                    raise JevError(f"Jev returned {response.status_code}: {response.text[:300]}")
+                    raise JevError(f"Jev returned {response.status_code}")  # the status only, never the body (feed)
                 data = response.json()
                 if self.on_usage:
                     self.on_usage(int((data.get("usage") or {}).get("input_tokens", 0)))
@@ -207,7 +208,8 @@ class JevClient:
         except httpx.HTTPError as exc:
             raise JevError(f"Jev image request failed: {type(exc).__name__}") from exc
         if response.status_code != 200:
-            raise JevError(f"Jev returned {response.status_code} for an image: {response.text[:200]}")
+            # Only the status: a TypeSafe error body never reaches the owner's feed (review S, info).
+            raise JevError(f"Jev returned {response.status_code} for an image")
         data = response.json()
         if self.on_usage:
             self.on_usage(int((data.get("usage") or {}).get("input_tokens", 0)))
@@ -385,7 +387,28 @@ class PreparedImage:
     jpeg: bytes
     width: int
     height: int
-    black: bool  # every pixel near black: a secure window or a blacked-out read (never sent)
+    black: bool  # the app area (nearly) black: a secure window or a blacked-out read (never sent; black_frame)
+
+
+# The black-frame check (review S L3) judges the app area only: a FLAG_SECURE capture still shows the status bar,
+# the navigation bar and OpenMob's own indicator (the border, the Stop pill), so "every pixel dark" never fired.
+BLACK_TOP = 0.05  # the status bar (about 24-32 dp of a phone's height)
+BLACK_BOTTOM = 0.07  # the navigation bar (gesture handle or 3 buttons)
+BLACK_SIDE = 0.02  # the indicator's border (5 dp, with its glow)
+BLACK_LEVEL = 24  # a pixel at or below this is dark
+BLACK_SHARE = 0.97  # this share of the app area dark: black (the Stop pill is about 2% of it)
+
+
+def black_frame(img) -> bool:
+    """Whether the app area of a screenshot (a PIL image) is (nearly) all black: a secure window or a blacked-out
+    read. The bars and the indicator border are left out; the pill is covered by the share."""
+    gray = img.convert("L")
+    w, h = gray.size
+    box = (int(w * BLACK_SIDE), int(h * BLACK_TOP), max(int(w * (1 - BLACK_SIDE)), 1), max(int(h * (1 - BLACK_BOTTOM)), 1))
+    area = gray.crop(box) if box[2] > box[0] and box[3] > box[1] else gray
+    hist = area.histogram()
+    total = sum(hist)
+    return total > 0 and sum(hist[:BLACK_LEVEL + 1]) / total >= BLACK_SHARE
 
 
 def prepare_image(jpeg: bytes, long_side: int, quality: int = 80) -> PreparedImage:
@@ -399,8 +422,7 @@ def prepare_image(jpeg: bytes, long_side: int, quality: int = 80) -> PreparedIma
     scale = min(long_side / max(img.size), 1.0)
     if scale < 1.0:
         img = img.resize((max(round(img.width * scale), 1), max(round(img.height * scale), 1)), Image.LANCZOS)
-    _, brightest = img.convert("L").getextrema()
-    black = brightest <= 24
+    black = black_frame(img)
     if img.width < JEV_MIN_SIDE or img.height < JEV_MIN_SIDE:
         canvas = Image.new("RGB", (max(img.width, JEV_MIN_SIDE), max(img.height, JEV_MIN_SIDE)), (0, 0, 0))
         canvas.paste(img, ((canvas.width - img.width) // 2, (canvas.height - img.height) // 2))
@@ -412,27 +434,65 @@ def prepare_image(jpeg: bytes, long_side: int, quality: int = 80) -> PreparedIma
 
 class JevImageJudge:
     """Faster mode's two image questions (J1 screen state, J3 loading vs ready), one request each under a hard
-    deadline. A request still running at the deadline finishes in the background and its answer is dropped:
-    a step never waits longer than `timeout_s` for an image."""
+    deadline. A step never waits longer than `timeout_s` for an image, and nothing is ever queued (review S M3):
 
-    def __init__(self, client: JevClient, model: str, timeout_s: float = 0.6):
+    - at most `max_in_flight` requests run at once, each on its own worker; a call beyond that is refused at once
+      (JevError), never queued behind a slow one;
+    - the worker checks, right before the POST, that the deadline hasn't passed and that `still_ok()` (the loop's
+      live Faster mode switch) still says yes; otherwise the image is never sent;
+    - a request still running at the deadline is cancelled if it hasn't started, else finishes in the background
+      (the HTTP timeout ends it) and its answer is dropped."""
+
+    def __init__(self, client: JevClient, model: str, timeout_s: float = 0.6, max_in_flight: int = 2):
         import concurrent.futures
 
         self.client = client
         self.model = model
         self.timeout_s = timeout_s
-        self._pool = concurrent.futures.ThreadPoolExecutor(2, thread_name_prefix="jev-image")
+        self.max_in_flight = max(int(max_in_flight), 1)
+        # Asked in the worker right before the POST; the loop sets it to its live switch (None: always yes).
+        self.still_ok = None
+        self._lock = threading.Lock()
+        self._in_flight = 0
+        self._pool = concurrent.futures.ThreadPoolExecutor(self.max_in_flight, thread_name_prefix="jev-image")
+        self.sent_late = 0  # requests that would have gone out after their deadline or after "off" (dropped)
+
+    def _send(self, package: str | None, questions: dict, image: bytes, deadline: float, still_ok) -> dict:
+        try:
+            if time.perf_counter() >= deadline:
+                self.sent_late += 1
+                raise JevError("Jev image request dropped: its deadline passed before it could be sent")
+            if still_ok is not None and not still_ok():
+                self.sent_late += 1
+                raise JevError("Jev image request dropped: Faster mode is off")
+            # The HTTP timeout is longer than the deadline, so an abandoned request ends on its own.
+            return self.client.ask_image({"foreground_app": package or "unknown"}, questions, image, self.model,
+                                         max(self.timeout_s * 3, 2.0))
+        finally:
+            with self._lock:
+                self._in_flight -= 1
 
     def _ask(self, package: str | None, questions: dict, image: bytes) -> tuple[dict, float]:
         import concurrent.futures
 
         started = time.perf_counter()
-        # The HTTP timeout is longer than the deadline, so an abandoned request ends on its own.
-        future = self._pool.submit(self.client.ask_image, {"foreground_app": package or "unknown"}, questions,
-                                   image, self.model, max(self.timeout_s * 3, 2.0))
+        with self._lock:
+            if self._in_flight >= self.max_in_flight:
+                raise JevError("Jev image check skipped: earlier checks are still running (never queued)")
+            self._in_flight += 1
+        try:
+            future = self._pool.submit(self._send, package, questions, image, started + self.timeout_s,
+                                       self.still_ok)
+        except RuntimeError:
+            with self._lock:
+                self._in_flight -= 1
+            raise JevError("Jev image judge is shut down") from None
         try:
             answers = future.result(timeout=self.timeout_s)
         except concurrent.futures.TimeoutError:
+            if future.cancel():  # it never started: its slot is free again, and nothing was sent
+                with self._lock:
+                    self._in_flight -= 1
             raise JevError(f"Jev image answer took over {int(self.timeout_s * 1000)} ms (discarded)") from None
         return answers, (time.perf_counter() - started) * 1000
 

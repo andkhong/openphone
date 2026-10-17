@@ -236,6 +236,7 @@ class _TaskState:
     typing_approved: bool = False  # ask mode: the approved typing covers the ENTER that submits it
     prompts: int = 0
     acted_on: Observation | None = None  # the observation an action already changed (its elements may be stale)
+    dispatch_obs: Observation | None = None  # the observation the action being dispatched was decided on
     tapped_field: UIElement | None = None  # the text field the last tap landed on (typing goes there)
     unreadable_seen: tuple | None = None  # the unreadable screen last waited on (each is waited on once)
     dialogs_given_up: set = field(default_factory=set)  # permission dialogs BACK didn't close: (package, message)
@@ -266,6 +267,19 @@ class _TaskState:
     faster_skipped: int = 0  # loading looks that didn't go to the main model (no text check had caught them)
     faster_ready_waits: int = 0  # loading waits a J3 image check ended on "ready"
     looks: int = 0  # observations this task (to price the extra look the model path takes)
+
+
+def _redact_deep(value, depth: int = 0):
+    """`value` with every card number and SSN in its strings redacted, nested dicts and lists included."""
+    if isinstance(value, str):
+        return sensitive.redact(value)
+    if depth > 6:
+        return value
+    if isinstance(value, dict):
+        return {k: _redact_deep(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_redact_deep(v, depth + 1) for v in value]
+    return value
 
 
 def _drive_images_ok(allowed) -> bool:
@@ -306,6 +320,7 @@ class Agent:
         self._faster_step: dict = {}  # this step's Faster mode record (FASTER_STEP_FIELDS)
         self._vision_calls = 0  # main-model calls this task (to price the ones Faster mode skipped)
         self._ocr_ok = True  # the last OCR read worked (an image goes only after its words were checked)
+        self._ocr_unsure: tuple[bytes | None, list[UIElement]] = (None, [])  # the last frame's low-confidence words
         self.driver = driver
         self.resolver = resolver
         self.config = config
@@ -1050,14 +1065,20 @@ class Agent:
             return []
         self._ocr_ok = True
         elements = []
+        unsure = []  # boxes under OCR_MIN_CONFIDENCE: kept from the model, never from the never-sent checks
         for box in boxes:
-            if box.confidence < OCR_MIN_CONFIDENCE or not box.text.strip():
+            if not box.text.strip():
                 continue
             x1, y1 = shot.to_device(box.x1, box.y1)
             x2, y2 = shot.to_device(box.x2, box.y2)
-            if x2 <= x1 or y2 <= y1:
+            if box.confidence < OCR_MIN_CONFIDENCE or x2 <= x1 or y2 <= y1:
+                unsure.append(UIElement(-1, box.text.strip(), "", "", "OCRText", False, None,
+                                        (x1, y1, max(x2, x1), max(y2, y1))))
                 continue
             elements.append(UIElement(start + len(elements), box.text.strip(), "", "", "OCRText", True, None, (x1, y1, x2, y2)))
+        # Faster mode's never-sent checks read every word OCR found on this frame, whatever its confidence (review S
+        # M1): a card number read at 0.25 is still on the image.
+        self._ocr_unsure = (shot.jpeg, unsure)
         return elements
 
     @staticmethod
@@ -1192,6 +1213,7 @@ class Agent:
         try:
             with self.timer.phase("action"):
                 try:
+                    state.dispatch_obs = obs
                     outcome = self._dispatch(name, args, obs, state)
                 except DeviceError as exc:
                     # "The phone can't see what's there" (gate_screen_unstable): wait for it to be readable first.
@@ -1268,7 +1290,7 @@ class Agent:
                 # A link's parameters (a search, a number) are the user's words, like typed text.
                 safe["params"] = {str(k): REDACTED for k in args["params"]}
             # A card number or SSN anywhere else (a summary, an ask_user question, a target) is redacted too.
-            safe = {k: sensitive.redact(v) if isinstance(v, str) else v for k, v in safe.items()}
+            safe = _redact_deep(safe)
             text = sensitive.redact(text)
             points: list[int] = []
             anchor = None
@@ -1276,7 +1298,9 @@ class Agent:
                 i = int(args["index"])
                 if 0 <= i < len(obs.elements):
                     el = obs.elements[i]
-                    anchor = {"text": el.text, "desc": el.desc, "resource_id": el.resource_id, "class": el.cls,
+                    # The tapped element's words are stored too: redacted like every other text (review S L6).
+                    anchor = {"text": sensitive.redact(el.text), "desc": sensitive.redact(el.desc),
+                              "resource_id": sensitive.redact(el.resource_id), "class": el.cls,
                               "bounds": list(el.bounds), "index": el.index}
                     points = list(el.center)
             for xk, yk in POINT_ARGS.get(name, ()):
@@ -1478,7 +1502,8 @@ class Agent:
             field = self._field(state, obs)
             if refused := self._typing_refusal(text, field, obs, state):
                 return refused
-            if (kind := self._sensitive_kind(text, field, obs)) and (
+            replacing = bool(args.get("replace")) or (field is not None and fast.is_query_field(field))
+            if (kind := self._sensitive_kind(text, field, obs, replacing)) and (
                     blocked := self._ask_sensitive(kind, text, field, obs, state)):
                 return blocked
             if args.get("submit") and (blocked := self._guard_enter(state, obs, field, typed=text)):
@@ -2431,6 +2456,9 @@ class Agent:
                                                                  "apps, so they're never typed.")
         if address_bar and gate.looks_like_url(text) and (why := gate.carries_sensitive(text)):
             return self._refuse("a link in the address bar", why)  # F3: no data out through links
+        if address_bar and field is not None and field.text and gate.looks_like_url(field.text + text) and (
+                why := gate.carries_sensitive(field.text + text)):
+            return self._refuse("a link in the address bar", why)  # the same link typed in pieces (review P M4)
         if kind := self._sensitive_kind(text, field, obs):
             what = sensitive.describe(kind)
             if state is None or state.refuse_otp:
@@ -2442,15 +2470,21 @@ class Agent:
         return None
 
     @staticmethod
-    def _sensitive_kind(text: str, field: UIElement | None, obs: Observation) -> str | None:
+    def _sensitive_kind(text: str, field: UIElement | None, obs: Observation, replace: bool = False) -> str | None:
         """A card number or SSN in text about to be typed (sensitive.find), in any field. The field's own words, or
         the screen's, saying SSN or Social Security make a bare 9 digits (or a test value like 000-12-3456) count;
         a card field (card number, CVV, expiry) makes any 3 digits count."""
         about = " ".join(p for p in (field.hint, field.desc, field.resource_id) if p) if field is not None else ""
         on_screen = any(sensitive.ssn_label(f"{e.text} {e.desc} {e.hint} {e.resource_id}")
                         for e in obs.elements if e is not field)
-        return sensitive.find(text, ssn_context=sensitive.ssn_label(about) or on_screen,
-                              card_field=sensitive.card_label(about))
+        ssn_context, card_field = sensitive.ssn_label(about) or on_screen, sensitive.card_label(about)
+        found = sensitive.find(text, ssn_context=ssn_context, card_field=card_field)
+        # A number typed in pieces ("4111 1111", then " 1111 1111"): the field's text with the new text after it
+        # (typing inserts at the end; review P M4). `replace` types into an empty field, so the new text alone.
+        current = (field.text or "") if field is not None and not replace else ""
+        if found is None and current and current != (field.hint or ""):
+            found = sensitive.find(current + text, ssn_context=ssn_context, card_field=False)
+        return found
 
     def _ask_sensitive(self, kind: str, text: str, field: UIElement | None, obs: Observation,
                        state: _TaskState) -> Outcome | None:
@@ -2639,6 +2673,8 @@ class Agent:
         if hasattr(self.driver, "prompt_waiter"):
             self.driver.prompt_waiter = (lambda exc, waited: self._prompt_wait(self._gate_state, exc, waited)) \
                 if state else None
+        if hasattr(self.driver, "prompt_recheck"):
+            self.driver.prompt_recheck = (lambda: self._prompt_recheck(self._gate_state)) if state else None
         self.driver.lock_waiter = (lambda exc: self._lock_wait(self._gate_state)) if state else None
         if hasattr(self.driver, "dialog_waiter"):
             self.driver.dialog_waiter = (lambda exc: self._dialog_wait(self._gate_state)) if state else None
@@ -2698,6 +2734,28 @@ class Agent:
             return "cancelled"  # the task was stopped while it waited: not the owner's no (the driver withdraws it)
         # "no answer": the prompt ended without a decision (timed out, or interrupted and never answered).
         return "no_answer" if answer.strip().lower() == "no answer" else "no"
+
+    def _prompt_recheck(self, state: _TaskState | None) -> str | None:
+        """Right before the driver re-sends an act refused with gate_prompt_open (review S L7): None when the screen
+        is still the one the act was decided on (the server's own checks still hold), "wait" while OpenMob's own
+        prompt is in front (nothing is sent), else why not to send it again (another app, a blocked app, or a
+        changed screen). The phone re-judges whatever is sent anyway."""
+        obs = state.dispatch_obs if state is not None else None
+        package = self.driver.current_app()
+        if package == settings_pages.OWN_PACKAGE:
+            return "wait"
+        if state is not None and self._is_blocked(state, package):
+            return f"{package} came to the front, which this task may not touch"
+        if obs is None:
+            return None
+        if package != obs.package:
+            return "the app in front changed"
+        before = [el for el in obs.elements if el.cls != fast.OCR_CLASS]
+        if before:
+            now = self.driver.ui_elements()
+            if fast.signature(package, now) != fast.signature(obs.package, before):
+                return "the screen changed"
+        return None
 
     def _prompt_wait(self, state: _TaskState | None, refusal, waited: float) -> bool:
         """The phone refused an act because another of its prompts is open, or one closed a moment ago
@@ -3515,7 +3573,10 @@ class Agent:
         if why is None and faster.labeled(elements):
             return None  # Jev text reads this screen: no image needed (not a refusal, nothing recorded)
         if why is None:
-            why = faster.refusal(package, elements, blocked=state.blocked, sensitive_apps=self.config.sensitive_apps,
+            checked = list(elements)
+            if shot is not None and self._ocr_unsure[0] is shot.jpeg:
+                checked += self._ocr_unsure[1]  # every OCR word, whatever its confidence (review S M1)
+            why = faster.refusal(package, checked, blocked=state.blocked, sensitive_apps=self.config.sensitive_apps,
                                  locked=bool(getattr(self.driver, "locked", False)), ocr_ran=ocr_ran)
         if why is None and shot is None:
             why = faster.NO_FRAME
@@ -3527,6 +3588,15 @@ class Agent:
                 why = faster.NO_FRAME
         if why is None and prepared.black:
             why = faster.BLACK_FRAME
+        if why is None:
+            # The package was read before the frame (review S L2): a frame taken as another app came to the front
+            # would be judged by the old one. Read it again after the capture; a change discards the frame.
+            try:
+                now = self.driver.current_app()
+            except DeviceError:
+                now = None
+            if now != package:
+                why = faster.APP_CHANGED
         if why is not None:
             if why not in (faster.OFF, faster.NO_JEV):
                 self._faster_note(jev_image_skip=why)
@@ -3537,6 +3607,9 @@ class Agent:
         """One image question (J1 "state" or J3 "loading"), at most jev_image_timeout_ms; None on an error, a
         timeout, or when Faster mode went off while it ran (the answer is discarded)."""
         self.images.timeout_s = max(int(self.config.jev_image_timeout_ms), 50) / 1000
+        # Asked again in the image worker right before the POST (review S M3): an image whose step gave up, or that
+        # Faster mode was turned off for meanwhile, is never sent.
+        self.images.still_ok = lambda: self._faster_blocked(state) is None and not state.cancel.is_set()
         started = time.perf_counter()
         answer = None
         with self.timer.phase("jev"):

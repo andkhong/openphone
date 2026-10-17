@@ -835,6 +835,9 @@ class V1Service:
         settings = self.manager.permission_settings(f"app-{device.id}")
         view = perm.public(settings)
         view.pop("faster_log", None)  # the owner's audit trail stays on the dashboard
+        # Other keys' ids aren't this caller's business (review S L4): only whether this key may use Faster mode
+        # in its drive sessions. The owner's dashboard keeps the full list.
+        view["faster_drive_self"] = p.id in (view.pop("faster_drive_keys", None) or [])
         faster = getattr(self.manager, "faster_scope", None)
         view["faster_active"] = faster(f"app-{device.id}") if faster else "off"
         return {"device_id": f"app-{device.id}", **view, "key_max_mode": p.max_mode}

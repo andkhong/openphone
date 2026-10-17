@@ -152,6 +152,10 @@ class RemoteDriver(CachedScreenshots):
         # earlier task's, or one that just closed). True: try the call again (the agent waits a moment first); False:
         # give up and report it.
         self.prompt_waiter = None
+        # () -> None | "wait" | reason: asked right before each re-send while a prompt is open (review S L7). None:
+        # the screen is still the one the call was decided on, re-send; "wait": the phone's own prompt is in front,
+        # don't send yet; a reason: the screen or the app changed (or a blocked app is in front), stop retrying.
+        self.prompt_recheck = None
         # (PhoneLocked) -> bool: pause until the owner unlocks (the agent sets it). True: unlocked in time.
         self.lock_waiter = None
         # (OwnerDialog) -> bool: pause until the owner answers a system dialog the phone can't read. True: it closed.
@@ -319,6 +323,21 @@ class RemoteDriver(CachedScreenshots):
         (a new one, e.g. gate_needs_approval, or the last gate_prompt_open once the wait gave up)."""
         waiter, started = self.prompt_waiter, time.monotonic()
         while waiter is not None and waiter(exc, time.monotonic() - started):
+            # Never re-send a stale call (review S L7): the server's checks were made on the screen it was decided
+            # on, so look again first, and stop once the screen or the app changed.
+            recheck = self.prompt_recheck
+            if recheck is not None:
+                try:
+                    why = recheck()
+                except DeviceError as err:
+                    why = f"the screen couldn't be read again ({err})"
+                if why == "wait":
+                    continue
+                if why:
+                    return False, GateRefused(
+                        "gate_screen_changed", f"While another prompt was open on the phone, {why}, so this wasn't "
+                        "sent again. Look at the screen again before acting.", exc.rule, exc.package,
+                        exc.approval_id, kind=exc.kind)
             try:
                 return True, self._call_once(method, _wait, **params)
             except GateRefused as again:

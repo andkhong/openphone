@@ -70,7 +70,11 @@ so nothing new is trusted:
   back within `faster_resume_s` (5 min) and the session wasn't idle past `faster_idle_s`. Anything else ends it.
 - **Idle:** the server counts task and drive activity (every image check the agent makes during a task), the phone
   counts the server's calls. An hour without any ends it on both sides.
-- A server restart is a reconnect: the phone re-presents its grant, which still has to be inside its signed limits.
+- A server restart is a reconnect, judged from when the phone actually left (review S L5, 2026-10-17): the time of
+  the drop is stored with the grant (`faster_grant.detached_at`), so a restart doesn't restart the 5-minute window.
+  If the server died without seeing the drop (a crash: the stored grant still holds on an earlier process's
+  connection), when the phone left is unknown, so the grant **ends** and the owner turns it on again (fail closed).
+  The idle hour then counts from the approval (`faster_since`), the activity record being in memory only.
 - "Always on this phone" survives reconnects and restarts; only turning it off ends it.
 
 **Checked on the emulator** (`gk_b7`, this branch's app, a token-mode server on port 8767, 2026-10-17): turned on
@@ -144,10 +148,13 @@ order:
 | `blocked_app` | An app this task may not touch |
 | `sensitive_app` | Banking, payments, wallets, password managers (`sensitive_apps`), **always**, whatever `allow_sensitive_apps` says |
 | `locked` | The lock screen is up |
+| `notification` | The notification shade, a heads-up or another System UI window: System UI is in front, or a System UI node (`com.android.systemui:id/…`) is in the element list. The server has no window list, so a heads-up that only OCR sees is caught by `otp_text` and `sensitive_number`, not here |
 | `password_field` | A password field on screen |
-| `sensitive_number` | A card number or SSN in any element's text or the OCR'd words, alone or joined across boxes (`agent/sensitive.py`, the detector the gatekeeper uses) |
+| `sensitive_number` | A card number or SSN in any element's text or the OCR'd words, alone or joined across boxes (`agent/sensitive.py`, the detector the gatekeeper uses); **or any run of 8 or more digits** (single separators allowed, any script's digits), whatever Luhn says, so a misread or partly read number still stays. Every OCR word counts here, **whatever its confidence**: the 0.3 floor only keeps unsure words from the main model (review S M1) |
+| `otp_text` | A one-time code: 4-8 digits within 60 characters of "code", "verification", "verify", "OTP", "passcode", "PIN", "one-time", "2FA", "authenticate", "log in", "sign in", "confirm", or Google's "G-123456" (review S M2). Sender names aren't recognised; a code with none of those words around it can still go |
 | `no_text_check` | The server has no OCR (it is macOS-only today), so a treeless screen's words couldn't be checked first. **Fail closed: nothing is sent.** |
-| `black_frame` | The prepared image is black: a `FLAG_SECURE` window or a gatekeeper-blacked-out read |
+| `black_frame` | The prepared image's **app area** is black (97% of its pixels at or below 24): a `FLAG_SECURE` window or a gatekeeper-blacked-out read. The status bar (top 5%), the navigation bar (bottom 7%) and OpenMob's border (2% each side) are left out, since a secure capture still shows them; the Stop pill is within the 3% (review S L3) |
+| `app_changed` | The app in front, read again right after the frame was taken, isn't the one the checks above judged (review S L2): another app (a bank, say) came up between the package read and the capture |
 | `drive` | A drive session, unless the owner approved that key on that phone (§1.2) |
 
 ## 3. What the loop does with the answers
@@ -175,7 +182,13 @@ is cheap to read, OCR, then every never-sent check again), one Noul question ("s
 
 **Deadlines.** Each image request is capped at `jev_image_timeout_ms` (600 ms): a slower answer is discarded and the
 step goes on (`JevImageJudge`, a thread with a hard deadline; the HTTP request finishes on its own). Nothing
-waits on TypeSafe longer than that, and an error never fails a step.
+waits on TypeSafe longer than that, and an error never fails a step. **Nothing is queued** (review S M3,
+2026-10-17): at most two requests run at once, each on its own worker, and a third is skipped at once rather than
+waiting behind a slow one. Right before the POST the worker checks again that the deadline hasn't passed and that
+Faster mode is still on for that phone and task (`still_ok`, the live phone-signed switch); otherwise the image is
+never sent. So an image goes out only while its step still waits for it and Faster mode is on; one already
+being sent when the owner turns it off may finish, and its answer is discarded. A TypeSafe error reaches the feed as
+its status code only, never its body.
 
 **Why J3 is not inside every settle.** Asking on every settle of a treeless screen would add a screenshot, OCR and a
 request (about 0.3–0.5 s, estimate) to every step even when nothing is loading. J1 already looks at every treeless
@@ -242,7 +255,7 @@ phone-signed switch is covered by `tests/test_faster_mode_switch.py`).
 | Another of the owner's phones approves it | Only the phone being changed can answer its `mode_change` (`_resolve_permission_change`) |
 | Replay of an old approval | The signature covers this approval id and the change's digest, and expires after 5 minutes |
 | Wearing the owner down with prompts | The phone shows at most 2 permission-change prompts an hour (N1) |
-| A screen that must never leave | The server-side checks above, before every request, with tests; OCR missing means nothing is sent |
+| A screen that must never leave | The server-side checks above, before every request, with tests; OCR missing means nothing is sent. The number checks guard against accidental leaks, not a determined adversary: a number drawn in an unusual way, or one OCR misses entirely, isn't caught |
 | A sensitive screen the checks miss (a balance with no card number, a canvas banking app with an unlisted package) | **Not stopped.** The detector catches card numbers and SSNs; other personal data on a treeless screen can be sent. J5 (an image "sensitive?" signal) is a later, add-only step |
 | **A compromised server** | **Not stopped.** The server enforces the switch and the never-sent list. A compromised server can ignore both and send any screenshot it takes anywhere, as it can with every screenshot today (the main model already receives them). The phone can't see where the server sends images. What the phone does: it keeps the owner's choice, shows "Faster mode is on" only for that, and tells the server to turn it off when the server claims more |
 | TypeSafe's handling | Their terms; images are "Dreamer-ready" (not production). The owner opts in knowing it's a second processor |

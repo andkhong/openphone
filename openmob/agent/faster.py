@@ -33,6 +33,19 @@ SENSITIVE_NUMBER = "sensitive_number"  # a card number or SSN in the screen's te
 NO_TEXT_CHECK = "no_text_check"  # no OCR on this server, so the screen's words couldn't be checked first
 BLACK_FRAME = "black_frame"  # the screenshot is black: a secure window or a blacked-out read
 NO_FRAME = "no_frame"  # no screenshot could be taken
+OTP_TEXT = "otp_text"  # a one-time code (4-8 digits near "code", "verification", "OTP", "passcode", "PIN")
+NOTIFICATION = "notification"  # the notification shade, a heads-up or another System UI window is showing
+APP_CHANGED = "app_changed"  # the app in front changed between the package check and the frame (review S L2)
+
+SYSTEMUI = "com.android.systemui"
+# Any run of 8 or more digits (single separators allowed), whatever Luhn says: a misread or partly read card or
+# account number still never leaves (review S M1). \d also matches other scripts' digits.
+_LONG_DIGITS = re.compile(r"\d(?:[ .\-_/]?\d){7,}")
+# A one-time code: 4-8 digits within 60 characters of a code word (review S M2). Plain game scores ("Score 1200")
+# don't count; "Your code is 482913" does.
+_OTP_NUMBER = re.compile(r"(?<!\d)\d{4,8}(?!\d)")
+_OTP_WORDS = re.compile(r"(?i)(?<![a-z])(code|codes|verification|verify|otp|passcode|pin|one[- ]?time|2fa|"
+                        r"authenticat\w*|security code|log ?in|sign[- ]?in|confirm)(?![a-z])|(?<![A-Za-z])G-\d")
 
 
 def labeled(elements: list[UIElement]) -> bool:
@@ -42,6 +55,30 @@ def labeled(elements: list[UIElement]) -> bool:
 
 def screen_text(elements: list[UIElement]) -> list[str]:
     return [s for el in elements for s in (el.text, el.desc, el.hint) if s]
+
+
+def long_digits(text: str | None) -> bool:
+    """A run of 8 or more digits (single separators allowed)."""
+    return bool(text and _LONG_DIGITS.search(text))
+
+
+def otp_text(text: str | None) -> bool:
+    """A 4-8 digit number within 60 characters of a code word (a one-time code, a PIN)."""
+    if not text:
+        return False
+    for m in _OTP_NUMBER.finditer(text):
+        near = text[max(0, m.start() - 60):m.end() + 60]
+        if _OTP_WORDS.search(near):
+            return True
+    return False
+
+
+def system_ui(package: str | None, elements: list[UIElement]) -> bool:
+    """The notification shade, a heads-up or another System UI window: the foreground is System UI, or the element
+    list holds a System UI node (the server has no window list; what it can see is the package and the ids)."""
+    if package == SYSTEMUI:
+        return True
+    return any((el.resource_id or "").startswith(SYSTEMUI + ":") for el in elements)
 
 
 def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitive_apps: list[str],
@@ -59,6 +96,8 @@ def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitiv
         return SENSITIVE_APP
     if locked:
         return LOCKED
+    if system_ui(package, elements):
+        return NOTIFICATION
     if any(el.password for el in elements if el.cls != OCR_CLASS):
         return PASSWORD_FIELD
     # Hidden or covered windows the phone can't read: every labeled element covered by a higher window.
@@ -70,11 +109,14 @@ def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitiv
     for el in elements:
         card_field = sensitive.card_label(f"{el.text} {el.desc} {el.hint} {el.resource_id}") and el.editable
         for text in (el.text, el.desc, el.hint):
-            if text and sensitive.find(text, ssn_context=ssn_context, card_field=card_field):
+            if text and (sensitive.find(text, ssn_context=ssn_context, card_field=card_field) or long_digits(text)):
                 return SENSITIVE_NUMBER
     # The words across elements, joined: a card number split over OCR boxes ("4111 1111" "1111 1111").
-    if sensitive.find(" ".join(texts), ssn_context=ssn_context):
+    joined = " ".join(texts)
+    if sensitive.find(joined, ssn_context=ssn_context) or long_digits(joined):
         return SENSITIVE_NUMBER
+    if any(otp_text(t) for t in texts) or otp_text(joined):
+        return OTP_TEXT
     if not ocr_ran and not labeled(elements):
         return NO_TEXT_CHECK
     return None

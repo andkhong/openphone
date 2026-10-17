@@ -123,6 +123,9 @@ class DeviceManager:
         self.faster_grant_verifier = None
         self._faster_active: dict[str, float] = {}  # session id -> last task or drive activity (session-only idle)
         self._faster_detached: dict[str, float] = {}  # session id -> when its connection dropped (the 5 min blip)
+        # Connection tokens this process issued. A stored session-only grant holding on a token from before a
+        # restart, with no recorded drop, can't tell when the phone left: it ends (review S L5, fail closed).
+        self._faster_tokens: set[str] = set()
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -835,8 +838,7 @@ class DeviceManager:
 
     # --- Faster mode (docs/design/faster-mode.md) ------------------------------------------
 
-    @staticmethod
-    def _link_token(session: Session) -> str | None:
+    def _link_token(self, session: Session) -> str | None:
         """An id for the phone's current connection: a session-only Faster mode holds on it."""
         link = session.link
         if link is None:
@@ -848,6 +850,7 @@ class DeviceManager:
                 link.faster_token = token
             except AttributeError:
                 return None
+            self._faster_tokens.add(token)
         return token
 
     def faster_scope(self, session_id: str) -> str:
@@ -868,10 +871,16 @@ class DeviceManager:
         token = settings.get("faster_session")
         current = self._link_token(session) if session is not None else None
         if token and token != current:  # replaced by a new connection without a close: a reconnect
+            if token not in self._faster_tokens:
+                # Held on a connection of an earlier server process that never recorded the drop (a crash): when
+                # the phone left is unknown, so the grant ends and the owner turns it on again (review S L5).
+                self._end_faster_session(session, session_id, "a server restart with no record of when the phone "
+                                                              "left")
+                return "off"
             self._faster_detach(session_id, now)
             token = None
         if not token:
-            detached = self._faster_detached.get(session_id)
+            detached = self._faster_detached_at(session_id, settings)
             if detached is not None and now - detached > float(grant.get("resume_s") or 0):
                 self._end_faster_session(session, session_id, "the phone coming back too late (over "
                                          f"{int(float(grant.get('resume_s') or 0) // 60)} min)")
@@ -895,12 +904,27 @@ class DeviceManager:
         return self.faster_on(session_id) and key_id in (self.permission_settings(session_id).get("faster_drive_keys")
                                                          or [])
 
+    def _faster_detached_at(self, session_id: str, settings: dict) -> float | None:
+        """When the session-only grant's connection dropped: this process's record, else the one stored with the
+        grant (it survives a restart, review S L5)."""
+        detached = self._faster_detached.get(session_id)
+        if detached is None:
+            stored = (settings.get("faster_grant") or {}).get("detached_at")
+            detached = float(stored) if isinstance(stored, (int, float)) else None
+        return detached
+
     def _faster_detach(self, session_id: str, now: float) -> None:
-        """The session-only grant's connection is gone: off until the phone re-confirms it (a network blip)."""
+        """The session-only grant's connection is gone: off until the phone re-confirms it (a network blip). When it
+        dropped is stored with the grant, so a server restart doesn't restart the reconnect window."""
         settings = self.permission_settings(session_id)
-        if settings.get("faster_mode") == "session" and settings.get("faster_session"):
-            self.permissions.set(session_id, {**settings, "faster_session": None})
-        self._faster_detached.setdefault(session_id, now)
+        when = self._faster_detached_at(session_id, settings)
+        when = now if when is None else when
+        if settings.get("faster_mode") == "session":
+            grant = settings.get("faster_grant") or {}
+            if settings.get("faster_session") or grant.get("detached_at") != when:
+                self.permissions.set(session_id, {**settings, "faster_session": None,
+                                                  "faster_grant": {**grant, "detached_at": when}})
+        self._faster_detached.setdefault(session_id, when)
 
     def _faster_connection_closed(self, session: Session, close_code: int | None) -> None:
         """detach_remote: a normal close (1000, the owner's Disconnect or Stop) ends a session-only Faster mode; any
@@ -945,7 +969,12 @@ class DeviceManager:
             self._end_faster_session(session, sid, "a grant that didn't match")
             return False
         now = time.time()
-        detached = self._faster_detached.get(sid)
+        detached = self._faster_detached_at(sid, settings)
+        if detached is None and settings.get("faster_session") and settings["faster_session"] not in self._faster_tokens:
+            # A grant held on a connection of an earlier server process, with no recorded drop (a crash): when
+            # the phone left is unknown, so it isn't resumed (review S L5, fail closed).
+            self._end_faster_session(session, sid, "a server restart with no record of when the phone left")
+            return False
         if detached is not None and now - detached > float(grant.get("resume_s") or 0):
             self._end_faster_session(session, sid, "the phone coming back too late (over "
                                      f"{int(float(grant.get('resume_s') or 0) // 60)} min)")
@@ -954,7 +983,8 @@ class DeviceManager:
         if now - active > float(grant.get("idle_s") or 0):
             self._end_faster_session(session, sid, "an idle session")
             return False
-        self.permissions.set(sid, {**settings, "faster_session": self._link_token(session)})
+        self.permissions.set(sid, {**settings, "faster_session": self._link_token(session),
+                                   "faster_grant": {k: v for k, v in grant.items() if k != "detached_at"}})
         self._faster_detached.pop(sid, None)
         session.coordinator.event("status", "Faster mode stays on for this session: the phone re-confirmed it after "
                                             "a reconnect.", task=None)
@@ -1003,12 +1033,27 @@ class DeviceManager:
                                        requester=requester, origin="owner")
 
     def faster_drive_off(self, account_id: str | None, key_id: str, by: str) -> int:
-        """Stop a key's drive sessions using Faster mode on every phone of the account (a tightening, from anywhere)."""
+        """Stop a key's drive sessions using Faster mode on every phone of the account (a tightening, from anywhere):
+        the phones connected now, and every phone stored for the account, online or not (review S L4; a phone
+        offline since a restart has no session here, but its pairing record still lists the key)."""
         n = 0
+        done = set()
         for session in self.sessions_for(account_id):
+            done.add(session.info.id)
             if key_id in (self.permission_settings(session.info.id).get("faster_drive_keys") or []):
                 self.change_permissions(session, {"faster_drive": {"key": key_id, "on": False}}, requester=by)
                 n += 1
+        store = getattr(self.permissions, "store", None)
+        if store is not None and account_id is not None and hasattr(store, "list_devices"):
+            for device in store.list_devices(account_id):
+                sid = f"app-{device.id}"
+                if sid in done:
+                    continue
+                settings = self.permissions.get(sid)
+                if key_id in (settings.get("faster_drive_keys") or []):
+                    self.permissions.set(sid, {**settings, "faster_drive_keys": [
+                        k for k in settings["faster_drive_keys"] if k != key_id]})
+                    n += 1
         return n
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:
