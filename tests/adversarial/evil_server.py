@@ -29,6 +29,7 @@ Every adb call names the device (`-s <serial>`). Never point it at the owner's o
 from __future__ import annotations
 
 import argparse
+import base64
 import asyncio
 import io
 import json
@@ -1648,10 +1649,138 @@ async def g_never(phone: Phone, dev: Device) -> None:
     dev.home()
 
 
+def overlay_windows(dev: Device) -> dict[str, list[int]]:
+    """OpenMob's indicator windows on screen now (by their window titles), with their frames."""
+    out = {}
+    text = dev.sh("dumpsys window windows")
+    for title in ("OpenMob indicator", "OpenMob Stop"):
+        m = re.search(re.escape(title) + r"\}:.*? frame=\[(\d+),(\d+)\]\[(\d+),(\d+)\]", text, re.S)
+        if title in text:
+            out[title] = [int(v) for v in m.groups()] if m else []
+    return out
+
+
+def edge_colour(path: str) -> tuple[int, int, int] | None:
+    """The average colour of a strip along the left edge, half-way down (where the border is)."""
+    try:
+        from PIL import Image
+        im = Image.open(path).convert("RGB")
+    except Exception:
+        return None
+    w, h = im.size
+    px = [im.getpixel((x, y)) for x in range(0, 6) for y in range(h // 2 - 40, h // 2 + 40, 4)]
+    return tuple(sum(c[i] for c in px) // len(px) for i in range(3))
+
+
+def bluish(c) -> bool:
+    return c is not None and c[2] > 150 and c[2] > c[0] + 60
+
+
+def amberish(c) -> bool:
+    return c is not None and c[0] > 180 and c[1] > 100 and c[2] < 90
+
+
+async def g_indicator(phone: Phone, dev: Device) -> None:
+    """The agent indicator (docs/design/control-indicator.md): a border and a Stop pill while an agent acts, amber while
+    the phone's prompt waits, gone after the task; the gate looks through the border and refuses taps on the pill; the
+    owner's tap on the pill stops everything. Runs last in a session (the pill's Stop disconnects)."""
+    G = "indicator"
+    if not dev.installed("com.example.shop"):
+        check(G, "stand-in shop installed", False, "skipped")
+        return
+    await shop_open(dev)
+    await asyncio.sleep(12)  # anything left over from an earlier group fades first
+    before = overlay_windows(dev)
+    shot0 = dev.shot("indicator-0-before")
+    check(G, "no indicator before an agent acts", not before, f"{before} {shot0}")
+    r = await phone.call("screenshot")
+    check(G, "a read alone doesn't show it", not overlay_windows(dev), short(r)[:120])
+
+    nodes = await dev.nodes()
+    add = next((n for n in nodes if n["text"] == "Add to cart"), None)
+    title = next((n for n in nodes if "USB-C cable" in n["text"]), None)
+    if not add or not title:
+        check(G, "the product page is readable", False, f"add={add} title={title}")
+        return
+    r = await phone.call("tap", x=title["center"][0], y=title["center"][1])
+    shown = overlay_windows(dev)
+    check(G, "an admitted tap shows the border and the pill before it returns",
+          r.get("ok") is True and "OpenMob indicator" in shown and "OpenMob Stop" in shown, f"{short(r)[:120]} {shown}")
+    await asyncio.sleep(0.5)
+    shot1 = dev.shot("indicator-1-working")
+    check(G, "the adb screenshot shows the blue border at the edge", bluish(edge_colour(shot1)), f"{edge_colour(shot1)} {shot1}")
+    r = await phone.call("screenshot")
+    agent_shot = os.path.join(dev.out, "indicator-2-agent-screenshot.jpg")
+    jpeg = r.get("binary") or base64.b64decode((r.get("result") or {}).get("jpeg") or "")
+    with open(agent_shot, "wb") as f:
+        f.write(jpeg)
+    check(G, "the agent's own screenshot works and includes the border (not black)",
+          r.get("ok") is True and bool(jpeg) and bluish(edge_colour(agent_shot)), f"{edge_colour(agent_shot)} {agent_shot}")
+    r = await phone.call("ui_elements")
+    texts = [e.get("text", "") + e.get("desc", "") for e in r.get("result") or []]
+    check(G, "ui_elements doesn't list the pill", not any("Stop" in t for t in texts), str(texts)[:200])
+
+    # A tap at the very left edge, under the border, reaches the app (Add to cart logs).
+    dev.logcat_clear()
+    x = add["box"][0] + 4
+    r = await phone.call("tap", x=x, y=add["center"][1])
+    await asyncio.sleep(1)
+    added = "ADDED" in dev.log("ShopStandIn")
+    check(G, f"a tap near the edge (x={x}) passes through the border to the app", r.get("ok") is True and added,
+          f"{short(r)[:120]} added={added}")
+
+    pill = overlay_windows(dev).get("OpenMob Stop") or []
+    if len(pill) != 4:
+        check(G, "the pill's frame is known", False, str(pill))
+        return
+    cx, cy = (pill[0] + pill[2]) // 2, (pill[1] + pill[3]) // 2
+    for method, params in (("tap", dict(x=cx, y=cy)), ("long_press", dict(x=cx, y=cy)),
+                           ("swipe", dict(x1=cx, y1=cy, x2=cx, y2=cy + 800, duration_ms=300))):
+        r = await phone.call(method, **params)
+        check(G, f"an agent {method} on the Stop pill is refused", rule(r) == "gate_denied_page:builtin:own_indicator", short(r)[:200])
+    check(G, "the pill is still up and the session alive after the refusals",
+          "OpenMob Stop" in overlay_windows(dev) and phone.ws.state == websockets.protocol.State.OPEN, "")
+
+    # The phone's own prompt: amber and thicker.
+    await shop_open(dev)
+    buy = await dev.wait_find("Buy now")
+    r = await phone.call("tap", x=buy[0], y=buy[1]) if buy else {}
+    if asks(r):
+        await asyncio.sleep(1.5)
+        shot3 = dev.shot("indicator-3-approval")
+        check(G, "the approval prompt turns the border amber", amberish(edge_colour(shot3)), f"{edge_colour(shot3)} {shot3}")
+        await dev.deny("indicator-buy-deny")
+        await phone.gate_state(r["approval_id"])
+    else:
+        check(G, "Buy now asks", False, short(r))
+
+    # The task ends: the border fades within the short hold.
+    r = await phone.call("tap", x=title["center"][0], y=title["center"][1])
+    await phone.ws.send(json.dumps({"type": "event", "kind": "result", "message": "Done."}))
+    await asyncio.sleep(3)
+    after = overlay_windows(dev)
+    shot4 = dev.shot("indicator-4-after")
+    check(G, "after the task's result the indicator is gone", not after and not bluish(edge_colour(shot4)), f"{after} {shot4}")
+
+    # The owner taps the pill: the task stops (the connection closes with 1000) and the indicator goes.
+    r = await phone.call("tap", x=title["center"][0], y=title["center"][1])
+    pill = overlay_windows(dev).get("OpenMob Stop") or []
+    if len(pill) == 4:
+        dev.sh(f"input tap {(pill[0] + pill[2]) // 2} {(pill[1] + pill[3]) // 2}")
+        await asyncio.sleep(2)
+        closed = phone.ws.state != websockets.protocol.State.OPEN
+        code = getattr(phone.ws, "close_code", None)
+        gone = overlay_windows(dev)
+        shot5 = dev.shot("indicator-5-stopped")
+        check(G, "the owner's tap on the pill stops: socket closed with 1000, indicator gone",
+              closed and code == 1000 and not gone, f"closed={closed} code={code} left={gone} {shot5}")
+    else:
+        check(G, "the pill shows for the Stop test", False, str(pill))
+
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
           "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "financial": g_financial, "hidden": g_hidden, "methods": g_methods, "never": g_never,
-          "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "probe": g_probe}
+          "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "indicator": g_indicator, "probe": g_probe}
 
 
 async def main() -> None:
