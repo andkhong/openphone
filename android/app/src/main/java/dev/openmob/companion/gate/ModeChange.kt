@@ -51,9 +51,22 @@ object ModeChange {
     /** "never": "off" in the change: a tightening the phone takes from anywhere. */
     fun turnsNeverOff(input: String): Boolean = patch(input)["never"] == "off"
 
+    /** Faster mode's warning, shown when turning it on (docs/safety.md "Faster mode"; the server's FASTER_WARNING). */
+    const val FASTER_WARNING = "Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second " +
+        "AI service, so it can recognize screens faster. Banking, wallet and password apps, and screens the phone " +
+        "blacks out, are never sent. You can turn this off at any time."
+
+    /** A change that turns Faster mode on: its scope ("phone" or "session"), else null. Not gatekeeper policy (the
+     *  server sends the images; the phone keeps the owner's choice in [dev.openmob.companion.FasterMode]). */
+    fun fasterScope(input: String): String? = (patch(input)["faster_mode"] as? String)?.takeIf { it == "phone" || it == "session" }
+
     /** The phone's own wording of the change. */
     fun describe(input: String): String {
         val parts = mutableListOf<String>()
+        when (fasterScope(input)) {
+            "phone" -> parts.add("Turn on Faster mode on this phone? $FASTER_WARNING")
+            "session" -> parts.add("Turn on Faster mode for this session? $FASTER_WARNING")
+        }
         for (r in records(input)) when (r["type"]) {
             "never" -> {
                 val hours = (r["duration_ms"] as Long) / 3_600_000L

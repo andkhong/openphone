@@ -229,4 +229,20 @@
     <string name="gate_prompt_interrupted">Interrupted. The screen lock prompt comes back in a moment; or tap Approve or Deny.</string>
     <string name="gate_always_for">Always allow for %1$s</string>
     <string name="gate_mode_change_limited">A permission change request was ignored: at most 2 an hour can be asked on this phone.</string>
+    <!-- Faster mode (docs/design/faster-mode.md): its own card and notification line. -->
+    <string name="faster_title">Faster mode</string>
+    <string name="faster_warning">Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI service, so it can recognize screens faster. Banking, wallet and password apps, and screens the phone blacks out, are never sent. You can turn this off at any time.</string>
+    <string name="faster_learn_more">What is sent, and what never is</string>
+    <string name="faster_learn_more_url">https://github.com/andkhong/openmob/blob/main/docs/safety.md#faster-mode</string>
+    <string name="faster_status_off">Off. Screenshots stay between this phone, your OpenMob server and the AI model you chose.</string>
+    <string name="faster_status_phone">On, always on this phone.</string>
+    <string name="faster_status_session">On for this session (until this phone disconnects).</string>
+    <string name="faster_on_session">Turn on for this session</string>
+    <string name="faster_on_always">Always on this phone</string>
+    <string name="faster_turn_off">Turn off Faster mode</string>
+    <string name="faster_on_banner">Faster mode is on</string>
+    <string name="faster_asked">Approve Faster mode with your screen lock in the prompt that opens.</string>
+    <string name="faster_offline">Connect to your agent first.</string>
+    <string name="faster_turned_off">Faster mode is off: no more screenshots go to TypeSafe.</string>
+    <string name="faster_not_approved">The server said Faster mode was on, but it wasn\'t approved on this phone, so the phone turned it off.</string>
 </resources>

@@ -25,7 +25,7 @@ def make_anthropic_client(cfg: Config):
 def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=None):
     from .agent import Agent
     from .agent.models import ModelRouter
-    from .jev import JevClient, JevJudge
+    from .jev import JevClient, JevImageJudge, JevJudge
     from .phone.apps import AppResolver, chain_pickers, make_jev_picker, make_llm_picker
 
     router = ModelRouter(cfg)
@@ -43,9 +43,11 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
     # App names are picked by a small model: the resolver model if its provider is set up, else the default.
     picker_model = cfg.resolver_model if router.available(cfg.resolver_model) else cfg.model
     driver = driver or PhoneDriver(cfg.adb_serial, cfg.adb_path, cfg.screenshot_max_side)
-    judge = None
+    judge = images = None
     if cfg.jev_api_key and cfg.jev_enabled:
         judge = JevJudge(JevClient(cfg.jev_api_key, cfg.jev_model, cfg.jev_base_url))
+        if cfg.faster_mode != "disabled":  # Faster mode's image questions; sent only while a phone has it on
+            images = JevImageJudge(judge.client, cfg.jev_image_model, cfg.jev_image_timeout_ms / 1000)
     picker = chain_pickers(
         make_jev_picker(judge, cfg.jev_min_confidence) if judge else None,
         make_llm_picker(router, picker_model),
@@ -57,7 +59,7 @@ def build_agent(cfg: Config, io, driver: PhoneDriver | None = None, label_cache=
         from .agent.replay import PathStore, store_path
 
         paths = PathStore(store_path(label_cache), cfg.replay_max_goals, cfg.history_retention_days)
-    return Agent(router, driver, resolver, cfg, io, judge=judge, paths=paths)
+    return Agent(router, driver, resolver, cfg, io, judge=judge, paths=paths, images=images)
 
 
 def cmd_do(cfg: Config, args) -> None:

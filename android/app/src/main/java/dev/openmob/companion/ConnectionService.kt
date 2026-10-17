@@ -50,6 +50,7 @@ class ConnectionService : Service() {
         private const val ACTION_START = "dev.openmob.START"
         private const val ACTION_STOP = "dev.openmob.STOP"
         private const val ACTION_NEVER_OFF = "dev.openmob.NEVER_OFF"
+        private const val ACTION_FASTER_OFF = "dev.openmob.FASTER_OFF"
         private const val ACTION_RESUME = "dev.openmob.GATE_RESUME"
         private const val LOCK_ID = 4 // "Unlock your phone to continue"
         private const val RESUME_ID = 5 // "Paused after repeated denials"
@@ -91,6 +92,20 @@ class ConnectionService : Service() {
 
         /** "Turn off" agents acting without asking: back to auto. A tightening, so nothing to sign. */
         fun turnOffNever(): Boolean = AppState.connected && running?.send(JSONObject().put("type", "permissions_off")) ?: false
+
+        /** "Turn on Faster mode" ("phone" or "session"): the server answers with an approval the owner signs here,
+         *  behind the screen lock, after reading the warning. False if not connected. */
+        fun requestFaster(scope: String): Boolean = AppState.connected && running?.send(
+            JSONObject().put("type", "faster_mode_request").put("scope", scope)
+        ) ?: false
+
+        /** Turn Faster mode off: here at once, and on the server (one tap, nothing to sign). */
+        fun turnOffFaster(context: Context, via: String): Boolean {
+            FasterMode.turnOff(context)
+            AppState.notifyListeners()
+            running?.let { it.updateNotification(it.statusLine) }
+            return running?.send(JSONObject().put("type", "faster_mode_off").put("via", via)) ?: false
+        }
 
         /** Send a spoken or typed request to the agent. False if not connected. Typed or spoken on this phone, it
          *  is a phone-known instruction: one matching send, post or delete it names runs without a prompt (D6). */
@@ -139,6 +154,7 @@ class ConnectionService : Service() {
     override fun onCreate() {
         super.onCreate()
         settings = Settings(this)
+        FasterMode.load(this)
         GateHost.init(this)
         GateHost.sink = { message -> if (running === this) send(message) }
         GateHost.onOwnerDialogClosed = { main.post { ownerDialogClosed() } }
@@ -155,6 +171,11 @@ class ConnectionService : Service() {
         if (intent?.action == ACTION_RESUME) {
             GateHost.resume()
             getSystemService(NotificationManager::class.java).cancel(RESUME_ID)
+            return START_NOT_STICKY
+        }
+        if (intent?.action == ACTION_FASTER_OFF) {
+            turnOffFaster(this, "notification")
+            AppState.addEvent("status", getString(R.string.faster_turned_off))
             return START_NOT_STICKY
         }
         if (intent?.action == ACTION_NEVER_OFF) {
@@ -266,6 +287,7 @@ class ConnectionService : Service() {
         val delay = backoffSeconds * (0.8 + Random.nextDouble() * 0.4)
         AppState.setConnection("$reason. Retrying in ${delay.toInt().coerceAtLeast(1)} s…", false)
         setController("") // the server says again who is driving once we're back
+        FasterMode.connectionEnded() // a session-only Faster mode ends with the connection (the server agrees)
         updateNotification("Reconnecting to your agent…")
         main.postDelayed({ connect() }, (delay * 1000).toLong())
         backoffSeconds = (backoffSeconds * 2).coerceAtMost(30.0)
@@ -287,6 +309,7 @@ class ConnectionService : Service() {
         ScreenKeeper.release()
         getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         Approvals.clear(this)
+        FasterMode.connectionEnded()
         setController("")
         status?.let { AppState.setConnection(it, false) }
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -571,6 +594,12 @@ class ConnectionService : Service() {
                     message.optJSONObject("permission_prompts")?.let { p ->
                         p.keys().forEach { GateHost.tightenPermission(it, p.optString(it)) }
                     }
+                    // Faster mode: shown only as the owner approved it here; a server claiming more is told off.
+                    if (FasterMode.onServerPush(this@ConnectionService, message.optString("faster_mode", "off"))) {
+                        send(JSONObject().put("type", "faster_mode_off").put("via", "app"))
+                        AppState.addEvent("status", getString(R.string.faster_not_approved))
+                    }
+                    AppState.notifyListeners() // the Faster mode card follows
                     updateNotification(statusLine)
                     scheduleNeverExpiry()
                 }
@@ -649,9 +678,10 @@ class ConnectionService : Service() {
                 never -> banner
                 else -> getString(R.string.notif_title)
             })
-            .setContentText(if (never && who.isNotEmpty()) "$banner · $text" else text)
+            .setContentText(fasterLine(if (never && who.isNotEmpty()) "$banner · $text" else text))
             .setOngoing(true)
             .setContentIntent(open)
+        addFasterOff(builder)
         if (never) {
             val off = PendingIntent.getService(
                 this, 2, Intent(this, ConnectionService::class.java).setAction(ACTION_NEVER_OFF), PendingIntent.FLAG_IMMUTABLE,
@@ -666,6 +696,19 @@ class ConnectionService : Service() {
                 ).build()
             )
             .build()
+    }
+
+    /** Faster mode is on: the ongoing notification says so, persistently, first. */
+    private fun fasterLine(text: String): String =
+        if (FasterMode.isOn) "${getString(R.string.faster_on_banner)} · $text" else text
+
+    /** Faster mode is on: "Turn off Faster mode" right in the notification (one tap, no lock). */
+    private fun addFasterOff(builder: Notification.Builder) {
+        if (!FasterMode.isOn) return
+        val off = PendingIntent.getService(
+            this, 7, Intent(this, ConnectionService::class.java).setAction(ACTION_FASTER_OFF), PendingIntent.FLAG_IMMUTABLE,
+        )
+        builder.addAction(Notification.Action.Builder(null, getString(R.string.faster_turn_off), off).build())
     }
 
     private fun updateNotification(text: String) {

@@ -328,6 +328,12 @@ class ApprovalActivity : Activity() {
                 dev.openmob.companion.gate.GateHost.applyModeChange(request.id, request.taskId, request.action,
                                                                     timestamp, always, signature)
             }
+            // Faster mode: the owner read the warning and passed the screen lock; the phone keeps that choice, and
+            // shows "Faster mode is on" only once the server applies exactly it (FasterMode.onServerPush).
+            if (approved && request?.kind == "mode_change") {
+                dev.openmob.companion.gate.ModeChange.fasterScope(request.action["input"].orEmpty())
+                    ?.let { FasterMode.approve(this, it) }
+            }
             Toast.makeText(
                 this, if (approved) R.string.approval_sent_approved else R.string.approval_sent_denied, Toast.LENGTH_SHORT,
             ).show()

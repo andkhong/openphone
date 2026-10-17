@@ -72,6 +72,8 @@ class KeyIn(BaseModel):
 class KeyPatch(BaseModel):
     confirm_approve: bool | None = None
     max_mode: PermissionMode | None = None
+    # Drive sessions of this key may use Faster mode on phones that have it on (off by default).
+    faster_drive: bool | None = None
 
 
 class PermissionsPatch(BaseModel):
@@ -84,6 +86,7 @@ class PermissionsPatch(BaseModel):
     permission_prompts: dict[str, str] | None = None
     task_approval: bool | None = None  # one phone approval per task covers its non-money risky steps
     everyday: bool | None = None  # don't confirm everyday actions (turning it on is approved on the phone)
+    faster_mode: Literal["off"] | None = None  # Faster mode: a key can only turn it off (on is the phone's own)
 
 
 class SettingsIn(BaseModel):
@@ -270,6 +273,9 @@ class DeveloperApi:
             if body.max_mode is not None:
                 self.store.set_key_max_mode(account_id, key_id, body.max_mode)
                 self.ledger.audit("key.max_mode", account_id, key_id, outcome=body.max_mode)
+            if body.faster_drive is not None:
+                self.store.set_key_faster_drive(account_id, key_id, body.faster_drive)
+                self.ledger.audit("key.faster_drive", account_id, key_id, outcome="on" if body.faster_drive else "off")
             return next(k for k in self.store.list_api_keys(account_id) if k["id"] == key_id)
 
         @r.post("/keys/{key_id}/revoke")

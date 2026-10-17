@@ -131,6 +131,13 @@ jev_risk_heads: 40                 # candidate targets whose tap risk that reque
 fast_path_direct_launch: true      # an app named exactly in the request opens without the small text model
 fast_path_done: true               # Jev may finish navigation-only tasks without the vision confirmation (OPENMOB_FAST_DONE=off)
 fast_path_done_min_probability: 0.85
+# Faster mode (docs/design/faster-mode.md): small screenshots of screens without readable text go to TypeSafe,
+# only on phones whose owner turned it on in the OpenMob app (screen lock). Off on every phone by default;
+# nothing in this file can turn it on.
+faster_mode: phone_opt_in          # phone_opt_in | disabled (this server never sends an image)
+jev_image_model: jev-1.14.0        # pinned (images are TypeSafe "Dreamer-ready"); never a moving alias
+jev_image_side: 768
+jev_image_timeout_ms: 600          # one image request at most; a later answer is discarded
 
 # Ask before tapping anything that matches these words.
 confirm_keywords: [buy, purchase, pay, payment, checkout, top up, recharge, subscribe,

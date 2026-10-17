@@ -183,7 +183,25 @@ def looser(a: str, b: str) -> bool:
 def default_settings() -> dict:
     return {"default_mode": DEFAULT_MODE, "ceiling": DEFAULT_MODE, "trusted": [], "never_until": None,
             "never_money": False, "permission_prompts": dict(PERMISSION_DEFAULTS), "task_approval": True,
-            "everyday": False}
+            "everyday": False, "faster_mode": "off", "faster_session": None, "faster_since": None, "faster_log": []}
+
+
+# Faster mode (docs/design/faster-mode.md): "phone" (always on this phone), "session" (this connection of the phone
+# only) or "off". Turning it on loosens data sharing: only the phone's own request, approved there with its screen
+# lock (a mode_change), sets it. Off is a tightening, taken from anywhere.
+FASTER_SCOPES = ("phone", "session")
+FASTER_VALUES = ("off",) + FASTER_SCOPES
+FASTER_LOG_MAX = 50
+# The warning shown when turning it on (the phone words its own prompt from the change, gate/ModeChange.kt, with the
+# same text). Keep it accurate: docs/safety.md "Faster mode".
+FASTER_WARNING = ("Faster mode sends screenshots of what the agent is looking at to TypeSafe, a second AI service, so "
+                  "it can recognize screens faster. Banking, wallet and password apps, and screens the phone blacks "
+                  "out, are never sent. You can turn this off at any time.")
+
+
+def faster_log_entry(on: bool, scope: str | None, by: str, now: float | None = None) -> dict:
+    """One audit row for a Faster mode change: when, on or off, which scope, and who (never an API key's secret)."""
+    return {"at": time.time() if now is None else now, "on": bool(on), "scope": scope, "by": str(by)[:80]}
 
 
 def normalize(settings: dict | None, now: float | None = None) -> dict:
@@ -210,6 +228,17 @@ def normalize(settings: dict | None, now: float | None = None) -> dict:
                                    for k, v in PERMISSION_DEFAULTS.items()}
         s["trusted"] = [e for e in (settings.get("trusted") or [])
                         if isinstance(e, dict) and (e.get("expires_at") or 0) > now]
+        if settings.get("faster_mode") in FASTER_SCOPES:
+            s["faster_mode"] = settings["faster_mode"]
+            since = settings.get("faster_since")
+            s["faster_since"] = float(since) if isinstance(since, (int, float)) else None
+            token = settings.get("faster_session")
+            # "session" is bound to one connection of the phone: without its token it is off.
+            s["faster_session"] = token if isinstance(token, str) and token else None
+            if s["faster_mode"] == "session" and not s["faster_session"]:
+                s["faster_mode"], s["faster_since"] = "off", None
+        log = settings.get("faster_log")
+        s["faster_log"] = [e for e in log if isinstance(e, dict)][-FASTER_LOG_MAX:] if isinstance(log, list) else []
     if s["default_mode"] == "never" and not s["never_until"]:
         s["default_mode"] = DEFAULT_MODE
     elif s["default_mode"] != "never" and looser(s["default_mode"], s["ceiling"]):
@@ -230,6 +259,8 @@ def public(settings: dict, now: float | None = None) -> dict:
             "never_until": s["never_until"], "never_money": s["never_money"], "trusted": s["trusted"],
             "permission_prompts": s["permission_prompts"], "task_approval": s["task_approval"],
             "everyday": s["everyday"],
+            # The stored setting; DeviceManager.permissions_view says whether it is on for the phone's connection.
+            "faster_mode": s["faster_mode"], "faster_since": s["faster_since"], "faster_log": s["faster_log"][-10:],
             "modes": list(MODES)}
 
 
@@ -358,6 +389,18 @@ def apply_patch(current: dict, patch: dict, categories: dict, now: float | None 
             loosens.append(f"ceiling:{mode}")
             new["ceiling"] = mode
         new["default_mode"] = mode
+    if patch.get("faster_mode") is not None:
+        faster = patch["faster_mode"]
+        if faster not in FASTER_VALUES:
+            raise PermissionsInvalid(f"faster_mode is one of: {', '.join(FASTER_VALUES)}.")
+        if faster == "off":
+            new.update(faster_mode="off", faster_session=None, faster_since=None)
+        else:
+            # Always a loosening, even when it's already on (a session-only one is bound to a new connection, and
+            # the owner's approval is what DeviceManager records as the change). The session token is set by
+            # DeviceManager once the phone approved, never by a patch.
+            loosens.append(f"faster:{faster}")
+            new.update(faster_mode=faster, faster_session=None, faster_since=now)
     if new["default_mode"] == "never" and not new["never_until"]:
         new["default_mode"] = DEFAULT_MODE
     return normalize(new, now), loosens
@@ -390,6 +433,9 @@ def describe_loosening(loosens: list[str]) -> str:
         elif kind == "permission":
             which, _, value = rest.partition(":")
             parts.append(PERMISSION_QUESTIONS.get(value, "Change {what} prompts?").format(what=which.replace("_", " ")))
+        elif kind == "faster":
+            parts.append(("Turn on Faster mode for this session? " if rest == "session"
+                          else "Turn on Faster mode on this phone? ") + FASTER_WARNING)
         elif kind == "trusted":
             target, _, kinds = rest.rpartition(":")
             parts.append(f"Let agents {'/'.join(kinds.split(','))} in {target} without asking?")

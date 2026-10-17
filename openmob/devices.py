@@ -15,6 +15,8 @@ from .phone.adb import AdbError, PhoneDriver
 from .phone.approval_keys import action_digest
 
 NO_ANSWER = "no answer"  # a phone prompt that ended without the owner deciding (not a denial)
+FASTER_ONLY_ON_PHONE = ("Faster mode can only be turned on in the OpenMob app on the phone itself, with its screen "
+                        "lock. Turning it off works from anywhere.")
 from .phone.apps import DEFAULT_LABEL_CACHE
 from .phone.base import Device, DeviceError
 from .phone.remote import PhoneLink, RemoteDriver
@@ -110,6 +112,8 @@ class DeviceManager:
         # (session) -> bool: may this phone answer approvals for the owner's OTHER phones? A newly
         # paired phone may not until the owner trusts it. None: every phone may (local mode).
         self.approval_trust = None
+        # callables(session, on, scope, by): a phone's Faster mode was turned on or off (the hosted audit log).
+        self.faster_listeners: list = []
         self._lock = threading.Lock()
         self._approvals_lock = threading.Lock()  # never held while the coordinator logs (it calls back in)
         self._probe = PhoneDriver(adb_path=cfg.adb_path)
@@ -625,16 +629,29 @@ class DeviceManager:
         return mode
 
     def change_permissions(self, session: Session, patch: dict, requester: str = "You",
-                           max_mode: str = "never") -> dict:
+                           max_mode: str = "never", origin: str = "server") -> dict:
         """Apply a change. A pure tightening applies now: {"status": "applied", "settings"}. Anything
         that loosens waits for a screen-lock-signed approval on that phone: {"status":
         "needs_phone_approval", "approval_id", "question"}. ModeNotAllowed: a loosening past `max_mode`
-        (an API key's), or one this phone can't sign (hosted, no approval key). PhoneUnavailable: offline."""
+        (an API key's), or one this phone can't sign (hosted, no approval key). PhoneUnavailable: offline.
+        `origin` "phone": the phone's own app asked (phone_faster_request), the only way Faster mode is turned on."""
         sid = session.info.id
-        new, loosens = perm.apply_patch(self.permission_settings(sid), patch, self.cfg.app_categories)
+        before = self.permission_settings(sid)
+        new, loosens = perm.apply_patch(before, patch, self.cfg.app_categories)
+        if any(x.startswith("faster:") for x in loosens):
+            if getattr(self.cfg, "faster_mode", "phone_opt_in") == "disabled":
+                raise perm.ModeNotAllowed("Faster mode is disabled on this server.")
+            if origin != "phone" or set(patch) != {"faster_mode"} or session.link is None:
+                # Never an API key, the dashboard, MCP, a drive client or the server: only the phone's owner, in
+                # the OpenMob app on that phone, and then with its screen lock (below).
+                raise perm.ModeNotAllowed(FASTER_ONLY_ON_PHONE)
         if not loosens:
+            if before.get("faster_mode") != "off" and new.get("faster_mode") == "off":
+                new["faster_log"] = self._faster_logged(before, False, before.get("faster_mode"), requester)
             self.permissions.set(sid, new)
             self.push_permissions(session)
+            if before.get("faster_mode") != "off" and new.get("faster_mode") == "off":
+                self._faster_changed(session, False, before.get("faster_mode"), requester)
             return {"status": "applied", "settings": perm.public(new)}
         wanted = "never" if any(x.startswith(("never:", "money:")) for x in loosens) else max(
             [x.split(":")[1] for x in loosens if x.startswith("ceiling:")] + ["trusted" if any(
@@ -667,7 +684,7 @@ class DeviceManager:
                   "patch": dict(patch), "change": {"loosens": loosens, **{k: v for k, v in patch.items()
                                                                           if k in ("default_mode", "ceiling", "never",
                                                                                    "allow_money", "permission_prompts",
-                                                                                   "everyday")}}}
+                                                                                   "everyday", "faster_mode")}}}
         with self._approvals_lock:
             older = [(a, r) for a, r in self.approvals.items()
                      if r.get("kind") == "mode_change" and r["session"] is session]
@@ -709,9 +726,22 @@ class DeviceManager:
             except perm.PermissionsInvalid:
                 self._decide_request(approval_id, "denied")
                 return False
+            faster = record["patch"].get("faster_mode")
+            if faster in perm.FASTER_SCOPES:
+                if getattr(self.cfg, "faster_mode", "phone_opt_in") == "disabled" or target.link is None:
+                    self._decide_request(approval_id, "denied")
+                    return False
+                # On from now, with the phone's screen lock as the proof; "session" only for this connection.
+                new.update(faster_mode=faster, faster_since=time.time(),
+                           faster_session=self._link_token(target) if faster == "session" else None)
+                new["faster_log"] = self._faster_logged(new, True, faster, "the phone (screen lock)")
             self.permissions.set(target.info.id, new)
-            target.coordinator.event("status", f"Approved on the phone: {record['question']}", task=None)
+            target.coordinator.event("status", "Faster mode is on" + (" for this session" if faster == "session"
+                                     else "") + ": approved on the phone." if faster in perm.FASTER_SCOPES
+                                     else f"Approved on the phone: {record['question']}", task=None)
             self.push_permissions(target)
+            if faster in perm.FASTER_SCOPES:
+                self._faster_changed(target, True, faster, "the phone (screen lock)")
         self._decide_request(approval_id, "approved" if approved else "denied")
         return True
 
@@ -731,18 +761,100 @@ class DeviceManager:
     def push_permissions(self, session: Session) -> None:
         """Tell the phone its mode, so its notification can show the `never` banner ("Turn off"), which
         says "including purchases" while never_money is on."""
+        self._end_stale_faster_session(session)
         settings = self.permission_settings(session.info.id)
         self._post(session, {"type": "permissions", "default_mode": settings["default_mode"],
                              "ceiling": perm.effective_ceiling(settings), "never_until": settings["never_until"],
                              "never_money": settings["never_money"],
                              # The phone takes only the tightenings from this (its loosenings are signed on it).
                              "permission_prompts": settings.get("permission_prompts") or {},
-                             "everyday": bool(settings.get("everyday"))})
+                             "everyday": bool(settings.get("everyday")),
+                             # Faster mode as this server applies it: "phone" | "session" | "off". The phone shows
+                             # it (its notification says "Faster mode is on") and turns it off if it never
+                             # approved it.
+                             "faster_mode": self.faster_scope(session.info.id)})
 
     def phone_turned_off_never(self, session: Session) -> None:
         """"Turn off" on the phone: back to auto. A tightening, so it needs no signature."""
         self.change_permissions(session, {"never": "off"})
         session.coordinator.event("status", "Turned off on the phone: agents ask again.", task=None)
+
+    # --- Faster mode (docs/design/faster-mode.md) ------------------------------------------
+
+    @staticmethod
+    def _link_token(session: Session) -> str | None:
+        """An id for the phone's current connection: a session-only Faster mode holds while it's the same."""
+        link = session.link
+        if link is None:
+            return None
+        token = getattr(link, "faster_token", None)
+        if token is None:
+            token = uuid.uuid4().hex
+            try:
+                link.faster_token = token
+            except AttributeError:
+                return None
+        return token
+
+    def faster_scope(self, session_id: str) -> str:
+        """Faster mode for this phone now: "phone" (always on this phone), "session" (its current connection) or
+        "off". Only what the phone approved with its screen lock is ever on (DeviceManager._resolve_permission_change)."""
+        if getattr(self.cfg, "faster_mode", "phone_opt_in") == "disabled":
+            return "off"
+        settings = self.permission_settings(session_id)
+        scope = settings.get("faster_mode", "off")
+        if scope == "session":
+            session = self.sessions.get(session_id)
+            token = settings.get("faster_session")
+            if session is None or not token or self._link_token(session) != token:
+                return "off"
+        return scope if scope in perm.FASTER_SCOPES else "off"
+
+    def faster_on(self, session_id: str) -> bool:
+        """The agent asks before every image it would send, so turning it off takes effect at once."""
+        return self.faster_scope(session_id) != "off"
+
+    @staticmethod
+    def _faster_logged(settings: dict, on: bool, scope: str | None, by: str) -> list:
+        return (list(settings.get("faster_log") or []) + [perm.faster_log_entry(on, scope, by)])[-perm.FASTER_LOG_MAX:]
+
+    def _faster_changed(self, session: Session, on: bool, scope: str | None, by: str) -> None:
+        if not on:
+            session.coordinator.event("status", f"Faster mode is off (turned off by {by}). No more screenshots go "
+                                                "to TypeSafe; an image request already on its way is discarded.",
+                                      task=None)
+        for listener in self.faster_listeners:
+            try:
+                listener(session, on, scope, by)
+            except Exception:
+                pass
+
+    def _end_stale_faster_session(self, session: Session) -> None:
+        """A session-only Faster mode from an earlier connection: it ended with that connection. Record the end."""
+        settings = self.permission_settings(session.info.id)
+        if settings.get("faster_mode") != "session" or session.link is None:
+            return
+        if settings.get("faster_session") == self._link_token(session):
+            return
+        new = {**settings, "faster_mode": "off", "faster_session": None, "faster_since": None}
+        new["faster_log"] = self._faster_logged(settings, False, "session", "the session's end (reconnected)")
+        self.permissions.set(session.info.id, perm.normalize(new))
+        self._faster_changed(session, False, "session", "the session's end (reconnected)")
+
+    def phone_faster_request(self, session: Session, scope: str) -> dict | None:
+        """The phone's app asked to turn Faster mode on ("phone" or "session"): a mode_change approval goes back to
+        that phone, which shows the warning (worded on the phone) and signs with its screen lock."""
+        if scope not in perm.FASTER_SCOPES:
+            return None
+        try:
+            return self.change_permissions(session, {"faster_mode": scope}, requester="This phone", origin="phone")
+        except (perm.ModeNotAllowed, perm.PhoneUnavailable, perm.PermissionsInvalid) as exc:
+            session.coordinator.event("status", f"Faster mode stays off: {exc}", task=None)
+            return None
+
+    def faster_off(self, session: Session, by: str) -> None:
+        """Turn Faster mode off: one tap from the phone app, its notification, the dashboard or the API. No lock."""
+        self.change_permissions(session, {"faster_mode": "off"}, requester=by)
 
     def _create(self, info: DeviceInfo, driver: Device, account_id: str | None = None) -> Session:
         coordinator = Coordinator(self.speaker, history=self.history)
@@ -756,6 +868,8 @@ class DeviceManager:
         coordinator.agent = self.build_agent(self.cfg, coordinator, driver, cache)
         if coordinator.agent is not None:
             coordinator.agent.platform = info.platform
+            # Faster mode: asked before every image the agent would send (the phone-signed setting, live).
+            coordinator.agent.faster_mode = lambda sid=info.id: self.faster_on(sid)
         coordinator.start()
         threading.Thread(target=self._index_apps, args=(coordinator,), daemon=True).start()
         return Session(info, coordinator, driver, account_id)

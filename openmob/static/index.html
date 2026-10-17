@@ -441,6 +441,10 @@
           <p class="muted small" id="permNever" style="margin:6px 0 0"></p>
         </div>
         <div>
+          <h3>Faster mode</h3>
+          <p class="muted small" id="permFaster" style="margin:0"></p>
+        </div>
+        <div>
           <h3>Trusted apps</h3>
           <div class="trusted-list" id="trustedList"></div>
           <form class="trusted-add" id="trustedAdd">
@@ -518,6 +522,7 @@
     </div>
     <div class="phone-notices">
       <button class="pill warn" id="neverChip" type="button" hidden title="Agents act on this phone without asking. Click to change."></button>
+      <button class="pill warn" id="fasterChip" type="button" hidden title="Faster mode is on: screenshots of screens without readable text go to TypeSafe. Click to turn it off.">Faster mode on · Turn off</button>
       <div class="screen-notice" id="screenNotice" role="status" hidden></div>
     </div>
     <div class="screen-meta">
@@ -1316,6 +1321,7 @@ function renderMode() {
   const neverOn = !!(perms && perms.ceiling === "never" && perms.never_until);
   $("neverChip").hidden = !neverOn;
   if (neverOn) $("neverChip").textContent = `Don't ask${perms.never_money ? ", including purchases," : ""} · until ${clock(perms.never_until)}`;
+  $("fasterChip").hidden = !(perms && perms.faster_active && perms.faster_active !== "off");
   if (!$("modeMenu").hidden) renderModeMenu();
 }
 
@@ -1512,6 +1518,9 @@ const enableNever = () => {
   return changePerms(body, () => { setChatMode("never"); setHint(`Don't ask${body.allow_money ? ", including purchases," : ""} for this chat, until it expires.`); });
 };
 const turnOffNever = () => changePerms({ never: "off" }, () => { if (chatMode() === "never") setChatMode(null); setHint("Agents ask again on this phone."); });
+// Faster mode: the dashboard can only turn it off (one tap, no lock). Turning it on is done in the phone's app.
+const turnOffFaster = (after) => changePerms({ faster_mode: "off" }, async () => { await refreshPerms(); setHint("Faster mode is off: no more screenshots go to TypeSafe."); if (after) after(); });
+$("fasterChip").onclick = () => turnOffFaster();
 
 async function refreshPerms() {
   if (!deviceId) return;
@@ -1551,6 +1560,16 @@ function renderPerms() {
     $("permNever").append(off);
   } else if (p.can_loosen === false) {
     $("permNever").textContent = "This phone's app can't sign approvals yet, so it stays at Auto or stricter. Update the OpenMob app.";
+  }
+  $("permFaster").replaceChildren();
+  if (p.faster_active && p.faster_active !== "off") {
+    $("permFaster").append(document.createTextNode(`On ${p.faster_active === "session" ? "for this phone's current session" : "on this phone"}: screenshots of screens without readable text go to TypeSafe. `));
+    const off = el("button", "btn btn-sm", "Turn off");
+    off.type = "button";
+    off.onclick = () => turnOffFaster(renderPerms);
+    $("permFaster").append(off);
+  } else {
+    $("permFaster").textContent = "Off. Only the phone's owner can turn it on, in the OpenMob app on the phone (with its screen lock).";
   }
   const list = $("trustedList");
   list.replaceChildren(...(p.trusted.length ? p.trusted.map((t, i) => {

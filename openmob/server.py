@@ -77,6 +77,8 @@ class PermissionsIn(BaseModel):
     task_approval: bool | None = None  # one phone approval per task covers its non-money risky steps
     everyday: bool | None = None  # don't confirm everyday actions (turning it on is approved on the phone)
     permission_prompts: dict[str, str] | None = None  # Android permission dialogs: {type: setting} (loosening asks)
+    # Faster mode: the dashboard can only turn it off. Turning it on is done in the phone's OpenMob app.
+    faster_mode: Literal["off"] | None = None
 
 
 class Credentials(BaseModel):
@@ -651,7 +653,11 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
         settings = manager.permission_settings(session.info.id)
         return {**perm.public(settings), "labels": perm.LABELS, "descriptions": perm.DESCRIPTIONS,
                 "categories": sorted(manager.cfg.app_categories), "never_durations": list(perm.NEVER_DURATIONS),
-                "can_loosen": manager._may_loosen(session), "online": bool(session.online)}
+                "can_loosen": manager._may_loosen(session), "online": bool(session.online),
+                # Whether Faster mode is on for this phone now (the stored faster_mode, checked against its
+                # connection for "session"). The dashboard can only turn it off.
+                "faster_active": manager.faster_scope(session.info.id)
+                if hasattr(manager, "faster_scope") else "off"}
 
     @app.get("/api/devices/{device_id}/permissions")
     def get_permissions(device_id: str, request: Request) -> dict:
@@ -796,7 +802,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
         owner_dialog = getattr(s.driver, "owner_dialog", None)
         return {**snap, "device": s.describe(), "feedback": feedback, "confirm_on_phone": bool(on_phone and on_phone(s)),
                 "owner_dialog": owner_dialog if isinstance(owner_dialog, str) else None,
-                "permissions": perm.public(settings) if settings else None}
+                "permissions": {**perm.public(settings), "faster_active": manager.faster_scope(s.info.id)
+                                if hasattr(manager, "faster_scope") else "off"} if settings else None}
 
     # --- admin (accounts mode; admin is granted only via `openmob account admin EMAIL`) ---
 
@@ -997,6 +1004,17 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
     if hasattr(manager, "replaced_listeners"):
         manager.replaced_listeners.append(phone_reconnected_elsewhere)
 
+    def faster_mode_changed(session, on: bool, scope, by: str) -> None:
+        """Every Faster mode change in the hosted audit log: which phone, on (which scope) or off, and who."""
+        service = getattr(app.state, "v1_service", None)
+        if service is not None:
+            service.ledger.audit("device.faster_mode", session.account_id,
+                                 device_id=session.info.id.removeprefix("app-"),
+                                 outcome=f"{'on:' + str(scope) if on else 'off'} by {by}"[:120])
+
+    if hasattr(manager, "faster_listeners"):
+        manager.faster_listeners.append(faster_mode_changed)
+
     @app.websocket("/phone/ws")
     async def phone_socket(ws: WebSocket) -> None:
         """Phones (OpenMob app or `openmob bridge`) connect here. See openmob/phone/protocol.py."""
@@ -1072,6 +1090,11 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                     await run_in_threadpool(manager.device_lock, session, message)
                 elif kind == "permissions_off":  # "Turn off" in the never banner: an unsigned tightening
                     await run_in_threadpool(manager.phone_turned_off_never, session)
+                elif kind == "faster_mode_request":  # the owner turns Faster mode on in the app: a signed approval
+                    await run_in_threadpool(manager.phone_faster_request, session, str(message.get("scope") or ""))
+                elif kind == "faster_mode_off":  # one tap in the app or its notification: an unsigned tightening
+                    await run_in_threadpool(manager.faster_off, session, "the phone's notification"
+                                            if message.get("via") == "notification" else "the phone app")
                 elif kind == "command" and str(message.get("text", "")).strip():
                     targets = manager.phone_stop_targets(session)
                     result = await run_in_threadpool(session.coordinator.submit, message["text"], "phone")

@@ -57,7 +57,16 @@ nested phase, such as a classifier call during an observation, counts only in th
 | `done_via` | On a `done` step: `vision` (the main model confirmed) or `classifier` (`fast_path_done` finished it). NULL on other steps |
 | `settle_idle` | 1 or 0: the adaptive settle before this step saw the screen go quiet, or hit its cap. NULL: a fixed sleep |
 | `wait_cond` | A wait on this step: `sleep` (the `wait` tool), a `wait_until` condition such as `element_enabled:Open\|Play`, or the loop's own wait, `auto:loading_done` after a launch (on the step it delayed) and `auto:element_enabled:Open\|Play` after a Play Store Install tap. Its time is in `settle_ms` |
-| `wait_met`, `wait_via`, `waited_ms` | Whether the wait ended on its condition (1) or its timeout (0); how it waited (`phone`: the app's `wait_for`, `poll`: the server read the element list, `frames`: tiny screenshots of a screen without elements, `sleep`); and how long |
+| `wait_met`, `wait_via`, `waited_ms` | Whether the wait ended on its condition (1) or its timeout (0); how it waited (`phone`: the app's `wait_for`, `poll`: the server read the element list, `frames`: tiny screenshots of a screen without elements, `sleep`; Faster mode: `jev_image`, a Jev image check said ready, or `fallback`, the image check couldn't decide and the next look did); and how long |
+| `faster` | 1 or 0: [Faster mode](design/faster-mode.md) was on for this phone at this step. NULL: off (or a row from before it) |
+| `jev_images` | Screenshots sent to TypeSafe on this step (J1 screen state and J3 loading checks). Their wall time is `jev_image_ms`, a part of `jev_ms` |
+| `jev_state` | The screen state a J1 image check named (`loading`, `menu`, `content`, `game_over`, `dialog`, `login`, `home_screen`), the main model's hint |
+| `jev_image_skip` | While Faster mode was on, why no image was sent (the first reason this step): `sensitive_app`, `blocked_app`, `sensitive_number`, `password_field`, `black_frame`, `system_dialog`, `unknown_window`, `locked`, `no_text_check` (no OCR), `drive`, `no_frame`, or `off_discarded` (turned off while a request ran: its answer was dropped) |
+
+A loading wait that Faster mode ran is `wait_cond = auto:jev_loading`. The task's final event carries `faster`
+(`images`, `jev_image_ms`, `model_calls_skipped`, `mean_model_s`, `saved_s`) and the feed's "Faster mode saved
+~N s" line; its method is in [design/faster-mode.md](design/faster-mode.md) §4 (an estimate from measured parts;
+compare the same task with Faster mode off and on for a measured number).
 
 When one model response holds several tool calls, the shared observe and model time is on the
 first of them. `latency_ms` keeps its earlier meaning: the tool call alone, from dispatch to

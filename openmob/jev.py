@@ -7,13 +7,35 @@ probabilities and a confidence score. Docs: https://docs.typesafe.ai
 
 from __future__ import annotations
 
+import io
+import json
 import random
 import time
+import uuid
 from dataclasses import dataclass
 
 import httpx
 
 DEFAULT_BASE_URL = "https://api.typesafe.ai"
+IMAGES_HEADER = "TypeSafe-Danger-Zone-Images"
+JEV_MIN_SIDE = 280  # Jev's smallest accepted image side (a narrower image is padded)
+
+# Faster mode's image questions (docs/design/faster-mode.md). The wording and the seven states are the ones the
+# 2026-10-17 benchmark measured (bench/jev_images/common.py on bench/jev-images): change them only with a re-run.
+IMAGE_STATES = {
+    "loading": "A loading, splash, or downloading screen: a spinner, progress bar, grey placeholder blocks, 'Loading', "
+               "or a logo with nothing to press. Nothing can be done except wait.",
+    "menu": "A game's or app's title or main menu: a few large choices such as Play, Settings, Quit, or 'Play vs computer'.",
+    "content": "The app's or web page's normal view (for a game: the gameplay screen, the board) with nothing covering it. "
+               "Settings lists, search results, articles, and account pages are content.",
+    "game_over": "A game-over or results screen after a round: 'Game over', a final score, Retry.",
+    "dialog": "A dialog, pop-up, or permission prompt covering the screen, with buttons such as Allow, Claim, Continue, or a close X.",
+    "login": "A sign-in or login form asking for an email, username, or password.",
+    "home_screen": "The phone's home screen, app drawer, or lock screen.",
+}
+IMAGE_STATE_Q = "Which kind of phone screen is shown in `screen`?"
+IMAGE_LOADING_Q = ("Is `screen` still loading, so the agent should wait: a spinner, progress bar, grey skeleton "
+                   "placeholders, or a splash logo with nothing to press?")
 MAX_CHOICE_OPTIONS = 255
 MAX_SCREEN_TEXT_ITEMS = 80
 
@@ -168,6 +190,29 @@ class JevClient:
             time.sleep(0.5 * 2**attempt)
         raise JevError("Jev request failed")
 
+    def ask_image(self, state: dict, questions: dict, image: bytes, model: str, timeout_s: float,
+                  ref: str = "screen") -> dict:
+        """POST /v1/systemone with one JPEG (docs.typesafe.ai/images.md): a multipart request whose `request` part
+        is the JSON body, `state[ref]` names the image, and `assets` maps that name to the `screen-image` part.
+        Images need the `TypeSafe-Danger-Zone-Images: true` header (Dreamer-ready, not production). One try, no
+        retries: the caller has a deadline (Faster mode never holds a step up for an image)."""
+        image_ref = f"img-{uuid.uuid4().hex}"
+        body = {"model": model, "state": {**state, ref: image_ref}, "questions": questions,
+                "assets": {image_ref: {"type": "image", "part": "screen-image"}}}
+        files = {"request": (None, json.dumps(body), "application/json"),
+                 "screen-image": ("screen.jpg", image, "image/jpeg")}
+        try:
+            response = self._http.post("/v1/systemone", files=files, timeout=timeout_s,
+                                       headers={IMAGES_HEADER: "true"})
+        except httpx.HTTPError as exc:
+            raise JevError(f"Jev image request failed: {type(exc).__name__}") from exc
+        if response.status_code != 200:
+            raise JevError(f"Jev returned {response.status_code} for an image: {response.text[:200]}")
+        data = response.json()
+        if self.on_usage:
+            self.on_usage(int((data.get("usage") or {}).get("input_tokens", 0)))
+        return data["answers"]
+
 
 def describe_screen(package: str | None, element_labels: list[str], screen_text: list[str]) -> dict:
     """Compact text description of a screen. Jev is less accurate with irrelevant state, so trim hard."""
@@ -317,3 +362,98 @@ class JevJudge:
         probability = float(answer["probabilities"].get(choice, 0.0))
         confidence = float(answer.get("confidence", 0.0))
         return (None if choice == "none" else choice), probability, confidence
+
+
+# --- Faster mode: Jev images (docs/design/faster-mode.md) -------------------------------------------------
+
+
+@dataclass
+class ImageAnswer:
+    """One image question's answer. `kind` "state" (a choice: `value` is the state, with its probability and
+    Jev's confidence) or "loading" (a Noul: `value` "loading" or "ready"; `confidence` is |2p - 1|, since a Noul
+    carries no confidence of its own). `ms`: the request's wall time."""
+    kind: str
+    value: str
+    probability: float
+    confidence: float
+    ms: float
+    p_loading: float | None = None
+
+
+@dataclass
+class PreparedImage:
+    jpeg: bytes
+    width: int
+    height: int
+    black: bool  # every pixel near black: a secure window or a blacked-out read (never sent)
+
+
+def prepare_image(jpeg: bytes, long_side: int, quality: int = 80) -> PreparedImage:
+    """The screenshot with its long side at most `long_side` and its short side padded to Jev's minimum, as JPEG;
+    and whether it is (nearly) all black."""
+    from PIL import Image
+
+    img = Image.open(io.BytesIO(jpeg))
+    img.draft("RGB", (long_side, long_side))
+    img = img.convert("RGB")
+    scale = min(long_side / max(img.size), 1.0)
+    if scale < 1.0:
+        img = img.resize((max(round(img.width * scale), 1), max(round(img.height * scale), 1)), Image.LANCZOS)
+    _, brightest = img.convert("L").getextrema()
+    black = brightest <= 24
+    if img.width < JEV_MIN_SIDE or img.height < JEV_MIN_SIDE:
+        canvas = Image.new("RGB", (max(img.width, JEV_MIN_SIDE), max(img.height, JEV_MIN_SIDE)), (0, 0, 0))
+        canvas.paste(img, ((canvas.width - img.width) // 2, (canvas.height - img.height) // 2))
+        img = canvas
+    buf = io.BytesIO()
+    img.save(buf, "JPEG", quality=quality)
+    return PreparedImage(buf.getvalue(), img.width, img.height, black)
+
+
+class JevImageJudge:
+    """Faster mode's two image questions (J1 screen state, J3 loading vs ready), one request each under a hard
+    deadline. A request still running at the deadline finishes in the background and its answer is dropped:
+    a step never waits longer than `timeout_s` for an image."""
+
+    def __init__(self, client: JevClient, model: str, timeout_s: float = 0.6):
+        import concurrent.futures
+
+        self.client = client
+        self.model = model
+        self.timeout_s = timeout_s
+        self._pool = concurrent.futures.ThreadPoolExecutor(2, thread_name_prefix="jev-image")
+
+    def _ask(self, package: str | None, questions: dict, image: bytes) -> tuple[dict, float]:
+        import concurrent.futures
+
+        started = time.perf_counter()
+        # The HTTP timeout is longer than the deadline, so an abandoned request ends on its own.
+        future = self._pool.submit(self.client.ask_image, {"foreground_app": package or "unknown"}, questions,
+                                   image, self.model, max(self.timeout_s * 3, 2.0))
+        try:
+            answers = future.result(timeout=self.timeout_s)
+        except concurrent.futures.TimeoutError:
+            raise JevError(f"Jev image answer took over {int(self.timeout_s * 1000)} ms (discarded)") from None
+        return answers, (time.perf_counter() - started) * 1000
+
+    def screen_state(self, package: str | None, image: bytes) -> ImageAnswer:
+        """J1: which of IMAGE_STATES the screen is in."""
+        answers, ms = self._ask(package, {"state": {"type": "choice", "instructions": IMAGE_STATE_Q,
+                                                    "criteria": IMAGE_STATES}}, image)
+        try:
+            choice, p, conf = _choice(answers["state"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise JevError(f"Malformed Jev image answer: {exc}") from None
+        if choice not in IMAGE_STATES:
+            raise JevError("Jev image answer named an unknown state")
+        return ImageAnswer("state", choice, p, conf, ms)
+
+    def loading(self, package: str | None, image: bytes) -> ImageAnswer:
+        """J3: is the screen still loading?"""
+        answers, ms = self._ask(package, {"loading": {"type": "noul", "instructions": IMAGE_LOADING_Q}}, image)
+        try:
+            p_loading = min(max(float(answers["loading"]["noul"]), 0.0), 1.0)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise JevError(f"Malformed Jev image answer: {exc}") from None
+        return ImageAnswer("loading", "loading" if p_loading >= 0.5 else "ready", max(p_loading, 1 - p_loading),
+                           abs(2 * p_loading - 1), ms, p_loading)
