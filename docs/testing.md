@@ -98,6 +98,11 @@ OTP and a field in the bank; an insert's permit can't be spent on a replace), `o
 tel:, sms:, mailto:, market: open their handler; an https link whose verified handler is the bank is refused), a window
 hidden from accessibility (reads black, acts refused, BACK allowed), the methods B7 never called (wait_for over the
 bank, task_grant, HOME, APP_SWITCH, wake_unlock), and Don't ask turned on through the signed mode_change prompt. The
+2026-10-17 security review added `review1017` (a 90 px drag inside Send, Buy now and Delete in the shop's
+`DragActivity` asks as a tap does, and clicks once approved; a real scroll in Settings runs; a 60 s swipe is refused)
+and `review1017b` (a card number typed in two pieces asks; a Faster mode change mixed with Don't ask, or one the owner
+didn't tap on the phone, is declined unseen). The emulator image has no Play Store (`com.android.vending` is a
+signature-locked system stub there), so the results-page install case runs only in the shared fixtures. The
 results are in [gatekeeper-b7-results.md](research/gatekeeper-b7-results.md) (B7) and
 [gatekeeper-phase5-results.md](research/gatekeeper-phase5-results.md) (Phase 5, with the onboarding checklist).
 

@@ -1824,10 +1824,128 @@ async def g_indicator(phone: Phone, dev: Device) -> None:
           r.get("ok") is True and added and "OpenMob indicator" in overlay_windows(dev)
           and phone.ws.state == websockets.protocol.State.OPEN, f"{short(r)[:120]} added={added} {shot6}")
 
+
+async def withdraw(phone: Phone, reply: dict, dev: Device | None = None) -> None:
+    """Withdraw a prompt the phone opened (the server's gate_cancel: not a denial, so no pause after three). The
+    prompt's screen then says it's gone; the owner leaves it with Back."""
+    if asks(reply):
+        await phone.call("gate_cancel", approval_id=reply["approval_id"])
+        await asyncio.sleep(0.8)
+        if dev is not None and "ApprovalActivity" in dev.focus():
+            dev.sh("input keyevent BACK")
+            await asyncio.sleep(0.8)
+        await asyncio.sleep(1.3)  # past the prompt cooldown
+
+
+async def faster_change(phone: Phone, patch: dict) -> tuple[str, dict | None]:
+    """The server's mode_change approval for a Faster mode patch; the phone's answer (approval event), if any."""
+    mid = "mc" + secrets.token_hex(4)
+    action = {"tool": "mode_change", "input": "Turn on Faster mode?\n" + json.dumps(patch, sort_keys=True)}
+    await phone.ws.send(json.dumps({"type": "approval_request", "id": mid, "task_id": f"mode_change:{mid}",
+                                    "kind": "mode_change", "question": "Turn on Faster mode?", "requester": "evil server",
+                                    "action": action, "digest": action_digest(action), "signature_required": False}))
+    ev = await phone.event(lambda e: e.get("type") == "approval" and e.get("id") == mid, 6)
+    return mid, ev
+
+
+async def g_review1017(phone: Phone, dev: Device) -> None:
+    """The 2026-10-17 batched security review's phone fixes, on the real app:
+    - H1: a short vertical drag that stays inside Send, Buy now or Delete (in a ScrollView that can't scroll, or a
+      sideways HorizontalScrollView) asks exactly as a tap does; approved, Android clicks it (the review's suspicion,
+      shown); a real scroll in a scrolling list still runs with no prompt.
+    - M1: a swipe longer than 10 s is refused.
+    - M2: a Faster mode change mixed with Don't ask, or one the owner didn't just tap on the phone, is declined unseen;
+      (the owner's own tap and its screen-lock sheet aren't driven here: Review20261017Test).
+    - M4: a card number typed in two pieces asks at the second piece."""
+    G = "review1017"
+    if not (dev.installed("com.example.shop") and dev.installed("com.example.login")):
+        check(G, "stand-in shop and login apps installed", False, "skipped")
+        return
+    # --- H1 ---
+    await shop_open(dev, ".DragActivity")
+    dev.logcat_clear()
+    for label, kind in (("Send", "send"), ("Buy now", "pay"), ("Delete", "delete")):
+        c = await dev.find(label)
+        if not c:
+            check(G, f"H1: {label} is on screen", False, "not found")
+            continue
+        for mode in ((None, "ask") if label == "Send" else (None,)):  # the phone shows at most 6 prompts in 10 min
+            extra = {"mode": mode} if mode else {}
+            r = await phone.call("swipe", x1=c[0], y1=c[1] - 45, x2=c[0], y2=c[1] + 45, duration_ms=200, **extra)
+            gate = r.get("gate", {})
+            await withdraw(phone, r, dev)
+            logged = "drag" in dev.log("ShopStandIn")
+            check(G, f"H1: a 90 px drag inside {label} asks as a tap does (mode {mode or 'auto'}), and nothing clicks",
+                  asks(r) and gate.get("kind") == kind and not logged,
+                  f"{rule(r)} kind={gate.get('kind')} q={gate.get('question')!r} clicked={logged}")
+    tap = await dev.find("Send")
+    if tap:
+        r = await phone.call("tap", x=tap[0], y=tap[1])
+        check(G, "H1: the tap on Send gets the same verdict (control)", asks(r) and r.get("gate", {}).get("kind") == "send", rule(r))
+        await withdraw(phone, r, dev)
+        dev.logcat_clear()
+        first, p, again = await approved_resend(phone, dev, "h1-send-drag", "swipe", x1=tap[0], y1=tap[1] - 45,
+                                                x2=tap[0], y2=tap[1] + 45, duration_ms=200)
+        await asyncio.sleep(0.8)
+        clicked = "SENT drag" in dev.log("ShopStandIn")
+        check(G, "H1: approved, the same drag clicks Send on Android (why it must ask)",
+              asks(first) and again.get("ok") is True and clicked, f"{short(again)[:120]} clicked={clicked}")
+    r = await phone.call("swipe", x1=540, y1=1200, x2=540, y2=1000, duration_ms=60000)
+    check(G, "M1: a 60 s swipe is refused (gestures last at most 10 s)",
+          refused(r, "gate_denied") and r.get("gate", {}).get("rule") == "builtin:gesture_too_long", rule(r))
+    dev.home()
+    dev.sh("am start -a android.settings.SETTINGS")
+    time.sleep(2.5)
+    r = await phone.call("swipe", x1=540, y1=1800, x2=540, y2=700, duration_ms=400)
+    check(G, "H1: a real scroll in Settings' list still runs with no prompt (its list reports it can scroll)",
+          r.get("ok") is True, short(r)[:160])
+    await withdraw(phone, r, dev)
+    dev.home()
+
+
+async def g_review1017b(phone: Phone, dev: Device) -> None:
+    """The 2026-10-17 review's M4 and M2 checks (see g_review1017), with fresh prompt limits."""
+    G = "review1017"
+    if not dev.installed("com.example.login"):
+        check(G, "stand-in login app installed", False, "skipped")
+        return
+    # --- M4 ---
+    dev.sh("am force-stop com.example.login")
+    dev.sh("am start -n com.example.login/.MainActivity")
+    time.sleep(2)
+    email = await dev.wait_find("Email", attr="hint") or await dev.wait_find("Email")
+    await phone.call("tap", x=email[0], y=email[1])
+    await asyncio.sleep(0.8)
+    r1 = await phone.call("type_text", text="4111 1111")
+    await asyncio.sleep(0.5)
+    r2 = await phone.call("type_text", text=" 1111 1111")
+    texts = [n["text"] for n in await dev.nodes() if n["text"]]
+    check(G, "M4: a card number typed in two pieces asks at the second piece, which isn't typed",
+          r1.get("ok") is True and asks(r2) and r2.get("gate", {}).get("rule") == "risk:sensitive_number"
+          and not any("4111 1111 1111 1111" in t for t in texts), f"first={short(r1)[:60]} second={rule(r2)} texts={texts[:4]}")
+    await withdraw(phone, r2, dev)
+    dev.home()
+    # --- M2 ---
+    limits = {"faster_idle_s": 3600, "faster_resume_s": 300, "faster_until": int(time.time()) + 86400}
+    _, ev = await faster_change(phone, {"faster_mode": "session", "never": "24h", **limits})
+    await asyncio.sleep(1)
+    check(G, "M2: a Faster mode change that also turns on Don't ask is declined, unseen",
+          ev is not None and ev.get("approved") is False and "ApprovalActivity" not in dev.focus(),
+          f"answer={ev and {k: v for k, v in ev.items() if k != 'signature'}} focus={dev.focus()}")
+    _, ev = await faster_change(phone, {"faster_mode": "session", **limits})
+    check(G, "M2: a Faster mode change the owner didn't ask for on the phone is declined, unseen",
+          ev is not None and ev.get("approved") is False, f"answer={ev}")
+    # Not driven here: the owner's own tap on "Turn on for this session" and the screen-lock sheet it leads to (the
+    # harness couldn't reach the app's button reliably; ModeChange.lockText's length and wording are unit-tested).
+    await phone.ws.send(json.dumps({"type": "permissions", "default_mode": "auto", "ceiling": "auto", "faster_mode": "off"}))
+    dev.home()
+
+
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,
           "deeplinks": g_deeplinks, "typing": g_typing, "links": g_links, "financial": g_financial, "hidden": g_hidden, "methods": g_methods, "never": g_never,
-          "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "indicator": g_indicator, "probe": g_probe}
+          "spoof": g_spoof, "calls": g_calls, "hittest": g_hittest, "indicator": g_indicator, "review1017": g_review1017, "review1017b": g_review1017b,
+          "probe": g_probe}
 
 
 async def main() -> None:
