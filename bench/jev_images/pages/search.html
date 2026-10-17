@@ -1,0 +1,46 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Search</title>
+<style>
+body{font-family:sans-serif;margin:0;background:#fff;color:#202124}
+header{display:flex;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid #ddd;position:sticky;top:0;background:#fff}
+.logo{font-weight:bold;color:#c00;font-size:20px}
+input{flex:1;font-size:16px;padding:8px 12px;border:1px solid #ccc;border-radius:20px}
+.tabs{display:flex;gap:16px;padding:8px 12px;font-size:14px;color:#555}
+.res{padding:10px 12px;border-bottom:1px solid #eee;display:flex;gap:10px}
+.thumb{width:120px;height:68px;border-radius:8px;flex:none}
+.t{font-size:16px;font-weight:600;margin:0 0 4px}.m{font-size:13px;color:#666}
+.empty{padding:40px 20px;text-align:center;color:#555}
+.sugg div{padding:12px 16px;border-bottom:1px solid #eee;font-size:16px}
+h2{font-size:15px;font-weight:normal;padding:4px 12px;color:#444}
+.price{color:#0a7d32;font-weight:bold}
+</style></head><body>
+<header><span class="logo" id="logo">Videos</span><input id="q" aria-label="Search"><span>&#128269;</span></header>
+<div id="body"></div>
+<script>
+// ?q=<query shown in the box>&shown=<query the results are for>&mode=results|none|suggest&style=video|shop|web&seed=N
+const P = new URLSearchParams(location.search), q = P.get('q') || '', shown = P.get('shown') || q, mode = P.get('mode') || 'results',
+  style = P.get('style') || 'video', seed = +(P.get('seed') || 1);
+let s = seed; const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+document.getElementById('q').value = q;
+document.getElementById('logo').textContent = {video: 'Videos', shop: 'Shop', web: 'Find'}[style];
+const b = document.getElementById('body');
+const words = shown.split(' ');
+const cap = w => w[0].toUpperCase() + w.slice(1);
+const titles = {
+  video: i => [`${cap(shown)} - ${['1 hour mix', 'beats to relax/study to', 'live radio 24/7', 'playlist 2026', 'chill session'][i % 5]}`, `${['ChillHop Room', 'Late Night Tapes', 'Study Corner', 'Mellow Lab'][i % 4]} · ${Math.floor(r() * 900) + 10}K views`],
+  shop: i => [`${cap(shown)} ${['Pro', 'Lite', 'Max', 'Classic', 'Trail'][i % 5]}`, `<span class="price">$${(20 + r() * 180).toFixed(2)}</span> · ${(3 + r() * 2).toFixed(1)} stars`],
+  web: i => [`${cap(shown)}: ${['a complete guide', 'top 10 picks', 'what you need to know', 'latest updates', 'beginner tips'][i % 5]}`, `example${i}.test › ${words[0]}`]};
+if (mode === 'suggest') {
+  b.innerHTML = '<div class="sugg">' + [q, q + ' mix', q + ' live', q + ' 2026', q + ' playlist'].map(x => `<div>&#128269; ${x}</div>`).join('') + '</div>';
+  document.getElementById('q').focus();
+} else if (mode === 'none') {
+  b.innerHTML = `<div class="empty"><div style="font-size:48px">&#128533;</div><p style="font-size:18px">No results found for “${shown}”</p><p>Try different keywords or check your spelling.</p></div>`;
+} else {
+  let h = `<div class="tabs"><b>All</b><span>${style === 'shop' ? 'Deals' : 'Recent'}</span><span>${style === 'video' ? 'Live' : 'Images'}</span></div>`;
+  if (P.get('header') !== '0') h += `<h2>Results for “${shown}”</h2>`;
+  for (let i = 0; i < 7; i++) { const [t, m] = titles[style](i), hue = Math.floor(r() * 360);
+    h += `<div class="res"><div class="thumb" style="background:hsl(${hue},45%,60%)"></div><div><p class="t">${t}</p><div class="m">${m}</div></div></div>`; }
+  b.innerHTML = h;
+}
+</script></body></html>

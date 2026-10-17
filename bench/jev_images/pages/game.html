@@ -1,0 +1,161 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Canvas game</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script>
+// Everything is pixels on one canvas: no accessibility text. The page polls /scene for what to draw and
+// POSTs /report with each target's box as fractions of the canvas, plus corner markers for the screenshot.
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+let W = 0, H = 0, cur = {id: -1}, anim = null, targets = {};
+function rng(seed) { return function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
+  t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+function resize() { const d = window.devicePixelRatio || 1; W = window.innerWidth; H = window.innerHeight;
+  cv.width = Math.round(W * d); cv.height = Math.round(H * d); ctx.setTransform(d, 0, 0, d, 0, 0); }
+document.body.addEventListener('click', () => { if (!document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {}); });
+window.addEventListener('resize', () => { resize(); if (cur.id >= 0) draw(cur, true); });
+function rr(x, y, w, h, r, fill, stroke) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+  if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 2; ctx.stroke(); } }
+function text(t, x, y, size, color, align = 'center', weight = 'bold') { ctx.font = `${weight} ${size}px sans-serif`; ctx.fillStyle = color;
+  ctx.textAlign = align; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); }
+function target(name, x, y, w, h) { targets[name] = [x / W, y / H, (x + w) / W, (y + h) / H]; }
+function button(name, label, x, y, w, h, bg, fg, r = 14) { rr(x, y, w, h, r, bg); if (label) text(label, x + w / 2, y + h / 2, Math.min(26, h * 0.42), fg); target(name, x, y, w, h); }
+const PALETTES = [['#1b2838', '#66c0f4', '#ffffff', '#2a475e'], ['#2d1b38', '#f4a261', '#ffffff', '#4a2c5e'],
+  ['#0f3d2e', '#7bd389', '#ffffff', '#1e5c46'], ['#3a1010', '#ffcc33', '#ffffff', '#5e2020'], ['#f2efe6', '#7fb2ff', '#222222', '#d9d3c3']];
+function bg(p) { ctx.fillStyle = p[0]; ctx.fillRect(0, 0, W, H); }
+function markers() { ctx.fillStyle = '#ff00fe'; ctx.fillRect(0, 0, 4, 4); ctx.fillStyle = '#00ff01'; ctx.fillRect(W - 4, H - 4, 4, 4); }
+function dim(a = 0.6) { ctx.fillStyle = `rgba(0,0,0,${a})`; ctx.fillRect(0, 0, W, H); }
+
+// --- scenes ---------------------------------------------------------------------------------
+const GLYPH = {K: '♔', Q: '♕', R: '♖', B: '♗', N: '♘', P: '♙', k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟'};
+function board(r, x0, y0, size, flip) {
+  const sq = size / 8, light = ['#eeeed2', '#f0d9b5', '#dee3e6'][Math.floor(r() * 3)], dark = ['#769656', '#b58863', '#8ca2ad'][Math.floor(r() * 3)];
+  let rows = ['rnbqkbnr', 'pppppppp', '........', '........', '........', '........', 'PPPPPPPP', 'RNBQKBNR'].map(s => s.split(''));
+  const moves = [[6, 4, 4, 4], [1, 4, 3, 4], [7, 6, 5, 5], [0, 1, 2, 2], [7, 5, 4, 2], [1, 3, 2, 3], [6, 3, 4, 3]];
+  const n = Math.floor(r() * moves.length);
+  for (let i = 0; i < n; i++) { const [a, b, c, d] = moves[i]; rows[c][d] = rows[a][b]; rows[a][b] = '.'; }
+  let king = null;
+  for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {
+    ctx.fillStyle = (i + j) % 2 ? dark : light; ctx.fillRect(x0 + j * sq, y0 + i * sq, sq, sq);
+    const pc = rows[i][j]; if (pc === '.') continue;
+    text(GLYPH[pc], x0 + j * sq + sq / 2, y0 + i * sq + sq * 0.54, sq * 0.82, pc === pc.toUpperCase() ? '#ffffff' : '#111111', 'center', 'normal');
+    if (pc === pc.toUpperCase()) { ctx.lineWidth = 1; ctx.strokeStyle = '#111'; ctx.font = `normal ${sq * 0.82}px sans-serif`; ctx.strokeText(GLYPH[pc], x0 + j * sq + sq / 2, y0 + i * sq + sq * 0.54); }
+    if (pc === 'K') king = [x0 + j * sq, y0 + i * sq, sq, sq];
+  }
+  return king;
+}
+function chessMenu(r, p) {
+  bg(p); const size = W * 0.94, y0 = H * (0.12 + r() * 0.06); board(r, W * 0.03, y0, size); dim(0.55);
+  const pw = W * 0.8, px = W * 0.1, py = H * (0.3 + r() * 0.12); rr(px, py, pw, 100 + 4 * 84 + 10, 22, p[3]);
+  text(['Chess', 'Chess Club', 'Checkmate!'][Math.floor(r() * 3)], W / 2, py + 50, 34, p[2]);
+  const labels = ['Play vs computer', 'Play online', 'Puzzles', 'Settings'], names = ['play_vs_computer_button', 'play_online_button', 'puzzles_button', 'settings_button'];
+  let y = py + 100; for (let i = 0; i < 4; i++) { button(names[i], labels[i], px + 30, y, pw - 60, 64, i === 0 ? p[1] : '#ffffff22', i === 0 ? '#111' : p[2]); y += 84; }
+  return {state: 'menu'};
+}
+function chessGame(r, p) {
+  bg(p); text('Computer (Level ' + (1 + Math.floor(r() * 8)) + ')', 24, H * 0.1, 22, p[2], 'left');
+  text(`${Math.floor(r() * 9)}:${String(Math.floor(r() * 60)).padStart(2, '0')}`, W - 24, H * 0.1, 26, p[2], 'right');
+  const size = W * 0.96, y0 = H * 0.15 + r() * H * 0.05; const k = board(r, W * 0.02, y0, size); target('white_king', ...k);
+  const by = y0 + size + 40; button('resign_button', 'Resign', W * 0.06, by, W * 0.4, 60, '#c0392b', '#fff'); button('draw_button', 'Offer draw', W * 0.54, by, W * 0.4, 60, '#ffffff33', p[2]);
+  text('You', 24, by + 110, 22, p[2], 'left'); text('10:00', W - 24, by + 110, 26, p[2], 'right');
+  return {state: 'content'};
+}
+function tetrisGrid(r, p, x0, y0, cw) {
+  const cols = 10, rows = 20, colors = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6', '#e67e22', '#1abc9c'];
+  ctx.fillStyle = '#00000055'; ctx.fillRect(x0, y0, cw * cols, cw * rows);
+  const fill = 3 + Math.floor(r() * 6);
+  for (let i = rows - fill; i < rows; i++) for (let j = 0; j < cols; j++) if (r() < 0.75) { ctx.fillStyle = colors[Math.floor(r() * 7)]; ctx.fillRect(x0 + j * cw + 1, y0 + i * cw + 1, cw - 2, cw - 2); }
+  const px = Math.floor(r() * 7), py = Math.floor(r() * 8); ctx.fillStyle = colors[Math.floor(r() * 7)];
+  [[0, 0], [1, 0], [2, 0], [1, 1]].forEach(([a, b]) => ctx.fillRect(x0 + (px + a) * cw + 1, y0 + (py + b) * cw + 1, cw - 2, cw - 2));
+}
+function tetris(r, p) {
+  bg(p); const cw = Math.floor(W * 0.068), x0 = W * 0.06, y0 = H * 0.12; tetrisGrid(r, p, x0, y0, cw);
+  const sx = x0 + cw * 10 + 16; text('SCORE', sx, y0 + 20, 18, p[2], 'left'); text(String(Math.floor(r() * 9000)), sx, y0 + 50, 26, p[1], 'left');
+  text('NEXT', sx, y0 + 110, 18, p[2], 'left'); ctx.fillStyle = p[1]; ctx.fillRect(sx, y0 + 130, 22, 22); ctx.fillRect(sx + 24, y0 + 130, 22, 22); ctx.fillRect(sx + 24, y0 + 154, 22, 22);
+  const bx = W - 80, by = H * 0.04; rr(bx, by, 60, 60, 12, '#ffffff33'); ctx.fillStyle = p[2]; ctx.fillRect(bx + 18, by + 15, 8, 30); ctx.fillRect(bx + 34, by + 15, 8, 30); target('pause_button', bx, by, 60, 60);
+  text('LEVEL ' + (1 + Math.floor(r() * 9)), W / 2, H * 0.95, 20, p[2]);
+  return {state: 'content'};
+}
+function gameMenu(r, p, icons) {
+  bg(p); const title = ['SPACE BLOCKS', 'BRICK DROP', 'STAR RUNNER', 'PIXEL QUEST'][Math.floor(r() * 4)];
+  text(title, W / 2, H * (0.18 + r() * 0.06), 40, p[1]);
+  for (let i = 0; i < 30; i++) { ctx.fillStyle = '#ffffff55'; ctx.fillRect(r() * W, r() * H, 3, 3); }
+  const bw = W * (0.55 + r() * 0.15), bx = (W - bw) / 2 + (r() - 0.5) * W * 0.1; let y = H * (0.4 + r() * 0.1);
+  const items = [['play_button', 'Play', '▶'], ['settings_button', 'Settings', '⚙'], ['quit_button', 'Quit', '✕']];
+  if (icons) { const s = 96; let x = W / 2 - 1.5 * s - 30; for (const [n, , ic] of items) { rr(x, y, s, s, 48, n === 'play_button' ? p[1] : '#ffffff33');
+      text(ic, x + s / 2, y + s / 2 + 2, 44, n === 'play_button' ? '#111' : p[2], 'center', 'normal'); target(n, x, y, s, s); x += s + 30; } }
+  else for (const [n, label] of items) { button(n, label, bx, y, bw, 72, n === 'play_button' ? p[1] : '#ffffff26', n === 'play_button' ? '#111' : p[2]); y += 96; }
+  text('v1.' + Math.floor(r() * 20), W - 16, H - 24, 14, '#ffffff88', 'right', 'normal');
+  return {state: 'menu'};
+}
+function gameOver(r, p) {
+  bg(p); tetrisGrid(r, p, W * 0.06, H * 0.12, Math.floor(W * 0.068)); dim(0.7);
+  const s = Math.floor(r() * 9000); text('GAME OVER', W / 2, H * (0.3 + r() * 0.05), 46, '#ff5555');
+  text('Score: ' + s, W / 2, H * 0.4, 28, '#ffffff'); text('Best: ' + (s + Math.floor(r() * 3000)), W / 2, H * 0.45, 22, '#cccccc');
+  const order = r() < 0.5; const y = H * (0.55 + r() * 0.08), bw = W * 0.36;
+  button('retry_button', 'Retry', order ? W * 0.1 : W * 0.54, y, bw, 70, p[1], '#111'); button('menu_button', 'Menu', order ? W * 0.54 : W * 0.1, y, bw, 70, '#ffffff33', '#fff');
+  return {state: 'game_over'};
+}
+function loading(r, p, variant, t) {
+  bg(p); const cx = W / 2, cy = H * (0.45 + r() * 0.1);
+  if (variant !== 'progress') { ctx.lineWidth = 8; ctx.strokeStyle = '#ffffff33'; ctx.beginPath(); ctx.arc(cx, cy, 40, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = p[1]; ctx.beginPath(); ctx.arc(cx, cy, 40, t / 200, t / 200 + 1.6); ctx.stroke(); }
+  if (variant === 'text') text(['Loading...', 'Please wait', 'Connecting to server...'][Math.floor(r() * 3)], cx, cy + 90, 24, p[2], 'center', 'normal');
+  if (variant === 'progress') { const f = 0.2 + r() * 0.6; rr(W * 0.15, cy, W * 0.7, 18, 9, '#ffffff33'); rr(W * 0.15, cy, W * 0.7 * f, 18, 9, p[1]);
+    text(`Downloading assets ${Math.round(f * 100)}%`, cx, cy + 50, 20, p[2], 'center', 'normal'); }
+  if (variant === 'splash') { ctx.clearRect(0, 0, W, H); bg(p); text(['SPACE BLOCKS', 'BRICK DROP', 'STAR RUNNER'][Math.floor(r() * 3)], cx, H * 0.42, 44, p[1]);
+    text('© 2026 Example Games', cx, H * 0.9, 14, '#ffffff88', 'center', 'normal'); }
+  return {state: 'loading', loading: true};
+}
+function popup(r, p) {
+  tetris(r, p); dim(0.6); const pw = W * 0.8, px = W * 0.1, py = H * (0.28 + r() * 0.1), ph = H * 0.36;
+  rr(px, py, pw, ph, 24, '#ffffff'); text(['Daily Reward!', 'Special Offer', 'New Event!'][Math.floor(r() * 3)], W / 2, py + 60, 30, '#222');
+  text('+' + (10 + Math.floor(r() * 90)) + ' coins', W / 2, py + ph * 0.42, 26, '#e67e22'); button('claim_button', 'Claim', px + pw * 0.2, py + ph - 100, pw * 0.6, 64, '#27ae60', '#fff');
+  const cs = 44, cx = px + pw - cs - 12, cy = py + 12; ctx.beginPath(); ctx.arc(cx + cs / 2, cy + cs / 2, cs / 2, 0, 7); ctx.fillStyle = '#ddd'; ctx.fill();
+  text('✕', cx + cs / 2, cy + cs / 2 + 1, 24, '#444', 'center', 'normal'); target('close_button', cx, cy, cs, cs);
+  return {state: 'dialog'};
+}
+function fakePermission(r, p) {
+  // An app-drawn imitation of the Android 15 runtime permission dialog (pixels only).
+  (r() < 0.5 ? tetris : gameMenu)(r, p, false); dim(0.55);
+  const pw = W * 0.88, px = W * 0.06, ph = H * 0.4, py = H * (0.3 + r() * 0.06); rr(px, py, pw, ph, 28, '#f3edf7');
+  const kind = Math.floor(r() * 3), app = 'Space Blocks';
+  const q = [`Allow ${app} to access this device’s location?`, `Allow ${app} to access your contacts?`, `Allow ${app} to send you notifications?`][kind];
+  ctx.fillStyle = '#5b4b8a'; ctx.beginPath(); ctx.arc(W / 2, py + 50, 14, 0, 7); ctx.fill();
+  ctx.font = 'normal 22px sans-serif'; ctx.fillStyle = '#1d1b20'; ctx.textAlign = 'center';
+  const words = q.split(' '); let line = '', y = py + 100; for (const w of words) { if (ctx.measureText(line + w).width > pw - 60) { ctx.fillText(line, W / 2, y); line = ''; y += 30; } line += w + ' '; } ctx.fillText(line, W / 2, y);
+  const labels = kind === 0 ? ['While using the app', 'Only this time', 'Don’t allow'] : ['Allow', 'Don’t allow'];
+  let by = py + ph - labels.length * 62 - 16; for (const l of labels) { button(l === 'Don’t allow' ? 'dont_allow_button' : (l === 'Allow' || l === 'While using the app' ? 'allow_button' : 'once_button'), '', px + 24, by, pw - 48, 54, '#d0bcff', '#1d1b20', 27);
+    text(l, W / 2, by + 27, 20, '#1d1b20', 'center', 'normal'); by += 62; }
+  return {state: 'dialog', dialog: 'app_drawn'};
+}
+function card(r, p) {
+  bg(p); text('Wallet', 24, H * 0.06, 28, p[2], 'left'); const cx = W * 0.07, cy = H * (0.14 + r() * 0.05), cw = W * 0.86, ch = cw * 0.63;
+  const g = ctx.createLinearGradient(cx, cy, cx + cw, cy + ch); g.addColorStop(0, '#3a6073'); g.addColorStop(1, '#16222a'); rr(cx, cy, cw, ch, 20, g);
+  text('EXAMPLE BANK', cx + 24, cy + 40, 20, '#fff', 'left'); rr(cx + 24, cy + 80, 50, 38, 6, '#d4af37');
+  text('4111 1111 1111 1111', cx + 24, cy + ch * 0.62, 28, '#fff', 'left', 'normal'); text('EXP 12/29   CVV 123', cx + 24, cy + ch * 0.78, 18, '#fff', 'left', 'normal');
+  text('JANE Q TESTER', cx + 24, cy + ch * 0.9, 18, '#fff', 'left', 'normal');
+  text('Balance $' + (1000 + Math.floor(r() * 9000)) + '.' + String(Math.floor(r() * 100)).padStart(2, '0'), 24, cy + ch + 60, 26, p[2], 'left');
+  button('pay_button', 'Pay', W * 0.07, cy + ch + 110, W * 0.86, 64, p[1], '#111');
+  return {state: 'content', sensitive: true};
+}
+const SCENES = {chess_menu: chessMenu, chess_game: chessGame, tetris, game_menu: (r, p) => gameMenu(r, p, false), game_menu_icons: (r, p) => gameMenu(r, p, true),
+  game_over: gameOver, popup, fake_permission: fakePermission, card,
+  loading_spinner: (r, p, t) => loading(r, p, 'spinner', t), loading_text: (r, p, t) => loading(r, p, 'text', t),
+  loading_progress: (r, p, t) => loading(r, p, 'progress', t), loading_splash: (r, p, t) => loading(r, p, 'splash', t)};
+
+function draw(s, redraw) {
+  const fn = SCENES[s.scene]; targets = {};
+  if (!fn) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); markers(); return; }
+  const frame = (t) => { targets = {}; const r = rng(s.seed || 1); const p = PALETTES[Math.floor(r() * PALETTES.length)]; const meta = fn(r, p, t || 0); markers(); return meta; };
+  if (anim) cancelAnimationFrame(anim), anim = null;
+  const meta = frame(0);
+  if (s.scene.startsWith('loading') && s.scene !== 'loading_splash') { const loop = (t) => { frame(t); anim = requestAnimationFrame(loop); }; anim = requestAnimationFrame(loop); }
+  fetch('/report', {method: 'POST', body: JSON.stringify({id: s.id, scene: s.scene, seed: s.seed, W, H, dpr: window.devicePixelRatio, targets, meta})});
+}
+async function poll() {
+  try { const s = await (await fetch('/scene?' + Date.now())).json(); if (s.id !== cur.id) { cur = s; draw(s); } } catch (e) {}
+  setTimeout(poll, 150);
+}
+resize(); poll();
+</script></body></html>
