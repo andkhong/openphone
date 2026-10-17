@@ -297,6 +297,20 @@ def test_the_session_is_visible_and_the_owner_can_stop_it(api, driver_key):
     assert wait_status(driver_key, sid, "cancelled")
 
 
+
+def test_the_phones_indicator_stop_ends_the_session_and_stays_connected(api, driver_key):
+    """Stop on the phone's agent indicator (task_stop): the session ends as stopped, the phone stays connected."""
+    sid = start(api, driver_key)["session_id"]
+    api.alice.phone.send({"type": "task_stop"})
+    assert wait_ended(api, driver_key, sid)["ended"]["reason"] == "stopped"
+    assert wait_status(driver_key, sid, "cancelled")
+    session = api.manager.get(api.alice.device)
+    assert session.online and session.link is not None
+    sid = start(api, driver_key)["session_id"]  # a new session right away, no reconnect
+    assert ok(call(api, driver_key, "get_session", session_id=sid))["status"] == "active"
+    ok(call(api, driver_key, "end_session", session_id=sid, summary="x"))
+
+
 def test_another_key_or_account_cannot_see_the_session(api, driver_key):
     sid = start(api, driver_key)["session_id"]
     other = new_key(api, api.alice, DRIVE)

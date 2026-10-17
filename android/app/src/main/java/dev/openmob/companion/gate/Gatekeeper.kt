@@ -352,6 +352,17 @@ class Gatekeeper(
         suspended = false
     }
 
+    /** The Stop pill on the agent indicator (the task stops, the phone stays connected): every per-task permission
+     *  goes (permits, pending prompts, the purchase follow-up, credits, task grants, the owner's typed requests), so a
+     *  server can't carry on the stopped task with what was approved for it. Only tightens: the owner's signed policy
+     *  (`never`, "Always allow" grants) and a pause after denials stay as they are. */
+    fun stopTasks() = synchronized(lock) {
+        pending.keys.toList().forEach { onEvent?.invoke(it, "expired") }
+        if (pending.isNotEmpty()) promptClosed = now()
+        permits.clear(); pending.clear(); followup = null; credits.clear(); startPermits.clear()
+        taskGrants.clear(); ownRequests.clear()
+    }
+
     val promptOpen: Boolean get() = synchronized(lock) { pending.isNotEmpty() }
     /** A prompt is open right now (expired ones dropped first): the agent indicator shows the approval state. */
     fun promptPending(): Boolean = synchronized(lock) { expire(now()); pending.isNotEmpty() }

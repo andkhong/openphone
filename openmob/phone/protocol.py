@@ -27,6 +27,8 @@ Gatekeeper phones (hello device.capabilities has "gatekeeper"; docs/phone-protoc
         the phone asked its owner itself; on gate_event approved, re-send the identical call once
     Phone -> server: {"type": "gate_event", "approval_id", "state": "pending|approved|denied|expired"}
                      {"type": "device_lock", "locked": bool, "secure": bool}   a secure lock mid-task / unlocked
+                     {"type": "task_stop"}   the owner's Stop on the agent indicator: stop the running task or drive
+                                             session and the queue; the connection stays up (only ever stops)
     Server -> phone, act calls only: params "mode" (the task's mode: the phone takes the tighter of it and its
     owner's signed ceiling), "task" (the task id), "hint" (the server's own caution: can only add a prompt).
     Gatekeeper phones ignore approval_request for actions (they word their own prompts).
@@ -52,6 +54,7 @@ GATE_CODES = (
     "gate_denied", "gate_screen_changed", "gate_screen_unstable", "gate_prompt_open", "gate_password_field",
     "gate_unknown_method", "gate_policy_invalid", "phone_locked", "gate_unavailable", "needs_owner_dialog", "gate_permission_choice",
     "gate_no_answer",  # server-side: the phone's prompt ended without the owner deciding (gate_event expired)
+    "gate_owner_stopped",  # the owner tapped Stop on the agent indicator: acts refused until the task ends (or 10 s)
 )
 
 # method -> (parameters, result, timeout in seconds)

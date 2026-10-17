@@ -274,4 +274,67 @@ class ControlIndicatorTest {
             GateScreen.ownOverlayView(pill())))
         assertFalse(gk.admitsWithoutPill("tap", menu, bank))
     }
+
+    // --- the pill stops the task and stays connected (owner decision 2026-10-17) ---------------------------------------
+
+    private class Recorder : PillStop.Effects {
+        val calls = mutableListOf<String>()
+        var connected = true
+        override fun withdrawPrompts() { calls += "withdraw" }
+        override fun holdActs() { calls += "hold" }
+        override fun sendTaskStop(): Boolean { calls += "task_stop"; return connected }
+        override fun hideIndicator() { calls += "hide" }
+        override fun note(sent: Boolean) { calls += "note:$sent" }
+    }
+
+    @Test fun thePillSendsATaskStopAndNeverDisconnects() {
+        val r = Recorder()
+        assertTrue(PillStop.run(r))
+        // Prompts are withdrawn and acts held before the server hears it; nothing closes the connection.
+        assertEquals(listOf("withdraw", "hold", "task_stop", "hide", "note:true"), r.calls)
+        assertFalse(r.calls.any { "disconnect" in it || "close" in it })
+        val offline = Recorder().apply { connected = false }
+        assertFalse(PillStop.run(offline))
+        assertTrue("acts are held even when the stop can't be sent", "hold" in offline.calls)
+    }
+
+    @Test fun actsAfterThePillAreRefusedUntilTheTaskEndsOrTheTimeout() {
+        val hold = OwnerStopHold(holdMs = 10_000)
+        assertFalse(hold.blocks(0))
+        hold.stop(1_000)
+        assertTrue(hold.blocks(1_000))
+        assertTrue(hold.blocks(10_999)) // a server that ignores the stop: still refused
+        assertFalse(hold.blocks(11_000)) // the timeout
+        hold.stop(20_000)
+        hold.ended() // the task's result/error event arrived (or the owner asked for something new)
+        assertFalse(hold.blocks(20_001))
+    }
+
+    @Test fun aNewTaskWorksAfterThePill() {
+        // GateHost refuses acts while the hold blocks; the gate itself is untouched by the stop.
+        val hold = OwnerStopHold()
+        val clock = GateScenarioTest.FakeClock()
+        val gk = Gatekeeper(GateScenarioTest.RULES, clock, GateScenarioTest.VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
+        val s = screen()
+        hold.stop(0)
+        assertTrue(hold.blocks(5))
+        hold.ended() // the stopped task's final event
+        assertFalse(hold.blocks(6))
+        assertTrue(gk.admit("tap", mapOf("x" to 540L, "y" to 1050L), s).allowed) // the next task acts as usual
+    }
+
+    @Test fun thePillsStopDropsTheTasksPermitsButNotTheOwnersPolicy() {
+        val clock = GateScenarioTest.FakeClock()
+        val gk = Gatekeeper(GateScenarioTest.RULES, clock, GateScenarioTest.VERIFIER, "dev", tapVerifier = GateScenarioTest.TAP_VERIFIER)
+        val chat = GateScenarioTest.SCREENS.getValue("whatsapp_chat")
+        val send = mapOf<String, Any?>("x" to 990L, "y" to 2250L)
+        val ask = gk.admit("tap", send, chat)
+        val m = gk.approvalMessage(ask.approvalId)!!
+        assertTrue(gk.approve(ask.approvalId, m, GateScenarioTest.tapSign(m))) // the owner approved this send
+        gk.stopTasks() // then tapped Stop on the pill
+        clock.elapsed += 2000
+        assertEquals("ask", gk.admit("tap", send, chat).decision) // the stopped task's permit is gone
+        gk.stopTasks() // and an open prompt closes
+        assertFalse(gk.promptOpen)
+    }
 }

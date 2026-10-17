@@ -169,8 +169,25 @@ object GateHost {
 
     // --- the checkpoint -------------------------------------------------------------------------
 
+    /** After the owner's Stop on the agent indicator: acts are refused until the task ends (docs/phone-protocol.md,
+     *  task_stop). */
+    val ownerStop = dev.openmob.companion.OwnerStopHold()
+
+    /** The owner's Stop on the pill: acts are held, and every per-task permission goes (Gatekeeper.stopTasks). */
+    fun ownerStopped() {
+        ownerStop.stop(SystemClock.uptimeMillis())
+        gate?.stopTasks()
+        main.post { Approvals.clearGate(app) }
+        save()
+    }
+
+    private fun stoppedRefusal(method: String, params: Map<String, Any?>) = Admission("refuse", code = "gate_owner_stopped",
+        rule = "builtin:owner_stopped", message = "The owner tapped Stop on the phone: this task is stopped. Call done.",
+        method = method, params = params)
+
     fun admit(service: OpenMobAccessibilityService?, method: String, params: Map<String, Any?>): Admission {
         val g = gk()
+        if (method in g.rules.act && ownerStop.blocks(SystemClock.uptimeMillis())) return stoppedRefusal(method, params)
         // Without the accessibility service the phone sees nothing: every act is refused (gate_unavailable).
         if (method in g.rules.task) { // task approval: the phone words the prompt from the request itself
             val adm = g.admit(method, params, GScreen(emptyList()))
@@ -237,6 +254,8 @@ object GateHost {
      *  when the action is risky. Returns the refusal, or null to go ahead. */
     fun reverify(service: OpenMobAccessibilityService, adm: Admission?): Admission? {
         if (adm == null || !adm.allowed) return null
+        // An act already admitted when the owner tapped Stop never runs.
+        if (ownerStop.blocks(SystemClock.uptimeMillis())) return stoppedRefusal(adm.method, adm.params)
         val g = gk()
         val deadline = SystemClock.uptimeMillis() + QUIET_WAIT_MS
         var focused = true

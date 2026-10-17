@@ -96,7 +96,11 @@ class ConnectionService : Service() {
          *  is a phone-known instruction: one matching send, post or delete it names runs without a prompt (D6). */
         fun sendCommand(text: String): Boolean = (running?.send(
             JSONObject().put("type", "command").put("text", text)
-        ) ?: false).also { if (it) { GateHost.noteInstruction(text); ScreenKeeper.ownerActive() } }
+        ) ?: false).also { if (it) { GateHost.noteInstruction(text); GateHost.ownerStop.ended(); ScreenKeeper.ownerActive() } }
+
+        /** The owner's Stop on the agent indicator: stop the running task or drive session, stay connected
+         *  (docs/phone-protocol.md, task_stop). False if not connected. */
+        fun stopTask(): Boolean = AppState.connected && running?.send(JSONObject().put("type", "task_stop")) ?: false
 
         /** The gatekeeper paused after repeated denials: offer Resume in a notification. */
         fun showResume() { running?.let { s -> s.main.post { s.postResume() } } }
@@ -550,6 +554,7 @@ class ConnectionService : Service() {
             updateNotification("Agent connected · ready")
             ScreenKeeper.release()
             ControlIndicator.ended() // only shortens the hold after the last action: the next action shows it again
+            GateHost.ownerStop.ended() // the stopped task ended: the next task may act
         }
     }
 

@@ -13,10 +13,20 @@ Both are `TYPE_ACCESSIBILITY_OVERLAY` windows added by the accessibility service
   rounded corners (API 31+), is 5 dp wide, fades in over 150 ms and out over 300 ms.
 - **The pill:** 48 dp tall, at least 96 dp wide, `FLAG_NOT_FOCUSABLE`. It sits in the owner's chosen corner, 8 dp
   inside the status bar (top corners) or the navigation bar (bottom corners), 12 dp from the side. It's the only
-  touchable part. One tap does what the notification's Stop does (`ConnectionService.stop`: the socket closes with
-  1000, so the server stops the task and clears its queue; every permit, prompt and purchase flow is revoked), after
-  first withdrawing every open phone prompt (`GateHost.withdrawPrompts`, which sends `gate_event` `expired`). During a
-  preview from settings, a tap only ends the preview.
+  touchable part. One tap stops the current task or drive session and **stays connected** (owner decision
+  2026-10-17). In order (`PillStop.run`):
+  1. it withdraws every open phone prompt (`GateHost.withdrawPrompts`, which sends `gate_event` `expired`);
+  2. it holds acts locally (`OwnerStopHold`): from that moment every act is refused with `gate_owner_stopped`, both
+     at admission and in the re-check right before a gesture. The hold lasts until the task's `result` or `error`
+     event arrives, the owner asks for something new on the phone, or 10 s pass;
+  3. it sends `{"type": "task_stop"}` (docs/phone-protocol.md). The server cancels the running task and the queue,
+     recording reason `stopped_on_phone` and a "Stopped by the owner on the phone." status;
+  4. the indicator goes.
+
+  The socket stays open, and the next task runs on it. A server that ignores `task_stop` can't act during the hold.
+  It can end the hold early by sending a false `result` or `error` event; against a compromised server the owner
+  still has the full Stop (the notification's Stop and the app's Disconnect), which still closes the socket with
+  1000 and revokes every permit. During a preview from settings, a tap only ends the preview.
 
 If the accessibility service dies, Android removes both windows with it. That's accepted: without the service, the
 phone can't act either.

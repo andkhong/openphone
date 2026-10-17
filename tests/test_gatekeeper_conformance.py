@@ -117,3 +117,12 @@ def test_the_pill_dodges_only_for_a_gesture_the_gate_would_accept():
     assert gk.admits_without_pill("tap", {"x": 980, "y": 200}, shop)  # the shop's Menu under the pill
     assert not gk.admits_without_pill("tap", {"x": 980, "y": 200}, bank)  # a bank under it: refused anyway
     assert not gk.admits_without_pill("type_text", {"text": "x"}, shop)
+
+
+def test_the_pills_stop_drops_per_task_permissions_and_keeps_the_owners_policy():
+    gk = Gatekeeper()
+    gk.permits, gk.task_grants, gk.own_requests = {"b": 1}, {"t": {}}, ["send hi"]
+    gk.never, gk.suspended = {"until": 1}, True
+    gk.stop_tasks()
+    assert gk.permits == {} and gk.task_grants == {} and gk.own_requests == [] and gk.pending == {}
+    assert gk.never == {"until": 1} and gk.suspended is True  # only tightens: the owner's policy stays

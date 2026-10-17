@@ -560,6 +560,19 @@ class DeviceManager:
         with c._lock:
             return [t for t, i in c.task_info.items() if i["status"] not in ("succeeded", "failed", "cancelled")]
 
+    def phone_task_stop(self, session: Session) -> bool:
+        """`task_stop` from the phone (its agent indicator's Stop): the running task or drive session and everything
+        queued end as cancelled, stopped by the owner on the phone; the connection stays up for the next task. Only
+        ever stops: it starts, approves and loosens nothing, and comes only on this phone's own live socket."""
+        targets = self.phone_stop_targets(session)
+        if not targets:
+            return False
+        session.coordinator.event("status", "Stopped by the owner on the phone.",
+                                  task=session.coordinator.current_task)
+        self.phone_stopped(session, targets, "stop")
+        self._stop(session, "stopped_on_phone")
+        return True
+
     def phone_stopped(self, session: Session, task_ids: list[str], how: str) -> None:
         """The owner stopped these tasks from the phone (Stop, "stop", or denying an approval)."""
         for listener in self.phone_stop_listeners:

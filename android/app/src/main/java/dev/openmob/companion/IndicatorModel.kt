@@ -267,6 +267,44 @@ class PillPlacement {
     }
 }
 
+/**
+ * After the owner taps Stop on the pill (owner decision 2026-10-17): the phone refuses every act at once
+ * (gate_owner_stopped), whatever the server does, until the server says the task ended (its result or error event),
+ * the owner starts a new request on the phone, or [holdMs] passes. Times are uptime ms.
+ */
+class OwnerStopHold(private val holdMs: Long = 10_000) {
+    private var until = Long.MIN_VALUE / 2
+
+    @Synchronized fun stop(now: Long) { until = now + holdMs }
+    @Synchronized fun ended() { until = Long.MIN_VALUE / 2 }
+    @Synchronized fun blocks(now: Long): Boolean = now < until
+}
+
+/** What a tap on the Stop pill does, in this order. It never disconnects: the connection stays up for the next task
+ *  (the notification's Stop and the app's Disconnect still do). */
+object PillStop {
+    interface Effects {
+        /** Close every open phone prompt unanswered (the server hears gate_event expired). */
+        fun withdrawPrompts()
+        /** Refuse acts locally from now on ([OwnerStopHold]). */
+        fun holdActs()
+        /** Tell the server: task_stop. False if not connected (the hold still applies). */
+        fun sendTaskStop(): Boolean
+        /** The indicator goes, as on Stop. */
+        fun hideIndicator()
+        fun note(sent: Boolean)
+    }
+
+    fun run(e: Effects): Boolean {
+        e.withdrawPrompts()
+        e.holdActs()
+        val sent = e.sendTaskStop()
+        e.hideIndicator()
+        e.note(sent)
+        return sent
+    }
+}
+
 object IndicatorGeometry {
     /** Where to try next: the other corner of the same edge, then the other edge on the same side, then the diagonal
      *  (top right: top left, bottom right, bottom left). */

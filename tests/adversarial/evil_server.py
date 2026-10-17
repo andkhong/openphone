@@ -1791,21 +1791,38 @@ async def g_indicator(phone: Phone, dev: Device) -> None:
     shot4 = dev.shot("indicator-4-after")
     check(G, "after the task's result the indicator is gone", not after and not bluish(edge_colour(shot4)), f"{after} {shot4}")
 
-    # The owner taps the pill: the task stops (the connection closes with 1000) and the indicator goes.
+    # The owner taps the pill (owner decision 2026-10-17): the phone sends task_stop and stays connected; it refuses
+    # acts (gate_owner_stopped) until the task ends, even though this server keeps sending them; then a second task acts
+    # at once, on the same connection.
     r = await phone.call("tap", x=title["center"][0], y=title["center"][1])
     pill = overlay_windows(dev).get("OpenMob Stop") or []
     check(G, "the next task's pill is back in the owner's corner", pill == home_pill, f"{pill} vs {home_pill}")
-    if len(pill) == 4:
-        dev.sh(f"input tap {(pill[0] + pill[2]) // 2} {(pill[1] + pill[3]) // 2}")
-        await asyncio.sleep(2)
-        closed = phone.ws.state != websockets.protocol.State.OPEN
-        code = getattr(phone.ws, "close_code", None)
-        gone = overlay_windows(dev)
-        shot5 = dev.shot("indicator-5-stopped")
-        check(G, "the owner's tap on the pill stops: socket closed with 1000, indicator gone",
-              closed and code == 1000 and not gone, f"closed={closed} code={code} left={gone} {shot5}")
-    else:
+    if len(pill) != 4:
         check(G, "the pill shows for the Stop test", False, str(pill))
+        return
+    seen = len(phone.events)
+    dev.sh(f"input tap {(pill[0] + pill[2]) // 2} {(pill[1] + pill[3]) // 2}")
+    stop = await phone.event(lambda e: e.get("type") == "task_stop", timeout=5)
+    await asyncio.sleep(1)
+    shot5 = dev.shot("indicator-5-stopped")
+    gone = overlay_windows(dev)
+    check(G, "the owner's tap on the pill sends task_stop, keeps the socket open and hides the indicator",
+          stop is not None and phone.ws.state == websockets.protocol.State.OPEN and not gone,
+          f"task_stop={stop is not None} open={phone.ws.state == websockets.protocol.State.OPEN} left={gone} {shot5}")
+    r = await phone.call("tap", x=title["center"][0], y=title["center"][1])  # a server that ignores the stop
+    check(G, "an act after the pill is refused (gate_owner_stopped) and the indicator stays off",
+          rule(r) == "gate_owner_stopped:builtin:owner_stopped" and not overlay_windows(dev), short(r)[:200])
+    # The server confirms the stopped task ended; the next task acts right away, no reconnect.
+    await phone.ws.send(json.dumps({"type": "event", "kind": "error", "message": "Stopped by the owner on the phone."}))
+    await asyncio.sleep(1)
+    dev.logcat_clear()
+    r = await phone.call("tap", x=add["center"][0], y=add["center"][1])
+    await asyncio.sleep(1)
+    added = "ADDED" in dev.log("ShopStandIn")
+    shot6 = dev.shot("indicator-6-second-task")
+    check(G, "a second task acts at once on the same connection, with the indicator back",
+          r.get("ok") is True and added and "OpenMob indicator" in overlay_windows(dev)
+          and phone.ws.state == websockets.protocol.State.OPEN, f"{short(r)[:120]} added={added} {shot6}")
 
 GROUPS = {"basics": g_basics, "settings": g_settings, "bank": g_bank, "login": g_login, "permissions": g_permissions,
           "permissions_bg": g_permissions_bg, "shop": g_shop, "webview": g_webview, "flood": g_flood, "promptrate": g_promptrate, "keepawake": g_keepawake, "friction": g_friction,

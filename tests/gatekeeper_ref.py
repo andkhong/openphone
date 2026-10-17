@@ -920,6 +920,15 @@ class Gatekeeper:
         self.suspended = False
         self.denials = []
 
+    def stop_tasks(self) -> None:
+        """The Stop pill (the phone stays connected): every per-task permission goes; the owner's signed policy
+        (never, Always allow) and a pause after denials stay. Only tightens."""
+        for aid in list(self.pending):
+            self.events.append({"state": "expired", "approval_id": aid})
+        self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
+        self.start_permits = {}
+        self.task_grants, self.own_requests = {}, []
+
     def revoke_all(self) -> None:
         for aid in list(self.pending):
             self.events.append({"state": "expired", "approval_id": aid})

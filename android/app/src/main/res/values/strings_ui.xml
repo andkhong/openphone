@@ -232,7 +232,8 @@
     <!-- The agent indicator (IndicatorOverlay, MainActivity's Agent indicator card) -->
     <string name="indicator_stop">■ Stop</string>
     <string name="indicator_stop_description">Stop the agent</string>
-    <string name="indicator_stopped_event">You stopped the agent with the Stop button.</string>
+    <string name="indicator_stopped_event">You stopped the agent with the Stop button. Still connected: ask for something else any time.</string>
+    <string name="indicator_stopped_offline">You stopped the agent with the Stop button. The phone refuses its actions until the task ends.</string>
     <string name="indicator_title">Agent indicator</string>
     <string name="indicator_help">While an agent is acting on this phone, a glowing border shows around the screen and a Stop button sits in a corner. Amber and thicker: a prompt waits for you. Dashed: paused until you unlock or answer. Only you can change these here; agents and servers can\'t.</string>
     <string name="indicator_border">Glowing border</string>

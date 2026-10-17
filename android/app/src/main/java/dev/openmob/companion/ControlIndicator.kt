@@ -138,16 +138,20 @@ object ControlIndicator {
         if (again != null) main.postAtTime({ apply() }, token, now + again)
     }
 
-    /** The owner tapped Stop on the pill: the same as the notification's Stop (close the connection with 1000, so
-     *  the server stops the task and clears its queue; every permit and prompt goes), and every phone prompt is
-     *  withdrawn first, so the server hears it. During a preview only the preview ends. */
+    /** The owner tapped Stop on the pill: stop the running task or drive session and stay connected (owner decision
+     *  2026-10-17). Every phone prompt is withdrawn, acts are refused locally until the task ends (or 10 s), the server
+     *  gets task_stop, and the indicator goes. The notification's Stop and Disconnect still disconnect. During a
+     *  preview only the preview ends. */
     private fun onPillTapped() {
         val now = SystemClock.uptimeMillis()
         if (!policy.agentActive(now) && !policy.prompt) { policy.endPreview(); apply(); return }
-        GateHost.withdrawPrompts()
-        policy.stop()
-        apply()
-        AppState.addEvent("status", app.getString(R.string.indicator_stopped_event))
-        if (ConnectionService.isRunning) ConnectionService.stop(app)
+        PillStop.run(object : PillStop.Effects {
+            override fun withdrawPrompts() = GateHost.withdrawPrompts()
+            override fun holdActs() = GateHost.ownerStopped()
+            override fun sendTaskStop() = ConnectionService.stopTask()
+            override fun hideIndicator() { policy.stop(); apply(); ScreenKeeper.release() }
+            override fun note(sent: Boolean) = AppState.addEvent("status", app.getString(
+                if (sent) R.string.indicator_stopped_event else R.string.indicator_stopped_offline))
+        })
     }
 }
