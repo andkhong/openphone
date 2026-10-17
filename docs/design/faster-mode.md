@@ -137,9 +137,32 @@ reason (`faster_inactive`).
 
 ## 2. What is sent, and when
 
-**Trigger:** the screens Jev text can't read: no accessibility element with text (a canvas game, a web canvas, an
-app that draws its own UI), including the case where `ui_tree: auto` has stopped reading the tree for that app.
-A screen with labeled elements never sends an image.
+**Trigger:** the screens Jev text can't read:
+
+- **treeless:** no accessibility element with text (a canvas game, a web canvas, an app that draws its own UI),
+  including the case where `ui_tree: auto` has stopped reading the tree for that app;
+- **sparse** (2026-10-17): a few labels around a large area none of them describes. Measured on the owner's Samsung
+  that day: Faster mode was on for every Tetris and Chess.com run and never engaged, because real games expose some
+  text (Tetris's one element is "Game view"; Chess.com's board has "Back" and "Chess.com" around it). A screen is
+  sparse when all of these hold (`agent/faster.py`, `sparse_region`):
+  - at most 10 labeled elements (text fields count) and 200 characters of labels in all;
+  - no password field and no focused text field;
+  - a **play area**: the largest rectangle no labeled element overlaps covers at least 30% of the screen, each side
+    at least a quarter of the screen's width (`agent/waiting.py`, `canvas_region`: the same definition the model's
+    `wait_until screen_changes` uses to compare frames). A labeled element covering 30% or more is a container
+    whose label names the whole ("Game view") and doesn't cover the area; OCR words never do;
+  - something is drawn in that area on the frame itself (its cells' brightness varies by a standard deviation of 8
+    or more): a few labels over a blank area are an empty screen, not a canvas.
+
+  Text-heavy screens are never sparse: Settings, Maps, YouTube and a Chrome page show dozens of labels
+  (`tests/test_game_waits.py` pins those four and three game layouts).
+
+Any other labeled screen never sends an image.
+
+**A sparse screen's words are read first.** Its labels don't show what's drawn in the play area, so the server OCRs
+the frame before any request and runs every never-sent check below on those words too; without OCR nothing is sent
+(`no_text_check`, as for a treeless screen). The words are used only for the checks: they don't reach the main model
+from here.
 
 **Data flow.** Phone → OpenMob server (the screenshot it already takes for the main model and for OCR) → the
 server shrinks it to 768 px on the long side (padded to TypeSafe's 280 px minimum), JPEG q80 → TypeSafe
@@ -162,14 +185,14 @@ order:
 | `password_field` | A password field on screen |
 | `sensitive_number` | A card number or SSN in any element's text or the OCR'd words, alone or joined across boxes (`agent/sensitive.py`, the detector the gatekeeper uses); **or any run of 8 or more digits** (single separators allowed, any script's digits), whatever Luhn says, so a misread or partly read number still stays. Every OCR word counts here, **whatever its confidence**: the 0.3 floor only keeps unsure words from the main model (review S M1) |
 | `otp_text` | A one-time code: 4-8 digits within 60 characters of "code", "verification", "verify", "OTP", "passcode", "PIN", "one-time", "2FA", "authenticate", "log in", "sign in", "confirm", or Google's "G-123456" (review S M2). Sender names aren't recognised; a code with none of those words around it can still go |
-| `no_text_check` | The server has no OCR (it is macOS-only today), so a treeless screen's words couldn't be checked first. **Fail closed: nothing is sent.** |
+| `no_text_check` | The server has no OCR (it is macOS-only today), so a treeless or sparse screen's words couldn't be checked first. **Fail closed: nothing is sent.** |
 | `black_frame` | The prepared image's **app area** is black (97% of its pixels at or below 24): a `FLAG_SECURE` window or a gatekeeper-blacked-out read. The status bar (top 5%), the navigation bar (bottom 7%) and OpenMob's border (2% each side) are left out, since a secure capture still shows them; the Stop pill is within the 3% (review S L3) |
 | `app_changed` | The app in front, read again right after the frame was taken, isn't the one the checks above judged (review S L2): another app (a bank, say) came up between the package read and the capture |
 | `drive` | A drive session, unless the owner approved that key on that phone (§1.2) |
 
 ## 3. What the loop does with the answers
 
-**J1, on each look** (`_observe_settled` → `_faster_loading`): on a treeless screen that may be sent, one Choice
+**J1, on each look** (`_observe_settled` → `_faster_loading`): on a treeless or sparse screen that may be sent, one Choice
 question over the benchmark's seven states (loading, menu, content, game over, dialog, login, home screen; the
 exact wording the benchmark measured, `jev.IMAGE_STATES`).
 
@@ -199,6 +222,17 @@ Faster mode is still on for that phone and task (`still_ok`, the live phone-sign
 never sent. So an image goes out only while its step still waits for it and Faster mode is on; one already
 being sent when the owner turns it off may finish, and its answer is discarded. A TypeSafe error reaches the feed as
 its status code only, never its body.
+
+**J3 in the model's `wait_until screen_changes`** (2026-10-17, `_faster_ready_stop`, `jev_image_wait_ready`, on by
+default): on a treeless or sparse screen, after the wait's first second and at most once a second, a look that
+didn't move asks one "still loading?" question (every never-sent check first; at most 2 a wait). `p_loading <= 0.1`
+(confidence 0.8) ends the wait, not met, and the model is told "the screen hasn't changed and a quick screenshot
+check says it's ready" (`wait_via: jev_image`). Anything else leaves the wait as it was: it still ends the moment the
+screen changes, or by the still exit (3.5 s still with nothing loading, `agent/waiting.py`). **Worth it? Marginal,
+estimate:** the still exit already caps a still screen's wait at about 3.5 s; a confident J3 can end it after about
+1.3–2 s (1 s of wait, a frame, OCR and a request), so it saves about 1.5–2 s per such wait for one or two image
+requests. It only matters on screens the model waits on that are already ready; it is a config switch so it can be
+turned off if the real-phone runs show no gain.
 
 **Why J3 is not inside every settle.** Asking on every settle of a treeless screen would add a screenshot, OCR and a
 request (about 0.3–0.5 s, estimate) to every step even when nothing is loading. J1 already looks at every treeless
@@ -266,7 +300,7 @@ phone-signed switch is covered by `tests/test_faster_mode_switch.py`).
 | Replay of an old approval | The signature covers this approval id and the change's digest, and expires after 5 minutes |
 | Wearing the owner down with prompts | The phone shows at most 2 permission-change prompts an hour (N1) |
 | A screen that must never leave | The server-side checks above, before every request, with tests; OCR missing means nothing is sent. The number checks guard against accidental leaks, not a determined adversary: a number drawn in an unusual way, or one OCR misses entirely, isn't caught |
-| A sensitive screen the checks miss (a balance with no card number, a canvas banking app with an unlisted package) | **Not stopped.** The detector catches card numbers and SSNs; other personal data on a treeless screen can be sent. J5 (an image "sensitive?" signal) is a later, add-only step |
+| A sensitive screen the checks miss (a balance with no card number, a canvas banking app with an unlisted package) | **Not stopped.** The detector catches card numbers and SSNs; other personal data on a treeless or sparse screen can be sent. J5 (an image "sensitive?" signal) is a later, add-only step |
 | **A compromised server** | **Not stopped.** The server enforces the switch and the never-sent list. A compromised server can ignore both and send any screenshot it takes anywhere, as it can with every screenshot today (the main model already receives them). The phone can't see where the server sends images. What the phone does: it keeps the owner's choice, shows "Faster mode is on" only for that, and tells the server to turn it off when the server claims more |
 | TypeSafe's handling | Their terms; images are "Dreamer-ready" (not production). The owner opts in knowing it's a second processor |
 
@@ -280,9 +314,10 @@ jev_image_timeout_ms: 600        # per image request; a later answer is discarde
 jev_image_min_confidence: 0.6    # below it an answer is ignored
 jev_image_loading_looks: 2       # extra looks on a loading screen before the main model decides anyway
 jev_image_loading_wait_seconds: 10
+jev_image_wait_ready: true       # J3 may end the model's wait_until screen_changes on a treeless or sparse screen
 ```
 
-Faster mode needs `TYPESAFE_API_KEY` (Jev) and, for treeless screens, OCR on the server (macOS).
+Faster mode needs `TYPESAFE_API_KEY` (Jev) and, for treeless and sparse screens, OCR on the server (macOS).
 
 ## 7. Owner decisions (2026-10-17)
 

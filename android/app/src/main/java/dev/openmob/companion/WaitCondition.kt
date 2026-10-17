@@ -35,7 +35,28 @@ data class WaitElement(
     }
 }
 
-class WaitCondition(val until: String, pattern: String, val pkg: String, val quietMs: Long) {
+/**
+ * The still exit (wait_for's optional `still_ms`, phones whose hello lists `wait_for_still`): the wait ends, not met,
+ * once the screen has shown the same labels (the signature: numbers blanked, so a clock doesn't count) with nothing
+ * loading for [stillMs]. The server's poll path judges stillness the same way (waiting.moved on labeled screens);
+ * it asks 3.5 s for screen_changes and 2.5 s for text, element and app conditions (waiting.still_exit_for).
+ */
+class StillClock(private val stillMs: Long, start: Long) {
+    private var sig: Set<String>? = null
+    /** When the screen last moved, or last showed something loading. */
+    var since: Long = start
+        private set
+
+    fun update(now: Long, signature: Set<String>, loading: Boolean) {
+        if (loading || (sig != null && signature != sig)) since = now
+        sig = signature
+    }
+
+    fun stillFor(now: Long): Long = now - since
+    fun still(now: Long): Boolean = stillMs > 0 && stillFor(now) >= stillMs
+}
+
+class WaitCondition(val until: String, pattern: String, val pkg: String, val quietMs: Long, val stillMs: Long = 0L) {
     private val regex: Regex? = if (pattern.isEmpty()) null else
         runCatching { Regex(pattern, RegexOption.IGNORE_CASE) }.getOrElse { Regex(Regex.escape(pattern), RegexOption.IGNORE_CASE) }
     private val words: Regex? = regex?.let { runCatching { Regex("(?<!\\w)(?:${it.pattern})(?!\\w)", RegexOption.IGNORE_CASE) }.getOrNull() }
@@ -93,6 +114,7 @@ class WaitCondition(val until: String, pattern: String, val pkg: String, val qui
         fun from(json: JSONObject) = WaitCondition(
             json.getString("until"), json.optString("pattern", ""), json.optString("package", ""),
             json.optLong("quiet_ms", 500L).coerceIn(50L, 8_000L),
+            json.optLong("still_ms", 0L).coerceIn(0L, 10_000L),
         )
 
         fun loading(e: WaitElement): Boolean = LOADING_CLASS.containsMatchIn(e.cls) || LOADING_ID.containsMatchIn(e.resourceId) ||

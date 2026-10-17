@@ -304,6 +304,9 @@ class Config:
     jev_image_min_confidence: float = 0.6  # below this, an image answer is ignored (today's behaviour)
     jev_image_loading_looks: int = 2  # extra looks on a loading screen before the main model is asked anyway
     jev_image_loading_wait_seconds: float = 10.0  # one loading wait at most (jev_auto_wait_seconds caps a task)
+    # The model's wait_until screen_changes on a treeless or sparse screen: a confident "ready" from J3 ends it early
+    # (about 1-2 s instead of the 3.5 s still exit). false: only the still exit.
+    jev_image_wait_ready: bool = True
     # Fast path (needs Jev): on screens with a usable element list, Jev picks the next operation and its
     # target in one call and the step runs without the main model (a small text model writes any text).
     # off | fast_tier (only tasks on the `fast` API tier's model) | on. OPENMOB_FAST_PATH sets it too.

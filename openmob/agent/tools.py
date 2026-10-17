@@ -256,7 +256,8 @@ the button is greyed out while it installs). After opening an app or a link, or 
 wait_until loading_done (or screen_changes). Waiting for a reply or a result: wait_until text_appears with \
 the text you expect. Use wait (fixed seconds) only when nothing observable will change. In games and on \
 boards (chess, cards) wait_until screen_changes for the opponent's move rather than guessing at text that may never \
-appear; a text wait on a still screen ends early, not met.
+appear (it sees moves on the board too); a wait on a still screen ends early, not met (screen_changes after about \
+3.5 s: the screen may already be ready).
 - If a request needs an app that isn't installed, launch_app with install_if_missing opens its Play Store page.
 - Android's permission dialogs (notifications, location, camera…) can't be tapped: Android ignores OpenMob's \
 taps on their buttons. They are dismissed for you with BACK before you see the screen, so the app doesn't get that \

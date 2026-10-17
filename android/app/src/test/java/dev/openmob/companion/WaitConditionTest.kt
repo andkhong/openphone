@@ -73,6 +73,46 @@ class WaitConditionTest {
         assertNull(c.check("maps", maps + el("Loading…"), null, quietFor = 0L, unloadedFor = 60_000L))
     }
 
+    // --- the still exit (still_ms), in step with waiting.py's still exit (tests/test_game_waits.py) ---
+
+    private fun sig(vararg labels: String) = WaitCondition.signature("com.n3twork.tetris", labels.map { el(it) })
+
+    @Test fun aStillScreenEndsTheWaitAfterStillMs() {
+        val still = StillClock(3_500L, start = 0L)
+        for (t in 0L..3_400L step 200L) {
+            still.update(t, sig("Game view"), loading = false)
+            assertFalse("not yet at $t ms", still.still(t))
+        }
+        still.update(3_500L, sig("Game view"), loading = false)
+        assertTrue(still.still(3_500L))
+        assertEquals(3_500L, still.stillFor(3_500L))
+    }
+
+    @Test fun aChangeOrSomethingLoadingRestartsTheClock() {
+        val still = StillClock(3_500L, start = 0L)
+        still.update(0L, sig("Your move"), loading = false)
+        still.update(2_000L, sig("Thinking…"), loading = false) // the labels changed: moving
+        assertFalse(still.still(5_000L))
+        assertTrue(still.still(5_500L))
+        val loading = StillClock(3_500L, start = 0L)
+        loading.update(0L, sig("Installing…"), loading = true)
+        loading.update(4_000L, sig("Installing…"), loading = true)
+        assertFalse(loading.still(4_000L)) // something loading never counts as still
+        // A clock's digits are blanked in the signature, so a ticking clock is still.
+        val clock = StillClock(3_500L, start = 0L)
+        clock.update(0L, sig("10:41"), loading = false)
+        clock.update(1_000L, sig("10:42"), loading = false)
+        assertTrue(clock.still(3_500L))
+    }
+
+    @Test fun noStillMsMeansNoStillExit() {
+        val off = StillClock(0L, start = 0L)
+        off.update(0L, sig("Game view"), loading = false)
+        assertFalse(off.still(60_000L))
+        assertEquals(0L, cond("screen_changes").stillMs) // older servers send no still_ms: off
+        assertEquals(3_500L, WaitCondition("screen_changes", "", "", 500L, 3_500L).stillMs)
+    }
+
     @Test fun aDropdownSpinnerIsNotLoading() {
         assertFalse(WaitCondition.loading(el(cls = "android.widget.Spinner")))
         assertTrue(WaitCondition.loading(el(cls = "android.widget.ProgressBar")))

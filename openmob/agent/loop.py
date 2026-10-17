@@ -92,6 +92,10 @@ DIALOG_TAP_REFUSED = ("Android doesn't let OpenMob press buttons in permission d
 YES_WORDS = {"yes", "yeah", "yep", "yup", "sure", "ok", "okay", "confirm", "confirmed", "go", "proceed", "do", "y", "correct"}
 # Faster mode (agent/faster.py, docs/design/faster-mode.md): between loading checks (J3) in a loading wait.
 JEV_READY_POLL_S = 0.25
+# J3 inside the model's wait_until screen_changes (_faster_ready_stop): "ready" must be this sure (p_loading <= 0.1),
+# and at most this many image questions per wait (the still exit ends the wait at 3.5 s anyway).
+JEV_WAIT_READY_CONFIDENCE = 0.8
+JEV_WAIT_READY_ASKS = 2
 FASTER_STEP_FIELDS = ("jev_image_ms", "jev_images", "jev_state", "jev_image_skip", "faster")
 
 
@@ -2010,9 +2014,12 @@ class Agent:
                                is_error=True, settle=0)
             cond.target = resolution.package
         self.io.event("status", f"Waiting until {cond.describe()} (up to {cond.timeout_s:g}s)…")
+        geometry = obs.geometry()
+        screen = (geometry.device_width, geometry.device_height) if geometry is not None else None
         with self.timer.phase("settle"):
             result = self._waiter(state).run(cond, baseline=(obs.package, obs.elements),
-                                             still_exit_s=waiting.STILL_EXIT_S)
+                                             still_exit_s=waiting.still_exit_for(cond), play_area=True, screen=screen,
+                                             baseline_shot=geometry if obs.captured else None, ready=self._faster_ready_stop(state, cond))
         if result.stopped == "disconnected":
             raise DeviceError(result.seen)
         return Outcome(result.text(cond), settle=0, wait=self._wait_record(cond, result))
@@ -3589,14 +3596,30 @@ class Agent:
         """The image to send for this screen, or None (the reason is recorded on the step). Every never-sent rule
         is checked here, on the server, before any request (docs/design/faster-mode.md)."""
         why = self._faster_blocked(state)
+        region = None
         if why is None and faster.labeled(elements):
-            return None  # Jev text reads this screen: no image needed (not a refusal, nothing recorded)
+            # A sparse screen (a few labels around a board or play field) may go; any other labeled screen is read by
+            # Jev text: no image needed (not a refusal, nothing recorded).
+            screen = (shot.device_width, shot.device_height) if shot is not None else None
+            region = faster.sparse_region(elements, screen)
+            if region is None:
+                return None
+            cells = waiting._cells(shot, region)
+            if cells is None or waiting.region_detail(cells) < faster.SPARSE_MIN_DETAIL:
+                return None  # nothing drawn there: an empty screen with a few labels, not a canvas
         if why is None:
             checked = list(elements)
+            if region is not None and not ocr_ran:
+                # A sparse screen's play area holds words its labels don't: read them for the checks below (they
+                # never reach the main model from here). No OCR: nothing is sent (no_text_check).
+                if self.use_ocr:
+                    checked += self._ocr_elements(shot, start=len(elements))
+                    ocr_ran = self._ocr_ok
             if shot is not None and self._ocr_unsure[0] is shot.jpeg:
                 checked += self._ocr_unsure[1]  # every OCR word, whatever its confidence (review S M1)
             why = faster.refusal(package, checked, blocked=state.blocked, sensitive_apps=self.config.sensitive_apps,
-                                 locked=bool(getattr(self.driver, "locked", False)), ocr_ran=ocr_ran)
+                                 locked=bool(getattr(self.driver, "locked", False)), ocr_ran=ocr_ran,
+                                 sparse=region is not None)
         if why is None and shot is None:
             why = faster.NO_FRAME
         prepared = None
@@ -3646,10 +3669,22 @@ class Agent:
         return answer
 
     def _faster_state(self, state: _TaskState, obs: Observation) -> ImageAnswer | None:
-        """J1 on this look, when the screen has no usable text and may be sent. Sets obs.image_state."""
-        if self._faster_blocked(state) is not None or faster.labeled(obs.elements):
+        """J1 on this look, when the screen has no usable text or is sparse (agent/faster.py) and may be sent. Sets
+        obs.image_state."""
+        if self._faster_blocked(state) is not None:
             return None
-        ocr_ran = self.use_ocr and obs.captured and self._ocr_ok
+        if faster.labeled(obs.elements):
+            geometry = obs.geometry()
+            screen = (geometry.device_width, geometry.device_height) if geometry is not None else None
+            if faster.sparse_region(obs.elements, screen) is None:
+                return None
+            try:
+                obs.shot  # noqa: B018 - a lazy screenshot is taken now: the image is judged on this very frame
+            except DeviceError:
+                return None
+            ocr_ran = False  # a labeled screen's look ran no OCR: _faster_image reads the frame's words itself
+        else:
+            ocr_ran = self.use_ocr and obs.captured and self._ocr_ok
         image = self._faster_image(state, obs.package, obs.elements, obs.geometry() if obs.captured else None, ocr_ran)
         if image is None:
             return None
@@ -3705,7 +3740,7 @@ class Agent:
             except DeviceError:
                 via, seen = "fallback", "the phone didn't answer"
                 break
-            if faster.labeled(elements):
+            if not faster.eligible(elements, (shot.device_width, shot.device_height)):
                 met, seen = True, "the screen has text now"
                 break
             ocr_ran = False
@@ -3729,6 +3764,38 @@ class Agent:
             state.faster_ready_waits += 1
         timing.trace(f"faster wait: {seen} after {waited} ms via {via}")
         return met
+
+    def _faster_ready_stop(self, state: _TaskState, cond: waiting.Condition):
+        """J3 inside the model's wait_until screen_changes (jev_image_wait_ready): on a still look of an eligible
+        screen (treeless or sparse; the waiter asks only on play-area screens), one "still loading?" image question;
+        "ready" at JEV_WAIT_READY_CONFIDENCE or more ends the wait, not met. Every never-sent check runs first
+        (_faster_image), at most JEV_WAIT_READY_ASKS per wait. None: not asked at all (Faster mode off, other
+        conditions)."""
+        if cond.until != "screen_changes" or not self.config.jev_image_wait_ready or self._faster_blocked(state):
+            return None
+        asked = [0]
+        floor = max(JEV_WAIT_READY_CONFIDENCE, self.config.jev_image_min_confidence)
+
+        def ready(look) -> str | None:
+            shot = look.shot
+            if asked[0] >= JEV_WAIT_READY_ASKS or shot is None or state.cancel.is_set():
+                return None
+            if not faster.eligible(look.elements, (shot.device_width, shot.device_height)):
+                return None
+            elements, ocr_ran = list(look.elements), False
+            if not faster.labeled(elements) and self.use_ocr:
+                elements += self._ocr_elements(shot, start=len(elements))
+                ocr_ran = self._ocr_ok
+            image = self._faster_image(state, look.package, elements, shot, ocr_ran)
+            if image is None:
+                return None
+            asked[0] += 1
+            answer = self._faster_ask(state, "loading", look.package, image)
+            if answer is None or answer.value != "ready" or answer.confidence < floor:
+                return None
+            return f"{waiting.summary(look.package, look.elements)} (p_loading={answer.p_loading:.2f})"
+
+        return ready
 
     def _faster_summary(self, state: _TaskState) -> dict | None:
         """"Faster mode saved ~N s", from this task's own measurements (docs/design/faster-mode.md §4):

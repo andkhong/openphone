@@ -15,7 +15,7 @@ from __future__ import annotations
 import re
 
 from ..phone.adb import UIElement
-from . import permission_dialogs, sensitive
+from . import permission_dialogs, sensitive, waiting
 from .fast import OCR_CLASS
 
 # Reasons an image isn't sent (the steps table's jev_image_skip). Only the first that applies is recorded.
@@ -49,8 +49,40 @@ _OTP_WORDS = re.compile(r"(?i)(?<![a-z])(code|codes|verification|verify|otp|pass
 
 
 def labeled(elements: list[UIElement]) -> bool:
-    """Accessibility elements with text: the screen Jev text can read (Faster mode leaves it alone)."""
+    """Accessibility elements with text: the screen Jev text can read (Faster mode leaves it alone unless sparse)."""
     return any(el.cls != OCR_CLASS and (el.text or el.desc) for el in elements)
+
+
+# A sparse screen (2026-10-17): a few labels around a large area none of them describes, a game's board or play field
+# (Tetris's one element is "Game view"; Chess.com's game shows "Back" and "Chess.com" around its board). Jev text reads
+# the labels, not the area, so the screen may be sent like a treeless one. Text-heavy screens never are:
+# - at most SPARSE_MAX_LABELS labeled elements (text fields count) and SPARSE_MAX_CHARS characters of labels in all
+#   (Settings, Maps, YouTube and a Chrome page show dozens; a game's menu or board a handful);
+# - no password field and no focused text field (someone is typing: not a game);
+# - the play area: waiting.canvas_region, the same definition screen_changes compares (at least 30% of the screen);
+# - and, checked on the frame itself (agent/loop.py), something is drawn there (`SPARSE_MIN_DETAIL`): a blank
+#   area under a few labels is an empty screen, not a canvas.
+SPARSE_MAX_LABELS = 10
+SPARSE_MAX_CHARS = 200
+SPARSE_MIN_DETAIL = 8.0  # the area's cells' standard deviation (waiting.region_detail; a blank area is ~0)
+
+
+def sparse_region(elements: list[UIElement], screen: tuple[int, int] | None) -> tuple[int, int, int, int] | None:
+    """The play area of a sparse labeled screen (see above), or None: not sparse, or not labeled at all."""
+    real = [el for el in elements if el.cls != OCR_CLASS]
+    if any(el.password or (el.focused and el.editable) for el in real):
+        return None
+    labels = [el.text or el.desc or el.hint for el in real if el.text or el.desc or el.editable]
+    if not any(el.text or el.desc for el in real):
+        return None  # treeless: eligible as before, not "sparse"
+    if len(labels) > SPARSE_MAX_LABELS or sum(len(s) for s in labels) > SPARSE_MAX_CHARS:
+        return None
+    return waiting.canvas_region(real, screen)
+
+
+def eligible(elements: list[UIElement], screen: tuple[int, int] | None) -> bool:
+    """A screen Faster mode may look at (before the never-sent checks): no usable text, or sparse."""
+    return not labeled(elements) or sparse_region(elements, screen) is not None
 
 
 def screen_text(elements: list[UIElement]) -> list[str]:
@@ -82,10 +114,11 @@ def system_ui(package: str | None, elements: list[UIElement]) -> bool:
 
 
 def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitive_apps: list[str],
-            locked: bool, ocr_ran: bool) -> str | None:
+            locked: bool, ocr_ran: bool, sparse: bool = False) -> str | None:
     """Why this screen's image may not go to TypeSafe, or None. `elements`: the screen's accessibility elements and
     its OCR words (OCRText); `blocked(package)`: this task's blocked apps; `ocr_ran`: the words were read from this
-    very screenshot (without them a treeless screen can't be checked for sensitive numbers, so nothing is sent)."""
+    very screenshot (without them a treeless screen can't be checked for sensitive numbers, so nothing is sent);
+    `sparse`: a sparse labeled screen, whose play area holds words the labels don't, so it needs them too."""
     if not package:
         return UNKNOWN_WINDOW
     if permission_dialogs.PACKAGES.search(package):
@@ -117,6 +150,6 @@ def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitiv
         return SENSITIVE_NUMBER
     if any(otp_text(t) for t in texts) or otp_text(joined):
         return OTP_TEXT
-    if not ocr_ran and not labeled(elements):
+    if not ocr_ran and (sparse or not labeled(elements)):
         return NO_TEXT_CHECK
     return None

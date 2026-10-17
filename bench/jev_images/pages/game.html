@@ -32,7 +32,9 @@ function board(r, x0, y0, size, flip) {
   const sq = size / 8, light = ['#eeeed2', '#f0d9b5', '#dee3e6'][Math.floor(r() * 3)], dark = ['#769656', '#b58863', '#8ca2ad'][Math.floor(r() * 3)];
   let rows = ['rnbqkbnr', 'pppppppp', '........', '........', '........', '........', 'PPPPPPPP', 'RNBQKBNR'].map(s => s.split(''));
   const moves = [[6, 4, 4, 4], [1, 4, 3, 4], [7, 6, 5, 5], [0, 1, 2, 2], [7, 5, 4, 2], [1, 3, 2, 3], [6, 3, 4, 3]];
-  const n = Math.floor(r() * moves.length);
+  // A scene's `moves` (0-7) overrides how many opening moves are on the board: the same scene one move later, a
+  // simulated bot reply (perf/game-waits). r() is still drawn so the rest of the scene stays the same.
+  const drawn = Math.floor(r() * moves.length), n = Number.isInteger(cur.moves) ? cur.moves : drawn;
   for (let i = 0; i < n; i++) { const [a, b, c, d] = moves[i]; rows[c][d] = rows[a][b]; rows[a][b] = '.'; }
   let king = null;
   for (let i = 0; i < 8; i++) for (let j = 0; j < 8; j++) {

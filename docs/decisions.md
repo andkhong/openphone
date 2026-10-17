@@ -10,6 +10,10 @@ The product and security decisions made by the owner (andkhong), newest first. E
 - Older, still open: "My people" phone memory; rules.json word edits; hiding the app list in developer logs.
 
 ## 2026-10-17
+- **2026-10-17: Faster mode applies to sparse screens, not only text-less ones.** A sparse screen has a few labels
+  (at most 10) around a large area none of them describes (30% of the screen or more, with something drawn in it),
+  such as a game's board or play field. Text-heavy screens never qualify. Every never-sent check still runs first,
+  and a sparse screen's words are OCR'd for those checks before any image goes (`docs/design/faster-mode.md` §2).
 - **Faster mode** (Jev images; `docs/design/faster-mode.md`):
   - **Who can turn it on:** off by default. Only the owner on the phone turns it on, with the screen lock. Turning it off is one tap anywhere (phone, notification, dashboard). The API and dashboard can only turn it off.
   - **Scope:** "This session only" lasts until the owner disconnects or the session is idle for 1 hour. A reconnect within 5 minutes keeps it on, if the phone re-confirms its signed grant. "Always on this phone" is the other option.

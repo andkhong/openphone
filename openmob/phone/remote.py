@@ -490,9 +490,17 @@ class RemoteDriver(CachedScreenshots):
                 raise
             self.capabilities.discard("wait_for")  # it said so, but can't after all: stop asking
             return None
-        return {"met": bool(result.get("met")), "waited_ms": int(result.get("waited_ms", 0)),
-                "seen": str(result.get("seen") or ""), "package": result.get("package"),
-                "redacted": bool(result.get("redacted"))}
+        out = {"met": bool(result.get("met")), "waited_ms": int(result.get("waited_ms", 0)),
+               "seen": str(result.get("seen") or ""), "package": result.get("package"),
+               "redacted": bool(result.get("redacted"))}
+        if "still_ms" in condition:  # a wait_for_still phone: whether it ended on a still screen, and still how long
+            out["still"] = bool(result.get("still"))
+            try:
+                if "still_for_ms" in result:
+                    out["still_for_ms"] = max(int(result["still_for_ms"]), 0)
+            except (TypeError, ValueError):
+                pass
+        return out
 
     def device_state(self) -> dict | None:
         """{"interactive", "locked"} right now, or None if this app version can't say. Never waits

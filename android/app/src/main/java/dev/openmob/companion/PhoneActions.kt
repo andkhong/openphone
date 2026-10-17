@@ -320,6 +320,7 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
         var readAt = 0L
         var baseline: Set<String>? = null
         var unloadedSince = -1L  // loading_done: since when a labeled screen has shown nothing loading
+        val still = StillClock(cond.stillMs, start)  // the still exit, when the server asked for one (still_ms)
         while (true) {
             val now = SystemClock.uptimeMillis()
             val stamp = service.lastChangeAt
@@ -339,9 +340,12 @@ class PhoneActions(private val service: OpenMobAccessibilityService) {
                 if (unloadedSince < 0) unloadedSince = now
             } else unloadedSince = -1L
             val seen = cond.check(pkg, current, baseline, quietFor, if (unloadedSince < 0) 0L else now - unloadedSince)
-            if (seen != null || now - start >= timeoutMs) {
+            if (fresh) still.update(now, WaitCondition.signature(pkg, current), current.any { WaitCondition.loading(it) })
+            val stillNow = seen == null && still.still(now)
+            if (seen != null || stillNow || now - start >= timeoutMs) {
                 return JSONObject().put("met", seen != null).put("waited_ms", now - start)
                     .put("seen", seen ?: "").put("package", pkg ?: JSONObject.NULL)
+                    .apply { if (cond.stillMs > 0) put("still", stillNow).put("still_for_ms", still.stillFor(now)) }
             }
             SystemClock.sleep(max(1L, minOf(WAIT_FOR_POLL_MS, timeoutMs - (now - start))))
         }

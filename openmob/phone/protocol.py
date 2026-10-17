@@ -102,8 +102,9 @@ METHODS: dict[str, tuple[dict[str, str], str, float]] = {
     # phone's own element list (checked on each window or content change), or at timeout_ms (max 10 s
     # per call). Read-only: a wait never acts. See agent/waiting.py and docs/phone-protocol.md §4.16.
     "wait_for": (
-        {"condition": "{until, pattern?, package?, quiet_ms?}", "timeout_ms": "int"},
-        "{met: bool, waited_ms: int, seen: str, package: str or null, redacted?: bool}",
+        # still_ms only to phones whose hello also lists "wait_for_still": end, not met, on a still screen.
+        {"condition": "{until, pattern?, package?, quiet_ms?, still_ms?}", "timeout_ms": "int"},
+        "{met: bool, waited_ms: int, seen: str, package: str or null, redacted?: bool, still?: bool, still_for_ms?: int}",
         15,
     ),
     # Live-view video, only for phones whose hello says "video": true (the owner allowed screen
