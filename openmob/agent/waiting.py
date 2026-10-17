@@ -283,6 +283,12 @@ def _covers(el: UIElement, screen_area: float) -> bool:
     return (x2 - x1) * (y2 - y1) < CANVAS_CONTAINER_SHARE * screen_area
 
 
+def labels_its_area(el: UIElement, screen_area: float) -> bool:
+    """Whether a labeled element names just its own part of the screen (a control), not a whole area it contains (a
+    game's WebView or board container, 30% of the screen or more)."""
+    return _covers(el, screen_area)
+
+
 def _largest_rectangle(free: list[list[bool]]) -> tuple[int, int, int, int, int]:
     """(area, col1, row1, col2, row2) of the largest all-True rectangle (row-histogram method), ends exclusive."""
     best = (0, 0, 0, 0, 0)

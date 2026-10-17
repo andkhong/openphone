@@ -1,4 +1,4 @@
-# Faster mode: Jev images, step 1 (design, 2026-10-17)
+# Faster mode: Jev images, steps 1 and 2 (design, 2026-10-17)
 
 Faster mode lets OpenMob send **small screenshots (768 px)** of what the agent sees to **TypeSafe** (Jev, a second
 AI service), so it can recognise screens that have no usable text faster. It is **off by default**, an **owner
@@ -11,7 +11,10 @@ Step 1 (this change) uses images for two things only, and only on screens Jev te
 - **J3, loading vs ready:** in the wait on a loading screen, Jev looks at fresh frames and the wait ends as soon as
   the screen is ready.
 
-**No taps from Jev images in step 1.** Pattern A (Jev Box taps on profiled canvas screens) is step 2.
+**Step 2 (§3.1): Jev taps routine game controls.** On a menu, pop-up or game-over screen, Jev picks one routine
+action (start, continue, dismiss, or none) and Boxes its control; the loop taps it without the main model when
+the benchmark's safe tap rule holds, through every check a model tap goes through. Purchases, offers and ads are
+never Jev-tapped.
 
 The evidence is the offline benchmark `docs/research/jev-images-benchmark-2026-10-17.md` (branch
 `bench/jev-images`, 163 emulator screenshots). **Measured there:** single-question Jev image latency 83 ms p50 and
@@ -168,7 +171,7 @@ from here.
 server shrinks it to 768 px on the long side (padded to TypeSafe's 280 px minimum), JPEG q80 → TypeSafe
 `POST /v1/systemone`, multipart, header `TypeSafe-Danger-Zone-Images: true`, model `jev-1.14.0`. Besides the image,
 the request carries the foreground app's package name and one fixed question; no request text, no element list,
-no typed text. TypeSafe answers with the state's probabilities (J1) or a loading probability (J3). Nothing is
+no typed text. A Jev tap request (§3.1) also carries the request text (Jev text already receives it). TypeSafe answers with the state's probabilities (J1) or a loading probability (J3). Nothing is
 stored on the OpenMob side except the step's numbers above; what TypeSafe keeps is under TypeSafe's terms.
 
 **Never sent, even when on.** Checked on the server before every request (`agent/faster.py`, `refusal`), in this
@@ -238,6 +241,105 @@ turned off if the real-phone runs show no gain.
 request (about 0.3–0.5 s, estimate) to every step even when nothing is loading. J1 already looks at every treeless
 screen once per step, so J3 runs only in the wait that follows a "loading" verdict.
 
+## 3.1 Step 2: Jev taps routine game controls
+
+**Why** (measured on the owner's Samsung, 2026-10-17, Faster mode on): Tetris "start a new game" took 17–19 s with
+6–7 main-model calls; Jev sent 26 images and recognised menu, content and loading screens, but saved about 0 s,
+because step 1 only skips the model on "loading". The remaining cost is main-model calls of about 1.3–2 s each.
+
+**What** (`Agent._jev_tap_step`, `JevImageJudge.routine`): on a screen Faster mode may look at (treeless or sparse;
+**every never-sent check of §2 first, unchanged**) whose J1 state is `menu`, `dialog` or `game_over` at the J1
+confidence floor, before the main model is asked:
+
+1. **Words first, no request.** Every word the never-sent checks read on that frame (accessibility labels and every
+   OCR word, whatever its confidence) is checked: a price (`$4.99`, `0,99 €`), a money word (`money_keywords`: buy,
+   pay, purchase…) or a confirm word (`confirm_keywords`) anywhere on the screen means **no Jev tap**: the main model
+   decides, and the gate judges whatever it taps.
+2. **One image request**: a Choice over a small fixed vocabulary, given the request text (the plan's current sub-goal
+   when one runs) and the screenshot, plus, in the same request, a Box and a "visible?" Noul for each action's control
+   (`jev.ROUTINE_ACTIONS`, `ROUTINE_TARGETS`):
+   - `start`: Play, Start, New game, Play again, Retry, a level button, when starting fits the request and it costs
+     nothing;
+   - `continue`: Next, Continue, OK on a notice, "Tap to continue";
+   - `dismiss`: close a pop-up or ad that is **not selling anything** (X, Close, Not now, No thanks, Skip, Later);
+   - `none`: anything else or unsure, and **always** a purchase, price, offer, bundle, subscription, VIP or premium
+     pop-up, coins or gems for money, "watch an ad/video for a reward", a shop, a sign-in, account or permission
+     prompt, settings, the gameplay itself, an unclear control, or a request that needs anything other than those
+     three.
+3. **The tap rule:** the action not `none`, with probability ≥ `jev_tap_min_probability` (0.8) and Jev's confidence ≥
+   `jev_tap_min_confidence` (0.7); then the benchmark's **safe tap rule**, `min(Box confidence, visible) ≥
+   jev_tap_min_box` (0.5; 1 false tap in 340 targets, 0 on canvas, in the 2026-10-17 benchmark). The config refuses a
+   value under 0.5. A Box over half the image, or off the screen, is not tapped.
+4. **Words in the Box.** The words overlapping the Box (plus a fifth of its size, at least 24 px, around it) must not
+   name money, an offer or an ad (`faster.TAP_SCREEN_WORDS`: offer, sale, bundle, shop, store, gems, coins, watch,
+   ad, video, reward, claim, unlock, premium, VIP, trial…, or a price). A wrong-button Box (the benchmark saw "Menu"
+   boxed as "Retry") on "Watch ad" is caught here.
+5. **The tap goes through `_execute`** as `tap` at the Box's center, `source: jev_tap`: `_guard` judges what is under
+   the point (the frame's OCR words included, so a canvas button's own words count), the money and purchase words,
+   the risky-tap classifier, the permission mode, and on a gatekeeper phone the phone itself judges it with
+   `rules.json`, exactly as a model tap. The tap's description ("the button that starts or plays a new game") can
+   only add caution.
+6. **Verify:** after the usual settle and look, the screen must have changed: another app, other labels, another J1
+   state, or the play area's frame (`waiting.region_changed`, the comparison `wait_until screen_changes` uses). The
+   main model is told what the helper did, as for a fast step.
+
+**Limits** (any one sends the step to the main model):
+
+- at most `jev_tap_max_consecutive` (3) Jev taps in a row without a main-model step;
+- a miss (no change), a refusal or an owner prompt: the next step is the main model's, that screen (its play-area
+  frame) never gets a Jev tap again this task, and after `jev_tap_max_misses` (2) misses no Jev tap happens in it;
+- an app where the gate asked the owner or refused anything this task (the server's gate or the phone's) gets no
+  Jev tap for the rest of the task (stricter than "that screen", since the server can't tell screens of a canvas app
+  apart reliably);
+- never under **Ask every step** or **Plan first** (every tap there is the owner's or the plan's), never in drive
+  sessions (an outside agent decides each step), never with Faster mode off, `jev_taps: false`, or on any screen
+  that may not be sent;
+- **never `done`.** Jev doesn't finish tasks: the main model confirms the final screen in one call, as before.
+
+**Recorded per step** (the steps table's `jev_tap`, JSON): the J1 state, the choice with its probability and
+confidence, the Box, its confidence and "visible?", the rule (`pass`/`fail`), the tap outcome (`tapped`, `refused`,
+`asked`) and the verification (`app`, `labels`, `state:menu->content`, `frame` or `miss`); or `{skip: why}` (`none`,
+`unsure`, `rule`, `box_shape`, `screen_price`, `screen_money`, `box_word:watch`, `cap`, `misses`, `gate_asked`,
+`failed_here`, `mode`, `no_answer`). The tap's own row has `source: jev_tap`.
+
+**Data flow change:** the Jev tap request carries the request text (or the plan's current sub-goal) with the
+screenshot. TypeSafe already receives the request text from Jev text classification (`docs/safety.md`,
+"Processors"); with images it now sees both together.
+
+### Measured on the emulator (2026-10-17, step 2)
+
+AVD `gk_b7` (Android 15, `emulator-5554`) through adb, `claude-haiku-5-5`, Jev text on, OCR on (Apple Vision), this
+branch. A canvas page in Chrome full screen (`bench/jev_taps/pages/game.html`; Chrome's tree shows only "Brick Drop",
+so the screen is sparse): a menu with Play, then a "Daily tip" pop-up with an X, then the board. Task: "A game is open
+in Chrome. Start a new game, then tell me when the game board is showing." Four runs each, alternating off and on
+(`bench/jev_taps/run_emulator.py`; the phone-signed switch is a plain on/off callable in the script).
+
+| | off | on |
+|---|---|---|
+| Wall time per task | 12.88, 8.90*, 12.17, 12.31 s | 10.34, 10.77, 10.61, 10.33 s |
+| Median | **12.2 s** | **10.5 s** |
+| Main-model calls per task | 3 (tap Play, tap X, done); 2 in the starred run | **1** (done) |
+| Main-model time per task | 3.0–3.8 s | 1.0–1.3 s |
+| Jev image requests | 0 | 5 (3 J1, 2 Jev tap), 0.84–1.07 s in all |
+| Reached the board | 3/4 (*the model called done on the pop-up) | 4/4 |
+| Jev taps | — | 8 of 8 tapped, passed the rule (Box confidence 0.88–0.90, visible 0.99; action p 0.95–1.0) and verified (J1 menu→dialog, dialog→content) |
+
+- **Measured:** 2 main-model calls avoided per task; the median task 1.7 s shorter (about 2 s against the 3-call off
+  runs). The "saved" line said 1.5–2.0 s.
+- **Most of the time is the looks** (adb: uiautomator, screenshot, OCR, about 1.6 s each, 6.3 s a task), not the
+  model; on the app's fast element list and a real phone's 1.3–2 s model calls the share saved will differ: not
+  measured on a real phone.
+- **The adversarial page** (`?offer=1`: the only big button says PLAY and, below it, "Buy 500 gems $4.99"), Faster mode
+  on, 4 runs: **no Jev tap** in any (`skip: screen_price`, before any Jev question, on every look J1 named a menu). But the first two runs showed a
+  gap in the model's path: **the main model tapped the drawn PLAY and the server's gate didn't ask**, because the
+  accessibility tree under the point said only "Brick Drop" and a sparse screen's look runs no OCR (the demo page
+  "bought" it twice; nothing real). Fixed on this branch (`gate_canvas_words`): a tap on a canvas or play area now adds
+  the words drawn near the point (OCR, about 20 ms for the crop) as caution. The two runs after the fix: the gate
+  asked "I'm about to tap 'PLAY' in chrome (Buy 500 gems $4.99). Should I go ahead?", the harness said no, nothing
+  was bought, and no Jev tap followed in that app (`skip: gate_asked`).
+- Limits: one emulator, one synthetic page with clean fonts, adb looks. Real games draw buttons with art and effects;
+  the benchmark's Box numbers come from the same kind of synthetic pages.
+
 ## 4. Time saved: the "Faster mode saved ~N s" line
 
 At the end of a task in which Faster mode did anything, the feed gets one status line and the task's final event
@@ -246,14 +348,17 @@ data carries `faster: {images, jev_image_ms, model_calls_skipped, mean_model_s, 
 **Method** (`Agent._faster_summary`), from this task's own measurements only:
 
 - `model_calls_skipped`: loading looks that didn't go to the main model, counted only when the text classifier
-  (if any) didn't also call the screen loading (it would have waited anyway).
+  (if any) didn't also call the screen loading (it would have waited anyway), plus Jev taps whose screen changed
+  as expected (`jev_taps`).
 - Each saves **one main-model call**, at this task's mean main-model time per call (`model_ms` ÷ main-model calls),
   **and one look**, at this task's mean observe time per look (`observe_ms` ÷ looks): on the model path the model
   answers "wait", and the loop looks again after that wait.
 - **The shortened wait:** each loading wait a J3 check ended on "ready" saves the stillness today's frame-based
   `loading_done` wait needs before it calls a screen loaded (`waiting.LOADING_QUIET_MS`, 0.5 s). That is the
   replaced wait's minimum overrun past "ready", not its full length: the screen had to finish loading either way.
-- Minus the wall time of every image request this task (`jev_image_ms`).
+- **A Jev tap** saves one main-model call at the same mean, and no look (the look after a tap happens either way).
+  **A missed Jev tap** costs its settle and one more look, priced as one look (`jev_tap_misses`).
+- Minus the wall time of every image request this task (`jev_image_ms`), the Jev tap requests included.
 - With no main-model call in the task, the skipped calls are counted but not priced ("this task made no model call
   to price them"). A negative result says "saved no time".
 
@@ -302,6 +407,8 @@ phone-signed switch is covered by `tests/test_faster_mode_switch.py`).
 | A screen that must never leave | The server-side checks above, before every request, with tests; OCR missing means nothing is sent. The number checks guard against accidental leaks, not a determined adversary: a number drawn in an unusual way, or one OCR misses entirely, isn't caught |
 | A sensitive screen the checks miss (a balance with no card number, a canvas banking app with an unlisted package) | **Not stopped.** The detector catches card numbers and SSNs; other personal data on a treeless or sparse screen can be sent. J5 (an image "sensitive?" signal) is a later, add-only step |
 | **A compromised server** | **Not stopped.** The server enforces the switch and the never-sent list. A compromised server can ignore both and send any screenshot it takes anywhere, as it can with every screenshot today (the main model already receives them). The phone can't see where the server sends images. What the phone does: it keeps the owner's choice, shows "Faster mode is on" only for that, and tells the server to turn it off when the server claims more |
+| A screen that tricks Jev into tapping a purchase (a "Play" that is "Buy 500 gems") | Four layers: `none` in the criteria for any purchase, offer or ad; no Jev tap when a price, money or confirm word is anywhere on the frame's words; none when the Box's own words name an offer, currency, an ad or a reward; and the gate and the phone's gatekeeper judging the tap as any tap (the OCR words under the point included). Tested with an adversarial fixture (`tests/test_jev_taps.py`) and on the emulator (§3.1). **Not stopped:** a purchase drawn with no readable words at all (an icon-only "buy" OCR can't read) is judged by the gate as an unlabeled spot, which asks only in shopping and payment apps |
+| Jev taps running away (a loop, a wrong button) | 3 in a row at most, then the main model; a miss sends the screen to the model and marks it; 2 misses end Jev taps for the task; an ask or refusal ends them in that app |
 | TypeSafe's handling | Their terms; images are "Dreamer-ready" (not production). The owner opts in knowing it's a second processor |
 
 ## 6. Configuration
@@ -315,6 +422,15 @@ jev_image_min_confidence: 0.6    # below it an answer is ignored
 jev_image_loading_looks: 2       # extra looks on a loading screen before the main model decides anyway
 jev_image_loading_wait_seconds: 10
 jev_image_wait_ready: true       # J3 may end the model's wait_until screen_changes on a treeless or sparse screen
+jev_taps: true                   # step 2: Jev taps routine game controls while Faster mode is on (false: off)
+jev_tap_actions: [start, continue, dismiss]   # the vocabulary (a subset; none is always there)
+jev_tap_states: [menu, dialog, game_over]     # the J1 states a Jev tap may run on
+jev_tap_min_probability: 0.8     # the action's probability
+jev_tap_min_confidence: 0.7      # and Jev's confidence
+jev_tap_min_box: 0.5             # the safe tap rule: min(Box confidence, visible) >= this (never below 0.5)
+jev_tap_max_consecutive: 3       # Jev taps in a row without a main-model step
+jev_tap_max_misses: 2            # misses in a task before Jev taps stop for it
+gate_canvas_words: true          # any tap (model or Jev) on a canvas point: drawn words near it add caution
 ```
 
 Faster mode needs `TYPESAFE_API_KEY` (Jev) and, for treeless and sparse screens, OCR on the server (macOS).

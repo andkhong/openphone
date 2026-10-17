@@ -96,6 +96,9 @@ dialpad's `#` key or typed text completing one; a `tel:` link carrying a code on
 unlabeled taps (and non-English screens) in shopping, payment, food, travel and ride apps,
 manual date and time, Build number (turning on developer options), the VPN consent dialog, pairing a new
 Bluetooth device, app-info actions other than Force stop and Clear cache,
+a tap on a canvas or play area whose drawn words nearby (OCR, on the server) name money or a confirm word (a
+drawn "PLAY" whose button says "Buy 500 gems $4.99": the accessibility tree says only "Brick Drop"; found on
+the emulator on 2026-10-17, `gate_canvas_words`),
 any change on a Settings page the phone doesn't recognize, and a permission dialog for an app other than the
 one the task is using. Swipes that are really taps and long presses are judged as taps. Steps on the way
 ("Add to cart", "Proceed to checkout", search, scrolling, everyday Settings such as Wi-Fi, Bluetooth, dark mode
@@ -561,7 +564,11 @@ also ends on its own after its step cap, 2 minutes without a command, or 30 minu
 **Off by default.** While it's on, OpenMob may send **small screenshots (768 px)** of what the agent is looking at
 to **TypeSafe** (Jev), a second AI service, to recognise screens faster: on screens with no readable text (games,
 canvas pages), a loading screen is waited out without asking the main model, and the wait ends as soon as the screen
-is ready. Jev never taps from a screenshot. Design, data flow and threat model: [design/faster-mode.md](design/faster-mode.md).
+is ready. On a game's menu, pop-up or game-over screen, Jev may also **tap a routine control** (Play, Continue, a
+pop-up's X) without the main model: never anything with a price, money or confirm words, an offer, an ad or a
+reward on the screen, at most 3 in a row, and every such tap goes through the same checks and the same phone
+gatekeeper as any other tap. Never in drive sessions or in Ask every step and Plan first. Jev never finishes a
+task. Design, data flow and threat model: [design/faster-mode.md](design/faster-mode.md).
 Every OpenMob server also serves this section publicly at `/safety#faster-mode` (the phone app's "What is sent" link).
 
 - **Only you turn it on, on the phone.** In the OpenMob app's **Faster mode** card: **Turn on for this session** or
@@ -695,5 +702,6 @@ everything forever; one job deletes all of it every 6 hours):
 - **Processors.** Screen content goes to the main model's provider (Anthropic by default, or the provider
   of the model you pick) and, when screen classification is on, to **TypeSafe** (Jev), as text. With
   [Faster mode](#faster-mode) on (off by default, turned on only on the phone), TypeSafe also receives
-  small screenshots (768 px) of screens without readable text, with the foreground app's package name.
+  small screenshots (768 px) of screens without readable text, with the foreground app's package name, and, for
+  a Jev tap on a game's menu or pop-up, the request text with the screenshot.
   TypeSafe processes them under its own terms; OpenMob stores none of them.

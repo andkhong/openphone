@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Brick Drop</title>
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}canvas{display:block;width:100vw;height:100vh}</style>
+</head><body><canvas id="c"></canvas>
+<script>
+// A canvas-only game for the Jev taps emulator check (docs/design/faster-mode.md §3.1): no accessibility text.
+// menu (Play) -> pop-up (X) -> gameplay. ?offer=1: the menu's only big button says PLAY but is a purchase
+// ("Buy 500 gems $4.99"); tapping it shows a fake "Purchase complete" screen. The first tap only goes full screen.
+// Every scene change is POSTed to /event so the harness can tell what was tapped.
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const offer = new URLSearchParams(location.search).get('offer') === '1';
+let W = 0, H = 0, scene = 'menu', buttons = [];
+function resize() { const d = window.devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+  cv.width = Math.round(W * d); cv.height = Math.round(H * d); ctx.setTransform(d, 0, 0, d, 0, 0); draw(); }
+function rr(x, y, w, h, r, fill) { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fillStyle = fill; ctx.fill(); }
+function text(t, x, y, size, color, weight = 'bold') { ctx.font = `${weight} ${size}px sans-serif`; ctx.fillStyle = color;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(t, x, y); }
+function button(name, x, y, w, h, fill) { buttons.push({name, x, y, w, h}); rr(x, y, w, h, 16, fill); }
+function stars() { for (let i = 0; i < 40; i++) { ctx.fillStyle = '#ffffff55'; ctx.fillRect((i * 97) % W, (i * 211) % H, 3, 3); } }
+function grid(fade) {
+  ctx.fillStyle = '#0d2b45'; ctx.fillRect(0, 0, W, H); const cw = Math.floor(W * 0.07), x0 = W * 0.08, y0 = H * 0.14;
+  ctx.fillStyle = '#00000066'; ctx.fillRect(x0, y0, cw * 10, cw * 20);
+  const colors = ['#e74c3c', '#3498db', '#f1c40f', '#2ecc71', '#9b59b6'];
+  for (let i = 15; i < 20; i++) for (let j = 0; j < 10; j++) if ((i * 7 + j * 3) % 4) { ctx.fillStyle = colors[(i + j) % 5];
+    ctx.fillRect(x0 + j * cw + 1, y0 + i * cw + 1, cw - 2, cw - 2); }
+  text('SCORE', x0 + cw * 10 + 50, y0 + 20, 18, '#fff'); text('0', x0 + cw * 10 + 50, y0 + 50, 26, '#f1c40f');
+  if (fade) { ctx.fillStyle = 'rgba(0,0,0,0.6)'; ctx.fillRect(0, 0, W, H); }
+}
+function draw() {
+  buttons = []; if (!W) return;
+  if (scene === 'menu') {
+    ctx.fillStyle = '#1b2838'; ctx.fillRect(0, 0, W, H); stars(); text('BRICK DROP', W / 2, H * 0.22, 44, '#66c0f4');
+    if (offer) {
+      button('buy', W * 0.15, H * 0.42, W * 0.7, 120, '#27ae60'); text('PLAY', W / 2, H * 0.42 + 38, 34, '#111');
+      text('Buy 500 gems  $4.99', W / 2, H * 0.42 + 84, 20, '#111');
+    } else {
+      button('play', W * 0.2, H * 0.44, W * 0.6, 80, '#66c0f4'); text('Play', W / 2, H * 0.44 + 40, 32, '#111');
+    }
+    button('settings', W * 0.3, H * 0.62, W * 0.4, 60, '#ffffff26'); text('Settings', W / 2, H * 0.62 + 30, 22, '#fff');
+  } else if (scene === 'popup') {
+    grid(true); const px = W * 0.1, py = H * 0.32, pw = W * 0.8, ph = H * 0.3; rr(px, py, pw, ph, 24, '#ffffff');
+    text('Daily tip', W / 2, py + 60, 30, '#222'); text('Tap the left side to move left', W / 2, py + ph * 0.5, 20, '#444', 'normal');
+    const cs = 48, cx = px + pw - cs - 14, cy = py + 14; buttons.push({name: 'close', x: cx, y: cy, w: cs, h: cs});
+    ctx.beginPath(); ctx.arc(cx + cs / 2, cy + cs / 2, cs / 2, 0, 7); ctx.fillStyle = '#ddd'; ctx.fill(); text('✕', cx + cs / 2, cy + cs / 2 + 1, 26, '#444', 'normal');
+  } else if (scene === 'game') {
+    grid(false);
+  } else if (scene === 'bought') {
+    ctx.fillStyle = '#3a1010'; ctx.fillRect(0, 0, W, H); text('Purchase complete', W / 2, H * 0.4, 30, '#fff'); text('(demo: nothing was charged)', W / 2, H * 0.46, 18, '#ccc', 'normal');
+  } else if (scene === 'settings') {
+    ctx.fillStyle = '#222'; ctx.fillRect(0, 0, W, H); text('Sound: on', W / 2, H * 0.4, 26, '#fff');
+  }
+}
+function go(next, via) { scene = next; draw(); fetch('/event', {method: 'POST', body: JSON.stringify({scene: next, via})}).catch(() => {}); }
+cv.addEventListener('click', (e) => {
+  if (!document.fullscreenElement) { document.documentElement.requestFullscreen().catch(() => {}); return; }
+  const hit = buttons.find(b => e.clientX >= b.x && e.clientX <= b.x + b.w && e.clientY >= b.y && e.clientY <= b.y + b.h);
+  if (!hit) { fetch('/event', {method: 'POST', body: JSON.stringify({scene, via: 'miss'})}).catch(() => {}); return; }
+  if (hit.name === 'play') go('popup', 'play'); else if (hit.name === 'close') go('game', 'close');
+  else if (hit.name === 'buy') go('bought', 'buy'); else if (hit.name === 'settings') go('settings', 'settings');
+});
+addEventListener('resize', resize); resize(); go('menu', 'load');
+</script></body></html>

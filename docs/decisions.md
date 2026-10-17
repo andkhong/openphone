@@ -10,6 +10,14 @@ The product and security decisions made by the owner (andkhong), newest first. E
 - Older, still open: "My people" phone memory; rules.json word edits; hiding the app list in developer logs.
 
 ## 2026-10-17
+- **Jev taps routine game controls behind Faster mode** (step 2, `docs/design/faster-mode.md` §3.1). On a J1 menu,
+  dialog or game-over screen, Jev picks start, continue, dismiss or none and Boxes the control; the loop taps it
+  when the action is sure (p ≥ 0.8, confidence ≥ 0.7) and `min(Box confidence, visible) ≥ 0.5`, through `_execute`
+  (the gate, the phone's gatekeeper, money and purchase words). Purchases, offers, ads and rewards are `none`, and
+  any price, money or confirm word on screen rules a Jev tap out. At most 3 in a row; a miss, refusal or ask goes
+  to the main model. Never in drive sessions, Ask every step or Plan first; never `done`. `jev_taps` (on with
+  Faster mode) turns it off. Built on `feature/jev-taps` with one gate fix found on the way (`gate_canvas_words`: a
+  model tap on a drawn purchase in a canvas went unasked). Both unreviewed; the security review is batched.
 - **2026-10-17: Faster mode applies to sparse screens, not only text-less ones.** A sparse screen has a few labels
   (at most 10) around a large area none of them describes (30% of the screen or more, with something drawn in it),
   such as a game's board or play field. Text-heavy screens never qualify. Every never-sent check still runs first,

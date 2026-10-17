@@ -157,9 +157,11 @@ MIGRATIONS = [("turns", "package", "TEXT")] + [
     # an image check named (J1); jev_image_skip = why an image wasn't sent while it was on (agent/faster.py).
     ("steps", column, kind) for column, kind in (
         ("faster", "INTEGER"), ("jev_images", "INTEGER"), ("jev_image_ms", "INTEGER"), ("jev_state", "TEXT"),
-        ("jev_image_skip", "TEXT"))]
+        ("jev_image_skip", "TEXT"),
+        # Jev taps (step 2): JSON {state, choice, p, conf, box, box_conf, visible, rule, tap, verify} or {skip}.
+        ("jev_tap", "TEXT"))]
 WAIT_COLUMNS = ("wait_cond", "wait_met", "wait_via", "waited_ms")
-FASTER_COLUMNS = ("faster", "jev_images", "jev_image_ms", "jev_state", "jev_image_skip")
+FASTER_COLUMNS = ("faster", "jev_images", "jev_image_ms", "jev_state", "jev_image_skip", "jev_tap")
 
 
 class History:
@@ -293,10 +295,10 @@ class History:
             if any(step.get(c) is not None for c in FASTER_COLUMNS):
                 on = step.get("faster")
                 self._db.execute("UPDATE steps SET faster = ?, jev_images = ?, jev_image_ms = ?, jev_state = ?, "
-                                 "jev_image_skip = ? WHERE turn_id = ? AND idx = ?",
+                                 "jev_image_skip = ?, jev_tap = ? WHERE turn_id = ? AND idx = ?",
                                  (None if on is None else int(bool(on)), step.get("jev_images"),
                                   step.get("jev_image_ms"), step.get("jev_state"), step.get("jev_image_skip"),
-                                  turn_id, step["idx"]))
+                                  js(step.get("jev_tap")), turn_id, step["idx"]))
             if step.get("package"):
                 self._db.execute("UPDATE turns SET package = ? WHERE id = ?", (step["package"], turn_id))
 

@@ -3,7 +3,8 @@
 Faster mode is the phone owner's opt-in (signed on the phone with its screen lock, DeviceManager). While it is on, the
 loop may send a small screenshot (jev_image_side, 768 px) of a screen *without usable text* (a canvas game, a web
 canvas, an app that draws its own UI) to Jev, to tell a loading screen from a ready one (J3) and to name the screen's
-state (J1). It never taps from an image (step 1).
+state (J1). Step 2 (Jev taps, agent/loop.py _jev_tap_step): on a routine game screen it may tap a routine control
+(start, continue, dismiss) through every check a model tap goes through; the word checks for that are at the end.
 
 `refusal` is the one check every image passes before any request, on the server. It answers why an image is NOT sent
 (a short reason, recorded on the step as `jev_image_skip`), or None when it may be. The order is cheapest first; the
@@ -153,3 +154,43 @@ def refusal(package: str | None, elements: list[UIElement], *, blocked, sensitiv
     if not ocr_ran and (sparse or not labeled(elements)):
         return NO_TEXT_CHECK
     return None
+
+
+# --- Jev taps (step 2, docs/design/faster-mode.md §3.1) -----------------------------------------------------------
+
+# Words that keep a Jev tap from happening (the main model decides instead), in the tapped box or anywhere on the
+# screen: money, offers and ads. A Jev tap is for free routine controls only; the gate's own money and confirm words
+# are checked too (agent/loop.py), and the gate still judges any tap that does go.
+TAP_SCREEN_WORDS = re.compile(
+    r"(?i)(?<![a-z])(buy|purchase|pay|price|offer|sale|deal|bundle|pack|shop|store|subscri\w*|premium|vip|trial|"
+    r"gems?|coins?|diamonds?|gold|crystals?|watch|ads?|advert\w*|video|reward\w*|claim|unlock|upgrade|"
+    r"remove ads|no ads|in-app)(?![a-z])")
+TAP_PRICE = re.compile(r"[$€£¥₹]\s?\d|\d\s?[$€£¥₹]|\d[.,]\d{2}(?!\d)|(?i:\b(usd|eur|gbp)\b)")
+TAP_MAX_BOX_SHARE = 0.5  # a Box over half the image isn't one control
+
+
+def _overlaps(a: tuple, b: tuple) -> bool:
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def tap_words(elements: list[UIElement], box: tuple[int, int, int, int] | None = None) -> str:
+    """The words on screen (every element and OCR word), or only those overlapping `box` (device pixels)."""
+    out = []
+    for el in elements:
+        if box is not None and not _overlaps(tuple(el.bounds), box):
+            continue
+        out += [s for s in (el.text, el.desc, el.hint) if s]
+    return " ".join(out)
+
+
+def tap_words_refusal(words: str) -> str | None:
+    """Why the words around a Jev tap rule it out (money, an offer, an ad), or None."""
+    if TAP_PRICE.search(words):
+        return "price"
+    m = TAP_SCREEN_WORDS.search(words)
+    return f"word:{m.group(1).lower()}" if m else None
+
+
+def safe_tap(box_conf: float, visible: float, floor: float) -> bool:
+    """The benchmark's safe tap rule: min(Box confidence, "visible?") >= floor (0.5 gave 1 false tap in 340)."""
+    return min(box_conf, visible) >= floor

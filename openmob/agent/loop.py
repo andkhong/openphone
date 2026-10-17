@@ -16,7 +16,7 @@ from typing import Callable, Protocol
 from urllib.parse import quote
 
 from ..config import Config
-from ..jev import ImageAnswer, JevError, JevImageJudge, JevJudge, ScreenAssessment, StepChoice, describe_screen, \
+from ..jev import ROUTINE_TARGETS, ImageAnswer, JevError, JevImageJudge, JevJudge, ScreenAssessment, StepChoice, describe_screen, \
     prepare_image
 from ..phone.adb import Screenshot, UIElement, downscale, format_elements
 from ..phone.base import DeviceError, GateRefused, OwnerDialog, PhoneLocked
@@ -96,7 +96,11 @@ JEV_READY_POLL_S = 0.25
 # and at most this many image questions per wait (the still exit ends the wait at 3.5 s anyway).
 JEV_WAIT_READY_CONFIDENCE = 0.8
 JEV_WAIT_READY_ASKS = 2
-FASTER_STEP_FIELDS = ("jev_image_ms", "jev_images", "jev_state", "jev_image_skip", "faster")
+FASTER_STEP_FIELDS = ("jev_image_ms", "jev_images", "jev_state", "jev_image_skip", "faster", "jev_tap")
+# Words drawn this near a canvas tap (shares of the screen's width and height) add caution to the gate (_guard).
+CANVAS_WORDS_DX = 0.3
+CANVAS_WORDS_DY = 0.07
+JEV_TAP_SOURCE = "jev_tap"  # the steps table's `source` for a tap Jev decided and located (Faster mode step 2)
 
 
 class UserIO(Protocol):
@@ -145,6 +149,9 @@ class Observation:
         self.unclassified = False
         # Faster mode's screen state from this screen's image (J1), when one was sent and answered.
         self.image_state: ImageAnswer | None = None
+        # The frame J1 judged: (screenshot, prepared image, every element and OCR word the never-sent checks read,
+        # the play area or None). Jev taps (step 2) decide and locate on this very frame.
+        self.faster_frame: tuple | None = None
 
     @property
     def shot(self) -> Screenshot:
@@ -271,6 +278,12 @@ class _TaskState:
     faster_skipped: int = 0  # loading looks that didn't go to the main model (no text check had caught them)
     faster_ready_waits: int = 0  # loading waits a J3 image check ended on "ready"
     looks: int = 0  # observations this task (to price the extra look the model path takes)
+    # Jev taps (Faster mode step 2, _jev_tap_step):
+    jev_taps_in_row: int = 0  # Jev taps since the last main-model step (capped at jev_tap_max_consecutive)
+    faster_taps: int = 0  # Jev taps whose screen changed as expected: a main-model call each, not made
+    jev_tap_misses: int = 0  # Jev taps that changed nothing, failed, were refused or asked (jev_tap_max_misses)
+    jev_tap_failed: list = field(default_factory=list)  # (region, cells) of screens a Jev tap failed on: not again
+    gate_asked: set = field(default_factory=set)  # apps where the gate asked or refused this task: no Jev tap there
 
 
 def _redact_deep(value, depth: int = 0):
@@ -565,7 +578,13 @@ class Agent:
                         return AgentResult(last.success, last.text, step, done_via=last.done_via)
                     obs = self._after_fast_step(state, obs, taken, messages)
                     continue
+            if not state.vision_next and not self._needs_plan(state):
+                tapped = self._jev_tap_step(state, obs)
+                if tapped is not None:
+                    obs = self._after_jev_tap(state, obs, tapped, messages)
+                    continue
             state.vision_next = False
+            state.jev_taps_in_row = 0  # a main-model step: Jev may tap again (at most jev_tap_max_consecutive)
             was_escalated = state.escalated
             state.escalated = True
             self._plan_tell(state, messages)
@@ -1216,6 +1235,7 @@ class Agent:
                  done_via: str = "vision", handled_by: str | None = None, source: str | None = None,
                  note: str | None = None) -> Outcome:
         started = time.monotonic()
+        prompts = state.prompts
         try:
             with self.timer.phase("action"):
                 try:
@@ -1237,12 +1257,15 @@ class Agent:
             if exc.kind == "task" and exc.code in ("gate_denied", "gate_no_answer"):
                 state.task_outcome = "task_declined" if exc.code == "gate_denied" else "task_no_answer"
             self.io.event("status", f"Refused on the phone ({exc.code}): {exc}")
+            state.gate_asked.add(obs.package or "")  # no Jev tap in this app for the rest of the task
             outcome = Outcome(f"Refused on the phone ({exc.code}): {exc} Don't retry this; pick another approach "
                               "or call done.", is_error=True, settle=0)
         except (DeviceError, KeyError, ValueError, TypeError, IndexError) as exc:
             outcome = Outcome(f"Error: {exc}", is_error=True)
         if note and not outcome.is_error:
             outcome.text = note
+        if state.prompts != prompts or outcome.text.startswith(REFUSED.split("{")[0]):
+            state.gate_asked.add(obs.package or "")  # the gate asked (or refused): no Jev tap in this app again
         if name == "type_text":  # the feed, the events and the logs never show what was typed (mcp-drive.md §7)
             outcome.shown = typed_shown(outcome, str(args.get("text", "")))
         if outcome.done:
@@ -1466,7 +1489,17 @@ class Agent:
         if name in ("tap", "long_press"):
             # A long press is judged exactly like a tap, whatever its duration.
             x, y = obs.shot.to_device(args["x"], args["y"])
-            if blocked := self._guard_point(name, x, y, str(args.get("target", "")), state, obs):
+            hint = str(args.get("target", ""))
+            judged = obs
+            near, drawn = self._canvas_point_words(obs, x, y)
+            if near:
+                hint = f"{hint} {near}".strip()  # drawn words near a canvas point: caution only, like the model's
+            if drawn:  # and the prompt names what is drawn there ("PLAY", with its price), not the WebView around it
+                judged = Observation(obs.shot, obs.elements + [
+                    UIElement(len(obs.elements) + i, e.text, "", "", e.cls, False, None, e.bounds)
+                    for i, e in enumerate(drawn)], obs.package, assessment=obs.assessment)
+                judged.risks, judged.requested = obs.risks, obs.requested
+            if blocked := self._guard_point(name, x, y, hint, state, judged):
                 return blocked
             if name == "tap":
                 self.driver.tap(x, y)
@@ -2413,6 +2446,65 @@ class Agent:
             state.tapped_field = element if element is not None and (
                 fast.is_text_field(element) or element.password) else None
         return blocked
+
+    def _canvas_point_words(self, obs: Observation, x: int, y: int) -> tuple[str, list[UIElement]]:
+        """The words drawn near a tap at device (x, y) on a canvas or play area: where no accessibility element labels
+        the point (nothing, an unlabeled view, or a container covering 30% or more of the screen, like a game's
+        WebView). OCR words already on the observation, else an OCR of the frame around the point (about 20 ms). They
+        only add caution (as the model's words for the target do): a drawn "PLAY" whose button also says "Buy 500
+        gems $4.99" then asks like any purchase (config gate_canvas_words). Returns (the words, the OCR elements
+        read here when the observation had none)."""
+        if not getattr(self.config, "gate_canvas_words", True):
+            return "", []
+        geometry = obs.geometry()
+        if geometry is None:
+            return "", []
+        w, h = geometry.device_width, geometry.device_height
+        real = [e for e in obs.elements if e.cls != fast.OCR_CLASS]
+        found = gate.hit(real, x, y)
+        if found.element is not None and found.labeled and waiting.labels_its_area(found.element, w * h):
+            return "", []  # a labeled control of its own: its words are the target's
+        words = [e for e in obs.elements if e.cls == fast.OCR_CLASS]
+        read: list[UIElement] = []
+        if not words and self.use_ocr:
+            try:
+                words = read = self._ocr_near(obs.shot, x, y)
+            except DeviceError:
+                return "", []
+        dx, dy = w * CANVAS_WORDS_DX, h * CANVAS_WORDS_DY
+        near = [e.text for e in words if e.text and e.bounds[0] - dx <= x <= e.bounds[2] + dx
+                and e.bounds[1] - dy <= y <= e.bounds[3] + dy]
+        return " ".join(near)[:300], read
+
+    @staticmethod
+    def _ocr_near(shot: Screenshot, x: int, y: int) -> list[UIElement]:
+        """OCR of the frame around device point (x, y) (CANVAS_WORDS_DX/DY and a margin), as OCRText elements in
+        device pixels. An error reads nothing (the words only ever add caution)."""
+        import io as _io
+
+        from PIL import Image
+
+        try:
+            img = Image.open(_io.BytesIO(shot.jpeg))
+            ix, iy = shot.to_image(x, y)
+            mx, my = int(shot.width * CANVAS_WORDS_DX * 1.5), int(shot.height * CANVAS_WORDS_DY * 1.5)
+            box = (max(ix - mx, 0), max(iy - my, 0), min(ix + mx, shot.width), min(iy + my, shot.height))
+            if box[2] - box[0] < 8 or box[3] - box[1] < 8:
+                return []
+            crop = img.convert("RGB").crop(box)
+            buf = _io.BytesIO()
+            crop.save(buf, "JPEG", quality=85)
+            boxes = ocr.recognize_text(buf.getvalue(), crop.width, crop.height)
+        except Exception:
+            return []
+        out = []
+        for b in boxes:
+            if not b.text.strip():
+                continue
+            x1, y1 = shot.to_device(b.x1 + box[0], b.y1 + box[1])
+            x2, y2 = shot.to_device(b.x2 + box[0], b.y2 + box[1])
+            out.append(UIElement(-1, b.text.strip(), "", "", fast.OCR_CLASS, False, None, (x1, y1, x2, y2)))
+        return out
 
     def _guard_swipe(self, tool: str, x1: int, y1: int, x2: int, y2: int, duration_ms: int, hint: str,
                      state: _TaskState, obs: Observation) -> Outcome | None:
@@ -3595,6 +3687,13 @@ class Agent:
                       shot: Screenshot | None, ocr_ran: bool) -> bytes | None:
         """The image to send for this screen, or None (the reason is recorded on the step). Every never-sent rule
         is checked here, on the server, before any request (docs/design/faster-mode.md)."""
+        frame = self._faster_frame(state, package, elements, shot, ocr_ran)
+        return frame[1].jpeg if frame is not None else None
+
+    def _faster_frame(self, state: _TaskState, package: str | None, elements: list[UIElement],
+                      shot: Screenshot | None, ocr_ran: bool) -> tuple | None:
+        """_faster_image's work: (shot, the prepared image, every element and word the checks read, the play area or
+        None), or None when nothing may be sent."""
         why = self._faster_blocked(state)
         region = None
         if why is None and faster.labeled(elements):
@@ -3643,7 +3742,7 @@ class Agent:
             if why not in (faster.OFF, faster.NO_JEV):
                 self._faster_note(jev_image_skip=why)
             return None
-        return prepared.jpeg
+        return shot, prepared, checked, region
 
     def _faster_ask(self, state: _TaskState, kind: str, package: str | None, image: bytes) -> ImageAnswer | None:
         """One image question (J1 "state" or J3 "loading"), at most jev_image_timeout_ms; None on an error, a
@@ -3685,13 +3784,14 @@ class Agent:
             ocr_ran = False  # a labeled screen's look ran no OCR: _faster_image reads the frame's words itself
         else:
             ocr_ran = self.use_ocr and obs.captured and self._ocr_ok
-        image = self._faster_image(state, obs.package, obs.elements, obs.geometry() if obs.captured else None, ocr_ran)
-        if image is None:
+        frame = self._faster_frame(state, obs.package, obs.elements, obs.geometry() if obs.captured else None, ocr_ran)
+        if frame is None:
             return None
-        answer = self._faster_ask(state, "state", obs.package, image)
+        answer = self._faster_ask(state, "state", obs.package, frame[1].jpeg)
         if answer is None or answer.confidence < self.config.jev_image_min_confidence:
             return None
         obs.image_state = answer
+        obs.faster_frame = frame
         self._faster_note(jev_state=answer.value)
         return answer
 
@@ -3797,6 +3897,214 @@ class Agent:
 
         return ready
 
+    # --- Faster mode step 2: Jev taps routine game controls (docs/design/faster-mode.md §3.1) ------------------
+
+    def _jev_tap_off(self, state: _TaskState, obs: Observation) -> str | None:
+        """Why no Jev tap may be tried on this screen, or None. "": not tried, nothing noted on the step."""
+        c = self.config
+        if not c.jev_taps or self.images is None or not hasattr(self.images, "routine") or state.drive:
+            return ""
+        if self._faster_blocked(state) is not None or state.cancel.is_set():
+            return ""  # Faster mode off for this phone or task (its own reason is on the step already)
+        if obs.image_state is None or obs.faster_frame is None or obs.image_state.value not in c.jev_tap_states:
+            return ""  # no confident J1 on this very frame, or not a routine screen (gameplay, login, loading...)
+        if state.perms.mode() in ("ask", "plan"):
+            return "mode"  # Ask every step and Plan first: each tap is the owner's or the plan's, so the model's
+        if state.jev_taps_in_row >= max(int(c.jev_tap_max_consecutive), 0):
+            return "cap"
+        if state.jev_tap_misses >= max(int(c.jev_tap_max_misses), 0):
+            return "misses"
+        if (obs.package or "") in state.gate_asked:
+            return "gate_asked"
+        if self._dialog_on(obs.package, obs.elements) is not None:
+            return "system_dialog"
+        return None
+
+    @staticmethod
+    def _jev_tap_region(shot: Screenshot, region) -> tuple:
+        return tuple(region) if region else (0, 0, shot.device_width, shot.device_height)
+
+    def _jev_tap_step(self, state: _TaskState, obs: Observation) -> dict | None:
+        """On a routine game screen (J1 menu, dialog or game over) with Faster mode on: Jev picks a routine action
+        (start, continue, dismiss or none) for the request and Boxes its control in one image request; when the
+        action is sure (jev_tap_min_probability, jev_tap_min_confidence) and the safe tap rule holds (min(Box
+        confidence, "visible?") >= jev_tap_min_box), the loop taps the Box's center through _execute: the gate, the
+        phone's gatekeeper and the money and purchase words judge it exactly as a model tap. None: the main model
+        decides this step (the reason is on the step record, `jev_tap`)."""
+        why = self._jev_tap_off(state, obs)
+        if why is not None:
+            if why:
+                self._faster_note(jev_tap={"skip": why})
+            return None
+        c = self.config
+        shot, prepared, checked, region = obs.faster_frame
+        area = self._jev_tap_region(shot, region)
+        cells = waiting._cells(shot, area)
+        if cells is not None and any(r == area and waiting.region_still(f, cells) for r, f in state.jev_tap_failed):
+            self._faster_note(jev_tap={"skip": "failed_here"})
+            return None
+        # Money, offers and ads anywhere on the screen: the main model's call (and the gate's), never a Jev tap.
+        if bad := self._jev_tap_words(faster.tap_words(checked), box=False):
+            self._faster_note(jev_tap={"skip": f"screen_{bad}"})
+            return None
+        actions = tuple(a for a in c.jev_tap_actions if a in ROUTINE_TARGETS)
+        if not actions:
+            return None
+        answer = self._faster_routine(state, obs.package, prepared.jpeg, actions)
+        record = {"state": obs.image_state.value}
+        if answer is None:
+            self._faster_note(jev_tap={**record, "skip": "no_answer"})
+            return None
+        record.update(choice=answer.action, p=round(answer.probability, 3), conf=round(answer.confidence, 3))
+        if answer.action == "none" or answer.action not in actions:
+            self._faster_note(jev_tap={**record, "skip": "none"})
+            return None
+        if answer.probability < c.jev_tap_min_probability or answer.confidence < c.jev_tap_min_confidence:
+            self._faster_note(jev_tap={**record, "skip": "unsure"})
+            return None
+        found = answer.boxes.get(answer.action)
+        if not found:
+            self._faster_note(jev_tap={**record, "skip": "no_box"})
+            return None
+        left, top, right, bottom = found["box"]
+        record.update(box=[round(v, 4) for v in (left, top, right, bottom)], box_conf=round(found["confidence"], 3),
+                      visible=round(found["visible"], 3))
+        passed = faster.safe_tap(found["confidence"], found["visible"], max(float(c.jev_tap_min_box), 0.5))
+        record["rule"] = "pass" if passed else "fail"
+        if not passed:
+            self._faster_note(jev_tap={**record, "skip": "rule"})
+            return None
+        if right <= left or bottom <= top or (right - left) * (bottom - top) > faster.TAP_MAX_BOX_SHARE:
+            self._faster_note(jev_tap={**record, "skip": "box_shape"})
+            return None
+        # The Box in the screenshot's pixels (padding removed), then in device pixels.
+        x1, y1 = prepared.to_source(left, top)
+        x2, y2 = prepared.to_source(right, bottom)
+        cx, cy = round((x1 + x2) / 2), round((y1 + y2) / 2)
+        if not (0 <= cx < shot.width and 0 <= cy < shot.height):
+            self._faster_note(jev_tap={**record, "skip": "off_screen"})
+            return None
+        d1, d2 = shot.to_device(x1, y1), shot.to_device(x2, y2)
+        mx, my = max((d2[0] - d1[0]) // 5, 24), max((d2[1] - d1[1]) // 5, 24)
+        if bad := self._jev_tap_words(faster.tap_words(checked, (d1[0] - mx, d1[1] - my, d2[0] + mx, d2[1] + my)),
+                                      box=True):
+            self._faster_note(jev_tap={**record, "skip": f"box_{bad}"})
+            return None
+        if self._faster_blocked(state) is not None or state.cancel.is_set():  # turned off while Jev looked
+            return None
+        # Decided and located on this frame: every word the never-sent checks read (the play area's OCR words too) is
+        # what the gate sees under the point.
+        tap_obs = Observation(shot, list(checked), obs.package, assessment=obs.assessment)
+        tap_obs.image_state = obs.image_state
+        target = f"{ROUTINE_TARGETS[answer.action]} (Faster mode: a quick screenshot check)"
+        args = {"x": cx, "y": cy, "target": target}
+        prompts = state.prompts
+        self._faster_note(jev_tap={**record, "tap": "sent"})
+        self._last_record = None
+        outcome = self._execute("tap", args, tap_obs, state, fast_step=True, source=JEV_TAP_SOURCE)
+        result = "asked" if state.prompts != prompts else ("refused" if outcome.is_error else "tapped")
+        record["tap"] = result
+        row = self._last_record if (self._last_record or {}).get("source") == JEV_TAP_SOURCE else None
+        state.fast_steps += 1
+        self._event("error" if outcome.is_error else "action", f"tap: {outcome.shown or outcome.text}",
+                    {"timings": outcome.timings, "jev": True, "fast": True, "jev_tap": answer.action})
+        return {"taken": [("tap", args, outcome)], "action": answer.action, "record": record, "row": row,
+                "area": area, "cells": cells, "state": obs.image_state.value, "result": result}
+
+    def _jev_tap_words(self, words: str, box: bool) -> str | None:
+        """Why these words rule a Jev tap out: a price, the gate's money or confirm words; in or next to the tapped
+        Box also offers, ads, rewards and in-game currency (agent/faster.py, TAP_SCREEN_WORDS)."""
+        if not words:
+            return None
+        if faster.TAP_PRICE.search(words):
+            return "price"
+        skipped = gate.strip_skips(words, self.config.confirm_skip_phrases)
+        if gate.words(skipped, self.config.money_keywords):
+            return "money"
+        if self._keyword_hits(skipped):
+            return "confirm"
+        return faster.tap_words_refusal(words) if box else None
+
+    def _faster_routine(self, state: _TaskState, package: str | None, image: bytes, actions: tuple):
+        """Jev taps' one image request (JevImageJudge.routine), under the same deadline and accounting as J1 and J3;
+        None on an error, a timeout, or when Faster mode went off while it ran."""
+        self.images.timeout_s = max(int(self.config.jev_image_timeout_ms), 50) / 1000
+        self.images.still_ok = lambda: self._faster_blocked(state) is None and not state.cancel.is_set()
+        started = time.perf_counter()
+        answer = None
+        with self.timer.phase("jev"):
+            try:
+                answer = self.images.routine(package, self._jev_request(state), image, actions)
+            except JevError as exc:
+                self.io.event("error", f"Faster mode: {exc}")
+        ms = (time.perf_counter() - started) * 1000
+        state.faster_images += 1
+        state.faster_jev_ms += ms
+        self._faster_note(jev_image_ms=ms, jev_images=1)
+        if answer is not None and self._faster_blocked(state) is not None:
+            self._faster_note(jev_image_skip="off_discarded")
+            return None
+        return answer
+
+    def _jev_tap_verify(self, tapped: dict, before: Observation, new: Observation) -> str | None:
+        """How the screen changed, as a Jev tap should change it (another app, other labels, another J1 state, or the
+        play area's frame), or None: a miss."""
+        if new.package != before.package:
+            return "app"
+        if waiting.signature(new.package, new.elements) != waiting.signature(before.package, before.elements):
+            return "labels"
+        if new.image_state is not None and new.image_state.value != tapped["state"]:
+            return f"state:{tapped['state']}->{new.image_state.value}"
+        if tapped["cells"] is not None:
+            try:
+                shot = new.shot
+            except DeviceError:
+                return None
+            after = waiting._cells(shot, tapped["area"])
+            if after is not None and waiting.region_changed(tapped["cells"], after):
+                return "frame"
+        return None
+
+    def _after_jev_tap(self, state: _TaskState, obs: Observation, tapped: dict, messages: list[dict]) -> Observation:
+        """Settle, look again, verify the change, and tell the main model what happened (as _after_fast_step). A
+        miss, a refusal or an ask sends the next step to the main model, and that screen gets no Jev tap again."""
+        name, args, outcome = tapped["taken"][-1]
+        settle = self.config.settle_delay if outcome.settle is None else outcome.settle
+        self._settle(settle, state, outcome.launched, outcome.quiet_ms, outcome.until)
+        new = self._observe_after_action(state, obs)
+        verify = self._jev_tap_verify(tapped, obs, new) if tapped["result"] == "tapped" else None
+        record = tapped["record"]
+        record["verify"] = verify or "miss"
+        if tapped["result"] == "tapped" and verify:
+            state.faster_taps += 1
+            state.jev_taps_in_row += 1
+            state.actions[-1]["screen_changed"] = True
+        else:
+            state.jev_tap_misses += 1
+            state.vision_next = True
+            if tapped["cells"] is not None:
+                state.jev_tap_failed.append((tapped["area"], tapped["cells"]))
+            if tapped["result"] == "tapped":
+                state.actions[-1]["screen_changed"] = False
+        row = tapped["row"]
+        if row is not None:  # the step was recorded before the look after it: add the outcome and verification
+            row["jev_tap"] = dict(record)
+            with contextlib.suppress(Exception):
+                self.io.record_step(row)
+        what = ("the screen changed as expected" if verify else
+                "the screen didn't change as expected, so you decide the next step" if tapped["result"] == "tapped"
+                else "it didn't run")
+        text = f"{'Error: ' if outcome.is_error else ''}{outcome.text}"
+        note = ("Since your last turn, a quick screenshot helper (Faster mode) took this step on its own "
+                f"(no reply needed; carry on from the new screen):\n- tap {json.dumps(args)}: {text} ({what}).")
+        blocks = [{"type": "text", "text": note}]
+        if messages[-1]["role"] == "user" and isinstance(messages[-1]["content"], list):
+            messages[-1]["content"].extend(blocks)
+        else:
+            messages.append({"role": "user", "content": blocks})
+        self._show_later(state, messages, new)
+        return new
+
     def _faster_summary(self, state: _TaskState) -> dict | None:
         """"Faster mode saved ~N s", from this task's own measurements (docs/design/faster-mode.md §4):
 
@@ -3808,29 +4116,45 @@ class Agent:
 
         Conservative: the model path's own wait polls and its extra settle aren't counted. With no main-model call in
         the task, the skipped calls can't be priced and the line says so."""
-        if not state.faster_images and not state.faster_skipped:
+        taps, misses = state.faster_taps, state.jev_tap_misses
+        if not state.faster_images and not state.faster_skipped and not taps:
             return None
         totals = self.timer.task_totals()
         jev_s = state.faster_jev_ms / 1000
         mean_s = totals.get("model_ms", 0) / 1000 / self._vision_calls if self._vision_calls else None
         look_s = totals.get("observe_ms", 0) / 1000 / state.looks if state.looks else 0.0
         quiet_s = waiting.LOADING_QUIET_MS / 1000 * state.faster_ready_waits
+        skipped = state.faster_skipped + taps
         out = {"images": state.faster_images, "jev_image_ms": int(round(state.faster_jev_ms)),
-               "model_calls_skipped": state.faster_skipped, "ready_waits": state.faster_ready_waits,
+               "model_calls_skipped": skipped, "loading_skipped": state.faster_skipped, "jev_taps": taps,
+               "jev_tap_misses": misses, "ready_waits": state.faster_ready_waits,
                "mean_model_s": round(mean_s, 2) if mean_s is not None else None, "mean_look_s": round(look_s, 2)}
         sent = f"{state.faster_images} screenshot check{'s' if state.faster_images != 1 else ''} ({jev_s:.1f} s)"
         calls = f"{state.faster_skipped} model call{'s' if state.faster_skipped != 1 else ''}"
+        parts = []
         if state.faster_skipped and mean_s is not None:
-            saved = state.faster_skipped * (mean_s + look_s) + quiet_s - jev_s
+            parts.append(f"{calls} and look{'s' if state.faster_skipped != 1 else ''} skipped on loading screens "
+                         f"({mean_s:.1f} s + {look_s:.1f} s each, this task's own)")
+        if taps and mean_s is not None:
+            # A Jev tap replaces one main-model call; the look after it happens either way. A miss costs the tap's
+            # settle and one look more (priced as a look).
+            parts.append(f"{taps} model call{'s' if taps != 1 else ''} replaced by Jev taps ({mean_s:.1f} s each)")
+        if parts and misses:
+            parts.append(f"minus {misses} missed Jev tap{'s' if misses != 1 else ''} ({look_s:.1f} s each)")
+        if parts:
+            saved = state.faster_skipped * (mean_s + look_s) + taps * mean_s - misses * look_s + quiet_s - jev_s
             out["saved_s"] = round(saved, 1)
-            how = (f"{calls} and look{'s' if state.faster_skipped != 1 else ''} skipped on loading screens "
-                   f"({mean_s:.1f} s + {look_s:.1f} s each, this task's own), {quiet_s:.1f} s of shortened wait, "
-                   f"minus {sent}")
+            how = ", ".join(parts) + f", {quiet_s:.1f} s of shortened wait, minus {sent}"
             out["text"] = (f"Faster mode saved ~{saved:.1f} s: {how}." if saved > 0 else
                            f"Faster mode saved no time this task: {how}.")
-        elif state.faster_skipped:
+        elif skipped:
             out["saved_s"] = None
-            out["text"] = (f"Faster mode skipped {calls} on loading screens (this task made no model call to price "
+            what = []
+            if state.faster_skipped:
+                what.append(f"{calls} on loading screens")
+            if taps:
+                what.append(f"{taps} model call{'s' if taps != 1 else ''} with Jev taps")
+            out["text"] = (f"Faster mode skipped {' and '.join(what)} (this task made no model call to price "
                            f"them); {sent}.")
         else:
             out["saved_s"] = round(quiet_s - jev_s, 1)

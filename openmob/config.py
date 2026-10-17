@@ -241,6 +241,10 @@ class Config:
     # Money words that start a new flow: they always ask again.
     money_start_words: list[str] = field(default_factory=lambda: list(DEFAULT_START_FLOW_WORDS))
     ocr: bool = True  # Apple Vision OCR when the app has no accessibility tree (games)
+    # A tap on a canvas or play area (nothing in the accessibility tree says what is there): the words drawn near
+    # the point (OCR) add caution to the gate, as the model's own words for the target do, so a drawn "Play"
+    # whose button says "Buy 500 gems $4.99" asks. Found by the Jev taps emulator check, 2026-10-17.
+    gate_canvas_words: bool = True
     # Android's runtime permission dialogs are answered by the loop with no model call (agent/permission_dialogs.py),
     # by these owner defaults: notifications allow | deny; location_accuracy approximate | precise; the other types
     # (location, camera, microphone, photos, nearby_devices…) deny | ask | once | while_using. Never "Allow all the
@@ -307,6 +311,19 @@ class Config:
     # The model's wait_until screen_changes on a treeless or sparse screen: a confident "ready" from J3 ends it early
     # (about 1-2 s instead of the 3.5 s still exit). false: only the still exit.
     jev_image_wait_ready: bool = True
+    # Jev taps (Faster mode step 2, docs/design/faster-mode.md §3.1): on a routine game screen (J1 menu, dialog or
+    # game over), Jev picks a routine action and Boxes its control, and the loop taps it without the main model,
+    # through every check a model tap goes through. Only while Faster mode is on; false turns just the taps off.
+    jev_taps: bool = True
+    jev_tap_actions: list[str] = field(default_factory=lambda: ["start", "continue", "dismiss"])  # the vocabulary
+    jev_tap_states: list[str] = field(default_factory=lambda: ["menu", "dialog", "game_over"])  # J1 states it may run on
+    jev_tap_min_probability: float = 0.8  # the routine action's probability
+    jev_tap_min_confidence: float = 0.7  # and Jev's confidence in it
+    # The safe tap rule (benchmark 2026-10-17: 1 false tap in 340): min(Box confidence, "visible?") >= this.
+    # Never below 0.5 (refused at start).
+    jev_tap_min_box: float = 0.5
+    jev_tap_max_consecutive: int = 3  # Jev taps in a row without a main-model step
+    jev_tap_max_misses: int = 2  # misses (no visible change) in a task before Jev taps stop for it
     # Fast path (needs Jev): on screens with a usable element list, Jev picks the next operation and its
     # target in one call and the step runs without the main model (a small text model writes any text).
     # off | fast_tier (only tasks on the `fast` API tier's model) | on. OPENMOB_FAST_PATH sets it too.
@@ -466,6 +483,16 @@ def load_config(path: str | Path | None = None) -> Config:
                          "can turn Faster mode on, in the OpenMob app on that phone.")
     if not str(cfg.jev_image_model).startswith("jev-") or cfg.jev_image_model in ("jev-latest", "jev-preview"):
         raise ValueError("jev_image_model must name an exact Jev version (e.g. jev-1.14.0), not a moving alias.")
+    from .jev import IMAGE_STATES, ROUTINE_TARGETS
+
+    if float(cfg.jev_tap_min_box) < 0.5:
+        raise ValueError("jev_tap_min_box can't be below 0.5 (the safe tap rule the 2026-10-17 benchmark measured).")
+    if not 0 < float(cfg.jev_tap_min_probability) <= 1 or not 0 < float(cfg.jev_tap_min_confidence) <= 1:
+        raise ValueError("jev_tap_min_probability and jev_tap_min_confidence must be in (0, 1].")
+    if any(a not in ROUTINE_TARGETS for a in cfg.jev_tap_actions):
+        raise ValueError("jev_tap_actions: only " + ", ".join(ROUTINE_TARGETS))
+    if any(s not in IMAGE_STATES or s in ("loading", "login", "home_screen") for s in cfg.jev_tap_states):
+        raise ValueError("jev_tap_states: only menu, content, game_over, dialog")
     prompts = dict(PERMISSION_DEFAULTS)
     for kind, value in (cfg.permission_prompts or {}).items():
         if kind not in PERMISSION_DEFAULTS or value not in permission_values(kind):
