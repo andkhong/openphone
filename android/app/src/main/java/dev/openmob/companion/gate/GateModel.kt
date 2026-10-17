@@ -292,11 +292,25 @@ class GTarget(val window: GWindow, val path: List<GNode>) {
 object GateScreen {
     fun contains(b: IntArray, x: Double, y: Double) = b[0] <= x && x < b[2] && b[1] <= y && y < b[3]
 
-    /** The window that catches a touch at (x, y) (highest layer first; our own keep-awake overlay never catches
-     *  touches), and the path to the deepest node there. */
+    /** One of OpenMob's own accessibility overlays (the keep-awake pixel, the agent indicator's border and its Stop
+     *  pill: docs/design/control-indicator.md). */
+    fun ownOverlay(rules: GateRules, w: GWindow): Boolean = w.type == "accessibility_overlay" && w.pkg in rules.own
+
+    /** Does that overlay catch touches? Only the Stop pill has a clickable node; the border and the keep-awake pixel
+     *  are untouchable (FLAG_NOT_TOUCHABLE), so a touch passes through them to the window below. */
+    fun catchesTouches(w: GWindow): Boolean = walk(w.root).any { it.clicks }
+
+    /** How the phone describes one of its own overlays to the gate (GateScreens.capture): no text (the pill's "Stop"
+     *  must not count as screen words anywhere), one node over the window, clickable only if the overlay is. */
+    fun ownOverlayView(w: GWindow): GWindow = GWindow(w.id, w.type, w.layer, w.pkg, "", w.bounds,
+        GNode(cls = "OpenMobOverlay", bounds = w.bounds, clickable = catchesTouches(w)), w.since)
+
+    /** The window that catches a touch at (x, y), highest layer first, and the path to the deepest node there. Our own
+     *  untouchable overlays (keep-awake, the indicator's border) never catch touches; the indicator's Stop pill does,
+     *  so a tap on it is judged on it (and refused: builtin:own_indicator), never on the app under it. */
     fun hitTest(rules: GateRules, screen: GScreen, x: Double, y: Double): GTarget? {
         for (w in screen.ordered) {
-            if (w.type == "accessibility_overlay" && w.pkg in rules.own) continue
+            if (ownOverlay(rules, w) && !catchesTouches(w)) continue
             if (!contains(w.bounds, x, y)) continue
             val path = mutableListOf<GNode>()
             var node = w.root

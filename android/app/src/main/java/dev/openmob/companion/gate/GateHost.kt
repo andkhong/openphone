@@ -145,7 +145,7 @@ object GateHost {
     fun isSettingsPackage(pkg: String): Boolean = gk().rules.settingsPkg.containsMatchIn(pkg)
 
     /** A task hit an unreadable system dialog (needs_owner_dialog): watch for it to close. */
-    fun ownerDialogOpened(message: String) { ownerDialog = message }
+    fun ownerDialogOpened(message: String) { ownerDialog = message; dev.openmob.companion.ControlIndicator.refresh() }
 
     /** On window events: has the dialog a task is waiting on gone? */
     fun refreshOwnerDialog(service: OpenMobAccessibilityService) {
@@ -154,6 +154,7 @@ object GateHost {
         if (runCatching { g.ownerDialog(GateScreens.dialogScreen(service)) }.getOrNull() == null) {
             ownerDialog = null
             onOwnerDialogClosed?.invoke()
+            dev.openmob.companion.ControlIndicator.refresh()
         }
     }
 
@@ -168,8 +169,25 @@ object GateHost {
 
     // --- the checkpoint -------------------------------------------------------------------------
 
+    /** After the owner's Stop on the agent indicator: acts are refused until the task ends (docs/phone-protocol.md,
+     *  task_stop). */
+    val ownerStop = dev.openmob.companion.OwnerStopHold()
+
+    /** The owner's Stop on the pill: acts are held, and every per-task permission goes (Gatekeeper.stopTasks). */
+    fun ownerStopped() {
+        ownerStop.stop(SystemClock.uptimeMillis())
+        gate?.stopTasks()
+        main.post { Approvals.clearGate(app) }
+        save()
+    }
+
+    private fun stoppedRefusal(method: String, params: Map<String, Any?>) = Admission("refuse", code = "gate_owner_stopped",
+        rule = "builtin:owner_stopped", message = "The owner tapped Stop on the phone: this task is stopped. Call done.",
+        method = method, params = params)
+
     fun admit(service: OpenMobAccessibilityService?, method: String, params: Map<String, Any?>): Admission {
         val g = gk()
+        if (method in g.rules.act && ownerStop.blocks(SystemClock.uptimeMillis())) return stoppedRefusal(method, params)
         // Without the accessibility service the phone sees nothing: every act is refused (gate_unavailable).
         if (method in g.rules.task) { // task approval: the phone words the prompt from the request itself
             val adm = g.admit(method, params, GScreen(emptyList()))
@@ -194,8 +212,38 @@ object GateHost {
             SystemClock.sleep(100)
             adm = g.admit(method, params, screen(service, method, params))
         }
+        // The agent aimed at something under OpenMob's Stop pill: if the gate would accept the gesture without the pill
+        // there, the pill moves to another visible corner and the gesture is judged again on the screen as it is now
+        // (docs/design/control-indicator.md, "The pill dodges"). Otherwise, or if no corner is free, it stays refused.
+        if (adm.rule == "builtin:own_indicator") adm = dodgePill(service, g, method, params) ?: adm
         if (adm.decision == "ask") prompt(service, adm)
         return adm
+    }
+
+    private fun gesturePoints(params: Map<String, Any?>): List<Pair<Double, Double>> {
+        fun n(k: String) = (params[k] as? Number)?.toDouble() ?: params[k]?.toString()?.toDoubleOrNull()
+        return listOf("x" to "y", "x1" to "y1", "x2" to "y2").mapNotNull { (a, b) ->
+            val x = n(a); val y = n(b)
+            if (x != null && y != null) x to y else null
+        }
+    }
+
+    private fun dodgePill(service: OpenMobAccessibilityService, g: Gatekeeper, method: String, params: Map<String, Any?>): Admission? {
+        if (!g.admitsWithoutPill(method, params, screen(service, method, params))) return null
+        val points = gesturePoints(params)
+        if (!dev.openmob.companion.ControlIndicator.dodge(points)) return null
+        // The accessibility window list catches up with the moved window a moment later.
+        val until = SystemClock.uptimeMillis() + 800
+        var now = screen(service, method, params)
+        fun onPill(s: GScreen) = points.any { (x, y) ->
+            GateScreen.hitTest(g.rules, s, x, y)?.window?.let { GateScreen.ownOverlay(g.rules, it) } == true
+        }
+        while (onPill(now) && SystemClock.uptimeMillis() < until) {
+            SystemClock.sleep(50)
+            now = screen(service, method, params)
+        }
+        android.util.Log.i(PermissionOcr.TAG, "indicator: the Stop pill moved out of the way of an agent's $method")
+        return g.admit(method, params, now)
     }
 
     private const val STILL_MS = 150L
@@ -206,6 +254,8 @@ object GateHost {
      *  when the action is risky. Returns the refusal, or null to go ahead. */
     fun reverify(service: OpenMobAccessibilityService, adm: Admission?): Admission? {
         if (adm == null || !adm.allowed) return null
+        // An act already admitted when the owner tapped Stop never runs.
+        if (ownerStop.blocks(SystemClock.uptimeMillis())) return stoppedRefusal(adm.method, adm.params)
         val g = gk()
         val deadline = SystemClock.uptimeMillis() + QUIET_WAIT_MS
         var focused = true
@@ -321,8 +371,16 @@ object GateHost {
     fun markShown(id: String) { gate?.markShown(id) }
     fun cancel(id: String): Boolean = id.startsWith("gk") && gate?.cancel(id) == true
 
+    /** Is one of the phone's own prompts open (the indicator turns amber)? */
+    fun promptPending(): Boolean = gate?.promptPending() == true
+
+    /** The owner tapped the indicator's Stop: every open prompt closes unanswered, and the server hears it
+     *  (gate_event expired) before the connection closes. */
+    fun withdrawPrompts() { gate?.pendingIds()?.forEach { cancel(it) } }
+
     private fun onEvent(id: String, state: String) {
         sink?.invoke(JSONObject().put("type", "gate_event").put("approval_id", id).put("state", state))
+        dev.openmob.companion.ControlIndicator.refresh() // a prompt opened or closed: amber or not
         if (state == "expired") main.post { Approvals.cancel(app, id) }
         if (state == "denied" && gk().suspended) main.post {
             dev.openmob.companion.ConnectionService.showResume()
@@ -362,7 +420,7 @@ object GateHost {
         refreshBanner()
     }
 
-    fun resume() = gate?.resume()
+    fun resume() { gate?.resume(); dev.openmob.companion.ControlIndicator.refresh() }
     fun everydayOff() { gate?.let { if (it.everyday) { it.everydayOff(); save() } } }
 
     /** A permission-dialog default from the server: taken only if it tightens (loosening is signed on the phone). */

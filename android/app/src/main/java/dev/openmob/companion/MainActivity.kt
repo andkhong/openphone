@@ -1088,6 +1088,7 @@ class MainActivity : Activity() {
         content.addView(approvalsBox, margins(top = 16, width = match))
         content.addView(buildSetupCard())
         content.addView(buildConnectionCard())
+        content.addView(buildIndicatorCard())
         content.addView(buildAskCard())
         content.addView(buildActivityCard())
 
@@ -1258,6 +1259,86 @@ class MainActivity : Activity() {
         }
         card.addView(liveViewSwitch, margins(top = 16, width = match))
         card.addView(text(getString(R.string.ui_live_view_help), 13f, color(R.color.om_grey)), margins(top = 2))
+        return card
+    }
+
+    // 3b. The agent indicator: the owner's settings, changed only here (never by a server, API or protocol method;
+    // agents can't tap OpenMob's own screens: the gate's own_packages rule).
+    private fun buildIndicatorCard(): View {
+        val prefs = ControlIndicator.prefs(this)
+        val card = card()
+        card.addView(cardTitle(getString(R.string.indicator_title)))
+        card.addView(text(getString(R.string.indicator_help), 13f, color(R.color.om_grey)), margins(top = 4))
+
+        fun switch(label: Int, on: Boolean, set: (Boolean) -> Unit): Switch = Switch(this).apply {
+            text = getString(label)
+            textSize = 15f
+            setTextColor(color(R.color.om_text))
+            isChecked = on
+            minHeight = dp(48)
+            setOnCheckedChangeListener { _, v -> set(v); ControlIndicator.refresh() }
+        }
+        card.addView(switch(R.string.indicator_border, prefs.border) { prefs.border = it }, margins(top = 12, width = match))
+
+        card.addView(text(getString(R.string.indicator_color), 15f, color(R.color.om_text)), margins(top = 12))
+        val swatches = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val dots = mutableListOf<Pair<String, View>>()
+        fun mark() = dots.forEach { (key, v) ->
+            (v.background as GradientDrawable).setStroke(dp(if (key == prefs.color) 3 else 1),
+                if (key == prefs.color) color(R.color.om_text) else color(R.color.om_card_stroke))
+        }
+        for (preset in IndicatorColors.PRESETS) {
+            val dot = View(this).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(preset.argb) }
+                contentDescription = preset.label
+                setOnClickListener { prefs.color = preset.key; mark(); ControlIndicator.refresh() }
+            }
+            dots.add(preset.key to dot)
+            // a 36 dp dot in a 48 dp touch target
+            swatches.addView(dot, LinearLayout.LayoutParams(dp(36), dp(36)).apply { marginEnd = dp(12); topMargin = dp(6); bottomMargin = dp(6) })
+        }
+        card.addView(swatches, margins(top = 4))
+        card.addView(link(getString(R.string.indicator_custom)) {
+            val input = input(getString(R.string.indicator_custom_hint)).apply {
+                if (prefs.color.startsWith("#")) setText(prefs.color)
+            }
+            AlertDialog.Builder(this)
+                .setTitle(R.string.indicator_custom_title)
+                .setView(input)
+                .setPositiveButton(R.string.ui_ok) { _, _ ->
+                    val v = input.text.toString().trim().let { if (it.startsWith("#")) it else "#$it" }
+                    if (IndicatorColors.valid(v)) { prefs.color = v; mark(); ControlIndicator.refresh() }
+                    else toast(getString(R.string.indicator_custom_invalid))
+                }
+                .setNegativeButton(R.string.ui_cancel, null)
+                .show()
+        })
+        mark()
+
+        card.addView(switch(R.string.indicator_pulse, prefs.pulse) { prefs.pulse = it }, margins(top = 8, width = match))
+        card.addView(text(getString(R.string.indicator_pulse_help), 13f, color(R.color.om_grey)), margins(top = 2))
+        card.addView(switch(R.string.indicator_pill, prefs.pill) { prefs.pill = it }, margins(top = 12, width = match))
+
+        card.addView(text(getString(R.string.indicator_corner), 15f, color(R.color.om_text)), margins(top = 12))
+        val corners = listOf(PillCorner.TOP_RIGHT to R.string.indicator_corner_top_right,
+            PillCorner.TOP_LEFT to R.string.indicator_corner_top_left,
+            PillCorner.BOTTOM_RIGHT to R.string.indicator_corner_bottom_right,
+            PillCorner.BOTTOM_LEFT to R.string.indicator_corner_bottom_left)
+        val group = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.VERTICAL }
+        for ((corner, label) in corners) {
+            group.addView(android.widget.RadioButton(this).apply {
+                id = View.generateViewId()
+                text = getString(label)
+                textSize = 15f
+                setTextColor(color(R.color.om_text))
+                minHeight = dp(48)
+                isChecked = prefs.corner == corner
+                setOnCheckedChangeListener { _, on -> if (on) { prefs.corner = corner; ControlIndicator.refresh() } }
+            })
+        }
+        card.addView(group, margins(top = 2, width = match))
+        card.addView(button(getString(R.string.indicator_preview), Style.SECONDARY) { ControlIndicator.preview(this) },
+            margins(top = 12, width = match))
         return card
     }
 

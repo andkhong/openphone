@@ -400,3 +400,10 @@ def test_timings_show_the_waits(tmp_path):
     assert {r["wait_cond"] for r in rows} == {"sleep", "element_enabled:Open|Play"}
     report = format_report(summarize(rows))
     assert "waits · sleep: 1" in report and "waits · wait_until: 1, 1 met their condition" in report
+
+
+def test_the_prompt_says_to_ignore_the_phones_agent_indicator():
+    from openmob.agent.tools import INDICATOR_LINE
+    assert INDICATOR_LINE in SYSTEM_PROMPT and "moves out of the way" in INDICATOR_LINE
+    assert INDICATOR_LINE in system_prompt("android", max_actions=3)
+    assert INDICATOR_LINE not in system_prompt("ios")  # drawn by the Android app only

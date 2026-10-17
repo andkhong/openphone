@@ -56,3 +56,29 @@ def test_the_agent_never_operates_the_openmob_app(risky):
     assert ("key", "HOME") in driver.actions  # it tried to leave the app first
     assert session.coordinator.task(task)["status"] == "failed" and not any(a[0] == "tap" for a in driver.actions)
     phone.disconnect()
+
+
+def test_task_stop_from_the_phones_indicator_stops_the_task_and_stays_connected(risky):
+    """The Stop pill on the phone's agent indicator sends task_stop: the task ends as cancelled, stopped by the owner on
+    the phone (in its record and the feed), the socket stays up and the next task runs without reconnecting."""
+    url, manager = risky
+    driver = FakeDriver()
+    phone = FakePhone(url, driver)
+    assert phone.welcome.wait(5)
+    session = manager.get("app-xyz")
+    phone.send({"type": "task_stop"})  # nothing running: nothing happens
+    phone.send({"type": "command", "text": "check the cart"})
+    assert wait_for(lambda: phone.approval_requests)
+    task_id = session.coordinator.current_task
+    phone.send({"type": "task_stop"})
+    assert wait_for(lambda: _last_status(manager) == "cancelled")
+    info = session.coordinator.task(task_id)
+    assert info["reason"] == "stopped_on_phone"
+    assert any(e["message"] == "Stopped by the owner on the phone." for e in info["events"])
+    assert wait_for(lambda: ("status", "Stopped by the owner on the phone.") in phone.events)  # the feed, on the phone too
+    assert session.online and session.link is not None and not any(a[0] == "tap" for a in driver.actions)
+    assert wait_for(lambda: session.coordinator.current is None)
+    phone.send({"type": "command", "text": "check the cart again"})  # the same connection, right away
+    assert wait_for(lambda: _last_status(manager) == "succeeded")  # it ran (the scripted model is done by now)
+    assert session.coordinator.current is None and session.online
+    phone.disconnect()

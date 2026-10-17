@@ -1070,6 +1070,8 @@ def create_app(manager: DeviceManager, token: str | None = None, store=None,
                     await run_in_threadpool(manager.owner_dialog, session, message)
                 elif kind == "device_lock":  # a secure lock came up mid-task, or the owner unlocked
                     await run_in_threadpool(manager.device_lock, session, message)
+                elif kind == "task_stop":  # the owner tapped Stop on the phone's agent indicator: stop, stay connected
+                    await run_in_threadpool(manager.phone_task_stop, session)
                 elif kind == "permissions_off":  # "Turn off" in the never banner: an unsigned tightening
                     await run_in_threadpool(manager.phone_turned_off_never, session)
                 elif kind == "command" and str(message.get("text", "")).strip():

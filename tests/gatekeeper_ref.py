@@ -325,11 +325,21 @@ def targets_at(window: Window, x: float, y: float, limit: int = 60) -> list:
     return out
 
 
+def own_overlay(rules: Rules, w: Window) -> bool:
+    """One of OpenMob's own accessibility overlays (keep-awake, the agent indicator's border and Stop pill)."""
+    return w.type == "accessibility_overlay" and w.package in rules.own
+
+
+def catches_touches(w: Window) -> bool:
+    """Only the indicator's Stop pill has a clickable node: the border and keep-awake are untouchable."""
+    return any(n.clickable or n.long_clickable for n in walk(w.root, []))
+
+
 def hit_test(rules: Rules, screen: Screen, x: float, y: float) -> Target | None:
-    """The window that catches a touch at (x, y) (highest layer first; our own keep-awake overlay never
-    catches touches), and the path to the deepest node there."""
+    """The window that catches a touch at (x, y), highest layer first, and the path to the deepest node there. Our
+    own untouchable overlays never catch touches; the Stop pill does (and a tap on it is refused)."""
     for w in screen.ordered():
-        if w.type == "accessibility_overlay" and w.package in rules.own:
+        if own_overlay(rules, w) and not catches_touches(w):
             continue
         if not contains(w.bounds, x, y):
             continue
@@ -909,6 +919,15 @@ class Gatekeeper:
         """The owner resumed after a suspension (the notification's Resume)."""
         self.suspended = False
         self.denials = []
+
+    def stop_tasks(self) -> None:
+        """The Stop pill (the phone stays connected): every per-task permission goes; the owner's signed policy
+        (never, Always allow) and a pause after denials stay. Only tightens."""
+        for aid in list(self.pending):
+            self.events.append({"state": "expired", "approval_id": aid})
+        self.permits, self.pending, self.followup, self.credits = {}, {}, None, []
+        self.start_permits = {}
+        self.task_grants, self.own_requests = {}, []
 
     def revoke_all(self) -> None:
         for aid in list(self.pending):
@@ -1595,6 +1614,15 @@ class Gatekeeper:
                 "open_settings": j.wording or "Allow opening a Settings page?"}.get(
             method, f"Allow this action in {app}?")
 
+    def admits_without_pill(self, method: str, params: dict, screen: Screen) -> bool:
+        """Would this gesture be judged acceptable (not refused) without OpenMob's Stop pill on screen? Only then does
+        the phone move the pill out of the way and judge again. No side effects."""
+        if method not in ("tap", "long_press", "swipe"):
+            return False
+        bare = dc_replace(screen, windows=[w for w in screen.windows
+                                                    if not (own_overlay(self.r, w) and catches_touches(w))])
+        return self.judge(method, params, self.with_ocr(bare)).refuse is None
+
     def judge(self, method: str, params: dict, screen: Screen) -> Judgement:
         r = self.r
         if method in ("tap", "long_press"):
@@ -1680,6 +1708,10 @@ class Gatekeeper:
         if not w.package:
             return ("gate_screen_unstable", "builtin:unknown_window",
                     "That part of the screen can't be read yet (an app may still be loading). Look again.")
+        if own_overlay(r, w):
+            return ("gate_denied_page", "builtin:own_indicator",
+                    "That's OpenMob's Stop button (its agent indicator); agents can't touch it. Tap somewhere else, or "
+                    "scroll what you need away from that corner.")
         if w.package in r.own:
             return ("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if w.package == r.surf["systemui"]:

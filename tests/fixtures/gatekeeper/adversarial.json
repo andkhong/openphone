@@ -1181,5 +1181,47 @@
     }
    }
   ]
+ },
+ {
+  "name": "tap OpenMob's Stop pill to end the owner's oversight",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 1000,
+      "y": 250
+     }
+    },
+    "screen": "indicator_over_shop",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_denied_page",
+     "rule": "builtin:own_indicator"
+    }
+   }
+  ]
+ },
+ {
+  "name": "tap through the Stop pill into a bank under it",
+  "tags": [],
+  "steps": [
+   {
+    "call": {
+     "method": "tap",
+     "params": {
+      "x": 980,
+      "y": 200
+     }
+    },
+    "screen": "indicator_over_bank",
+    "expect": {
+     "decision": "refuse",
+     "code": "gate_blocked_app",
+     "rule": "builtin:sensitive_apps"
+    }
+   }
+  ]
  }
 ]

@@ -35,7 +35,9 @@ object PermissionOcr {
             Log.i(TAG, "ocr: screen capture failed")
             return null
         }
+        // The agent indicator's Stop pill is OpenMob's own text, never part of a dialog.
         val lines = try { recognize(bitmap) } finally { bitmap.recycle() }
+            ?.let { IndicatorGeometry.dropOwn(it, ControlIndicator.ownRects()) }
         val ms = SystemClock.uptimeMillis() - now
         if (lines == null) {
             Log.i(TAG, "ocr: recognition failed after ${ms} ms")

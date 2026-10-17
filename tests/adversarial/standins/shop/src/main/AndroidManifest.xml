@@ -15,5 +15,7 @@
         <activity android:name=".DeepCheckoutActivity" android:exported="true" />
         <!-- The gate's hit test: Buy now in an earlier sibling, drawn above a later full-screen layer. -->
         <activity android:name=".LayeredActivity" android:exported="true" />
+        <activity android:name=".ToolbarActivity" android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 </manifest>

@@ -272,6 +272,9 @@ capture (banking, DRM video), or a page the phone won't show (some Settings page
 If it went black right after opening an app, the app probably reopened on such a page: press BACK (up to twice) \
 to leave it. Opening the app again only reopens the same page. If it stays black, say so with \
 done(success=false) rather than tapping blindly.
+- A thin coloured glow along the screen's edges and a small "■ Stop" button in a corner are OpenMob's own sign \
+that you're in control: ignore them. If what you need is under the Stop button, tap your target as usual: the button moves \
+out of the way first.
 - A message that starts with "User correction:" is the user changing course while you work. Follow it \
 from your next action.
 - Earlier requests from this session may be listed. Use them to understand follow-ups like "now scroll down".
@@ -297,6 +300,10 @@ search, type the app's name, and tap the result.
 """
 
 
+# The agent indicator OpenMob's Android app draws while an agent acts (docs/design/control-indicator.md).
+INDICATOR_LINE = ("- A thin coloured glow along the screen's edges and a small \"■ Stop\" button in a corner are "
+                  "OpenMob's own sign that you're in control: ignore them. If what you need is under the Stop button, "
+                  "tap your target as usual: the button moves out of the way first.\n")
 ONE_CALL_RULE = "Make exactly ONE tool call per turn, then check the next screenshot to confirm it worked before moving on."
 OPEN_URL_LINE = "- For a web page (https:// link), open_url can be faster than navigating.\n"
 # Added right after OPEN_URL_LINE when the phone can open Settings pages directly (tools.OPEN_SETTINGS_TOOL).
@@ -332,7 +339,8 @@ def system_prompt(platform: str = "android", max_actions: int = 1, settings_page
     extra = (APP_LINKS_LINE if app_links else "") + (SETTINGS_PAGE_LINE if settings_pages else "")
     if extra:
         prompt = prompt.replace(OPEN_URL_LINE, OPEN_URL_LINE + extra)
-    if platform == "ios":
+    if platform == "ios":  # the indicator is drawn by OpenMob's Android app only
+        prompt = prompt.replace(INDICATOR_LINE, "")
         return (
             prompt.replace("the user's Android phone", "the user's iPhone")
             .replace("It can be any Android phone and any app", "It can be any app")

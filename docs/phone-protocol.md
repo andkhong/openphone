@@ -227,6 +227,16 @@ in its connection notification ("Agents can act without asking until 21:00", or 
 "Agents can act without asking, including purchases, until 21:00") with a **Turn off** action, and
 clears it at `never_until`.
 
+**`task_stop`** (phone to server): the owner tapped **Stop** on the agent indicator
+(docs/design/control-indicator.md). `{"type": "task_stop"}`. The server stops the running task or drive session and
+clears the queue, as cancelled with reason `stopped_on_phone` and a "Stopped by the owner on the phone." status in the
+feed. An orchestration with a step running there ends as `stopped_on_phone`. The connection **stays up**, and the
+next task runs on it. The message is accepted only on the phone's own live, authenticated socket. It only ever stops:
+it starts, approves and loosens nothing, and with nothing running it does nothing. On the phone, every act is refused
+with `gate_owner_stopped` from the tap until the task's `result` or `error` event arrives, or for 10 s at most. So
+even a server that ignores the stop can't keep acting. The notification's Stop and the app's Disconnect still close
+the socket (1000), as before.
+
 **`permissions_off`** (phone to server): Turn off. `{"type": "permissions_off"}`. The server turns
 Don't ask off (a `never` default becomes `auto`). It only tightens, so it needs no signature.
 
@@ -510,7 +520,7 @@ The user must enable the service in **Settings > Accessibility**. Detect when it
 | TLS only | `https://` for every server, except a developer's own server on this phone or the local network (loopback, `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `.local`, IPv6 loopback, link-local and unique-local), which may use `http://`. Check it when a link or the pair form is used **and** again before every connection, so a stored bad URL can't be used. Release builds also turn cleartext off (`usesCleartextTraffic="false"`). Use the default trust store, with no "trust all certificates" option. |
 | Pairing links | `openmob://connect?server=…&code=…` (from the dashboard's QR code) must **never change anything by itself**: any web page or message can open it. Show "Connect to **\<host\>**?" naming the server and what it can do, and do nothing until the owner taps Connect. If the phone is already paired, say which server it will leave and require the screen lock. Keep the current pairing (server, device key, session) until the new one has fully succeeded; cancel or failure leaves it as it was. Never accept a developer token (`t=`) from a link: tokens are typed in by hand, behind the same confirmation. |
 | Visible indicator | While connected, show the persistent notification. While a task runs, also show an always-visible "Agent active" indicator (an accessibility overlay `TYPE_ACCESSIBILITY_OVERLAY`, or a status chip). The user must always know the phone is being driven. |
-| Kill switch | One tap, reachable from the notification and the overlay. It cancels in-flight gestures, sends `command "stop"`, closes the socket (code 1000) and disables auto-reconnect until the user reconnects manually. |
+| Kill switch | One tap, reachable from the notification. It cancels in-flight gestures, closes the socket (code 1000) and disables auto-reconnect until the user reconnects manually. The agent indicator's Stop pill is lighter: it sends `task_stop` (the task stops; the connection stays up) and refuses acts locally until the task ends. |
 | Credentials | Never auto-fill passwords, PINs or OTP codes. Refuse `type_text` when the focused node `isPassword`: return an error asking the user to type it themselves. Never dismiss a secure keyguard. |
 | Secure screens | `FLAG_SECURE` windows (banking, DRM video, some password screens) come back **black** in screenshots. That is expected and must not be worked around. |
 | Confirmation | The server asks before risky taps (`question` events). Make questions hard to miss: speak them and show them prominently. |
@@ -700,6 +710,7 @@ A refused call gets `ok:false` with a stable `code`, the reason in `error`, and 
 | `phone_locked` | A secure lock screen is up | Pause the task until `device_lock` says unlocked (§9.4) |
 | `needs_owner_dialog` | A system dialog the phone can't read or OCR-classify is up (Safety Center, default-app pickers; a permission dialog only when on-device OCR is unavailable); `error` says what it is ("Kalshi is asking for location: choose on your phone, then the task continues") | Pause the task until `owner_dialog` says it closed (§9.5); never tap it |
 | `gate_permission_choice` | A permission-dialog choice the owner's settings never allow: "Allow all the time"; a grant the owner set to Don't allow; a grant while Precise is selected and the owner allows approximate only. `error` says what to tap instead | Tap what `error` says ("Only this time", "Don't allow", "Approximate" first) |
+| `gate_owner_stopped` | The owner tapped Stop on the phone's agent indicator (`task_stop`): every act is refused until this task's `result`/`error` event, or for 10 s | Stop the task; don't retry |
 | `gate_unavailable` | OpenMob's accessibility service is off, so the phone can't see the screen: every act is refused | Report; the owner turns it on |
 | `gate_no_session`, `gate_policy_invalid` | Reserved (Phase 2) | Report |
 

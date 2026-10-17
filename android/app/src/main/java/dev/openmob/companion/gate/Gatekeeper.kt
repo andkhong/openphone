@@ -352,7 +352,30 @@ class Gatekeeper(
         suspended = false
     }
 
+    /** The Stop pill on the agent indicator (the task stops, the phone stays connected): every per-task permission
+     *  goes (permits, pending prompts, the purchase follow-up, credits, task grants, the owner's typed requests), so a
+     *  server can't carry on the stopped task with what was approved for it. Only tightens: the owner's signed policy
+     *  (`never`, "Always allow" grants) and a pause after denials stay as they are. */
+    fun stopTasks() = synchronized(lock) {
+        pending.keys.toList().forEach { onEvent?.invoke(it, "expired") }
+        if (pending.isNotEmpty()) promptClosed = now()
+        permits.clear(); pending.clear(); followup = null; credits.clear(); startPermits.clear()
+        taskGrants.clear(); ownRequests.clear()
+    }
+
     val promptOpen: Boolean get() = synchronized(lock) { pending.isNotEmpty() }
+    /** A prompt is open right now (expired ones dropped first): the agent indicator shows the approval state. */
+    fun promptPending(): Boolean = synchronized(lock) { expire(now()); pending.isNotEmpty() }
+    fun pendingIds(): List<String> = synchronized(lock) { pending.keys.toList() }
+
+    /** Would this gesture be judged acceptable (allowed or asked, not refused) if OpenMob's Stop pill weren't on screen?
+     *  Only then does the phone move the pill out of the way (docs/design/control-indicator.md, "The pill dodges") and
+     *  judge the gesture again, for real, on the new screen. No side effects: no prompt, no permit, no rate token. */
+    fun admitsWithoutPill(method: String, params: Map<String, Any?>, screen: GScreen): Boolean = synchronized(lock) {
+        if (method !in GESTURES) return false
+        val bare = screen.withWindows(screen.windows.filterNot { GateScreen.ownOverlay(rules, it) && GateScreen.catchesTouches(it) })
+        judge(method, params, withOcr(bare)).refuse == null
+    }
     fun pending(id: String): Pending? = synchronized(lock) { pending[id] }
 
     // --- admit ------------------------------------------------------------------------------------
@@ -1078,6 +1101,9 @@ class Gatekeeper(
     private fun surfaceRefusal(w: GWindow): Triple<String, String, String>? {
         if (w.pkg.isEmpty()) return Triple("gate_screen_unstable", "builtin:unknown_window",
             "That part of the screen can't be read yet (an app may still be loading). Look again.")
+        if (GateScreen.ownOverlay(rules, w)) return Triple("gate_denied_page", "builtin:own_indicator",
+            "That's OpenMob's Stop button (its agent indicator); agents can't touch it. Tap somewhere else, or scroll " +
+                "what you need away from that corner.")
         if (w.pkg in rules.own) return Triple("gate_denied_page", "builtin:own_window", "That's OpenMob's own screen; agents can't touch it.")
         if (w.pkg == rules.surfStr("systemui")) {
             val title = rules.rx(rules.surfStr("prompt_titles"))

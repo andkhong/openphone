@@ -96,7 +96,11 @@ class ConnectionService : Service() {
          *  is a phone-known instruction: one matching send, post or delete it names runs without a prompt (D6). */
         fun sendCommand(text: String): Boolean = (running?.send(
             JSONObject().put("type", "command").put("text", text)
-        ) ?: false).also { if (it) { GateHost.noteInstruction(text); ScreenKeeper.ownerActive() } }
+        ) ?: false).also { if (it) { GateHost.noteInstruction(text); GateHost.ownerStop.ended(); ScreenKeeper.ownerActive() } }
+
+        /** The owner's Stop on the agent indicator: stop the running task or drive session, stay connected
+         *  (docs/phone-protocol.md, task_stop). False if not connected. */
+        fun stopTask(): Boolean = AppState.connected && running?.send(JSONObject().put("type", "task_stop")) ?: false
 
         /** The gatekeeper paused after repeated denials: offer Resume in a notification. */
         fun showResume() { running?.let { s -> s.main.post { s.postResume() } } }
@@ -140,6 +144,7 @@ class ConnectionService : Service() {
         super.onCreate()
         settings = Settings(this)
         GateHost.init(this)
+        ControlIndicator.init(this)
         GateHost.sink = { message -> if (running === this) send(message) }
         GateHost.onOwnerDialogClosed = { main.post { ownerDialogClosed() } }
         registerReceiver(lockWatcher, android.content.IntentFilter().apply {
@@ -285,6 +290,8 @@ class ConnectionService : Service() {
         // The kill switch acts locally: every permit, prompt and purchase flow goes, and `never` ends (2.7).
         GateHost.revokeAll()
         ScreenKeeper.release()
+        ControlIndicator.lockPaused = false
+        ControlIndicator.stop()
         getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         Approvals.clear(this)
         setController("")
@@ -354,6 +361,9 @@ class ConnectionService : Service() {
                 }
                 // Only an action the gate admitted keeps the screen on (B3): reads, waits and refusals never do.
                 if (admission.allowed && method in GateHost.actMethods && method != "wake_unlock") ScreenKeeper.touch()
+                // The agent indicator is on screen before any admitted action's side effect (the phone's own
+                // knowledge: docs/design/control-indicator.md); any other call only keeps a session's indicator up.
+                if (admission.allowed && method in GateHost.actMethods) ControlIndicator.beforeAct() else ControlIndicator.call()
                 if (admission.decision == "redact" && service != null) { // a blocked app is visible: black, or []
                     val result = PhoneActions(service).redacted(method, params)
                     if (result is PhoneActions.Frame) sendBinary(reply.put("ok", true).put("result", result.meta()), result.jpeg)
@@ -450,6 +460,7 @@ class ConnectionService : Service() {
     private fun lockedMidTask(secure: Boolean = true) {
         if (pausedByLock) return
         pausedByLock = true
+        ControlIndicator.lockPaused = true
         send(JSONObject().put("type", "device_lock").put("locked", true).put("secure", secure))
         AppState.addEvent("status", getString(R.string.lock_paused_event))
         val open = PendingIntent.getActivity(this, 3, Intent(this, MainActivity::class.java), PendingIntent.FLAG_IMMUTABLE)
@@ -463,6 +474,7 @@ class ConnectionService : Service() {
     private fun unlocked() {
         if (!pausedByLock) return
         pausedByLock = false
+        ControlIndicator.lockPaused = false
         send(JSONObject().put("type", "device_lock").put("locked", false).put("secure", true))
         getSystemService(NotificationManager::class.java).cancel(LOCK_ID)
         AppState.addEvent("status", getString(R.string.lock_resumed_event))
@@ -538,7 +550,12 @@ class ConnectionService : Service() {
         }
         AppState.addEvent(kind, text)
         if (kind == "status" && text.startsWith("Working on:")) updateNotification(text) // the server can't keep the screen on (B3)
-        if (kind == "result" || kind == "error") { updateNotification("Agent connected · ready"); ScreenKeeper.release() }
+        if (kind == "result" || kind == "error") {
+            updateNotification("Agent connected · ready")
+            ScreenKeeper.release()
+            ControlIndicator.ended() // only shortens the hold after the last action: the next action shows it again
+            GateHost.ownerStop.ended() // the stopped task ended: the next task may act
+        }
     }
 
     private inner class Listener : WebSocketListener() {
@@ -604,6 +621,7 @@ class ConnectionService : Service() {
         if (who.isNotEmpty()) {
             AppState.addEvent("controller", getString(R.string.controller_using, who))
         } else if (running === this) {
+            ControlIndicator.ended()
             AppState.addEvent("controller", getString(R.string.controller_stopped, previous))
         }
         updateNotification(statusLine)
