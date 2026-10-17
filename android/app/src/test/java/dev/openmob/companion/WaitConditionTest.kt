@@ -61,4 +61,15 @@ class WaitConditionTest {
     @Test(expected = IllegalArgumentException::class) fun unknownConditionsAreRefused() {
         cond("tap_when_ready", "x")
     }
+
+    @Test fun loadingDoneEndsOnALabeledScreenThatKeepsMoving() {
+        // Maps keeps changing (tiles, pins), so it is never quiet: nothing loading for the grace time ends the wait.
+        val c = cond("loading_done")
+        val maps = listOf(el("Results"), el("Cafe de Casa"))
+        assertNull(c.check("maps", maps, null, quietFor = 0L, unloadedFor = WaitCondition.MOVING_GRACE_MS - 1))
+        assertEquals("nothing is loading (the screen keeps moving)",
+            c.check("maps", maps, null, quietFor = 0L, unloadedFor = WaitCondition.MOVING_GRACE_MS))
+        // Something still loading keeps waiting, however long.
+        assertNull(c.check("maps", maps + el("Loading…"), null, quietFor = 0L, unloadedFor = 60_000L))
+    }
 }

@@ -56,9 +56,11 @@ class WaitCondition(val until: String, pattern: String, val pkg: String, val qui
 
     /**
      * What satisfies the condition, or null. [baseline]: the signature when the wait began (screen_changes);
-     * [quietFor]: ms since the last window or content change (loading_done).
+     * [quietFor]: ms since the last window or content change (loading_done); [unloadedFor]: ms a labeled screen has
+     * shown nothing loading (loading_done on a screen that never goes quiet: a map's moving tiles and pins).
      */
-    fun check(pkgNow: String?, els: List<WaitElement>, baseline: Set<String>?, quietFor: Long): String? = when (until) {
+    fun check(pkgNow: String?, els: List<WaitElement>, baseline: Set<String>?, quietFor: Long,
+              unloadedFor: Long = 0L): String? = when (until) {
         "app_in_front" -> if (pkgNow == pkg) "$pkg is in front" else null
         "text_appears" -> els.firstOrNull { matches(it.text) || matches(it.desc) }?.let { "'${label(it)}' is on screen" }
         "text_disappears" -> if (els.any { it.labeled } && els.none { matches(it.text) || matches(it.desc) })
@@ -67,11 +69,17 @@ class WaitCondition(val until: String, pattern: String, val pkg: String, val qui
             ?.let { "'${label(it)}' is enabled" }
         "screen_changes" -> if (baseline != null && signature(pkgNow, els) != baseline) "the screen changed" else null
         "loading_done" -> if (els.any { it.labeled } && els.none { loading(it) } && quietFor >= quietMs)
-            "nothing is loading and the screen is still" else null
+            "nothing is loading and the screen is still"
+        else if (els.any { it.labeled } && els.none { loading(it) } && unloadedFor >= MOVING_GRACE_MS)
+            "nothing is loading (the screen keeps moving)" else null
         else -> null
     }
 
     companion object {
+        /** loading_done ends this long after a labeled screen last showed something loading, even if it never goes
+         *  quiet (owner's Samsung, 2026-10-17: Maps waited its ~9.4 s cap with results up after ~2.5 s). The server
+         *  mirrors it (waiting.LOADING_MOVING_GRACE_S). */
+        const val MOVING_GRACE_MS = 2_500L
         val CONDITIONS = setOf("screen_changes", "text_appears", "text_disappears", "element_enabled", "app_in_front", "loading_done")
         private val NEEDS_PATTERN = setOf("text_appears", "text_disappears", "element_enabled")
         private val LOADING_CLASS = Regex("progress|spinner|loading|shimmer", RegexOption.IGNORE_CASE)
