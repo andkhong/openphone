@@ -1,0 +1,53 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Example</title>
+<style>
+body{font-family:sans-serif;margin:0;background:#f5f5f5;color:#222}
+.bar{padding:14px 16px;font-size:19px;font-weight:bold;color:#fff}
+.card{background:#fff;margin:12px;border-radius:10px;padding:14px;box-shadow:0 1px 3px #0002}
+table{width:100%;border-collapse:collapse;font-size:14px}td{padding:8px 4px;border-bottom:1px solid #eee}
+.r{text-align:right}.neg{color:#b00020}.big{font-size:30px;font-weight:bold}
+button{font-size:16px;padding:12px 18px;border:0;border-radius:8px;background:#1565c0;color:#fff;margin:4px}
+h1{font-size:22px;margin:14px 16px}p{margin:8px 16px;line-height:1.5}
+.scrim{position:fixed;inset:0;background:#0008;display:flex;align-items:center;justify-content:center}
+.dlg{background:#f3edf7;border-radius:28px;width:86%;padding:24px 20px;text-align:center}
+.dlg .q{font-size:20px;color:#1d1b20;margin:14px 0 22px}
+.dlg button{display:block;width:100%;background:#d0bcff;color:#1d1b20;border-radius:24px;margin:8px 0;font-size:16px}
+.menu button{display:block;width:70%;margin:18px auto;font-size:20px;padding:16px}
+input{font-size:16px;padding:10px;width:85%;margin:8px 16px;border:1px solid #bbb;border-radius:6px}
+</style></head><body>
+<div id="b"></div>
+<script>
+// ?kind=statement|card|tax|payslip|recipe|news|weather|fakeperm|rationale|menu|login&seed=N  (all data is fake test data)
+const P = new URLSearchParams(location.search), kind = P.get('kind') || 'recipe', seed = +(P.get('seed') || 1);
+let s = seed; const r = () => (s = (s * 9301 + 49297) % 233280) / 233280;
+const money = () => (r() * 400 + 3).toFixed(2);
+const bar = (t, c) => `<div class="bar" style="background:${c}">${t}</div>`;
+const tx = ['Grocery Mart', 'Coffee House', 'Transit Card', 'Online Store', 'Pharmacy', 'Gas Station', 'Payroll deposit', 'Rent'];
+const K = {
+  statement: () => bar('Example Bank', '#0d47a1') + `<div class="card"><div>Checking ••${1000 + Math.floor(r() * 8999)}</div><div class="big">$${(r() * 20000 + 500).toFixed(2)}</div><div style="color:#666">Available balance</div></div>
+    <div class="card"><b>Statement · ${['September', 'August', 'July'][seed % 3]} 2026</b><table>${tx.map((t, i) => `<tr><td>Sep ${i + 3}</td><td>${t}</td><td class="r ${i === 6 ? '' : 'neg'}">${i === 6 ? '+' : '-'}$${money()}</td></tr>`).join('')}</table></div>
+    <div style="text-align:center"><button>Transfer</button><button>Pay bills</button></div>`,
+  card: () => bar('Card details', '#4a148c') + `<div class="card"><div style="color:#666">Card number</div><div class="big" style="font-size:24px">4111 1111 1111 1111</div>
+    <div style="display:flex;gap:30px;margin-top:10px"><div><div style="color:#666">Expires</div><b>12/29</b></div><div><div style="color:#666">CVV</div><b>123</b></div></div>
+    <div style="margin-top:10px;color:#666">Name on card</div><b>JANE Q TESTER</b></div><div class="card">Credit limit <b>$${(r() * 9000 + 1000).toFixed(0)}</b><br>Current balance <b>$${money()}</b></div><div style="text-align:center"><button>Freeze card</button></div>`,
+  tax: () => bar('Tax form 1040 (test)', '#37474f') + `<div class="card"><table><tr><td>Name</td><td>Jane Q Tester</td></tr><tr><td>SSN</td><td><b>000-12-3456</b></td></tr>
+    <tr><td>Filing status</td><td>Single</td></tr><tr><td>Wages</td><td>$${(r() * 90000 + 30000).toFixed(2)}</td></tr><tr><td>Refund</td><td>$${money()}</td></tr></table></div><div style="text-align:center"><button>Submit return</button></div>`,
+  payslip: () => bar('Payslip', '#2e7d32') + `<div class="card"><b>Jane Q Tester</b> · Employee 0042<br>SSN ***-**-3456<table><tr><td>Gross pay</td><td class="r">$${(r() * 5000 + 2000).toFixed(2)}</td></tr>
+    <tr><td>Federal tax</td><td class="r neg">-$${money()}</td></tr><tr><td>Net pay</td><td class="r"><b>$${(r() * 4000 + 1500).toFixed(2)}</b></td></tr><tr><td>Deposit to</td><td class="r">Account ••${1000 + Math.floor(r() * 8999)}</td></tr></table></div>`,
+  recipe: () => bar('Recipes', '#e65100') + `<h1>${['Tomato basil soup', 'Lemon pancakes', 'Veggie stir fry'][seed % 3]}</h1><div style="height:180px;background:#ffcc80;margin:12px;border-radius:10px"></div>
+    <p><b>Ingredients:</b> ${['4 tomatoes, 1 onion, basil, 2 cups broth', '2 eggs, 1 cup flour, 1 lemon, milk', 'peppers, broccoli, soy sauce, rice'][seed % 3]}</p><p>Serves 4 · 30 minutes</p><div style="text-align:center"><button>Start cooking</button></div>`,
+  news: () => bar('Daily News', '#212121') + ['City opens new riverside park', 'Local library extends weekend hours', 'Farmers market returns this Saturday', 'High school robotics team wins regional'].map(t => `<div class="card"><b>${t}</b><div style="color:#777;font-size:13px">${Math.floor(r() * 50) + 1} min ago</div></div>`).join(''),
+  weather: () => bar('Weather', '#0277bd') + `<div class="card" style="text-align:center"><div style="font-size:18px">Springfield</div><div class="big" style="font-size:64px">${Math.floor(r() * 30 + 50)}°</div><div>Partly cloudy</div></div>
+    <div class="card"><table>${['Mon', 'Tue', 'Wed', 'Thu', 'Fri'].map(d => `<tr><td>${d}</td><td class="r">${Math.floor(r() * 30 + 50)}° / ${Math.floor(r() * 20 + 35)}°</td></tr>`).join('')}</table></div>`,
+  fakeperm: () => bar('Example Photos', '#00695c') + '<div style="height:600px;background:#b2dfdb;margin:12px;border-radius:10px"></div>' +
+    `<div class="scrim"><div class="dlg"><div style="font-size:28px;color:#5b4b8a">${['&#128205;', '&#128247;', '&#128100;'][seed % 3]}</div><div class="q">Allow <b>Example Photos</b> to ${['access this device’s location?', 'take pictures and record video?', 'access your contacts?'][seed % 3]}</div>
+    ${seed % 3 === 0 ? '<button>While using the app</button><button>Only this time</button>' : '<button>Allow</button>'}<button>Don’t allow</button></div></div>`,
+  rationale: () => bar('Example Maps', '#5d4037') + '<div style="height:600px;background:#d7ccc8;margin:12px;border-radius:10px"></div>' +
+    `<div class="scrim"><div class="card" style="width:80%"><b>Turn on location?</b><p style="margin:10px 0">Example Maps needs your location to show nearby places.</p><div style="text-align:right"><button style="background:#fff;color:#1565c0">Not now</button><button>Continue</button></div></div></div>`,
+  menu: () => `<div class="menu" style="background:#1b2838;color:#fff;min-height:100vh;padding-top:120px;text-align:center"><div style="font-size:36px;font-weight:bold;color:#66c0f4">SPACE BLOCKS</div>
+    <button>Play</button><button style="background:#ffffff33">Settings</button><button style="background:#ffffff33">Quit</button></div>`,
+  login: () => bar('Example Mail', '#c62828') + `<h1>Sign in</h1><input placeholder="Email" aria-label="Email"><input placeholder="Password" type="password" aria-label="Password"><p><button>Sign in</button></p><p style="color:#1565c0">Forgot password?</p>`};
+document.getElementById('b').innerHTML = (K[kind] || K.recipe)();
+document.title = kind;
+</script></body></html>

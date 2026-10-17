@@ -1,0 +1,34 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Example app</title>
+<style>
+body{font-family:sans-serif;margin:0;background:#fafafa;color:#222}
+.bar{background:#3949ab;color:#fff;padding:14px 16px;font-size:19px;font-weight:bold}
+.c{display:flex;flex-direction:column;align-items:center;justify-content:center;height:70vh;gap:18px}
+.spin{width:56px;height:56px;border:6px solid #ddd;border-top-color:#3949ab;border-radius:50%;animation:s .9s linear infinite}
+@keyframes s{to{transform:rotate(360deg)}}
+.sk{background:linear-gradient(90deg,#e6e6e6 25%,#f3f3f3 50%,#e6e6e6 75%);background-size:200% 100%;animation:sh 1.2s infinite;border-radius:6px;margin:12px 16px}
+@keyframes sh{to{background-position:-200% 0}}
+.prog{width:70%;height:10px;background:#ddd;border-radius:5px;overflow:hidden}.prog div{height:100%;background:#3949ab}
+.card{background:#fff;margin:12px;border-radius:10px;padding:14px;box-shadow:0 1px 3px #0002}
+button{font-size:16px;padding:12px 18px;border:0;border-radius:8px;background:#3949ab;color:#fff}
+h1{font-size:22px;margin:16px}p{margin:8px 16px;line-height:1.5}
+</style></head><body>
+<div class="bar" id="bar">Example app</div><div id="b"></div>
+<script>
+const P = new URLSearchParams(location.search), kind = P.get('kind') || 'spinner', content = P.get('content') || 'article', after = +(P.get('after') || 4000);
+const b = document.getElementById('b');
+const L = {
+  spinner: '<div class="c"><div class="spin"></div></div>',
+  text: '<div class="c"><div class="spin"></div><div>Loading…</div></div>',
+  skeleton: '<div class="sk" style="height:180px"></div>' + '<div class="sk" style="height:18px;width:70%"></div><div class="sk" style="height:14px;width:90%"></div>'.repeat(4),
+  progress: '<div class="c"><div class="prog"><div style="width:' + (25 + Math.floor(Math.random() * 50)) + '%"></div></div><div>Preparing your content</div></div>',
+  splash: '<div class="c" style="height:85vh"><div style="font-size:44px;font-weight:bold;color:#3949ab">Example</div></div>'};
+const R = {
+  article: '<h1>Five easy houseplants for beginners</h1><p>Snake plants, pothos and ZZ plants survive low light and irregular watering.</p><p>Water when the top inch of soil is dry, and keep them away from cold drafts.</p><p>Spider plants and peace lilies round out the list.</p><button>Read more</button>',
+  list: ['Inbox zero tips', 'Weekly planning', 'Grocery list', 'Book club notes', 'Garden ideas', 'Trip checklist'].map(x => `<div class="card"><b>${x}</b><div style="color:#777;font-size:14px">Updated today</div></div>`).join(''),
+  product: '<div style="height:200px;background:#c5cae9;margin:12px;border-radius:10px"></div><h1>Desk lamp, warm white</h1><p style="font-size:20px;color:#0a7d32"><b>$34.99</b></p><p>Adjustable arm, three brightness levels.</p><p><button>Add to cart</button></p>'};
+if (kind === 'splash') document.getElementById('bar').style.display = 'none';
+b.innerHTML = L[kind];
+setTimeout(() => { document.getElementById('bar').style.display = ''; b.innerHTML = R[content]; }, after);
+</script></body></html>
