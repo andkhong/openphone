@@ -12,6 +12,16 @@ The product and security decisions made by the owner (andkhong), newest first. E
 ## 2026-10-17
 - **Mobile redesign ("Control Room" mockups, https://claude.ai/artifact/UgrGuCE5vmaArjifYZSrpU):** no personal "prompt word" on approvals; no owner-added blocked apps ("Block another app") for now.
 - **Pairing (redesign):** QR code first; a typed short code as the fallback (single-use, a few minutes' expiry, rate-limited, bound to the signed-in account, then a confirm step on the phone); the developer token moves under "More options".
+  - **Conditions for the typed code (owner, 2026-10-17; for the batched security review):**
+    1. **Against social engineering** (someone talks the owner into typing *their* code):
+       - the phone's confirm screen shows, in large text, the account email and server being joined, with "Only pair with your own account. OpenMob will never ask you for a code.";
+       - only codes made by the owner's own signed-in dashboard pair;
+       - a notification right after pairing ("Paired with … · Undo");
+       - pairing a second account on an already-paired phone needs unpairing the first, with the screen lock.
+    2. **Against guessing:** 6 characters from a 32-character alphabet, single use, a few minutes' expiry, rate limits per IP and per code, lockout after a few failures; codes are hashed and never logged.
+    3. **The server:** the default is the hosted server; a self-hosted server needs its address (typed once, or encoded in a longer code).
+    4. **No codes in logs or errors.** This also fixes the pairing error that printed a link (abuse series 2026-10-10).
+    5. **Usability:** no look-alike characters (0/O, 1/I/L), any letter case, an optional dash.
 - **Home during a task (redesign):** show only the current step, not the full step list.
 - **Jev taps routine game controls behind Faster mode** (step 2, `docs/design/faster-mode.md` §3.1). On a J1 menu,
   dialog or game-over screen, Jev picks start, continue, dismiss or none and Boxes the control; the loop taps it
