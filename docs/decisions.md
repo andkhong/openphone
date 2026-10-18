@@ -10,6 +10,7 @@ The product and security decisions made by the owner (andkhong), newest first. E
 - Older, still open: "My people" phone memory; rules.json word edits; hiding the app list in developer logs.
 
 ## 2026-10-17
+- **Mobile redesign ("Control Room" mockups, https://claude.ai/artifact/UgrGuCE5vmaArjifYZSrpU):** no personal "prompt word" on approvals; no owner-added blocked apps ("Block another app") for now.
 - **Jev taps routine game controls behind Faster mode** (step 2, `docs/design/faster-mode.md` §3.1). On a J1 menu,
   dialog or game-over screen, Jev picks start, continue, dismiss or none and Boxes the control; the loop taps it
   when the action is sure (p ≥ 0.8, confidence ≥ 0.7) and `min(Box confidence, visible) ≥ 0.5`, through `_execute`
